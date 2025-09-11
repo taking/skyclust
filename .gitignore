@@ -46,3 +46,8 @@ config.local.yaml
 # Build artifacts
 dist/
 build/
+
+# Web frontend
+web/node_modules/
+web/dist/
+web/.env

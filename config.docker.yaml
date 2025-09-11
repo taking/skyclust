@@ -2,7 +2,7 @@ server:
   port: "8080"
 
 database:
-  host: "localhost"
+  host: "postgres"
   port: 5432
   user: "cmp_user"
   password: "cmp_password"
@@ -16,7 +16,7 @@ encryption:
   key: "your-32-byte-encryption-key-here"
 
 nats:
-  url: "nats://localhost:4222"
+  url: "nats://nats:4222"
 
 plugins:
   directory: "plugins"
@@ -44,3 +44,4 @@ providers:
     username: ""  # Set your Proxmox username
     password: ""  # Set your Proxmox password
     realm: "pve"
+

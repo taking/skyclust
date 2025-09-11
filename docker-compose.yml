@@ -1,0 +1,74 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: cmp-postgres
+    environment:
+      POSTGRES_DB: cmp
+      POSTGRES_USER: cmp_user
+      POSTGRES_PASSWORD: cmp_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - cmp-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cmp_user -d cmp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: cmp-nats
+    command: ["--port", "4222", "--http_port", "8222", "--jetstream"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    networks:
+      - cmp-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8222/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  cmp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cmp-server
+    environment:
+      - CMP_DB_HOST=postgres
+      - CMP_DB_PORT=5432
+      - CMP_DB_NAME=cmp
+      - CMP_DB_USER=cmp_user
+      - CMP_DB_PASSWORD=cmp_password
+      - CMP_DB_SSLMODE=disable
+      - CMP_NATS_URL=nats://nats:4222
+      - CMP_PORT=8080
+      - CMP_JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - CMP_ENCRYPTION_KEY=your-32-byte-encryption-key-here
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks:
+      - cmp-network
+    volumes:
+      - ./plugins:/app/plugins
+      - ./config.docker.yaml:/app/config.yaml
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  cmp-network:
+    driver: bridge
+

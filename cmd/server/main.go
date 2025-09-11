@@ -4,8 +4,15 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
 
+	"cmp/internal/api"
+	"cmp/internal/services"
+	"cmp/pkg/database"
+	"cmp/pkg/events"
 	"cmp/pkg/interfaces"
+	"cmp/pkg/nats"
 	"cmp/pkg/plugin"
 
 	"github.com/gin-gonic/gin"
@@ -40,6 +47,66 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Load configuration
 	loadConfig()
 
+	// Initialize database
+	dbConfig := database.Config{
+		Host:     getEnvOrDefault("CMP_DB_HOST", viper.GetString("database.host")),
+		Port:     getEnvIntOrDefault("CMP_DB_PORT", viper.GetInt("database.port")),
+		User:     getEnvOrDefault("CMP_DB_USER", viper.GetString("database.user")),
+		Password: getEnvOrDefault("CMP_DB_PASSWORD", viper.GetString("database.password")),
+		Database: getEnvOrDefault("CMP_DB_NAME", viper.GetString("database.name")),
+		SSLMode:  getEnvOrDefault("CMP_DB_SSLMODE", viper.GetString("database.sslmode")),
+	}
+
+	// Set defaults if not configured
+	if dbConfig.Host == "" {
+		dbConfig.Host = "localhost"
+	}
+	if dbConfig.Port == 0 {
+		dbConfig.Port = 5432
+	}
+	if dbConfig.User == "" {
+		dbConfig.User = "cmp_user"
+	}
+	if dbConfig.Password == "" {
+		dbConfig.Password = "cmp_password"
+	}
+	if dbConfig.Database == "" {
+		dbConfig.Database = "cmp"
+	}
+	if dbConfig.SSLMode == "" {
+		dbConfig.SSLMode = "disable"
+	}
+
+	db := database.NewPostgresService(dbConfig)
+
+	// Initialize NATS
+	natsService := nats.NewService()
+	natsURL := getEnvOrDefault("CMP_NATS_URL", viper.GetString("nats.url"))
+	if natsURL == "" {
+		natsURL = "nats://localhost:4222"
+	}
+
+	var eventBus events.Bus
+	if err := natsService.Connect(natsURL); err != nil {
+		log.Printf("Warning: failed to connect to NATS: %v", err)
+		log.Printf("Falling back to local event bus")
+		// Fallback to local event bus
+		eventBus = events.NewBus()
+	} else {
+		log.Printf("Connected to NATS at %s", natsURL)
+		// Use NATS-powered event bus
+		eventBus = events.NewNATSBus(natsService)
+	}
+
+	// Initialize encryption service
+	encryptionKey := viper.GetString("encryption.key")
+	if encryptionKey == "" {
+		encryptionKey = "your-32-byte-encryption-key-here"
+	}
+
+	// Initialize services
+	svc := services.NewServices(db, eventBus, encryptionKey)
+
 	// Initialize plugin manager
 	manager := plugin.NewManager()
 
@@ -51,8 +118,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Initialize providers with default configs
 	initializeProviders(manager)
 
-	// Setup Gin router
-	router := setupRouter(manager)
+	// Setup router
+	router := api.SetupRoutes(gin.Default(), svc)
 
 	// Start server
 	log.Printf("Starting CMP server on port %s", port)
@@ -343,4 +410,21 @@ func getCostEstimate(manager *plugin.Manager) gin.HandlerFunc {
 
 		c.JSON(http.StatusOK, estimate)
 	}
+}
+
+// Helper functions for environment variable handling
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func getEnvIntOrDefault(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if intValue, err := strconv.Atoi(value); err == nil {
+			return intValue
+		}
+	}
+	return defaultValue
 }
