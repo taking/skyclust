@@ -1,0 +1,29 @@
+server:
+  port: "8080"
+
+plugins:
+  directory: "plugins"
+
+providers:
+  aws:
+    access_key: ""  # Set your AWS access key
+    secret_key: ""  # Set your AWS secret key
+    region: "us-east-1"
+  
+  gcp:
+    project_id: ""  # Set your GCP project ID
+    credentials_file: ""  # Set path to your GCP credentials file
+    region: "us-central1"
+  
+  openstack:
+    auth_url: ""  # Set your OpenStack Keystone auth URL
+    username: ""  # Set your OpenStack username
+    password: ""  # Set your OpenStack password
+    project_id: ""  # Set your OpenStack project ID
+    region: "RegionOne"
+  
+  proxmox:
+    host: ""  # Set your Proxmox VE host
+    username: ""  # Set your Proxmox username
+    password: ""  # Set your Proxmox password
+    realm: "pve"
