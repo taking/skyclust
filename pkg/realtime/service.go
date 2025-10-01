@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"cmp/pkg/events"
+	"cmp/internal/infrastructure/messaging"
 
 	"github.com/gorilla/websocket"
 )
@@ -21,8 +21,8 @@ type Service interface {
 	HandleSSE(conn *SSEConnection)
 
 	// Event broadcasting
-	BroadcastToWorkspace(workspaceID string, event *events.Event) error
-	BroadcastToUser(userID string, event *events.Event) error
+	BroadcastToWorkspace(workspaceID string, event *messaging.Event) error
+	BroadcastToUser(userID string, event *messaging.Event) error
 }
 
 // SSEConnection represents a Server-Sent Events connection
@@ -35,7 +35,7 @@ type SSEConnection struct {
 }
 
 // NewService creates a new realtime service
-func NewService(eventBus events.Bus) Service {
+func NewService(eventBus messaging.Bus) Service {
 	return &service{
 		eventBus: eventBus,
 		upgrader: websocket.Upgrader{
@@ -47,7 +47,7 @@ func NewService(eventBus events.Bus) Service {
 }
 
 type service struct {
-	eventBus events.Bus
+	eventBus messaging.Bus
 	upgrader websocket.Upgrader
 }
 
@@ -106,12 +106,12 @@ func (s *service) HandleSSE(conn *SSEConnection) {
 }
 
 // BroadcastToWorkspace broadcasts an event to all users in a workspace
-func (s *service) BroadcastToWorkspace(workspaceID string, event *events.Event) error {
+func (s *service) BroadcastToWorkspace(workspaceID string, event *messaging.Event) error {
 	return s.eventBus.PublishToWorkspace(context.Background(), workspaceID, event)
 }
 
 // BroadcastToUser broadcasts an event to a specific user
-func (s *service) BroadcastToUser(userID string, event *events.Event) error {
+func (s *service) BroadcastToUser(userID string, event *messaging.Event) error {
 	return s.eventBus.PublishToUser(context.Background(), userID, event)
 }
 
@@ -119,6 +119,10 @@ func (s *service) BroadcastToUser(userID string, event *events.Event) error {
 func (conn *SSEConnection) SendEvent(eventType string, data map[string]interface{}) {
 	// Format as Server-Sent Events
 	event := fmt.Sprintf("event: %s\ndata: %s\n\n", eventType, data)
-	conn.Writer.Write([]byte(event))
+	//nolint:staticcheck // SA9003: intentionally ignore write errors to prevent SSE connection failure
+	if _, err := conn.Writer.Write([]byte(event)); err != nil {
+		// Log error but don't fail the connection
+		// TODO: Add proper logging here
+	}
 	conn.Writer.(http.Flusher).Flush()
 }

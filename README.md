@@ -1,21 +1,39 @@
 # Cloud Management Portal (CMP)
 
-A plugin-based cloud management portal built with Go that supports multiple cloud providers through a unified interface.
+Cloud Management Portal (CMP)로, 다중 클라우드 환경을 통합 관리하는 플러그인 기반 플랫폼
 
 ## Features
 
-- 🔌 **Plugin Architecture**: Easily add new cloud providers as plugins
-- 🌐 **Multi-Cloud Support**: Supports AWS, GCP, OpenStack, and Proxmox
-- 🏢 **Public/Private Cloud**: Separate plugin directories for public and private clouds
-- 🚀 **RESTful API**: Clean HTTP API for all operations
-- ⚡ **Dynamic Loading**: Load plugins at runtime without recompilation
-- 🔧 **Configurable**: YAML-based configuration
-- 📊 **Cost Estimation**: Built-in cost calculation for resources
-- 🔐 **IAM Management**: User, group, role, and policy management
-- 🌐 **Network Management**: VPC, subnet, security group, and key pair management
-- 🔑 **Key Pair Management**: SSH key pair creation and management
+- 다중 클라우드 지원: AWS, GCP, OpenStack, Proxmox
+- 플러그인 아키텍처: 동적 로딩 가능한 클라우드 프로바이더
+- 워크스페이스 기반 멀티테넌시: 사용자별 격리된 환경
+- VM 관리: 인스턴스 생성, 삭제, 상태 관리
+- IaC 지원: OpenTofu를 통한 인프라 관리
+- 실시간 통신: WebSocket/SSE를 통한 실시간 업데이트
+- Kubernetes 관리: 클러스터 및 리소스 관리
+- 자격증명 관리: 암호화된 클라우드 자격증명 저장
 
 ## Architecture
+
+백엔드 (Go)
+- 프레임워크: Gin (HTTP), GORM (ORM)
+- 데이터베이스: PostgreSQL
+- 메시징: NATS (이벤트 버스)
+- 인증: JWT 기반
+- 암호화: AES 암호화 서비스
+
+프론트엔드 (React + TypeScript)
+- UI 라이브러리: Mantine
+- 상태 관리: React Query
+- HTTP 클라이언트: Axios
+- 빌드 도구: Vite
+
+인프라
+- 컨테이너화: Docker + Docker Compose
+- 데이터베이스: PostgreSQL 15
+- 메시징: NATS 2.10
+
+## Project Structure
 
 ```
 cmp/
@@ -94,13 +112,29 @@ providers:
 ```
 
 5. Run the server:
+
+**Option A: Using config.yaml (Recommended)**
+```bash
+go run cmd/server/main.go --config config.yaml
+```
+
+**Option B: Using environment variables**
+```bash
+export CMP_DB_HOST=localhost
+export CMP_DB_USER=cmp_user
+export CMP_DB_PASSWORD=cmp_password
+export CMP_DB_NAME=cmp
+go run cmd/server/main.go --config config.yaml
+```
+
+**Option C: Using Makefile**
 ```bash
 make run
 # or
 ./bin/cmp-server --plugins plugins
 ```
 
-The server will start on `http://localhost:8080`
+The server will start on `http://localhost:8080` (or the port specified in your configuration)
 
 ## API Endpoints
 
@@ -238,22 +272,212 @@ type CloudProvider interface {
 
 ## Configuration
 
-The application uses YAML configuration. You can specify the config file with the `--config` flag:
+The application supports multiple configuration methods with a clear priority order. You can use YAML configuration files, environment variables, or command-line flags.
+
+### Configuration Priority Order
+
+The configuration system follows this priority order (highest to lowest):
+
+1. **Command-line flags** (e.g., `--port 8080`)
+2. **Environment variables** (e.g., `CMP_PORT=8080`)
+3. **Configuration file** (e.g., `config.yaml`)
+4. **Default values**
+
+### Configuration Methods
+
+#### 1. Configuration File (config.yaml)
+
+Create a `config.yaml` file in your project root:
+
+```yaml
+server:
+  port: "8080"
+  host: "0.0.0.0"
+
+database:
+  host: "localhost"
+  port: 5432
+  user: "cmp_user"
+  password: "cmp_password"
+  name: "cmp"
+  sslmode: "disable"
+
+jwt:
+  secret: "your-jwt-secret-here"
+  expiry: "24h"
+
+encryption:
+  key: "your-32-byte-encryption-key-here"
+
+nats:
+  url: "nats://localhost:4222"
+  cluster: "cmp-cluster"
+
+plugins:
+  directory: "plugins"
+
+providers:
+  aws:
+    access_key: "your-aws-access-key"
+    secret_key: "your-aws-secret-key"
+    region: "us-east-1"
+  
+  gcp:
+    project_id: "your-gcp-project-id"
+    credentials_file: "/path/to/credentials.json"
+    region: "us-central1"
+  
+  openstack:
+    auth_url: "http://your-openstack-keystone:5000/v3"
+    username: "your-username"
+    password: "your-password"
+    project_id: "your-project-id"
+    region: "RegionOne"
+  
+  proxmox:
+    host: "your-proxmox-host"
+    username: "your-username"
+    password: "your-password"
+    realm: "pve"
+```
+
+#### 2. Environment Variables
+
+Set environment variables to override configuration file values:
 
 ```bash
-./bin/cmp-server --config /path/to/config.yaml
+# Server configuration
+export CMP_PORT=8080
+export CMP_HOST=0.0.0.0
+
+# Database configuration
+export CMP_DB_HOST=localhost
+export CMP_DB_PORT=5432
+export CMP_DB_USER=cmp_user
+export CMP_DB_PASSWORD=cmp_password
+export CMP_DB_NAME=cmp
+export CMP_DB_SSLMODE=disable
+
+# Security configuration
+export CMP_JWT_SECRET=your-jwt-secret-here
+export CMP_ENCRYPTION_KEY=your-32-byte-encryption-key-here
+
+# NATS configuration
+export CMP_NATS_URL=nats://localhost:4222
+export CMP_NATS_CLUSTER=cmp-cluster
+
+# Plugin configuration
+export CMP_PLUGINS_DIR=plugins
+
+# Cloud provider configuration
+export CMP_AWS_ACCESS_KEY=your-aws-access-key
+export CMP_AWS_SECRET_KEY=your-aws-secret-key
+export CMP_AWS_REGION=us-east-1
+
+export CMP_GCP_PROJECT_ID=your-gcp-project-id
+export CMP_GCP_CREDENTIALS_FILE=/path/to/credentials.json
+export CMP_GCP_REGION=us-central1
+
+export CMP_OPENSTACK_AUTH_URL=http://your-openstack-keystone:5000/v3
+export CMP_OPENSTACK_USERNAME=your-username
+export CMP_OPENSTACK_PASSWORD=your-password
+export CMP_OPENSTACK_PROJECT_ID=your-project-id
+export CMP_OPENSTACK_REGION=RegionOne
+
+export CMP_PROXMOX_HOST=your-proxmox-host
+export CMP_PROXMOX_USERNAME=your-username
+export CMP_PROXMOX_PASSWORD=your-password
+export CMP_PROXMOX_REALM=pve
+```
+
+#### 3. Command-line Flags
+
+Use command-line flags for quick overrides:
+
+```bash
+# Basic usage
+go run cmd/server/main.go --config config.yaml
+
+# Override port
+go run cmd/server/main.go --config config.yaml --port 8082
+
+# Override plugin directory
+go run cmd/server/main.go --config config.yaml --plugins /path/to/plugins
+
+# Use different config file
+go run cmd/server/main.go --config /path/to/production.yaml
+```
+
+### Configuration Examples
+
+#### Development Environment
+
+```bash
+# Use config.yaml with minimal setup
+go run cmd/server/main.go --config config.yaml
+```
+
+#### Production Environment
+
+```bash
+# Use environment variables for sensitive data
+export CMP_DB_PASSWORD=secure-production-password
+export CMP_JWT_SECRET=secure-jwt-secret-for-production
+export CMP_ENCRYPTION_KEY=secure-32-byte-encryption-key
+go run cmd/server/main.go --config config.yaml
+```
+
+#### Docker Environment
+
+```bash
+# Use environment variables in Docker
+docker run -e CMP_PORT=8080 -e CMP_DB_HOST=postgres cmp-server
+```
+
+#### Testing Environment
+
+```bash
+# Override specific settings for testing
+export CMP_PORT=8081
+export CMP_DB_NAME=cmp_test
+go run cmd/server/main.go --config config.yaml
 ```
 
 ### Configuration Options
 
-- `server.port`: Server port (default: 8080)
-- `plugins.directory`: Plugin directory path (default: plugins)
-- `providers.{name}.*`: Provider-specific configuration
+| Option | Environment Variable | Default | Description |
+|--------|-------------------|---------|-------------|
+| `server.port` | `CMP_PORT` | `8080` | Server port |
+| `server.host` | `CMP_HOST` | `0.0.0.0` | Server host |
+| `database.host` | `CMP_DB_HOST` | `localhost` | Database host |
+| `database.port` | `CMP_DB_PORT` | `5432` | Database port |
+| `database.user` | `CMP_DB_USER` | `cmp_user` | Database user |
+| `database.password` | `CMP_DB_PASSWORD` | `cmp_password` | Database password |
+| `database.name` | `CMP_DB_NAME` | `cmp` | Database name |
+| `database.sslmode` | `CMP_DB_SSLMODE` | `disable` | Database SSL mode |
+| `jwt.secret` | `CMP_JWT_SECRET` | Generated | JWT secret key |
+| `encryption.key` | `CMP_ENCRYPTION_KEY` | Generated | Encryption key |
+| `nats.url` | `CMP_NATS_URL` | `nats://localhost:4222` | NATS server URL |
+| `plugins.directory` | `CMP_PLUGINS_DIR` | `plugins` | Plugin directory path |
+
+### Security Considerations
+
+- **Production Environment**: Always use environment variables for sensitive data like passwords and secrets
+- **JWT Secret**: Must be at least 32 characters long
+- **Encryption Key**: Must be exactly 32 bytes (64 hex characters)
+- **Database SSL**: Enable SSL in production (`sslmode=require` or `sslmode=verify-full`)
+- **Default Values**: Never use default values in production
 
 ## Development
 
 ### Running in Development Mode
 
+**Option A: Using config.yaml (Recommended)**
+```bash
+go run cmd/server/main.go --config config.yaml
+```
+
+**Option B: Using Makefile**
 ```bash
 make dev
 ```
@@ -262,6 +486,16 @@ This will:
 - Build the application and plugins
 - Start the server with hot reload
 - Display helpful URLs
+
+**Option C: With environment variables**
+```bash
+export CMP_PORT=8080
+export CMP_DB_HOST=localhost
+export CMP_DB_USER=cmp_user
+export CMP_DB_PASSWORD=cmp_password
+export CMP_DB_NAME=cmp
+go run cmd/server/main.go --config config.yaml
+```
 
 ### Testing
 

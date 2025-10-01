@@ -41,16 +41,53 @@ services:
       dockerfile: Dockerfile
     container_name: cmp-server
     environment:
+      # Application Environment
+      - CMP_ENV=production
+      
+      # Server Configuration
+      - CMP_PORT=8080
+      - CMP_HOST=0.0.0.0
+      
+      # Database Configuration
       - CMP_DB_HOST=postgres
       - CMP_DB_PORT=5432
       - CMP_DB_NAME=cmp
       - CMP_DB_USER=cmp_user
       - CMP_DB_PASSWORD=cmp_password
       - CMP_DB_SSLMODE=disable
+      - CMP_DB_MAX_CONNS=25
+      - CMP_DB_MIN_CONNS=5
+      
+      # NATS Configuration
       - CMP_NATS_URL=nats://nats:4222
-      - CMP_PORT=8080
-      - CMP_JWT_SECRET=your-super-secret-jwt-key-change-in-production
-      - CMP_ENCRYPTION_KEY=your-32-byte-encryption-key-here
+      - CMP_NATS_CLUSTER=cmp-cluster
+      
+      # Plugins Configuration
+      - CMP_PLUGINS_DIR=/app/plugins
+      
+      # Security (These should be set via secrets in production)
+      - CMP_JWT_SECRET=${CMP_JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      - CMP_ENCRYPTION_KEY=${CMP_ENCRYPTION_KEY:-your-32-byte-encryption-key-here}
+      
+      # Cloud Provider Configuration (Optional - set as needed)
+      - CMP_AWS_ACCESS_KEY=${CMP_AWS_ACCESS_KEY:-}
+      - CMP_AWS_SECRET_KEY=${CMP_AWS_SECRET_KEY:-}
+      - CMP_AWS_REGION=${CMP_AWS_REGION:-us-east-1}
+      
+      - CMP_GCP_PROJECT_ID=${CMP_GCP_PROJECT_ID:-}
+      - CMP_GCP_CREDENTIALS_FILE=${CMP_GCP_CREDENTIALS_FILE:-}
+      - CMP_GCP_REGION=${CMP_GCP_REGION:-us-central1}
+      
+      - CMP_OPENSTACK_AUTH_URL=${CMP_OPENSTACK_AUTH_URL:-}
+      - CMP_OPENSTACK_USERNAME=${CMP_OPENSTACK_USERNAME:-}
+      - CMP_OPENSTACK_PASSWORD=${CMP_OPENSTACK_PASSWORD:-}
+      - CMP_OPENSTACK_PROJECT_ID=${CMP_OPENSTACK_PROJECT_ID:-}
+      - CMP_OPENSTACK_REGION=${CMP_OPENSTACK_REGION:-RegionOne}
+      
+      - CMP_PROXMOX_HOST=${CMP_PROXMOX_HOST:-}
+      - CMP_PROXMOX_USERNAME=${CMP_PROXMOX_USERNAME:-}
+      - CMP_PROXMOX_PASSWORD=${CMP_PROXMOX_PASSWORD:-}
+      - CMP_PROXMOX_REALM=${CMP_PROXMOX_REALM:-pve}
     ports:
       - "8080:8080"
     depends_on:

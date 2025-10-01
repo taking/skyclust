@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"cmp/pkg/interfaces"
+	"cmp/internal/plugin/interfaces"
 )
 
 // OpenStackProvider implements the CloudProvider interface for OpenStack

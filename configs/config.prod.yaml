@@ -1,0 +1,35 @@
+# Production Configuration
+server:
+  port: 8080
+  host: "0.0.0.0"
+  debug: false
+
+database:
+  host: "${DB_HOST}"
+  port: "${DB_PORT:5432}"
+  name: "${DB_NAME}"
+  user: "${DB_USER}"
+  password: "${DB_PASSWORD}"
+  ssl_mode: "require"
+
+plugins:
+  directory: "plugins"
+
+providers:
+  aws:
+    access_key: "${AWS_ACCESS_KEY_ID}"
+    secret_key: "${AWS_SECRET_ACCESS_KEY}"
+    region: "${AWS_REGION:ap-northeast-2}"
+  
+  gcp:
+    project_id: "${GCP_PROJECT_ID}"
+    credentials_file: "${GCP_CREDENTIALS_FILE}"
+    region: "${GCP_REGION:us-central1}"
+
+logging:
+  level: "info"
+  format: "json"
+
+security:
+  jwt_secret: "${JWT_SECRET}"
+  encryption_key: "${ENCRYPTION_KEY}"

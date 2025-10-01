@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"cmp/pkg/interfaces"
+	"cmp/internal/plugin/interfaces"
 
 	"github.com/luthermonson/go-proxmox"
 )

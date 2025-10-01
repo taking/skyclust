@@ -1,0 +1,35 @@
+# Development Configuration
+server:
+  port: 8080
+  host: "localhost"
+  debug: true
+
+database:
+  host: "localhost"
+  port: 5432
+  name: "cmp_dev"
+  user: "cmp_user"
+  password: "dev_password"
+  ssl_mode: "disable"
+
+plugins:
+  directory: "plugins"
+
+providers:
+  aws:
+    access_key: ""  # Will be overridden by environment variables
+    secret_key: ""
+    region: "ap-northeast-2"
+  
+  gcp:
+    project_id: ""
+    credentials_file: ""
+    region: "us-central1"
+
+logging:
+  level: "debug"
+  format: "json"
+
+security:
+  jwt_secret: "dev-secret-key"
+  encryption_key: "dev-encryption-key"

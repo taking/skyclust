@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"cmp/pkg/interfaces"
+	"cmp/internal/plugin/interfaces"
 )
 
 // AzureProvider implements the CloudProvider interface for Microsoft Azure

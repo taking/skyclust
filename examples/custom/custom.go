@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"cmp/pkg/interfaces"
+	"cmp/internal/plugin/interfaces"
 )
 
 // CustomProvider implements the CloudProvider interface for a custom cloud service

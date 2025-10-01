@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
-	"cmp/pkg/interfaces"
+	"cmp/pkg/plugin/interfaces"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
@@ -49,19 +51,67 @@ func (p *AWSProvider) Initialize(config map[string]interface{}) error {
 
 	p.region = config["region"].(string)
 
-	// Create AWS config
-	awsCfg, err := awsconfig.LoadDefaultConfig(context.TODO(),
-		awsconfig.WithRegion(p.region),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to load AWS config: %w", err)
+	// Check for explicit credentials
+	var awsCfg aws.Config
+	var err error
+
+	if accessKey, hasAccessKey := config["access_key"]; hasAccessKey && accessKey != "" {
+		if secretKey, hasSecretKey := config["secret_key"]; hasSecretKey && secretKey != "" {
+			// Use explicit credentials
+			awsCfg, err = awsconfig.LoadDefaultConfig(context.TODO(),
+				awsconfig.WithRegion(p.region),
+				awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+					accessKey.(string),
+					secretKey.(string),
+					"", // session token
+				)),
+			)
+			if err != nil {
+				return fmt.Errorf("failed to load AWS config with explicit credentials: %w", err)
+			}
+		} else {
+			return fmt.Errorf("AWS access key provided but secret key is missing")
+		}
+	} else {
+		// Try to load from default sources (environment, profile, etc.)
+		awsCfg, err = awsconfig.LoadDefaultConfig(context.TODO(),
+			awsconfig.WithRegion(p.region),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to load AWS config from default sources: %w", err)
+		}
 	}
 
-	// Create EC2 client
+	// Test the configuration by creating clients and making a test call
 	p.ec2Client = ec2.NewFromConfig(awsCfg)
-
-	// Create IAM client
 	p.iamClient = iam.NewFromConfig(awsCfg)
+
+	// Test AWS connectivity with a simple call
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Try to describe regions to test connectivity
+	_, err = p.ec2Client.DescribeRegions(ctx, &ec2.DescribeRegionsInput{})
+	if err != nil {
+		// Provide detailed error information
+		if strings.Contains(err.Error(), "InvalidUserID.NotFound") {
+			return fmt.Errorf("AWS credentials are invalid or user not found: %w", err)
+		} else if strings.Contains(err.Error(), "UnauthorizedOperation") {
+			return fmt.Errorf("AWS credentials lack required permissions: %w", err)
+		} else if strings.Contains(err.Error(), "NoCredentialProviders") {
+			return fmt.Errorf("no AWS credentials found in environment or config: %w", err)
+		} else if strings.Contains(err.Error(), "InvalidAccessKeyId") {
+			return fmt.Errorf("AWS access key ID is invalid: %w", err)
+		} else if strings.Contains(err.Error(), "SignatureDoesNotMatch") {
+			return fmt.Errorf("AWS secret key is invalid: %w", err)
+		} else if strings.Contains(err.Error(), "RequestLimitExceeded") {
+			return fmt.Errorf("AWS API rate limit exceeded: %w", err)
+		} else if strings.Contains(err.Error(), "timeout") {
+			return fmt.Errorf("AWS connection timeout - check network connectivity: %w", err)
+		} else {
+			return fmt.Errorf("AWS connectivity test failed: %w", err)
+		}
+	}
 
 	fmt.Printf("AWS provider initialized for region: %s\n", p.region)
 	return nil
@@ -69,6 +119,11 @@ func (p *AWSProvider) Initialize(config map[string]interface{}) error {
 
 // ListInstances returns a list of AWS EC2 instances
 func (p *AWSProvider) ListInstances(ctx context.Context) ([]interfaces.Instance, error) {
+	// Check if client is initialized
+	if p.ec2Client == nil {
+		return nil, fmt.Errorf("AWS provider not initialized. Please configure AWS credentials")
+	}
+
 	// Use AWS SDK to list instances
 	result, err := p.ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{})
 	if err != nil {
