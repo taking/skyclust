@@ -8,7 +8,7 @@ import (
 	"plugin"
 	"strings"
 
-	"cmp/pkg/plugin/interfaces"
+	"skyclust/internal/plugin/interfaces"
 )
 
 // Manager handles loading and managing cloud provider plugins
@@ -123,7 +123,7 @@ func (m *Manager) GetProvider(name string) (interfaces.CloudProvider, error) {
 	if provider, exists := m.plugins[name]; exists {
 		return provider, nil
 	}
-	
+
 	// Try to find by base name (e.g., "aws" -> "public/aws")
 	for pluginName, provider := range m.plugins {
 		baseName := filepath.Base(pluginName)
@@ -131,7 +131,7 @@ func (m *Manager) GetProvider(name string) (interfaces.CloudProvider, error) {
 			return provider, nil
 		}
 	}
-	
+
 	return nil, fmt.Errorf("plugin %s not found", name)
 }
 

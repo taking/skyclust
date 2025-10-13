@@ -29,6 +29,9 @@ type VM struct {
 	Type        string                 `json:"type" db:"type"`
 	Region      string                 `json:"region" db:"region"`
 	ImageID     string                 `json:"image_id" db:"image_id"`
+	CPUs        int                    `json:"cpus" db:"cpus"`
+	Memory      int                    `json:"memory" db:"memory"`   // in MB
+	Storage     int                    `json:"storage" db:"storage"` // in GB
 	CreatedAt   time.Time              `json:"created_at" db:"created_at"`
 	UpdatedAt   time.Time              `json:"updated_at" db:"updated_at"`
 	Metadata    map[string]interface{} `json:"metadata" db:"metadata"`
@@ -39,6 +42,7 @@ type VMRepository interface {
 	Create(ctx context.Context, vm *VM) error
 	GetByID(ctx context.Context, id string) (*VM, error)
 	GetByWorkspaceID(ctx context.Context, workspaceID string) ([]*VM, error)
+	GetVMsByWorkspace(ctx context.Context, workspaceID string) ([]*VM, error)
 	GetByProvider(ctx context.Context, provider string) ([]*VM, error)
 	Update(ctx context.Context, vm *VM) error
 	Delete(ctx context.Context, id string) error
@@ -52,7 +56,7 @@ type VMService interface {
 	GetVM(ctx context.Context, id string) (*VM, error)
 	UpdateVM(ctx context.Context, id string, req UpdateVMRequest) (*VM, error)
 	DeleteVM(ctx context.Context, id string) error
-	ListVMs(ctx context.Context, workspaceID string) ([]*VM, error)
+	GetVMs(ctx context.Context, workspaceID string) ([]*VM, error)
 	StartVM(ctx context.Context, id string) error
 	StopVM(ctx context.Context, id string) error
 	RestartVM(ctx context.Context, id string) error
@@ -80,19 +84,19 @@ type UpdateVMRequest struct {
 // Validate performs validation on the CreateVMRequest
 func (r *CreateVMRequest) Validate() error {
 	if len(r.Name) < 3 || len(r.Name) > 100 {
-		return NewValidationError("name must be between 3 and 100 characters")
+		return NewDomainError(ErrCodeValidationFailed, "name must be between 3 and 100 characters", 400)
 	}
 	if len(r.WorkspaceID) == 0 {
-		return NewValidationError("workspace_id is required")
+		return NewDomainError(ErrCodeValidationFailed, "workspace_id is required", 400)
 	}
 	if len(r.Provider) == 0 {
-		return NewValidationError("provider is required")
+		return NewDomainError(ErrCodeValidationFailed, "provider is required", 400)
 	}
 	if len(r.Type) == 0 {
-		return NewValidationError("type is required")
+		return NewDomainError(ErrCodeValidationFailed, "type is required", 400)
 	}
 	if len(r.Region) == 0 {
-		return NewValidationError("region is required")
+		return NewDomainError(ErrCodeValidationFailed, "region is required", 400)
 	}
 	return nil
 }
@@ -100,7 +104,7 @@ func (r *CreateVMRequest) Validate() error {
 // Validate performs validation on the UpdateVMRequest
 func (r *UpdateVMRequest) Validate() error {
 	if r.Name != nil && (len(*r.Name) < 3 || len(*r.Name) > 100) {
-		return NewValidationError("name must be between 3 and 100 characters")
+		return NewDomainError(ErrCodeValidationFailed, "name must be between 3 and 100 characters", 400)
 	}
 	return nil
 }

@@ -3,28 +3,43 @@ package container
 import (
 	"context"
 	"fmt"
+	"skyclust/internal/domain"
 
-	"cmp/internal/domain"
-	"cmp/internal/infrastructure/database"
-	events "cmp/internal/infrastructure/messaging"
-	"cmp/internal/repository/postgres"
-	"cmp/internal/usecase"
-	"cmp/pkg/shared/config"
-	"cmp/pkg/shared/security"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
+	"skyclust/internal/infrastructure/database"
+	events "skyclust/internal/infrastructure/messaging"
+	"skyclust/internal/repository/postgres"
+	"skyclust/internal/usecase"
+	"skyclust/pkg/cache"
+	"skyclust/pkg/config"
+	"skyclust/pkg/security"
 )
 
 // Container holds all dependencies
 type Container struct {
 	// Repositories
-	UserRepo      domain.UserRepository
-	WorkspaceRepo domain.WorkspaceRepository
-	VMRepo        domain.VMRepository
+	UserRepo       domain.UserRepository
+	CredentialRepo domain.CredentialRepository
+	AuditLogRepo   domain.AuditLogRepository
+	WorkspaceRepo  domain.WorkspaceRepository
+	VMRepo         domain.VMRepository
 
 	// Services
-	UserService      domain.UserService
-	WorkspaceService domain.WorkspaceService
-	VMService        domain.VMService
+	UserService             domain.UserService
+	CredentialService       domain.CredentialService
+	AuditLogService         domain.AuditLogService
+	AuthService             domain.AuthService
+	OIDCService             domain.OIDCService
+	LogoutService           *usecase.LogoutService
+	PluginActivationService domain.PluginActivationService
+	CacheService            domain.CacheService
+	EventService            domain.EventService
+	WorkspaceService        domain.WorkspaceService
+	VMService               domain.VMService
+	CostAnalysisService     *usecase.CostAnalysisService
+	NotificationService     *usecase.NotificationService
+	ExportService           *usecase.ExportService
 
 	// Infrastructure
 	DB        *gorm.DB
@@ -36,57 +51,118 @@ type Container struct {
 // NewContainer creates a new dependency injection container
 func NewContainer(ctx context.Context, cfg *config.Config) (*Container, error) {
 	// Initialize database
-	dbConfig := database.Config{
+	dbConfig := database.PostgresConfig{
 		Host:     cfg.Database.Host,
 		Port:     cfg.Database.Port,
 		User:     cfg.Database.User,
 		Password: cfg.Database.Password,
 		Database: cfg.Database.Name,
 		SSLMode:  cfg.Database.SSLMode,
+		MaxConns: cfg.Database.MaxConns,
+		MinConns: cfg.Database.MinConns,
 	}
 
-	db := database.NewPostgresService(dbConfig)
+	db, err := database.NewPostgresService(dbConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize database: %w", err)
+	}
 
 	// Initialize event bus
 	var eventBus events.Bus
 	if cfg.NATS.URL != "" {
 		// Try to connect to NATS
-		natsService := events.NewNATSService(cfg.NATS.URL)
-		if err := natsService.Connect(); err != nil {
+		natsService, err := events.NewNATSService(events.NATSConfig{
+			URL:     cfg.NATS.URL,
+			Cluster: cfg.NATS.Cluster,
+		})
+		if err != nil {
 			// Fallback to local event bus
 			eventBus = events.NewLocalBus()
 		} else {
-			eventBus = events.NewNATSBus(natsService.GetConnection())
+			eventBus = natsService
 		}
 	} else {
 		eventBus = events.NewLocalBus()
 	}
 
+	// Initialize Redis
+	redisService, err := cache.NewRedisService(cache.RedisConfig{
+		Host:     cfg.Redis.Host,
+		Port:     cfg.Redis.Port,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+		PoolSize: cfg.Redis.PoolSize,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize Redis: %w", err)
+	}
+
 	// Initialize security services
-	hasher := security.NewBcryptHasher()
-	encryptor, _ := security.NewAESEncryptor(cfg.Encryption.Key)
+	hasher := security.NewBcryptHasher(cfg.Security.BCryptCost)
+	encryptor := security.NewAESEncryptor([]byte(cfg.Encryption.Key))
 
 	// Initialize repositories
 	userRepo := postgres.NewUserRepository(db.GetDB())
+	credentialRepo := postgres.NewCredentialRepository(db.GetDB())
+	auditLogRepo := postgres.NewAuditLogRepository(db.GetDB())
 	workspaceRepo := postgres.NewWorkspaceRepository(db.GetDB())
 	vmRepo := postgres.NewVMRepository(db.GetDB())
 
+	// Initialize logger
+	logger, err := zap.NewProduction()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize logger: %w", err)
+	}
+
 	// Initialize services
-	userService := usecase.NewUserService(userRepo, hasher)
-	workspaceService := usecase.NewWorkspaceService(workspaceRepo, userRepo)
-	vmService := usecase.NewVMService(vmRepo, workspaceRepo, nil, eventBus) // Cloud provider will be injected later
+	userService := usecase.NewUserService(userRepo, hasher, auditLogRepo)
+	credentialService := usecase.NewCredentialService(credentialRepo, auditLogRepo, encryptor)
+	auditLogService := usecase.NewAuditLogService(auditLogRepo)
+
+	// Initialize token blacklist
+	tokenBlacklist := cache.NewTokenBlacklist(redisService.GetClient(), logger)
+
+	authService := usecase.NewAuthService(userRepo, auditLogRepo, hasher, tokenBlacklist, cfg.JWT.Secret, cfg.JWT.Expiration)
+	oidcService := usecase.NewOIDCService(userRepo, auditLogRepo, authService)
+	pluginActivationService := usecase.NewPluginActivationService(credentialRepo, eventBus)
+	cacheService := usecase.NewCacheService(redisService)
+	eventService := usecase.NewEventService(eventBus)
+	workspaceService := usecase.NewWorkspaceService(workspaceRepo, userRepo, eventBus, auditLogRepo)
+	vmService := usecase.NewVMService(vmRepo, workspaceRepo, nil, eventBus, auditLogRepo) // Cloud provider will be injected later
+
+	// Initialize logout service
+	logoutService := usecase.NewLogoutService(tokenBlacklist, oidcService, auditLogRepo, logger)
+
+	costAnalysisService := usecase.NewCostAnalysisService(logger, vmRepo, credentialRepo, workspaceRepo, auditLogRepo)
+	notificationService := usecase.NewNotificationService(logger, auditLogRepo, userRepo, workspaceRepo, eventService)
+	exportService := usecase.NewExportService(logger, vmRepo, workspaceRepo, credentialRepo, auditLogRepo)
 
 	return &Container{
-		UserRepo:         userRepo,
-		WorkspaceRepo:    workspaceRepo,
-		VMRepo:           vmRepo,
-		UserService:      userService,
-		WorkspaceService: workspaceService,
-		VMService:        vmService,
-		DB:               db.GetDB(),
-		EventBus:         eventBus,
-		Hasher:           hasher,
-		Encryptor:        encryptor,
+		UserRepo:       userRepo,
+		CredentialRepo: credentialRepo,
+		AuditLogRepo:   auditLogRepo,
+		WorkspaceRepo:  workspaceRepo,
+		VMRepo:         vmRepo,
+
+		UserService:             userService,
+		CredentialService:       credentialService,
+		AuditLogService:         auditLogService,
+		AuthService:             authService,
+		OIDCService:             oidcService,
+		LogoutService:           logoutService,
+		PluginActivationService: pluginActivationService,
+		CacheService:            cacheService,
+		EventService:            eventService,
+		WorkspaceService:        workspaceService,
+		VMService:               vmService,
+		CostAnalysisService:     costAnalysisService,
+		NotificationService:     notificationService,
+		ExportService:           exportService,
+
+		DB:        db.GetDB(),
+		EventBus:  eventBus,
+		Hasher:    hasher,
+		Encryptor: encryptor,
 	}, nil
 }
 

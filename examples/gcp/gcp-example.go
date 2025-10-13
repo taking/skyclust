@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"cmp/internal/plugin/interfaces"
+	"skyclust/internal/plugin/interfaces"
 
 	compute "cloud.google.com/go/compute/apiv1"
 	"cloud.google.com/go/compute/apiv1/computepb"

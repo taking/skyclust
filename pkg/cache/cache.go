@@ -22,6 +22,8 @@ type Cache interface {
 	Close() error
 	Health(ctx context.Context) error
 	GetStats(ctx context.Context) (map[string]interface{}, error)
+	ClearExpired() error
+	GetPerformanceStats() (*CacheStats, error)
 }
 
 // Cache errors
@@ -41,6 +43,15 @@ func (e *CacheEntry) IsExpired() bool {
 	return time.Now().After(e.ExpiresAt)
 }
 
+// HitRate calculates the cache hit rate
+func (s *CacheStats) HitRate() float64 {
+	total := s.Hits + s.Misses
+	if total == 0 {
+		return 0.0
+	}
+	return float64(s.Hits) / float64(total)
+}
+
 // MemoryCache implements an in-memory cache
 type MemoryCache struct {
 	mu    sync.RWMutex
@@ -50,10 +61,13 @@ type MemoryCache struct {
 
 // CacheStats holds cache statistics
 type CacheStats struct {
-	Hits   int64
-	Misses int64
-	Sets   int64
-	Dels   int64
+	Hits      int64     `json:"hits"`
+	Misses    int64     `json:"misses"`
+	Sets      int64     `json:"sets"`
+	Dels      int64     `json:"dels"`
+	Keys      int64     `json:"keys"`
+	Memory    int64     `json:"memory"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
 // NewMemoryCache creates a new in-memory cache
@@ -308,4 +322,46 @@ func (m *MemoryCache) cleanup() {
 		}
 		m.mu.Unlock()
 	}
+}
+
+// GetPerformanceStats returns cache performance statistics
+func (m *MemoryCache) GetPerformanceStats() (*CacheStats, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	stats := &CacheStats{
+		Hits:      m.stats.Hits,
+		Misses:    m.stats.Misses,
+		Keys:      int64(len(m.items)),
+		Memory:    m.calculateMemoryUsage(),
+		Timestamp: time.Now(),
+	}
+	return stats, nil
+}
+
+// ClearExpired removes expired entries from the cache
+func (m *MemoryCache) ClearExpired() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	expiredKeys := make([]string, 0)
+
+	for key, entry := range m.items {
+		if entry.IsExpired() {
+			expiredKeys = append(expiredKeys, key)
+		}
+	}
+
+	for _, key := range expiredKeys {
+		delete(m.items, key)
+	}
+
+	return nil
+}
+
+// calculateMemoryUsage estimates memory usage of the cache
+func (m *MemoryCache) calculateMemoryUsage() int64 {
+	// Rough estimation of memory usage
+	// This is a simplified calculation
+	return int64(len(m.items) * 100) // Assume 100 bytes per entry on average
 }

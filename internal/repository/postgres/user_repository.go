@@ -1,119 +1,139 @@
 package postgres
 
 import (
-	"context"
-	"fmt"
+	"skyclust/internal/domain"
+	"skyclust/pkg/logger"
 
-	"cmp/internal/domain"
-	"cmp/pkg/shared/logger"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
-// UserRepository implements the domain.UserRepository interface
-type UserRepository struct {
+// userRepository implements the UserRepository interface
+type userRepository struct {
 	db *gorm.DB
 }
 
-// NewUserRepository creates a new UserRepository
-func NewUserRepository(db *gorm.DB) *UserRepository {
-	return &UserRepository{db: db}
+// NewUserRepository creates a new user repository
+func NewUserRepository(db *gorm.DB) domain.UserRepository {
+	return &userRepository{db: db}
 }
 
 // Create creates a new user
-func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
-	result := r.db.WithContext(ctx).Create(user)
-	if result.Error != nil {
-		return fmt.Errorf("failed to create user: %w", result.Error)
+func (r *userRepository) Create(user *domain.User) error {
+	if err := r.db.Create(user).Error; err != nil {
+		logger.Errorf("Failed to create user: %v", err)
+		return err
 	}
-
-	logger.Info(fmt.Sprintf("User created in database: %s (%s)", user.ID, user.Username))
 	return nil
 }
 
 // GetByID retrieves a user by ID
-func (r *UserRepository) GetByID(ctx context.Context, id string) (*domain.User, error) {
+func (r *userRepository) GetByID(id uuid.UUID) (*domain.User, error) {
 	var user domain.User
-	result := r.db.WithContext(ctx).Where("id = ?", id).First(&user)
-	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
+	if err := r.db.Where("id = ? AND deleted_at IS NULL", id).First(&user).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("failed to get user by ID: %w", result.Error)
+		logger.Errorf("Failed to get user by ID: %v", err)
+		return nil, err
 	}
-
-	return &user, nil
-}
-
-// GetByEmail retrieves a user by email
-func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
-	var user domain.User
-	result := r.db.WithContext(ctx).Where("email = ?", email).First(&user)
-	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to get user by email: %w", result.Error)
-	}
-
 	return &user, nil
 }
 
 // GetByUsername retrieves a user by username
-func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*domain.User, error) {
+func (r *userRepository) GetByUsername(username string) (*domain.User, error) {
 	var user domain.User
-	result := r.db.WithContext(ctx).Where("username = ?", username).First(&user)
-	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
+	if err := r.db.Where("username = ? AND deleted_at IS NULL", username).First(&user).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("failed to get user by username: %w", result.Error)
+		logger.Errorf("Failed to get user by username: %v", err)
+		return nil, err
 	}
+	return &user, nil
+}
 
+// GetByEmail retrieves a user by email
+func (r *userRepository) GetByEmail(email string) (*domain.User, error) {
+	var user domain.User
+	if err := r.db.Where("email = ? AND deleted_at IS NULL", email).First(&user).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		logger.Errorf("Failed to get user by email: %v", err)
+		return nil, err
+	}
+	return &user, nil
+}
+
+// GetByOIDC retrieves a user by OIDC provider and subject
+func (r *userRepository) GetByOIDC(provider, subject string) (*domain.User, error) {
+	var user domain.User
+	if err := r.db.Where("oidc_provider = ? AND oidc_subject = ? AND deleted_at IS NULL", provider, subject).First(&user).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		logger.Errorf("Failed to get user by OIDC: %v", err)
+		return nil, err
+	}
 	return &user, nil
 }
 
 // Update updates a user
-func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
-	result := r.db.WithContext(ctx).Save(user)
-	if result.Error != nil {
-		return fmt.Errorf("failed to update user: %w", result.Error)
+func (r *userRepository) Update(user *domain.User) error {
+	if err := r.db.Save(user).Error; err != nil {
+		logger.Errorf("Failed to update user: %v", err)
+		return err
 	}
-
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("user not found")
-	}
-
-	logger.Info(fmt.Sprintf("User updated in database: %s", user.ID))
 	return nil
 }
 
-// Delete deletes a user
-func (r *UserRepository) Delete(ctx context.Context, id string) error {
-	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&domain.User{})
-	if result.Error != nil {
-		return fmt.Errorf("failed to delete user: %w", result.Error)
+// Delete soft deletes a user
+func (r *userRepository) Delete(id uuid.UUID) error {
+	if err := r.db.Where("id = ?", id).Delete(&domain.User{}).Error; err != nil {
+		logger.Errorf("Failed to delete user: %v", err)
+		return err
 	}
-
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("user not found")
-	}
-
-	logger.Info(fmt.Sprintf("User deleted from database: %s", id))
 	return nil
 }
 
-// List retrieves a list of users with pagination
-func (r *UserRepository) List(ctx context.Context, limit, offset int) ([]*domain.User, error) {
+// List retrieves a list of users with pagination and filtering
+func (r *userRepository) List(limit, offset int, filters map[string]interface{}) ([]*domain.User, int64, error) {
 	var users []*domain.User
-	result := r.db.WithContext(ctx).
-		Order("created_at DESC").
-		Limit(limit).
-		Offset(offset).
-		Find(&users)
+	var total int64
 
-	if result.Error != nil {
-		return nil, fmt.Errorf("failed to list users: %w", result.Error)
+	// Build base query
+	query := r.db.Model(&domain.User{}).Where("deleted_at IS NULL")
+
+	// Apply filters
+	if search, ok := filters["search"]; ok && search != "" {
+		searchStr := "%" + search.(string) + "%"
+		query = query.Where("username ILIKE ? OR email ILIKE ?", searchStr, searchStr)
 	}
 
-	return users, nil
+	if isActive, ok := filters["is_active"]; ok {
+		query = query.Where("is_active = ?", isActive)
+	}
+
+	// Get total count
+	if err := query.Count(&total).Error; err != nil {
+		logger.Errorf("Failed to count users: %v", err)
+		return nil, 0, err
+	}
+
+	// Apply pagination
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	if offset > 0 {
+		query = query.Offset(offset)
+	}
+
+	// Execute query
+	if err := query.Find(&users).Error; err != nil {
+		logger.Errorf("Failed to list users: %v", err)
+		return nil, 0, err
+	}
+
+	return users, total, nil
 }

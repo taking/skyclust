@@ -3,10 +3,10 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"skyclust/internal/domain"
 
-	"cmp/internal/domain"
-	"cmp/pkg/shared/logger"
 	"gorm.io/gorm"
+	"skyclust/pkg/logger"
 )
 
 // WorkspaceRepository implements the domain.WorkspaceRepository interface
@@ -108,4 +108,37 @@ func (r *WorkspaceRepository) List(ctx context.Context, limit, offset int) ([]*d
 // GetUserWorkspaces retrieves workspaces for a user
 func (r *WorkspaceRepository) GetUserWorkspaces(ctx context.Context, userID string) ([]*domain.Workspace, error) {
 	return r.GetByOwnerID(ctx, userID)
+}
+
+// AddUserToWorkspace adds a user to a workspace
+func (r *WorkspaceRepository) AddUserToWorkspace(ctx context.Context, userID, workspaceID string, role string) error {
+	// This would require a workspace_users table
+	// For now, we'll use the database service directly
+	return fmt.Errorf("AddUserToWorkspace not implemented - requires workspace_users table")
+}
+
+// RemoveUserFromWorkspace removes a user from a workspace
+func (r *WorkspaceRepository) RemoveUserFromWorkspace(ctx context.Context, userID, workspaceID string) error {
+	// This would require a workspace_users table
+	// For now, we'll use the database service directly
+	return fmt.Errorf("RemoveUserFromWorkspace not implemented - requires workspace_users table")
+}
+
+// GetWorkspaceMembers retrieves all members of a workspace
+func (r *WorkspaceRepository) GetWorkspaceMembers(ctx context.Context, workspaceID string) ([]*domain.User, error) {
+	var users []*domain.User
+
+	// This is a simplified implementation
+	// In a real implementation, you would have a workspace_members table
+	// For now, we'll return an empty list
+	result := r.db.WithContext(ctx).
+		Table("users").
+		Where("id IN (SELECT user_id FROM workspace_members WHERE workspace_id = ?)", workspaceID).
+		Find(&users)
+
+	if result.Error != nil {
+		return nil, fmt.Errorf("failed to get workspace members: %w", result.Error)
+	}
+
+	return users, nil
 }

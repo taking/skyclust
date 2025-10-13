@@ -1,11 +1,12 @@
 package usecase
 
 import (
+	"skyclust/internal/domain"
 	"context"
 	"testing"
+	"time"
 
-	"cmp/internal/domain"
-
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -15,67 +16,112 @@ type MockUserRepository struct {
 	mock.Mock
 }
 
-func (m *MockUserRepository) Create(ctx context.Context, user *domain.User) error {
-	args := m.Called(ctx, user)
-	return args.Error(0)
-}
-
-func (m *MockUserRepository) GetByID(ctx context.Context, id string) (*domain.User, error) {
-	args := m.Called(ctx, id)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*domain.User), args.Error(1)
-}
-
-func (m *MockUserRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
-	args := m.Called(ctx, email)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*domain.User), args.Error(1)
-}
-
-func (m *MockUserRepository) GetByUsername(ctx context.Context, username string) (*domain.User, error) {
-	args := m.Called(ctx, username)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*domain.User), args.Error(1)
-}
-
-func (m *MockUserRepository) Update(ctx context.Context, user *domain.User) error {
-	args := m.Called(ctx, user)
-	return args.Error(0)
-}
-
-func (m *MockUserRepository) Delete(ctx context.Context, id string) error {
-	args := m.Called(ctx, id)
-	return args.Error(0)
-}
-
-func (m *MockUserRepository) List(ctx context.Context, limit, offset int) ([]*domain.User, error) {
-	args := m.Called(ctx, limit, offset)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).([]*domain.User), args.Error(1)
-}
-
-// MockPasswordHasher is a mock implementation of PasswordHasher
-type MockPasswordHasher struct {
+// MockAuditLogRepository is a mock implementation of AuditLogRepository
+type MockAuditLogRepository struct {
 	mock.Mock
 }
 
-func (m *MockPasswordHasher) HashPassword(password string) (string, error) {
-	args := m.Called(password)
-	return args.String(0), args.Error(1)
+func (m *MockAuditLogRepository) Create(log *domain.AuditLog) error {
+	args := m.Called(log)
+	return args.Error(0)
 }
 
-func (m *MockPasswordHasher) VerifyPassword(password, hash string) bool {
-	args := m.Called(password, hash)
-	return args.Bool(0)
+func (m *MockAuditLogRepository) GetByUserID(userID uuid.UUID, limit, offset int) ([]*domain.AuditLog, error) {
+	args := m.Called(userID, limit, offset)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*domain.AuditLog), args.Error(1)
 }
+
+func (m *MockAuditLogRepository) GetByAction(action string, limit, offset int) ([]*domain.AuditLog, error) {
+	args := m.Called(action, limit, offset)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*domain.AuditLog), args.Error(1)
+}
+
+func (m *MockAuditLogRepository) GetByDateRange(start, end time.Time, limit, offset int) ([]*domain.AuditLog, error) {
+	args := m.Called(start, end, limit, offset)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*domain.AuditLog), args.Error(1)
+}
+
+func (m *MockAuditLogRepository) CountByUserID(userID uuid.UUID) (int64, error) {
+	args := m.Called(userID)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *MockAuditLogRepository) CountByAction(action string) (int64, error) {
+	args := m.Called(action)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *MockAuditLogRepository) DeleteOldLogs(before time.Time) error {
+	args := m.Called(before)
+	return args.Error(0)
+}
+
+func (m *MockUserRepository) Create(user *domain.User) error {
+	args := m.Called(user)
+	return args.Error(0)
+}
+
+func (m *MockUserRepository) GetByID(id uuid.UUID) (*domain.User, error) {
+	args := m.Called(id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.User), args.Error(1)
+}
+
+func (m *MockUserRepository) GetByEmail(email string) (*domain.User, error) {
+	args := m.Called(email)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.User), args.Error(1)
+}
+
+func (m *MockUserRepository) GetByUsername(username string) (*domain.User, error) {
+	args := m.Called(username)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.User), args.Error(1)
+}
+
+func (m *MockUserRepository) GetByOIDC(provider, subject string) (*domain.User, error) {
+	args := m.Called(provider, subject)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.User), args.Error(1)
+}
+
+func (m *MockUserRepository) Update(user *domain.User) error {
+	args := m.Called(user)
+	return args.Error(0)
+}
+
+func (m *MockUserRepository) Delete(id uuid.UUID) error {
+	args := m.Called(id)
+	return args.Error(0)
+}
+
+func (m *MockUserRepository) List(limit, offset int, filters map[string]interface{}) ([]*domain.User, int64, error) {
+	args := m.Called(limit, offset, filters)
+	if args.Get(0) == nil {
+		return nil, args.Get(1).(int64), args.Error(2)
+	}
+	return args.Get(0).([]*domain.User), args.Get(1).(int64), args.Error(2)
+}
+
+// MockPasswordHasher is a mock implementation of PasswordHasher
+// MockPasswordHasher is defined in auth_service_test.go
 
 func TestUserService_CreateUser(t *testing.T) {
 	tests := []struct {
@@ -93,10 +139,10 @@ func TestUserService_CreateUser(t *testing.T) {
 				Password: "password123",
 			},
 			setupMocks: func(userRepo *MockUserRepository, hasher *MockPasswordHasher) {
-				userRepo.On("GetByEmail", mock.Anything, "test@example.com").Return(nil, nil)
-				userRepo.On("GetByUsername", mock.Anything, "testuser").Return(nil, nil)
+				userRepo.On("GetByEmail", "test@example.com").Return((*domain.User)(nil), nil)
+				userRepo.On("GetByUsername", "testuser").Return((*domain.User)(nil), nil)
 				hasher.On("HashPassword", "password123").Return("hashed_password", nil)
-				userRepo.On("Create", mock.Anything, mock.AnythingOfType("*domain.User")).Return(nil)
+				userRepo.On("Create", mock.AnythingOfType("*domain.User")).Return(nil)
 			},
 			expectError: false,
 		},
@@ -108,11 +154,11 @@ func TestUserService_CreateUser(t *testing.T) {
 				Password: "password123",
 			},
 			setupMocks: func(userRepo *MockUserRepository, hasher *MockPasswordHasher) {
-				existingUser := &domain.User{ID: "1", Email: "test@example.com"}
-				userRepo.On("GetByEmail", mock.Anything, "test@example.com").Return(existingUser, nil)
+				existingUser := &domain.User{ID: uuid.New(), Email: "test@example.com"}
+				userRepo.On("GetByEmail", "test@example.com").Return(existingUser, nil)
 			},
 			expectError: true,
-			errorType:   "USER_ALREADY_EXISTS",
+			errorType:   "ALREADY_EXISTS",
 		},
 		{
 			name: "username already exists",
@@ -122,9 +168,9 @@ func TestUserService_CreateUser(t *testing.T) {
 				Password: "password123",
 			},
 			setupMocks: func(userRepo *MockUserRepository, hasher *MockPasswordHasher) {
-				userRepo.On("GetByEmail", mock.Anything, "test@example.com").Return(nil, nil)
-				existingUser := &domain.User{ID: "1", Username: "testuser"}
-				userRepo.On("GetByUsername", mock.Anything, "testuser").Return(existingUser, nil)
+				userRepo.On("GetByEmail", "test@example.com").Return((*domain.User)(nil), nil)
+				existingUser := &domain.User{ID: uuid.New(), Username: "testuser"}
+				userRepo.On("GetByUsername", "testuser").Return(existingUser, nil)
 			},
 			expectError: true,
 			errorType:   "username already exists",
@@ -165,7 +211,8 @@ func TestUserService_CreateUser(t *testing.T) {
 			tt.setupMocks(userRepo, hasher)
 
 			// Create service
-			service := NewUserService(userRepo, hasher)
+			auditLogRepo := new(MockAuditLogRepository)
+			service := NewUserService(userRepo, hasher, auditLogRepo)
 
 			// Execute
 			user, err := service.CreateUser(context.Background(), tt.request)
@@ -208,12 +255,12 @@ func TestUserService_Authenticate(t *testing.T) {
 			password: "password123",
 			setupMocks: func(userRepo *MockUserRepository, hasher *MockPasswordHasher) {
 				user := &domain.User{
-					ID:       "1",
-					Email:    "test@example.com",
-					Password: "hashed_password",
-					IsActive: true,
+					ID:           uuid.New(),
+					Email:        "test@example.com",
+					PasswordHash: "hashed_password",
+					IsActive:     true,
 				}
-				userRepo.On("GetByEmail", mock.Anything, "test@example.com").Return(user, nil)
+				userRepo.On("GetByEmail", "test@example.com").Return(user, nil)
 				hasher.On("VerifyPassword", "password123", "hashed_password").Return(true)
 			},
 			expectError: false,
@@ -223,7 +270,7 @@ func TestUserService_Authenticate(t *testing.T) {
 			email:    "test@example.com",
 			password: "password123",
 			setupMocks: func(userRepo *MockUserRepository, hasher *MockPasswordHasher) {
-				userRepo.On("GetByEmail", mock.Anything, "test@example.com").Return(nil, nil)
+				userRepo.On("GetByEmail", "test@example.com").Return((*domain.User)(nil), nil)
 			},
 			expectError: true,
 			errorType:   "INVALID_CREDENTIALS",
@@ -234,12 +281,12 @@ func TestUserService_Authenticate(t *testing.T) {
 			password: "wrongpassword",
 			setupMocks: func(userRepo *MockUserRepository, hasher *MockPasswordHasher) {
 				user := &domain.User{
-					ID:       "1",
-					Email:    "test@example.com",
-					Password: "hashed_password",
-					IsActive: true,
+					ID:           uuid.New(),
+					Email:        "test@example.com",
+					PasswordHash: "hashed_password",
+					IsActive:     true,
 				}
-				userRepo.On("GetByEmail", mock.Anything, "test@example.com").Return(user, nil)
+				userRepo.On("GetByEmail", "test@example.com").Return(user, nil)
 				hasher.On("VerifyPassword", "wrongpassword", "hashed_password").Return(false)
 			},
 			expectError: true,
@@ -251,12 +298,12 @@ func TestUserService_Authenticate(t *testing.T) {
 			password: "password123",
 			setupMocks: func(userRepo *MockUserRepository, hasher *MockPasswordHasher) {
 				user := &domain.User{
-					ID:       "1",
-					Email:    "test@example.com",
-					Password: "hashed_password",
-					IsActive: false,
+					ID:           uuid.New(),
+					Email:        "test@example.com",
+					PasswordHash: "hashed_password",
+					IsActive:     false,
 				}
-				userRepo.On("GetByEmail", mock.Anything, "test@example.com").Return(user, nil)
+				userRepo.On("GetByEmail", "test@example.com").Return(user, nil)
 			},
 			expectError: true,
 			errorType:   "user account is disabled",
@@ -271,7 +318,8 @@ func TestUserService_Authenticate(t *testing.T) {
 			tt.setupMocks(userRepo, hasher)
 
 			// Create service
-			service := NewUserService(userRepo, hasher)
+			auditLogRepo := new(MockAuditLogRepository)
+			service := NewUserService(userRepo, hasher, auditLogRepo)
 
 			// Execute
 			user, err := service.Authenticate(context.Background(), tt.email, tt.password)
@@ -306,25 +354,27 @@ func TestUserService_GetUser(t *testing.T) {
 	}{
 		{
 			name:   "successful user retrieval",
-			userID: "1",
+			userID: "11111111-1111-1111-1111-111111111111",
 			setupMocks: func(userRepo *MockUserRepository) {
+				userID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 				user := &domain.User{
-					ID:       "1",
+					ID:       userID,
 					Username: "testuser",
 					Email:    "test@example.com",
 				}
-				userRepo.On("GetByID", mock.Anything, "1").Return(user, nil)
+				userRepo.On("GetByID", userID).Return(user, nil)
 			},
 			expectError: false,
 		},
 		{
 			name:   "user not found",
-			userID: "1",
+			userID: "00000000-0000-0000-0000-000000000000",
 			setupMocks: func(userRepo *MockUserRepository) {
-				userRepo.On("GetByID", mock.Anything, "1").Return(nil, nil)
+				userID := uuid.MustParse("00000000-0000-0000-0000-000000000000")
+				userRepo.On("GetByID", userID).Return((*domain.User)(nil), nil)
 			},
 			expectError: true,
-			errorType:   "USER_NOT_FOUND",
+			errorType:   "NOT_FOUND",
 		},
 	}
 
@@ -336,7 +386,8 @@ func TestUserService_GetUser(t *testing.T) {
 			tt.setupMocks(userRepo)
 
 			// Create service
-			service := NewUserService(userRepo, hasher)
+			auditLogRepo := new(MockAuditLogRepository)
+			service := NewUserService(userRepo, hasher, auditLogRepo)
 
 			// Execute
 			user, err := service.GetUser(context.Background(), tt.userID)
@@ -351,7 +402,8 @@ func TestUserService_GetUser(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.NotNil(t, user)
-				assert.Equal(t, tt.userID, user.ID)
+				expectedID := uuid.MustParse(tt.userID)
+				assert.Equal(t, expectedID, user.ID)
 			}
 
 			// Verify mocks

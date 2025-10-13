@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"cmp/internal/plugin/interfaces"
+	"skyclust/internal/plugin/interfaces"
 
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"

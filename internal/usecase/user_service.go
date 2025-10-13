@@ -3,24 +3,27 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"skyclust/internal/domain"
 	"time"
 
-	"cmp/internal/domain"
-	"cmp/pkg/shared/logger"
-	"cmp/pkg/shared/security"
+	"github.com/google/uuid"
+	"skyclust/pkg/logger"
+	"skyclust/pkg/security"
 )
 
 // UserService implements the UserService interface
 type UserService struct {
-	userRepo domain.UserRepository
-	hasher   security.PasswordHasher
+	userRepo     domain.UserRepository
+	hasher       security.PasswordHasher
+	auditLogRepo domain.AuditLogRepository
 }
 
 // NewUserService creates a new UserService
-func NewUserService(userRepo domain.UserRepository, hasher security.PasswordHasher) *UserService {
+func NewUserService(userRepo domain.UserRepository, hasher security.PasswordHasher, auditLogRepo domain.AuditLogRepository) *UserService {
 	return &UserService{
-		userRepo: userRepo,
-		hasher:   hasher,
+		userRepo:     userRepo,
+		hasher:       hasher,
+		auditLogRepo: auditLogRepo,
 	}
 }
 
@@ -32,13 +35,13 @@ func (s *UserService) CreateUser(ctx context.Context, req domain.CreateUserReque
 	}
 
 	// Check if user already exists
-	existingUser, err := s.userRepo.GetByEmail(ctx, req.Email)
+	existingUser, err := s.userRepo.GetByEmail(req.Email)
 	if err == nil && existingUser != nil {
 		return nil, domain.ErrUserAlreadyExists
 	}
 
 	// Check username availability
-	existingUser, err = s.userRepo.GetByUsername(ctx, req.Username)
+	existingUser, err = s.userRepo.GetByUsername(req.Username)
 	if err == nil && existingUser != nil {
 		return nil, fmt.Errorf("username already exists")
 	}
@@ -51,16 +54,16 @@ func (s *UserService) CreateUser(ctx context.Context, req domain.CreateUserReque
 
 	// Create user
 	user := &domain.User{
-		ID:        generateID(),
-		Username:  req.Username,
-		Email:     req.Email,
-		Password:  hashedPassword,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-		IsActive:  true,
+		ID:           uuid.New(),
+		Username:     req.Username,
+		Email:        req.Email,
+		PasswordHash: hashedPassword,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+		IsActive:     true,
 	}
 
-	if err := s.userRepo.Create(ctx, user); err != nil {
+	if err := s.userRepo.Create(user); err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
 
@@ -70,7 +73,12 @@ func (s *UserService) CreateUser(ctx context.Context, req domain.CreateUserReque
 
 // GetUser retrieves a user by ID
 func (s *UserService) GetUser(ctx context.Context, id string) (*domain.User, error) {
-	user, err := s.userRepo.GetByID(ctx, id)
+	userID, err := uuid.Parse(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	user, err := s.userRepo.GetByID(userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
@@ -78,6 +86,17 @@ func (s *UserService) GetUser(ctx context.Context, id string) (*domain.User, err
 		return nil, domain.ErrUserNotFound
 	}
 	return user, nil
+}
+
+// GetUsers retrieves a list of users with pagination and filtering
+func (s *UserService) GetUsers(ctx context.Context, limit, offset int, filters map[string]interface{}) ([]*domain.User, int64, error) {
+	users, total, err := s.userRepo.List(limit, offset, filters)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get users: %w", err)
+	}
+
+	logger.Info(fmt.Sprintf("Retrieved %d users (limit: %d, offset: %d)", len(users), limit, offset))
+	return users, total, nil
 }
 
 // UpdateUser updates a user
@@ -88,7 +107,12 @@ func (s *UserService) UpdateUser(ctx context.Context, id string, req domain.Upda
 	}
 
 	// Get existing user
-	user, err := s.userRepo.GetByID(ctx, id)
+	userID, err := uuid.Parse(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	user, err := s.userRepo.GetByID(userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
@@ -99,8 +123,8 @@ func (s *UserService) UpdateUser(ctx context.Context, id string, req domain.Upda
 	// Update fields
 	if req.Username != nil {
 		// Check if username is available
-		existingUser, err := s.userRepo.GetByUsername(ctx, *req.Username)
-		if err == nil && existingUser != nil && existingUser.ID != id {
+		existingUser, err := s.userRepo.GetByUsername(*req.Username)
+		if err == nil && existingUser != nil && existingUser.ID != userID {
 			return nil, fmt.Errorf("username already exists")
 		}
 		user.Username = *req.Username
@@ -108,8 +132,8 @@ func (s *UserService) UpdateUser(ctx context.Context, id string, req domain.Upda
 
 	if req.Email != nil {
 		// Check if email is available
-		existingUser, err := s.userRepo.GetByEmail(ctx, *req.Email)
-		if err == nil && existingUser != nil && existingUser.ID != id {
+		existingUser, err := s.userRepo.GetByEmail(*req.Email)
+		if err == nil && existingUser != nil && existingUser.ID != userID {
 			return nil, fmt.Errorf("email already exists")
 		}
 		user.Email = *req.Email
@@ -121,7 +145,7 @@ func (s *UserService) UpdateUser(ctx context.Context, id string, req domain.Upda
 
 	user.UpdatedAt = time.Now()
 
-	if err := s.userRepo.Update(ctx, user); err != nil {
+	if err := s.userRepo.Update(user); err != nil {
 		return nil, fmt.Errorf("failed to update user: %w", err)
 	}
 
@@ -132,7 +156,12 @@ func (s *UserService) UpdateUser(ctx context.Context, id string, req domain.Upda
 // DeleteUser deletes a user
 func (s *UserService) DeleteUser(ctx context.Context, id string) error {
 	// Check if user exists
-	user, err := s.userRepo.GetByID(ctx, id)
+	userID, err := uuid.Parse(id)
+	if err != nil {
+		return fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	user, err := s.userRepo.GetByID(userID)
 	if err != nil {
 		return fmt.Errorf("failed to get user: %w", err)
 	}
@@ -140,7 +169,7 @@ func (s *UserService) DeleteUser(ctx context.Context, id string) error {
 		return domain.ErrUserNotFound
 	}
 
-	if err := s.userRepo.Delete(ctx, id); err != nil {
+	if err := s.userRepo.Delete(userID); err != nil {
 		return fmt.Errorf("failed to delete user: %w", err)
 	}
 
@@ -150,7 +179,7 @@ func (s *UserService) DeleteUser(ctx context.Context, id string) error {
 
 // Authenticate authenticates a user
 func (s *UserService) Authenticate(ctx context.Context, email, password string) (*domain.User, error) {
-	user, err := s.userRepo.GetByEmail(ctx, email)
+	user, err := s.userRepo.GetByEmail(email)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
@@ -163,7 +192,7 @@ func (s *UserService) Authenticate(ctx context.Context, email, password string) 
 	}
 
 	// Verify password
-	if !s.hasher.VerifyPassword(password, user.Password) {
+	if !s.hasher.VerifyPassword(password, user.PasswordHash) {
 		return nil, domain.ErrInvalidCredentials
 	}
 
@@ -174,7 +203,12 @@ func (s *UserService) Authenticate(ctx context.Context, email, password string) 
 // ChangePassword changes a user's password
 func (s *UserService) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
 	// Get user
-	user, err := s.userRepo.GetByID(ctx, userID)
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	user, err := s.userRepo.GetByID(userUUID)
 	if err != nil {
 		return fmt.Errorf("failed to get user: %w", err)
 	}
@@ -183,7 +217,7 @@ func (s *UserService) ChangePassword(ctx context.Context, userID, oldPassword, n
 	}
 
 	// Verify old password
-	if !s.hasher.VerifyPassword(oldPassword, user.Password) {
+	if !s.hasher.VerifyPassword(oldPassword, user.PasswordHash) {
 		return fmt.Errorf("invalid old password")
 	}
 
@@ -194,18 +228,13 @@ func (s *UserService) ChangePassword(ctx context.Context, userID, oldPassword, n
 	}
 
 	// Update password
-	user.Password = hashedPassword
+	user.PasswordHash = hashedPassword
 	user.UpdatedAt = time.Now()
 
-	if err := s.userRepo.Update(ctx, user); err != nil {
+	if err := s.userRepo.Update(user); err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
 	}
 
 	logger.Info(fmt.Sprintf("Password changed successfully: %s", userID))
 	return nil
-}
-
-// generateID generates a unique ID
-func generateID() string {
-	return fmt.Sprintf("%d", time.Now().UnixNano())
 }

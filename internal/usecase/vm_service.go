@@ -3,11 +3,12 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"skyclust/internal/domain"
 	"time"
 
-	"cmp/internal/domain"
-	"cmp/internal/infrastructure/messaging"
-	"cmp/pkg/shared/logger"
+	"github.com/google/uuid"
+	"skyclust/internal/infrastructure/messaging"
+	"skyclust/pkg/logger"
 )
 
 // VMService implements the VMService interface
@@ -16,6 +17,7 @@ type VMService struct {
 	workspaceRepo domain.WorkspaceRepository
 	cloudProvider CloudProviderService
 	eventBus      messaging.Bus
+	auditLogRepo  domain.AuditLogRepository
 }
 
 // CloudProviderService defines the interface for cloud provider operations
@@ -26,13 +28,6 @@ type CloudProviderService interface {
 	StartInstance(ctx context.Context, provider, instanceID string) error
 	StopInstance(ctx context.Context, provider, instanceID string) error
 	GetInstanceStatus(ctx context.Context, provider, instanceID string) (string, error)
-}
-
-// Event represents a domain event
-type Event struct {
-	Type      string                 `json:"type"`
-	Data      map[string]interface{} `json:"data"`
-	Timestamp int64                  `json:"timestamp"`
 }
 
 // CloudInstance represents a cloud instance
@@ -60,12 +55,14 @@ func NewVMService(
 	workspaceRepo domain.WorkspaceRepository,
 	cloudProvider CloudProviderService,
 	eventBus messaging.Bus,
+	auditLogRepo domain.AuditLogRepository,
 ) *VMService {
 	return &VMService{
 		vmRepo:        vmRepo,
 		workspaceRepo: workspaceRepo,
 		cloudProvider: cloudProvider,
 		eventBus:      eventBus,
+		auditLogRepo:  auditLogRepo,
 	}
 }
 
@@ -113,7 +110,7 @@ func (s *VMService) CreateVM(ctx context.Context, req domain.CreateVMRequest) (*
 
 	// Create VM record
 	vm := &domain.VM{
-		ID:          generateID(),
+		ID:          uuid.New().String(),
 		Name:        req.Name,
 		WorkspaceID: req.WorkspaceID,
 		Provider:    req.Provider,
@@ -244,8 +241,8 @@ func (s *VMService) DeleteVM(ctx context.Context, id string) error {
 	return nil
 }
 
-// ListVMs lists VMs for a workspace
-func (s *VMService) ListVMs(ctx context.Context, workspaceID string) ([]*domain.VM, error) {
+// GetVMs lists VMs for a workspace
+func (s *VMService) GetVMs(ctx context.Context, workspaceID string) ([]*domain.VM, error) {
 	vms, err := s.vmRepo.GetByWorkspaceID(ctx, workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list VMs: %w", err)

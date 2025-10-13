@@ -1,0 +1,311 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Layout } from '@/components/layout/layout';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { useWorkspaceStore } from '@/store/workspace';
+import { useRouter } from 'next/navigation';
+import { DraggableDashboard } from '@/components/dashboard/draggable-dashboard';
+import { WidgetAddPanel } from '@/components/dashboard/widget-add-panel';
+import { WidgetData, WidgetType, WIDGET_CONFIGS } from '@/lib/widgets';
+import { Server, Key, Cloud, Users, Settings, RefreshCw } from 'lucide-react';
+import { RealtimeNotifications } from '@/components/monitoring/realtime-notifications';
+
+export default function DashboardPage() {
+  const { currentWorkspace } = useWorkspaceStore();
+  const router = useRouter();
+  const [widgets, setWidgets] = useState<WidgetData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load default widgets on mount
+  useEffect(() => {
+    const defaultWidgets: WidgetData[] = [
+      {
+        id: 'vm-status-1',
+        type: 'vm-status',
+        title: 'VM Status Overview',
+        description: 'Overview of virtual machine statuses',
+        size: 'medium',
+        position: { x: 0, y: 0 },
+        config: {},
+        lastUpdated: new Date().toISOString(),
+      },
+      {
+        id: 'resource-usage-1',
+        type: 'resource-usage',
+        title: 'Resource Usage',
+        description: 'Current system resource utilization',
+        size: 'medium',
+        position: { x: 0, y: 0 },
+        config: {},
+        lastUpdated: new Date().toISOString(),
+      },
+      {
+        id: 'cost-chart-1',
+        type: 'cost-chart',
+        title: 'Cost Analysis',
+        description: 'Monthly cost trends and breakdown',
+        size: 'large',
+        position: { x: 0, y: 0 },
+        config: {},
+        lastUpdated: new Date().toISOString(),
+      },
+    ];
+
+    // Load from localStorage or use defaults
+    const savedWidgets = localStorage.getItem('dashboard-widgets');
+    if (savedWidgets) {
+      try {
+        setWidgets(JSON.parse(savedWidgets));
+      } catch {
+        setWidgets(defaultWidgets);
+      }
+    } else {
+      setWidgets(defaultWidgets);
+    }
+    
+    setIsLoading(false);
+  }, []);
+
+  // Save widgets to localStorage
+  useEffect(() => {
+    if (widgets.length > 0) {
+      localStorage.setItem('dashboard-widgets', JSON.stringify(widgets));
+    }
+  }, [widgets]);
+
+  const handleWidgetsChange = (newWidgets: WidgetData[]) => {
+    setWidgets(newWidgets);
+  };
+
+  const handleAddWidget = (type: WidgetType) => {
+    const config = WIDGET_CONFIGS[type];
+    const newWidget: WidgetData = {
+      id: `${type}-${Date.now()}`,
+      type,
+      title: config.title,
+      description: config.description,
+      size: config.defaultSize,
+      position: { x: 0, y: 0 },
+      config: {},
+      lastUpdated: new Date().toISOString(),
+    };
+    setWidgets([...widgets, newWidget]);
+  };
+
+  const handleWidgetRemove = (widgetId: string) => {
+    setWidgets(widgets.filter(w => w.id !== widgetId));
+  };
+
+  const handleWidgetConfigure = (widgetId: string) => {
+    // TODO: Implement widget configuration
+    console.log('Configure widget:', widgetId);
+  };
+
+  const handleResetDashboard = () => {
+    if (confirm('Are you sure you want to reset the dashboard to default widgets?')) {
+      const defaultWidgets: WidgetData[] = [
+        {
+          id: 'vm-status-1',
+          type: 'vm-status',
+          title: 'VM Status Overview',
+          description: 'Overview of virtual machine statuses',
+          size: 'medium',
+          position: { x: 0, y: 0 },
+          config: {},
+          lastUpdated: new Date().toISOString(),
+        },
+        {
+          id: 'resource-usage-1',
+          type: 'resource-usage',
+          title: 'Resource Usage',
+          description: 'Current system resource utilization',
+          size: 'medium',
+          position: { x: 0, y: 0 },
+          config: {},
+          lastUpdated: new Date().toISOString(),
+        },
+        {
+          id: 'cost-chart-1',
+          type: 'cost-chart',
+          title: 'Cost Analysis',
+          description: 'Monthly cost trends and breakdown',
+          size: 'large',
+          position: { x: 0, y: 0 },
+          config: {},
+          lastUpdated: new Date().toISOString(),
+        },
+      ];
+      setWidgets(defaultWidgets);
+    }
+  };
+
+  if (!currentWorkspace) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">
+              No Workspace Selected
+            </h2>
+            <p className="text-gray-600 mb-6">
+              Please select or create a workspace to get started.
+            </p>
+            <Button onClick={() => router.push('/workspaces')}>
+              Manage Workspaces
+            </Button>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+            <p className="mt-2 text-gray-600">Loading dashboard...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  return (
+    <Layout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+            <p className="text-gray-600">
+              Welcome to {currentWorkspace.name} workspace
+            </p>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleResetDashboard}
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Reset
+            </Button>
+            <WidgetAddPanel
+              onAddWidget={handleAddWidget}
+              existingWidgets={widgets.map(w => w.type)}
+            />
+          </div>
+        </div>
+
+        {/* Quick Stats */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">VMs</CardTitle>
+              <Server className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">0</div>
+              <p className="text-xs text-muted-foreground">
+                Active virtual machines
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Credentials</CardTitle>
+              <Key className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">0</div>
+              <p className="text-xs text-muted-foreground">
+                Cloud provider credentials
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Providers</CardTitle>
+              <Cloud className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">0</div>
+              <p className="text-xs text-muted-foreground">
+                Connected cloud providers
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Members</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">1</div>
+              <p className="text-xs text-muted-foreground">
+                Workspace members
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Draggable Dashboard */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Dashboard Widgets</h2>
+              <p className="text-sm text-gray-600">
+                Drag and drop to rearrange widgets. Click the settings icon to configure.
+              </p>
+            </div>
+            <Badge variant="outline">
+              {widgets.length} widget{widgets.length !== 1 ? 's' : ''}
+            </Badge>
+          </div>
+
+          {widgets.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <div className="mx-auto h-12 w-12 text-gray-400">
+                  <Settings className="h-12 w-12" />
+                </div>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">No widgets</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Get started by adding widgets to your dashboard.
+                </p>
+                <div className="mt-6">
+                  <WidgetAddPanel
+                    onAddWidget={handleAddWidget}
+                    existingWidgets={[]}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+              <div className="lg:col-span-3">
+                <DraggableDashboard
+                  widgets={widgets}
+                  onWidgetsChange={handleWidgetsChange}
+                  onWidgetRemove={handleWidgetRemove}
+                  onWidgetConfigure={handleWidgetConfigure}
+                />
+              </div>
+              <div className="lg:col-span-1">
+                <RealtimeNotifications className="sticky top-4" />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </Layout>
+  );
+}

@@ -59,8 +59,11 @@ cmp/
 
 ### Prerequisites
 
-- Go 1.21 or later
-- Make (optional, for using Makefile)
+- Go 1.21+
+- Node.js 18+
+- PostgreSQL 15+
+- Redis 7+
+- Docker & Docker Compose
 
 ### Installation
 
@@ -72,69 +75,68 @@ cd cmp
 
 2. Install dependencies:
 ```bash
-make deps
-# or
+# Backend
 go mod tidy
+
+# Frontend
+cd frontend
+npm install
 ```
 
-3. Build the application and plugins:
+3. Configure the application:
+
+#### Development Environment
 ```bash
-make build-all
-# or
-make build && make build-plugins
+# Copy development template
+cp .env.sample .env
+
+# Edit .env with your development settings
+# .env.sample contains development defaults
 ```
 
-4. Configure your cloud providers in `config.yaml`:
-```yaml
-providers:
-  aws:
-    access_key: "your-aws-access-key"
-    secret_key: "your-aws-secret-key"
-    region: "us-east-1"
-  
-  gcp:
-    project_id: "your-gcp-project-id"
-    credentials_file: "/path/to/credentials.json"
-    region: "us-central1"
-  
-  openstack:
-    auth_url: "http://your-openstack-keystone:5000/v3"
-    username: "your-username"
-    password: "your-password"
-    project_id: "your-project-id"
-    region: "RegionOne"
-  
-  proxmox:
-    host: "your-proxmox-host"
-    username: "your-username"
-    password: "your-password"
-    realm: "pve"
-```
-
-5. Run the server:
-
-**Option A: Using config.yaml (Recommended)**
+#### Production Environment
 ```bash
-go run cmd/server/main.go --config config.yaml
+# Copy production template
+cp .env.sample .env
+
+# Edit .env with your production settings
+# Update database, security, and cloud provider credentials
 ```
 
-**Option B: Using environment variables**
+4. Run the application:
+
+#### Development Environment
 ```bash
-export CMP_DB_HOST=localhost
-export CMP_DB_USER=cmp_user
-export CMP_DB_PASSWORD=cmp_password
-export CMP_DB_NAME=cmp
-go run cmd/server/main.go --config config.yaml
+# Using Docker Compose (builds and runs locally)
+docker-compose -f docker-compose.dev.yml up -d
+
+# Or run locally
+go run cmd/server/main.go
+
+# Frontend (in another terminal)
+cd frontend
+npm run dev
 ```
 
-**Option C: Using Makefile**
+#### Production Environment
 ```bash
-make run
-# or
-./bin/cmp-server --plugins plugins
+# Set image names (optional, defaults to latest)
+export CMP_IMAGE=cmp-server:v1.0.0
+export CMP_FRONTEND_IMAGE=cmp-frontend:v1.0.0
+
+# Run with pre-built images
+docker-compose up -d
 ```
 
-The server will start on `http://localhost:8080` (or the port specified in your configuration)
+### Environment Configuration
+
+The application uses environment-specific configuration:
+
+- **Development**: `docker-compose.dev.yml` (builds locally, all env vars in compose)
+- **Production**: `docker-compose.yml` (uses pre-built images, `.env` file)
+- **Template**: `.env.sample` (development template)
+
+See [Configuration Guide](docs/CONFIGURATION.md) for detailed setup instructions.
 
 ## API Endpoints
 

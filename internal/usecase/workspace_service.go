@@ -3,23 +3,29 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"skyclust/internal/domain"
 	"time"
 
-	"cmp/internal/domain"
-	"cmp/pkg/shared/logger"
+	"github.com/google/uuid"
+	"skyclust/internal/infrastructure/messaging"
+	"skyclust/pkg/logger"
 )
 
 // WorkspaceService implements the WorkspaceService interface
 type WorkspaceService struct {
 	workspaceRepo domain.WorkspaceRepository
 	userRepo      domain.UserRepository
+	eventBus      messaging.Bus
+	auditLogRepo  domain.AuditLogRepository
 }
 
 // NewWorkspaceService creates a new WorkspaceService
-func NewWorkspaceService(workspaceRepo domain.WorkspaceRepository, userRepo domain.UserRepository) *WorkspaceService {
+func NewWorkspaceService(workspaceRepo domain.WorkspaceRepository, userRepo domain.UserRepository, eventBus messaging.Bus, auditLogRepo domain.AuditLogRepository) *WorkspaceService {
 	return &WorkspaceService{
 		workspaceRepo: workspaceRepo,
 		userRepo:      userRepo,
+		eventBus:      eventBus,
+		auditLogRepo:  auditLogRepo,
 	}
 }
 
@@ -31,7 +37,12 @@ func (s *WorkspaceService) CreateWorkspace(ctx context.Context, req domain.Creat
 	}
 
 	// Check if owner exists
-	owner, err := s.userRepo.GetByID(ctx, req.OwnerID)
+	ownerID, err := uuid.Parse(req.OwnerID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid owner ID: %w", err)
+	}
+
+	owner, err := s.userRepo.GetByID(ownerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get owner: %w", err)
 	}
@@ -41,7 +52,7 @@ func (s *WorkspaceService) CreateWorkspace(ctx context.Context, req domain.Creat
 
 	// Create workspace
 	workspace := &domain.Workspace{
-		ID:          generateID(),
+		ID:          uuid.New().String(),
 		Name:        req.Name,
 		Description: req.Description,
 		OwnerID:     req.OwnerID,
@@ -129,7 +140,12 @@ func (s *WorkspaceService) DeleteWorkspace(ctx context.Context, id string) error
 // GetUserWorkspaces retrieves workspaces for a user
 func (s *WorkspaceService) GetUserWorkspaces(ctx context.Context, userID string) ([]*domain.Workspace, error) {
 	// Check if user exists
-	user, err := s.userRepo.GetByID(ctx, userID)
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	user, err := s.userRepo.GetByID(userUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
@@ -157,7 +173,12 @@ func (s *WorkspaceService) AddUserToWorkspace(ctx context.Context, workspaceID, 
 	}
 
 	// Check if user exists
-	user, err := s.userRepo.GetByID(ctx, userID)
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	user, err := s.userRepo.GetByID(userUUID)
 	if err != nil {
 		return fmt.Errorf("failed to get user: %w", err)
 	}
@@ -165,8 +186,23 @@ func (s *WorkspaceService) AddUserToWorkspace(ctx context.Context, workspaceID, 
 		return domain.ErrUserNotFound
 	}
 
-	// TODO: Implement workspace membership logic
-	// This would require a workspace_members table and related logic
+	// Add user to workspace using repository
+	err = s.workspaceRepo.AddUserToWorkspace(ctx, userID, workspaceID, "member")
+	if err != nil {
+		return fmt.Errorf("failed to add user to workspace: %w", err)
+	}
+
+	// Log the action
+	_ = s.auditLogRepo.Create(&domain.AuditLog{
+		UserID:   userUUID,
+		Action:   "workspace_user_added",
+		Resource: fmt.Sprintf("workspace:%s", workspaceID),
+		Details: map[string]interface{}{
+			"workspace_id": workspaceID,
+			"user_id":      userID,
+			"role":         "member",
+		},
+	})
 
 	logger.Info(fmt.Sprintf("User added to workspace: %s -> %s", workspaceID, userID))
 	return nil
@@ -184,7 +220,12 @@ func (s *WorkspaceService) RemoveUserFromWorkspace(ctx context.Context, workspac
 	}
 
 	// Check if user exists
-	user, err := s.userRepo.GetByID(ctx, userID)
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	user, err := s.userRepo.GetByID(userUUID)
 	if err != nil {
 		return fmt.Errorf("failed to get user: %w", err)
 	}
@@ -192,9 +233,39 @@ func (s *WorkspaceService) RemoveUserFromWorkspace(ctx context.Context, workspac
 		return domain.ErrUserNotFound
 	}
 
-	// TODO: Implement workspace membership logic
-	// This would require a workspace_members table and related logic
+	// Remove user from workspace using repository
+	err = s.workspaceRepo.RemoveUserFromWorkspace(ctx, userID, workspaceID)
+	if err != nil {
+		return fmt.Errorf("failed to remove user from workspace: %w", err)
+	}
+
+	// Log the action
+	_ = s.auditLogRepo.Create(&domain.AuditLog{
+		UserID:   userUUID,
+		Action:   "workspace_user_removed",
+		Resource: fmt.Sprintf("workspace:%s", workspaceID),
+		Details: map[string]interface{}{
+			"workspace_id": workspaceID,
+			"user_id":      userID,
+		},
+	})
 
 	logger.Info(fmt.Sprintf("User removed from workspace: %s -> %s", workspaceID, userID))
 	return nil
+}
+
+// GetWorkspaceMembers retrieves all members of a workspace
+func (s *WorkspaceService) GetWorkspaceMembers(ctx context.Context, workspaceID string) ([]*domain.User, error) {
+	// Check if workspace exists
+	workspace, err := s.workspaceRepo.GetByID(ctx, workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get workspace: %w", err)
+	}
+	if workspace == nil {
+		return nil, domain.ErrWorkspaceNotFound
+	}
+
+	// TODO: Implement GetWorkspaceMembers in workspace repository
+	// For now, return empty list
+	return []*domain.User{}, nil
 }

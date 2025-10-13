@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"cmp/internal/infrastructure/messaging"
-	"cmp/pkg/database"
+	"github.com/google/uuid"
+	"skyclust/internal/infrastructure/database"
+	"skyclust/internal/infrastructure/messaging"
 )
 
 // Execution represents an OpenTofu execution
@@ -45,7 +46,7 @@ type service struct {
 // Plan plans OpenTofu execution
 func (s *service) Plan(ctx context.Context, workspaceID, config string) (*Execution, error) {
 	execution := &database.Execution{
-		ID:          generateID(),
+		ID:          uuid.New().String(),
 		WorkspaceID: workspaceID,
 		Command:     "plan",
 		Status:      "running",
@@ -76,7 +77,7 @@ func (s *service) Plan(ctx context.Context, workspaceID, config string) (*Execut
 // Apply applies OpenTofu configuration
 func (s *service) Apply(ctx context.Context, workspaceID, config string) (*Execution, error) {
 	execution := &database.Execution{
-		ID:          generateID(),
+		ID:          uuid.New().String(),
 		WorkspaceID: workspaceID,
 		Command:     "apply",
 		Status:      "running",
@@ -107,7 +108,7 @@ func (s *service) Apply(ctx context.Context, workspaceID, config string) (*Execu
 // Destroy destroys OpenTofu resources
 func (s *service) Destroy(ctx context.Context, workspaceID, config string) (*Execution, error) {
 	execution := &database.Execution{
-		ID:          generateID(),
+		ID:          uuid.New().String(),
 		WorkspaceID: workspaceID,
 		Command:     "destroy",
 		Status:      "running",
@@ -203,7 +204,3 @@ func (s *service) simulateExecution(ctx context.Context, execution *Execution, c
 }
 
 // generateID generates a random ID
-func generateID() string {
-	// This is a simplified implementation
-	return fmt.Sprintf("exec_%d", time.Now().UnixNano())
-}

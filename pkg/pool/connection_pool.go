@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"cmp/pkg/shared/logger"
+	"skyclust/pkg/logger"
 )
 
 // Connection represents a connection in the pool

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"cmp/internal/plugin/interfaces"
+	"skyclust/internal/plugin/interfaces"
 )
 
 // DigitalOceanProvider implements the CloudProvider interface for DigitalOcean

@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"cmp/internal/plugin/interfaces"
-	"cmp/pkg/shared/logger"
+	"skyclust/internal/plugin/interfaces"
+	"skyclust/pkg/logger"
 )
 
 // AsyncManager handles asynchronous plugin loading and management

@@ -25,6 +25,8 @@ type WorkspaceRepository interface {
 	Delete(ctx context.Context, id string) error
 	List(ctx context.Context, limit, offset int) ([]*Workspace, error)
 	GetUserWorkspaces(ctx context.Context, userID string) ([]*Workspace, error)
+	AddUserToWorkspace(ctx context.Context, userID, workspaceID string, role string) error
+	RemoveUserFromWorkspace(ctx context.Context, userID, workspaceID string) error
 }
 
 // WorkspaceService defines the business logic interface for workspaces
@@ -36,6 +38,7 @@ type WorkspaceService interface {
 	GetUserWorkspaces(ctx context.Context, userID string) ([]*Workspace, error)
 	AddUserToWorkspace(ctx context.Context, workspaceID, userID string) error
 	RemoveUserFromWorkspace(ctx context.Context, workspaceID, userID string) error
+	GetWorkspaceMembers(ctx context.Context, workspaceID string) ([]*User, error)
 }
 
 // CreateWorkspaceRequest represents the request to create a new workspace
@@ -55,13 +58,13 @@ type UpdateWorkspaceRequest struct {
 // Validate performs validation on the CreateWorkspaceRequest
 func (r *CreateWorkspaceRequest) Validate() error {
 	if len(r.Name) < 3 || len(r.Name) > 100 {
-		return NewValidationError("name must be between 3 and 100 characters")
+		return NewDomainError(ErrCodeValidationFailed, "name must be between 3 and 100 characters", 400)
 	}
 	if len(r.Description) > 500 {
-		return NewValidationError("description must be less than 500 characters")
+		return NewDomainError(ErrCodeValidationFailed, "description must be less than 500 characters", 400)
 	}
 	if len(r.OwnerID) == 0 {
-		return NewValidationError("owner_id is required")
+		return NewDomainError(ErrCodeValidationFailed, "owner_id is required", 400)
 	}
 	return nil
 }
@@ -69,10 +72,10 @@ func (r *CreateWorkspaceRequest) Validate() error {
 // Validate performs validation on the UpdateWorkspaceRequest
 func (r *UpdateWorkspaceRequest) Validate() error {
 	if r.Name != nil && (len(*r.Name) < 3 || len(*r.Name) > 100) {
-		return NewValidationError("name must be between 3 and 100 characters")
+		return NewDomainError(ErrCodeValidationFailed, "name must be between 3 and 100 characters", 400)
 	}
 	if r.Description != nil && len(*r.Description) > 500 {
-		return NewValidationError("description must be less than 500 characters")
+		return NewDomainError(ErrCodeValidationFailed, "description must be less than 500 characters", 400)
 	}
 	return nil
 }

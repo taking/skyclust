@@ -54,3 +54,13 @@ type Execution struct {
 	StartedAt   time.Time  `json:"started_at" db:"started_at"`
 	CompletedAt *time.Time `json:"completed_at" db:"completed_at"`
 }
+
+// AuditLog represents an audit log entry
+type AuditLog struct {
+	ID        string                 `json:"id" db:"id"`
+	UserID    string                 `json:"user_id" db:"user_id"`
+	Action    string                 `json:"action" db:"action"`
+	Resource  string                 `json:"resource" db:"resource"`
+	Details   map[string]interface{} `json:"details" db:"details"`
+	CreatedAt time.Time              `json:"created_at" db:"created_at"`
+}

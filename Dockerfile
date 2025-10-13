@@ -31,8 +31,8 @@ COPY --from=builder /app/cmp-server .
 # Copy plugins directory
 COPY plugins/ ./plugins/
 
-# Copy config file
-COPY config.yaml .
+# Copy config directory
+COPY configs/ ./configs/
 
 # Create non-root user
 RUN adduser -D -s /bin/sh cmp

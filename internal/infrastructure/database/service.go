@@ -2,9 +2,18 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+)
+
+// Database errors
+var (
+	ErrNotFound = errors.New("record not found")
 )
 
 // Service defines the database service interface
@@ -69,240 +78,249 @@ type Config struct {
 	SSLMode  string
 }
 
-// NewService creates a new database service
-// This is a placeholder - in real implementation, you would connect to actual database
-func NewService(config Config) Service {
-	// For now, return a mock implementation
-	return &mockService{}
-}
+// NewService creates a new database service with actual PostgreSQL connection
+func NewService(config Config) (Service, error) {
+	// Build DSN
+	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		config.Host, config.Port, config.User, config.Password, config.Database, config.SSLMode)
 
-// mockService is a temporary implementation for development
-type mockService struct {
-	users      map[string]*User
-	workspaces map[string]*Workspace
-	tokens     map[string]string // token -> userID
-}
-
-func (m *mockService) GetDB() *gorm.DB {
-	return nil // Mock service doesn't need real DB
-}
-
-func (m *mockService) CreateUser(ctx context.Context, user *User) error {
-	if m.users == nil {
-		m.users = make(map[string]*User)
+	// Connect to PostgreSQL
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-	m.users[user.ID] = user
-	return nil
+
+	// Configure connection pool
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
+
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetMaxOpenConns(100)
+	sqlDB.SetConnMaxLifetime(time.Hour)
+
+	// Auto-migrate tables
+	if err := db.AutoMigrate(
+		&User{},
+		&Workspace{},
+		&WorkspaceUser{},
+		&Credentials{},
+		&Execution{},
+		&AuditLog{},
+	); err != nil {
+		return nil, fmt.Errorf("failed to migrate database: %w", err)
+	}
+
+	return &postgresService{db: db}, nil
 }
 
-func (m *mockService) GetUser(ctx context.Context, userID string) (*User, error) {
-	if m.users == nil {
-		return nil, ErrNotFound
-	}
-	user, exists := m.users[userID]
-	if !exists {
-		return nil, ErrNotFound
-	}
-	return user, nil
+// postgresService implements the database service using PostgreSQL
+type postgresService struct {
+	db *gorm.DB
 }
 
-func (m *mockService) GetUserByEmail(ctx context.Context, email string) (*User, error) {
-	if m.users == nil {
-		return nil, ErrNotFound
-	}
-	for _, user := range m.users {
-		if user.Email == email {
-			return user, nil
+func (p *postgresService) GetDB() *gorm.DB {
+	return p.db
+}
+
+func (p *postgresService) CreateUser(ctx context.Context, user *User) error {
+	return p.db.WithContext(ctx).Create(user).Error
+}
+
+func (p *postgresService) GetUser(ctx context.Context, userID string) (*User, error) {
+	var user User
+	err := p.db.WithContext(ctx).Where("id = ?", userID).First(&user).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, ErrNotFound
 		}
+		return nil, err
 	}
-	return nil, ErrNotFound
+	return &user, nil
 }
 
-func (m *mockService) UpdateUser(ctx context.Context, user *User) error {
-	if m.users == nil {
-		m.users = make(map[string]*User)
-	}
-	m.users[user.ID] = user
-	return nil
-}
-
-func (m *mockService) DeleteUser(ctx context.Context, userID string) error {
-	if m.users == nil {
-		return nil
-	}
-	delete(m.users, userID)
-	return nil
-}
-
-func (m *mockService) StoreToken(ctx context.Context, userID, token string) error {
-	if m.tokens == nil {
-		m.tokens = make(map[string]string)
-	}
-	m.tokens[token] = userID
-	return nil
-}
-
-func (m *mockService) ValidateToken(ctx context.Context, token string) (string, error) {
-	if m.tokens == nil {
-		return "", ErrNotFound
-	}
-	userID, exists := m.tokens[token]
-	if !exists {
-		return "", ErrNotFound
-	}
-	return userID, nil
-}
-
-func (m *mockService) DeleteToken(ctx context.Context, token string) error {
-	if m.tokens == nil {
-		return nil
-	}
-	delete(m.tokens, token)
-	return nil
-}
-
-func (m *mockService) CreateWorkspace(ctx context.Context, workspace *Workspace) error {
-	if m.workspaces == nil {
-		m.workspaces = make(map[string]*Workspace)
-	}
-	m.workspaces[workspace.ID] = workspace
-	return nil
-}
-
-func (m *mockService) GetWorkspace(ctx context.Context, workspaceID string) (*Workspace, error) {
-	if m.workspaces == nil {
-		return nil, ErrNotFound
-	}
-	ws, exists := m.workspaces[workspaceID]
-	if !exists {
-		return nil, ErrNotFound
-	}
-	return ws, nil
-}
-
-func (m *mockService) GetWorkspaceByID(ctx context.Context, workspaceID string) (*Workspace, error) {
-	return m.GetWorkspace(ctx, workspaceID)
-}
-
-func (m *mockService) ListWorkspacesByUser(ctx context.Context, userID string) ([]*Workspace, error) {
-	if m.workspaces == nil {
-		return []*Workspace{}, nil
-	}
-
-	var userWorkspaces []*Workspace
-	for _, ws := range m.workspaces {
-		if ws.OwnerID == userID {
-			userWorkspaces = append(userWorkspaces, ws)
+func (p *postgresService) GetUserByEmail(ctx context.Context, email string) (*User, error) {
+	var user User
+	err := p.db.WithContext(ctx).Where("email = ?", email).First(&user).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, ErrNotFound
 		}
+		return nil, err
 	}
-	return userWorkspaces, nil
+	return &user, nil
 }
 
-func (m *mockService) UpdateWorkspace(ctx context.Context, workspace *Workspace) error {
-	if m.workspaces == nil {
-		m.workspaces = make(map[string]*Workspace)
+func (p *postgresService) UpdateUser(ctx context.Context, user *User) error {
+	return p.db.WithContext(ctx).Save(user).Error
+}
+
+func (p *postgresService) DeleteUser(ctx context.Context, userID string) error {
+	return p.db.WithContext(ctx).Where("id = ?", userID).Delete(&User{}).Error
+}
+
+func (p *postgresService) StoreToken(ctx context.Context, userID, token string) error {
+	// Implement token storage logic
+	return nil
+}
+
+func (p *postgresService) ValidateToken(ctx context.Context, token string) (string, error) {
+	// Implement token validation logic
+	return "", nil
+}
+
+func (p *postgresService) DeleteToken(ctx context.Context, token string) error {
+	// Implement token deletion logic
+	return nil
+}
+
+func (p *postgresService) CreateWorkspace(ctx context.Context, workspace *Workspace) error {
+	return p.db.WithContext(ctx).Create(workspace).Error
+}
+
+func (p *postgresService) GetWorkspace(ctx context.Context, workspaceID string) (*Workspace, error) {
+	var workspace Workspace
+	err := p.db.WithContext(ctx).Where("id = ?", workspaceID).First(&workspace).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, ErrNotFound
+		}
+		return nil, err
 	}
-	m.workspaces[workspace.ID] = workspace
-	return nil
+	return &workspace, nil
 }
 
-func (m *mockService) DeleteWorkspace(ctx context.Context, workspaceID string) error {
-	if m.workspaces == nil {
-		return nil
+func (p *postgresService) GetWorkspaceByID(ctx context.Context, workspaceID string) (*Workspace, error) {
+	return p.GetWorkspace(ctx, workspaceID)
+}
+
+func (p *postgresService) ListWorkspacesByUser(ctx context.Context, userID string) ([]*Workspace, error) {
+	var workspaces []*Workspace
+	err := p.db.WithContext(ctx).Where("owner_id = ?", userID).Find(&workspaces).Error
+	return workspaces, err
+}
+
+func (p *postgresService) UpdateWorkspace(ctx context.Context, workspace *Workspace) error {
+	return p.db.WithContext(ctx).Save(workspace).Error
+}
+
+func (p *postgresService) DeleteWorkspace(ctx context.Context, workspaceID string) error {
+	return p.db.WithContext(ctx).Where("id = ?", workspaceID).Delete(&Workspace{}).Error
+}
+
+func (p *postgresService) AddUserToWorkspace(ctx context.Context, userID, workspaceID string, role string) error {
+	workspaceUser := &WorkspaceUser{
+		UserID:      userID,
+		WorkspaceID: workspaceID,
+		Role:        role,
 	}
-	delete(m.workspaces, workspaceID)
+	return p.db.WithContext(ctx).Create(workspaceUser).Error
+}
+
+func (p *postgresService) RemoveUserFromWorkspace(ctx context.Context, userID, workspaceID string) error {
+	return p.db.WithContext(ctx).Where("user_id = ? AND workspace_id = ?", userID, workspaceID).Delete(&WorkspaceUser{}).Error
+}
+
+func (p *postgresService) GetWorkspaceUsers(ctx context.Context, workspaceID string) ([]*WorkspaceUser, error) {
+	var users []*WorkspaceUser
+	err := p.db.WithContext(ctx).Where("workspace_id = ?", workspaceID).Find(&users).Error
+	return users, err
+}
+
+func (p *postgresService) GetUserWorkspaces(ctx context.Context, userID string) ([]*Workspace, error) {
+	var workspaces []*Workspace
+	err := p.db.WithContext(ctx).
+		Joins("JOIN workspace_users ON workspaces.id = workspace_users.workspace_id").
+		Where("workspace_users.user_id = ?", userID).
+		Find(&workspaces).Error
+	return workspaces, err
+}
+
+func (p *postgresService) CreateCredentials(ctx context.Context, cred *Credentials) error {
+	return p.db.WithContext(ctx).Create(cred).Error
+}
+
+func (p *postgresService) GetCredentials(ctx context.Context, workspaceID, credID string) (*Credentials, error) {
+	var cred Credentials
+	err := p.db.WithContext(ctx).Where("id = ? AND workspace_id = ?", credID, workspaceID).First(&cred).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &cred, nil
+}
+
+func (p *postgresService) ListCredentials(ctx context.Context, workspaceID string) ([]*Credentials, error) {
+	var creds []*Credentials
+	err := p.db.WithContext(ctx).Where("workspace_id = ?", workspaceID).Find(&creds).Error
+	return creds, err
+}
+
+func (p *postgresService) UpdateCredentials(ctx context.Context, cred *Credentials) error {
+	return p.db.WithContext(ctx).Save(cred).Error
+}
+
+func (p *postgresService) DeleteCredentials(ctx context.Context, workspaceID, credID string) error {
+	return p.db.WithContext(ctx).Where("id = ? AND workspace_id = ?", credID, workspaceID).Delete(&Credentials{}).Error
+}
+
+func (p *postgresService) CreateExecution(ctx context.Context, execution *Execution) error {
+	return p.db.WithContext(ctx).Create(execution).Error
+}
+
+func (p *postgresService) GetExecution(ctx context.Context, workspaceID, executionID string) (*Execution, error) {
+	var execution Execution
+	err := p.db.WithContext(ctx).Where("id = ? AND workspace_id = ?", executionID, workspaceID).First(&execution).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &execution, nil
+}
+
+func (p *postgresService) ListExecutions(ctx context.Context, workspaceID string) ([]*Execution, error) {
+	var executions []*Execution
+	err := p.db.WithContext(ctx).Where("workspace_id = ?", workspaceID).Find(&executions).Error
+	return executions, err
+}
+
+func (p *postgresService) UpdateExecution(ctx context.Context, execution *Execution) error {
+	return p.db.WithContext(ctx).Save(execution).Error
+}
+
+func (p *postgresService) UpdateExecutionStatus(ctx context.Context, workspaceID, executionID, status string) error {
+	return p.db.WithContext(ctx).
+		Where("id = ? AND workspace_id = ?", executionID, workspaceID).
+		Update("status", status).Error
+}
+
+func (p *postgresService) GetState(ctx context.Context, workspaceID string) (map[string]interface{}, error) {
+	// Implement state retrieval logic
+	return make(map[string]interface{}), nil
+}
+
+func (p *postgresService) SaveState(ctx context.Context, workspaceID string, state map[string]interface{}) error {
+	// Implement state saving logic
 	return nil
 }
 
-func (m *mockService) AddUserToWorkspace(ctx context.Context, userID, workspaceID string, role string) error {
-	// Mock implementation
-	return nil
+func (p *postgresService) Ping(ctx context.Context) error {
+	sqlDB, err := p.db.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.PingContext(ctx)
 }
 
-func (m *mockService) RemoveUserFromWorkspace(ctx context.Context, userID, workspaceID string) error {
-	// Mock implementation
-	return nil
-}
-
-func (m *mockService) GetWorkspaceUsers(ctx context.Context, workspaceID string) ([]*WorkspaceUser, error) {
-	// Mock implementation
-	return []*WorkspaceUser{}, nil
-}
-
-func (m *mockService) GetUserWorkspaces(ctx context.Context, userID string) ([]*Workspace, error) {
-	return m.ListWorkspacesByUser(ctx, userID)
-}
-
-func (m *mockService) Ping(ctx context.Context) error {
-	return nil
-}
-
-// Credentials management methods
-func (m *mockService) CreateCredentials(ctx context.Context, cred *Credentials) error {
-	// Mock implementation
-	return nil
-}
-
-func (m *mockService) GetCredentials(ctx context.Context, workspaceID, credID string) (*Credentials, error) {
-	// Mock implementation
-	return nil, ErrNotFound
-}
-
-func (m *mockService) ListCredentials(ctx context.Context, workspaceID string) ([]*Credentials, error) {
-	// Mock implementation
-	return []*Credentials{}, nil
-}
-
-func (m *mockService) UpdateCredentials(ctx context.Context, cred *Credentials) error {
-	// Mock implementation
-	return nil
-}
-
-func (m *mockService) DeleteCredentials(ctx context.Context, workspaceID, credID string) error {
-	// Mock implementation
-	return nil
-}
-
-// Execution management methods
-func (m *mockService) CreateExecution(ctx context.Context, execution *Execution) error {
-	// Mock implementation
-	return nil
-}
-
-func (m *mockService) GetExecution(ctx context.Context, workspaceID, executionID string) (*Execution, error) {
-	// Mock implementation
-	return nil, ErrNotFound
-}
-
-func (m *mockService) ListExecutions(ctx context.Context, workspaceID string) ([]*Execution, error) {
-	// Mock implementation
-	return []*Execution{}, nil
-}
-
-func (m *mockService) UpdateExecution(ctx context.Context, execution *Execution) error {
-	// Mock implementation
-	return nil
-}
-
-func (m *mockService) UpdateExecutionStatus(ctx context.Context, workspaceID, executionID, status string) error {
-	// Mock implementation
-	return nil
-}
-
-// State management methods
-func (m *mockService) GetState(ctx context.Context, workspaceID string) (map[string]interface{}, error) {
-	// Mock implementation
-	return map[string]interface{}{}, nil
-}
-
-func (m *mockService) SaveState(ctx context.Context, workspaceID string, state map[string]interface{}) error {
-	// Mock implementation
-	return nil
-}
-
-// Errors
+// Additional errors
 var (
-	ErrNotFound = fmt.Errorf("not found")
 	ErrConflict = fmt.Errorf("conflict")
 )
 

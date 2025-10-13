@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"cmp/internal/plugin/interfaces"
+	"skyclust/internal/plugin/interfaces"
 )
 
 // Service defines the Kubernetes service interface

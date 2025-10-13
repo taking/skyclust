@@ -38,17 +38,23 @@ Thumbs.db
 # Logs
 *.log
 
-# Configuration files with secrets
-config.yaml
-config.local.yaml
+# Environment files with sensitive information
 .env
-.env.local
+.env.dev
+.env.prod
+
+# Keep sample files
+!.env.sample
 
 # Build artifacts
+main
+*.exe
+*.so
+*.dylib
 dist/
 build/
 
-# Web frontend
-web/node_modules/
-web/dist/
-web/.env
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/

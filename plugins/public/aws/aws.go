@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"cmp/pkg/plugin/interfaces"
+	"skyclust/internal/plugin/interfaces"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"

@@ -3,10 +3,10 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"skyclust/internal/domain"
 
-	"cmp/internal/domain"
-	"cmp/pkg/shared/logger"
 	"gorm.io/gorm"
+	"skyclust/pkg/logger"
 )
 
 // VMRepository implements the domain.VMRepository interface
@@ -57,6 +57,11 @@ func (r *VMRepository) GetByWorkspaceID(ctx context.Context, workspaceID string)
 	}
 
 	return vms, nil
+}
+
+// GetVMsByWorkspace retrieves VMs by workspace ID (alias for GetByWorkspaceID)
+func (r *VMRepository) GetVMsByWorkspace(ctx context.Context, workspaceID string) ([]*domain.VM, error) {
+	return r.GetByWorkspaceID(ctx, workspaceID)
 }
 
 // GetByProvider retrieves VMs by provider

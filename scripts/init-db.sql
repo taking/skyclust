@@ -7,11 +7,15 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Users table
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    email VARCHAR(255) UNIQUE NOT NULL,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    name VARCHAR(255) NOT NULL,
+    oidc_provider VARCHAR(20),
+    oidc_subject VARCHAR(100),
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Workspaces table
@@ -80,8 +84,8 @@ CREATE INDEX IF NOT EXISTS idx_tokens_user_id ON tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_tokens_expires_at ON tokens(expires_at);
 
 -- Insert default admin user (password: admin123)
-INSERT INTO users (id, email, password_hash, name) VALUES 
-('00000000-0000-0000-0000-000000000001', 'admin@cmp.local', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Admin User')
+INSERT INTO users (id, username, email, password_hash) VALUES 
+('00000000-0000-0000-0000-000000000001', 'admin', 'admin@cmp.local', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi')
 ON CONFLICT (email) DO NOTHING;
 
 -- Insert default workspace
