@@ -1,12 +1,15 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 )
 
@@ -20,9 +23,6 @@ type Config struct {
 
 	// Security Configuration
 	Security SecurityConfig `json:"security"`
-
-	// JWT Configuration
-	JWT JWTConfig `json:"jwt"`
 
 	// Encryption Configuration
 	Encryption EncryptionConfig `json:"encryption"`
@@ -71,15 +71,9 @@ type DatabaseConfig struct {
 type SecurityConfig struct {
 	JWTSecret     string        `json:"jwt_secret"`
 	JWTExpiration time.Duration `json:"jwt_expiration"`
+	JWTIssuer     string        `json:"jwt_issuer"`
 	BCryptCost    int           `json:"bcrypt_cost"`
 	EncryptionKey string        `json:"encryption_key"`
-}
-
-// JWTConfig holds JWT configuration
-type JWTConfig struct {
-	Secret     string        `json:"secret"`
-	Expiration time.Duration `json:"expiration"`
-	Issuer     string        `json:"issuer"`
 }
 
 // EncryptionConfig holds encryption configuration
@@ -152,84 +146,48 @@ func LoadConfigFromFile(configFile string) (*Config, error) {
 	}
 
 	// Override with environment variables if they exist
-	overrideWithEnvVars(&config)
+	// Note: LoadConfigFromFile uses direct YAML parsing, so we don't use viper here
 
 	return &config, nil
 }
 
-// LoadConfig loads configuration from environment variables
-func LoadConfig() *Config {
-	return &Config{
-		Server: ServerConfig{
-			Host:         getEnv("SERVER_HOST", "0.0.0.0"),
-			Port:         getEnvInt("SERVER_PORT", 8080),
-			ReadTimeout:  getEnvDuration("SERVER_READ_TIMEOUT", 30*time.Second),
-			WriteTimeout: getEnvDuration("SERVER_WRITE_TIMEOUT", 30*time.Second),
-			IdleTimeout:  getEnvDuration("SERVER_IDLE_TIMEOUT", 120*time.Second),
-		},
-		Database: DatabaseConfig{
-			Host:     getEnv("DB_HOST", "localhost"),
-			Port:     getEnvInt("DB_PORT", 5432),
-			User:     getEnv("DB_USER", "postgres"),
-			Password: getEnv("DB_PASSWORD", ""),
-			Name:     getEnv("DB_NAME", "cmp"),
-			SSLMode:  getEnv("DB_SSL_MODE", "disable"),
-			MaxConns: getEnvInt("DB_MAX_CONNS", 25),
-			MinConns: getEnvInt("DB_MIN_CONNS", 5),
-		},
-		Security: SecurityConfig{
-			JWTSecret:     getEnv("JWT_SECRET", "your-secret-key"),
-			JWTExpiration: getEnvDuration("JWT_EXPIRATION", 24*time.Hour),
-			BCryptCost:    getEnvInt("BCRYPT_COST", 12),
-			EncryptionKey: getEnv("ENCRYPTION_KEY", "your-32-byte-encryption-key-here"),
-		},
-		JWT: JWTConfig{
-			Secret:     getEnv("JWT_SECRET", "your-secret-key"),
-			Expiration: getEnvDuration("JWT_EXPIRATION", 24*time.Hour),
-			Issuer:     getEnv("JWT_ISSUER", "skyclust"),
-		},
-		Encryption: EncryptionConfig{
-			Key: getEnv("ENCRYPTION_KEY", "your-32-byte-encryption-key-here"),
-		},
-		Logging: LoggingConfig{
-			Level:      getEnv("LOG_LEVEL", "info"),
-			Format:     getEnv("LOG_FORMAT", "json"),
-			Output:     getEnv("LOG_OUTPUT", "stdout"),
-			MaxSize:    getEnvInt("LOG_MAX_SIZE", 100),
-			MaxBackups: getEnvInt("LOG_MAX_BACKUPS", 3),
-			MaxAge:     getEnvInt("LOG_MAX_AGE", 28),
-		},
-		Cache: CacheConfig{
-			Type:     getEnv("CACHE_TYPE", "memory"),
-			Host:     getEnv("CACHE_HOST", "localhost"),
-			Port:     getEnvInt("CACHE_PORT", 6379),
-			Password: getEnv("CACHE_PASSWORD", ""),
-			DB:       getEnvInt("CACHE_DB", 0),
-			TTL:      getEnvDuration("CACHE_TTL", 5*time.Minute),
-		},
-		Monitoring: MonitoringConfig{
-			Enabled:     getEnvBool("MONITORING_ENABLED", true),
-			MetricsPort: getEnvInt("METRICS_PORT", 9090),
-			HealthPort:  getEnvInt("HEALTH_PORT", 8081),
-			TraceURL:    getEnv("TRACE_URL", ""),
-		},
-		NATS: NATSConfig{
-			URL:      getEnv("NATS_URL", "nats://localhost:4222"),
-			Cluster:  getEnv("NATS_CLUSTER", "test-cluster"),
-			Username: getEnv("NATS_USERNAME", ""),
-			Password: getEnv("NATS_PASSWORD", ""),
-		},
-		Redis: RedisConfig{
-			Host:     getEnv("REDIS_HOST", "localhost"),
-			Port:     getEnvInt("REDIS_PORT", 6379),
-			Password: getEnv("REDIS_PASSWORD", ""),
-			DB:       getEnvInt("REDIS_DB", 0),
-			PoolSize: getEnvInt("REDIS_POOL_SIZE", 10),
-		},
-		Plugins: PluginsConfig{
-			Directory: getEnv("PLUGIN_DIRECTORY", "./plugins"),
-		},
+// LoadConfig loads configuration from file and environment variables
+func LoadConfig(configFile string) (*Config, error) {
+	// Set up viper
+	viper.SetConfigFile(configFile)
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath(".")
+	viper.AddConfigPath("$HOME/.skyclust")
+	viper.AddConfigPath("/etc/skyclust")
+
+	// Set defaults
+	setDefaults()
+
+	// Read config file
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, fmt.Errorf("error reading config file: %w", err)
+		}
 	}
+
+	// Override with environment variables
+	overrideWithEnvVars()
+
+	// Unmarshal into struct
+	var config Config
+	if err := viper.Unmarshal(&config); err != nil {
+		return nil, fmt.Errorf("error unmarshaling config: %w", err)
+	}
+
+	// Handle empty values by falling back to environment variables
+	handleEmptyValues(&config)
+
+	// Validate and generate secrets if needed
+	if err := validateAndGenerateSecrets(&config); err != nil {
+		return nil, fmt.Errorf("error validating config: %w", err)
+	}
+
+	return &config, nil
 }
 
 // GetDefaultConfig returns default configuration
@@ -255,6 +213,7 @@ func GetDefaultConfig() *Config {
 		Security: SecurityConfig{
 			JWTSecret:     "your-secret-key",
 			JWTExpiration: 24 * time.Hour,
+			JWTIssuer:     "skyclust",
 			BCryptCost:    12,
 			EncryptionKey: "your-32-byte-encryption-key-here",
 		},
@@ -283,67 +242,200 @@ func GetDefaultConfig() *Config {
 	}
 }
 
-// overrideWithEnvVars overrides config values with environment variables if they exist
-func overrideWithEnvVars(config *Config) {
-	// Server config
-	if host := getEnv("SERVER_HOST", ""); host != "" {
-		config.Server.Host = host
-	}
-	if port := getEnvInt("SERVER_PORT", 0); port != 0 {
-		config.Server.Port = port
+// setDefaults sets default configuration values
+func setDefaults() {
+	// Server defaults
+	viper.SetDefault("server.host", "0.0.0.0")
+	viper.SetDefault("server.port", 8080)
+	viper.SetDefault("server.read_timeout", 30)
+	viper.SetDefault("server.write_timeout", 30)
+	viper.SetDefault("server.idle_timeout", 120)
+
+	// Database defaults
+	viper.SetDefault("database.host", "localhost")
+	viper.SetDefault("database.port", 5432)
+	viper.SetDefault("database.user", "postgres")
+	viper.SetDefault("database.password", "")
+	viper.SetDefault("database.name", "skyclust")
+	viper.SetDefault("database.ssl_mode", "disable")
+	viper.SetDefault("database.max_conns", 25)
+	viper.SetDefault("database.min_conns", 5)
+
+	// Security defaults
+	viper.SetDefault("security.jwt_secret", "your-super-secret-jwt-key-change-in-production")
+	viper.SetDefault("security.jwt_expiration", 24)
+	viper.SetDefault("security.jwt_issuer", "skyclust")
+	viper.SetDefault("security.bcrypt_cost", 12)
+	viper.SetDefault("security.encryption_key", "your-32-byte-encryption-key-here")
+
+	// Encryption defaults
+	viper.SetDefault("encryption.key", "your-32-byte-encryption-key-here")
+
+	// Logging defaults
+	viper.SetDefault("logging.level", "info")
+	viper.SetDefault("logging.format", "json")
+	viper.SetDefault("logging.output", "stdout")
+	viper.SetDefault("logging.max_size", 100)
+	viper.SetDefault("logging.max_backups", 3)
+	viper.SetDefault("logging.max_age", 28)
+
+	// Cache defaults
+	viper.SetDefault("cache.type", "memory")
+	viper.SetDefault("cache.host", "localhost")
+	viper.SetDefault("cache.port", 6379)
+	viper.SetDefault("cache.password", "")
+	viper.SetDefault("cache.db", 0)
+	viper.SetDefault("cache.ttl", 300)
+
+	// Monitoring defaults
+	viper.SetDefault("monitoring.enabled", true)
+	viper.SetDefault("monitoring.metrics_port", 9090)
+	viper.SetDefault("monitoring.health_port", 8081)
+	viper.SetDefault("monitoring.trace_url", "")
+
+	// NATS defaults
+	viper.SetDefault("nats.url", "nats://localhost:4222")
+	viper.SetDefault("nats.cluster", "skyclust-cluster")
+	viper.SetDefault("nats.username", "")
+	viper.SetDefault("nats.password", "")
+
+	// Redis defaults
+	viper.SetDefault("redis.host", "localhost")
+	viper.SetDefault("redis.port", 6379)
+	viper.SetDefault("redis.password", "")
+	viper.SetDefault("redis.db", 0)
+	viper.SetDefault("redis.pool_size", 10)
+
+	// Plugins defaults
+	viper.SetDefault("plugins.directory", "./plugins")
+}
+
+// overrideWithEnvVars overrides configuration with environment variables
+func overrideWithEnvVars() {
+	// Server environment variables
+	_ = viper.BindEnv("server.host", "SERVER_HOST")
+	_ = viper.BindEnv("server.port", "SERVER_PORT")
+	_ = viper.BindEnv("server.read_timeout", "SERVER_READ_TIMEOUT")
+	_ = viper.BindEnv("server.write_timeout", "SERVER_WRITE_TIMEOUT")
+	_ = viper.BindEnv("server.idle_timeout", "SERVER_IDLE_TIMEOUT")
+
+	// Database environment variables
+	_ = viper.BindEnv("database.host", "DB_HOST")
+	_ = viper.BindEnv("database.port", "DB_PORT")
+	_ = viper.BindEnv("database.user", "DB_USER")
+	_ = viper.BindEnv("database.password", "DB_PASSWORD")
+	_ = viper.BindEnv("database.name", "DB_NAME")
+	_ = viper.BindEnv("database.ssl_mode", "DB_SSL_MODE")
+	_ = viper.BindEnv("database.max_conns", "DB_MAX_CONNS")
+	_ = viper.BindEnv("database.min_conns", "DB_MIN_CONNS")
+
+	// Security environment variables
+	_ = viper.BindEnv("security.jwt_secret", "JWT_SECRET")
+	_ = viper.BindEnv("security.jwt_expiration", "JWT_EXPIRATION")
+	_ = viper.BindEnv("security.jwt_issuer", "JWT_ISSUER")
+	_ = viper.BindEnv("security.bcrypt_cost", "BCRYPT_COST")
+	_ = viper.BindEnv("security.encryption_key", "ENCRYPTION_KEY")
+
+	// Encryption environment variables
+	_ = viper.BindEnv("encryption.key", "ENCRYPTION_KEY")
+
+	// Logging environment variables
+	_ = viper.BindEnv("logging.level", "LOG_LEVEL")
+	_ = viper.BindEnv("logging.format", "LOG_FORMAT")
+	_ = viper.BindEnv("logging.output", "LOG_OUTPUT")
+	_ = viper.BindEnv("logging.max_size", "LOG_MAX_SIZE")
+	_ = viper.BindEnv("logging.max_backups", "LOG_MAX_BACKUPS")
+	_ = viper.BindEnv("logging.max_age", "LOG_MAX_AGE")
+
+	// Cache environment variables
+	_ = viper.BindEnv("cache.type", "CACHE_TYPE")
+	_ = viper.BindEnv("cache.host", "CACHE_HOST")
+	_ = viper.BindEnv("cache.port", "CACHE_PORT")
+	_ = viper.BindEnv("cache.password", "CACHE_PASSWORD")
+	_ = viper.BindEnv("cache.db", "CACHE_DB")
+	_ = viper.BindEnv("cache.ttl", "CACHE_TTL")
+
+	// Monitoring environment variables
+	_ = viper.BindEnv("monitoring.enabled", "MONITORING_ENABLED")
+	_ = viper.BindEnv("monitoring.metrics_port", "METRICS_PORT")
+	_ = viper.BindEnv("monitoring.health_port", "HEALTH_PORT")
+	_ = viper.BindEnv("monitoring.trace_url", "TRACE_URL")
+
+	// NATS environment variables
+	_ = viper.BindEnv("nats.url", "NATS_URL")
+	_ = viper.BindEnv("nats.cluster", "NATS_CLUSTER")
+	_ = viper.BindEnv("nats.username", "NATS_USERNAME")
+	_ = viper.BindEnv("nats.password", "NATS_PASSWORD")
+
+	// Redis environment variables
+	_ = viper.BindEnv("redis.host", "REDIS_HOST")
+	_ = viper.BindEnv("redis.port", "REDIS_PORT")
+	_ = viper.BindEnv("redis.password", "REDIS_PASSWORD")
+	_ = viper.BindEnv("redis.db", "REDIS_DB")
+	_ = viper.BindEnv("redis.pool_size", "REDIS_POOL_SIZE")
+
+	// Plugins environment variables
+	_ = viper.BindEnv("plugins.directory", "PLUGIN_DIRECTORY")
+}
+
+// handleEmptyValues handles empty values by falling back to environment variables
+func handleEmptyValues(config *Config) {
+	// This function can be used to handle any additional fallback logic
+	// For now, viper handles most of the environment variable binding
+}
+
+// validateAndGenerateSecrets validates configuration and generates secrets if needed
+func validateAndGenerateSecrets(config *Config) error {
+	// Validate JWT secret
+	if config.Security.JWTSecret == "" || config.Security.JWTSecret == "your-super-secret-jwt-key-change-in-production" {
+		secret, err := generateRandomSecret(32)
+		if err != nil {
+			return fmt.Errorf("failed to generate JWT secret: %w", err)
+		}
+		config.Security.JWTSecret = secret
+		fmt.Println("WARNING: Generated new JWT secret. Please set JWT_SECRET environment variable for production.")
 	}
 
-	// Database config
-	if host := getEnv("DB_HOST", ""); host != "" {
-		config.Database.Host = host
-	}
-	if port := getEnvInt("DB_PORT", 0); port != 0 {
-		config.Database.Port = port
-	}
-	if user := getEnv("DB_USER", ""); user != "" {
-		config.Database.User = user
-	}
-	if password := getEnv("DB_PASSWORD", ""); password != "" {
-		config.Database.Password = password
-	}
-	if name := getEnv("DB_NAME", ""); name != "" {
-		config.Database.Name = name
-	}
-	if sslMode := getEnv("DB_SSL_MODE", ""); sslMode != "" {
-		config.Database.SSLMode = sslMode
+	// Validate encryption key
+	if config.Security.EncryptionKey == "" || config.Security.EncryptionKey == "your-32-byte-encryption-key-here" {
+		key, err := generateRandomSecret(32)
+		if err != nil {
+			return fmt.Errorf("failed to generate encryption key: %w", err)
+		}
+		config.Security.EncryptionKey = key
+		config.Encryption.Key = key
+		fmt.Println("WARNING: Generated new encryption key. Please set ENCRYPTION_KEY environment variable for production.")
 	}
 
-	// Security config
-	if jwtSecret := getEnv("JWT_SECRET", ""); jwtSecret != "" {
-		config.Security.JWTSecret = jwtSecret
-	}
-	if encryptionKey := getEnv("ENCRYPTION_KEY", ""); encryptionKey != "" {
-		config.Security.EncryptionKey = encryptionKey
-	}
-
-	// NATS config
-	if url := getEnv("NATS_URL", ""); url != "" {
-		config.NATS.URL = url
-	}
-	if cluster := getEnv("NATS_CLUSTER", ""); cluster != "" {
-		config.NATS.Cluster = cluster
+	// Additional security checks for production
+	if isProduction() {
+		if config.Database.SSLMode == "disable" {
+			return fmt.Errorf("SSL must be enabled in production environment")
+		}
+		if config.Security.JWTSecret == "your-super-secret-jwt-key-change-in-production" {
+			return fmt.Errorf("default JWT secret not allowed in production")
+		}
+		if config.Security.EncryptionKey == "your-32-byte-encryption-key-here" {
+			return fmt.Errorf("default encryption key not allowed in production")
+		}
 	}
 
-	// Redis config
-	if host := getEnv("REDIS_HOST", ""); host != "" {
-		config.Redis.Host = host
-	}
-	if port := getEnvInt("REDIS_PORT", 0); port != 0 {
-		config.Redis.Port = port
-	}
-	if password := getEnv("REDIS_PASSWORD", ""); password != "" {
-		config.Redis.Password = password
-	}
+	return nil
+}
 
-	// Plugins config
-	if directory := getEnv("PLUGIN_DIRECTORY", ""); directory != "" {
-		config.Plugins.Directory = directory
+// generateRandomSecret generates a random secret of specified length
+func generateRandomSecret(length int) (string, error) {
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
 	}
+	return hex.EncodeToString(bytes), nil
+}
+
+// isProduction checks if the application is running in production mode
+func isProduction() bool {
+	env := strings.ToLower(os.Getenv("ENVIRONMENT"))
+	return env == "production" || env == "prod"
 }
 
 // Helper functions

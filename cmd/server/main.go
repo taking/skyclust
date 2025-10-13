@@ -70,27 +70,19 @@ func runServer(cmd *cobra.Command, args []string) {
 	var cfg *config.Config
 	var err error
 
-	// Try to load from YAML file first
-	if configFile != "" && configFile != "config.yaml" {
-		cfg, err = config.LoadConfigFromFile(configFile)
-		if err != nil {
-			log.Printf("Warning: failed to load config from file %s: %v", configFile, err)
-			log.Println("Falling back to environment variables")
-			cfg = config.LoadConfig()
-		} else {
-			log.Printf("Loaded configuration from %s", configFile)
-		}
-	} else {
-		// Load from environment variables
-		cfg = config.LoadConfig()
+	// Load configuration using viper (supports both file and environment variables)
+	cfg, err = config.LoadConfig(configFile)
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
 	}
+	log.Printf("Loaded configuration from %s", configFile)
 
-	// Override with command line flags
+	// Override with command line flags (only if not set via environment)
 	if pluginDir != "" {
 		cfg.Plugins.Directory = pluginDir
 	}
-	if port != "" {
-		// Parse port from string to int
+	if port != "" && port != "8081" {
+		// Only override if port flag is explicitly set and different from default
 		if portInt, err := strconv.Atoi(port); err == nil {
 			cfg.Server.Port = portInt
 		}
@@ -246,6 +238,10 @@ func setupRouter(container *container.Container, pluginManager *plugin.Manager, 
 		// Apply authentication middleware
 		protected.Use(authMiddleware.AuthMiddleware())
 		{
+			// Authentication routes (protected)
+			authProtected := protected.Group("/auth")
+			routes.SetupAuthRoutes(authProtected, container.AuthService, container.UserService, container.LogoutService)
+
 			// Credential management
 			credentials := protected.Group("/credentials")
 			routes.SetupCredentialRoutes(credentials, container.CredentialService)

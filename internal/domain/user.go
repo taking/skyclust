@@ -12,17 +12,22 @@ type User struct {
 	ID           uuid.UUID  `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
 	Username     string     `json:"username" gorm:"uniqueIndex;not null;size:50"`
 	Email        string     `json:"email" gorm:"uniqueIndex;not null;size:100"`
-	PasswordHash string     `json:"-" gorm:"size:255"`
+	PasswordHash string     `json:"-" gorm:"column:password_hash;not null;size:255"`
 	OIDCProvider string     `json:"oidc_provider,omitempty" gorm:"size:20"` // google, github, azure
 	OIDCSubject  string     `json:"oidc_subject,omitempty" gorm:"size:100"` // OIDC subject ID
 	IsActive     bool       `json:"is_active" gorm:"default:true"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	CreatedAt    time.Time  `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt    time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
 	DeletedAt    *time.Time `json:"-" gorm:"index"`
 
 	// Relationships
 	Credentials []Credential `json:"credentials,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 	AuditLogs   []AuditLog   `json:"audit_logs,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+}
+
+// TableName specifies the table name for User
+func (User) TableName() string {
+	return "users"
 }
 
 // UserRepository defines the interface for user data operations

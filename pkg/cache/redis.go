@@ -219,8 +219,7 @@ func (r *RedisService) GetPerformanceStats() (*CacheStats, error) {
 
 	// Parse basic stats (simplified)
 	stats := &CacheStats{
-		Keys:      int64(len(r.client.Keys(ctx, "*").Val())),
-		Timestamp: time.Now(),
+		Keys: int64(len(r.client.Keys(ctx, "*").Val())),
 	}
 
 	// Parse hits and misses from Redis info

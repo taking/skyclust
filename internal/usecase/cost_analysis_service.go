@@ -1,18 +1,16 @@
 package usecase
 
 import (
-	"skyclust/internal/domain"
 	"context"
 	"fmt"
 	"math"
+	"skyclust/internal/domain"
+	"skyclust/pkg/logger"
 	"sort"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 type CostAnalysisService struct {
-	logger         *zap.Logger
 	vmRepo         domain.VMRepository
 	credentialRepo domain.CredentialRepository
 	workspaceRepo  domain.WorkspaceRepository
@@ -20,14 +18,12 @@ type CostAnalysisService struct {
 }
 
 func NewCostAnalysisService(
-	logger *zap.Logger,
 	vmRepo domain.VMRepository,
 	credentialRepo domain.CredentialRepository,
 	workspaceRepo domain.WorkspaceRepository,
 	auditLogRepo domain.AuditLogRepository,
 ) *CostAnalysisService {
 	return &CostAnalysisService{
-		logger:         logger,
 		vmRepo:         vmRepo,
 		credentialRepo: credentialRepo,
 		workspaceRepo:  workspaceRepo,
@@ -48,20 +44,14 @@ type CostData struct {
 	WorkspaceID  string    `json:"workspace_id"`
 }
 
-// CostSummary represents aggregated cost data
+// CostSummary represents simplified cost data
 type CostSummary struct {
-	TotalCost   float64            `json:"total_cost"`
-	Currency    string             `json:"currency"`
-	Period      string             `json:"period"`
-	StartDate   time.Time          `json:"start_date"`
-	EndDate     time.Time          `json:"end_date"`
-	ByService   map[string]float64 `json:"by_service"`
-	ByProvider  map[string]float64 `json:"by_provider"`
-	ByRegion    map[string]float64 `json:"by_region"`
-	ByWorkspace map[string]float64 `json:"by_workspace"`
-	DailyCosts  []CostData         `json:"daily_costs"`
-	Trend       string             `json:"trend"` // "increasing", "decreasing", "stable"
-	GrowthRate  float64            `json:"growth_rate"`
+	TotalCost  float64            `json:"total_cost"`
+	Currency   string             `json:"currency"`
+	Period     string             `json:"period"`
+	StartDate  time.Time          `json:"start_date"`
+	EndDate    time.Time          `json:"end_date"`
+	ByProvider map[string]float64 `json:"by_provider"`
 }
 
 // CostPrediction represents future cost predictions
@@ -104,7 +94,7 @@ func (s *CostAnalysisService) GetCostSummary(ctx context.Context, workspaceID st
 	for _, vm := range vms {
 		costs, err := s.calculateVMCosts(ctx, vm, startDate, endDate)
 		if err != nil {
-			s.logger.Warn("Failed to calculate VM costs", zap.String("vm_id", vm.ID), zap.Error(err))
+			logger.Warnf("Failed to calculate VM costs for VM %s: %v", vm.ID, err)
 			continue
 		}
 		allCosts = append(allCosts, costs...)
@@ -112,10 +102,10 @@ func (s *CostAnalysisService) GetCostSummary(ctx context.Context, workspaceID st
 
 	// Aggregate costs
 	summary := s.aggregateCosts(allCosts, startDate, endDate, period)
-	summary.ByWorkspace[workspaceID] = summary.TotalCost
+	// Removed ByWorkspace field
 
 	// Calculate trend
-	summary.Trend, summary.GrowthRate = s.calculateTrend(allCosts)
+	// Removed Trend and GrowthRate fields
 
 	return summary, nil
 }
@@ -137,7 +127,7 @@ func (s *CostAnalysisService) GetCostPredictions(ctx context.Context, workspaceI
 	for _, vm := range vms {
 		costs, err := s.calculateVMCosts(ctx, vm, startDate, endDate)
 		if err != nil {
-			s.logger.Warn("Failed to calculate VM costs", zap.String("vm_id", vm.ID), zap.Error(err))
+			logger.Warnf("Failed to calculate VM costs for VM %s: %v", vm.ID, err)
 			continue
 		}
 		historicalCosts = append(historicalCosts, costs...)
@@ -273,70 +263,19 @@ func (s *CostAnalysisService) getVMHourlyRate(vm *domain.VM) float64 {
 
 func (s *CostAnalysisService) aggregateCosts(costs []CostData, startDate, endDate time.Time, period string) *CostSummary {
 	summary := &CostSummary{
-		Currency:    "USD",
-		Period:      period,
-		StartDate:   startDate,
-		EndDate:     endDate,
-		ByService:   make(map[string]float64),
-		ByProvider:  make(map[string]float64),
-		ByRegion:    make(map[string]float64),
-		ByWorkspace: make(map[string]float64),
-		DailyCosts:  costs,
+		Currency:   "USD",
+		Period:     period,
+		StartDate:  startDate,
+		EndDate:    endDate,
+		ByProvider: make(map[string]float64),
 	}
 
 	for _, cost := range costs {
 		summary.TotalCost += cost.Amount
-		summary.ByService[cost.Service] += cost.Amount
 		summary.ByProvider[cost.Provider] += cost.Amount
-		summary.ByRegion[cost.Region] += cost.Amount
-		summary.ByWorkspace[cost.WorkspaceID] += cost.Amount
 	}
 
 	return summary
-}
-
-func (s *CostAnalysisService) calculateTrend(costs []CostData) (string, float64) {
-	if len(costs) < 2 {
-		return "stable", 0.0
-	}
-
-	// Sort by date
-	sort.Slice(costs, func(i, j int) bool {
-		return costs[i].Date.Before(costs[j].Date)
-	})
-
-	// Calculate daily totals
-	dailyTotals := make(map[string]float64)
-	for _, cost := range costs {
-		dateStr := cost.Date.Format("2006-01-02")
-		dailyTotals[dateStr] += cost.Amount
-	}
-
-	// Convert to sorted slice
-	var dailyValues []float64
-	for _, total := range dailyTotals {
-		dailyValues = append(dailyValues, total)
-	}
-
-	if len(dailyValues) < 2 {
-		return "stable", 0.0
-	}
-
-	// Calculate growth rate
-	first := dailyValues[0]
-	last := dailyValues[len(dailyValues)-1]
-	growthRate := ((last - first) / first) * 100
-
-	var trend string
-	if growthRate > 5 {
-		trend = "increasing"
-	} else if growthRate < -5 {
-		trend = "decreasing"
-	} else {
-		trend = "stable"
-	}
-
-	return trend, growthRate
 }
 
 func (s *CostAnalysisService) generatePredictions(historicalCosts []CostData, days int) []CostPrediction {

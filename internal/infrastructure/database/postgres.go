@@ -1,8 +1,8 @@
 package database
 
 import (
-	"skyclust/internal/domain"
 	"fmt"
+	"skyclust/internal/domain"
 	"time"
 
 	"gorm.io/driver/postgres"
@@ -109,6 +109,7 @@ func NewPostgresService(config PostgresConfig) (*PostgresService, error) {
 		&domain.Workspace{},
 		&domain.Credential{},
 		&domain.AuditLog{},
+		&domain.WorkspaceUser{},
 	); err != nil {
 		return nil, fmt.Errorf("failed to auto-migrate schema: %w", err)
 	}

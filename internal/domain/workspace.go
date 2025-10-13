@@ -7,13 +7,34 @@ import (
 
 // Workspace represents a workspace in the system
 type Workspace struct {
-	ID          string    `json:"id" db:"id"`
-	Name        string    `json:"name" db:"name"`
-	Description string    `json:"description" db:"description"`
-	OwnerID     string    `json:"owner_id" db:"owner_id"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
-	IsActive    bool      `json:"is_active" db:"is_active"`
+	ID          string                 `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	Name        string                 `json:"name" gorm:"uniqueIndex;not null"`
+	Description string                 `json:"description" gorm:"type:text"`
+	OwnerID     string                 `json:"owner_id" gorm:"not null;type:uuid"`
+	Settings    map[string]interface{} `json:"settings" gorm:"type:jsonb"`
+	CreatedAt   time.Time              `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt   time.Time              `json:"updated_at" gorm:"autoUpdateTime"`
+	DeletedAt   *time.Time             `json:"-" gorm:"index"`
+	IsActive    bool                   `json:"is_active" gorm:"default:true"`
+}
+
+// TableName specifies the table name for Workspace
+func (Workspace) TableName() string {
+	return "workspaces"
+}
+
+// WorkspaceUser represents a user in a workspace
+type WorkspaceUser struct {
+	UserID      string     `json:"user_id" gorm:"primaryKey;type:uuid"`
+	WorkspaceID string     `json:"workspace_id" gorm:"primaryKey;type:uuid"`
+	Role        string     `json:"role" gorm:"not null;default:member"`
+	JoinedAt    time.Time  `json:"joined_at" gorm:"autoCreateTime"`
+	DeletedAt   *time.Time `json:"-" gorm:"index"`
+}
+
+// TableName specifies the table name for WorkspaceUser
+func (WorkspaceUser) TableName() string {
+	return "workspace_users"
 }
 
 // WorkspaceRepository defines the interface for workspace data operations
@@ -27,6 +48,10 @@ type WorkspaceRepository interface {
 	GetUserWorkspaces(ctx context.Context, userID string) ([]*Workspace, error)
 	AddUserToWorkspace(ctx context.Context, userID, workspaceID string, role string) error
 	RemoveUserFromWorkspace(ctx context.Context, userID, workspaceID string) error
+	// Optimized methods for N+1 query prevention
+	GetWorkspacesWithUsers(ctx context.Context, userID string) ([]*Workspace, error)
+	GetWorkspaceWithMembers(ctx context.Context, workspaceID string) (*Workspace, []*User, error)
+	GetUserWorkspacesOptimized(ctx context.Context, userID string) ([]*Workspace, error)
 }
 
 // WorkspaceService defines the business logic interface for workspaces

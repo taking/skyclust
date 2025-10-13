@@ -120,9 +120,9 @@ func NewContainer(ctx context.Context, cfg *config.Config) (*Container, error) {
 	auditLogService := usecase.NewAuditLogService(auditLogRepo)
 
 	// Initialize token blacklist
-	tokenBlacklist := cache.NewTokenBlacklist(redisService.GetClient(), logger)
+	tokenBlacklist := cache.NewTokenBlacklist(redisService.GetClient())
 
-	authService := usecase.NewAuthService(userRepo, auditLogRepo, hasher, tokenBlacklist, cfg.JWT.Secret, cfg.JWT.Expiration)
+	authService := usecase.NewAuthService(userRepo, auditLogRepo, hasher, tokenBlacklist, cfg.Security.JWTSecret, cfg.Security.JWTExpiration)
 	oidcService := usecase.NewOIDCService(userRepo, auditLogRepo, authService)
 	pluginActivationService := usecase.NewPluginActivationService(credentialRepo, eventBus)
 	cacheService := usecase.NewCacheService(redisService)
@@ -131,9 +131,9 @@ func NewContainer(ctx context.Context, cfg *config.Config) (*Container, error) {
 	vmService := usecase.NewVMService(vmRepo, workspaceRepo, nil, eventBus, auditLogRepo) // Cloud provider will be injected later
 
 	// Initialize logout service
-	logoutService := usecase.NewLogoutService(tokenBlacklist, oidcService, auditLogRepo, logger)
+	logoutService := usecase.NewLogoutService(tokenBlacklist, oidcService, auditLogRepo)
 
-	costAnalysisService := usecase.NewCostAnalysisService(logger, vmRepo, credentialRepo, workspaceRepo, auditLogRepo)
+	costAnalysisService := usecase.NewCostAnalysisService(vmRepo, credentialRepo, workspaceRepo, auditLogRepo)
 	notificationService := usecase.NewNotificationService(logger, auditLogRepo, userRepo, workspaceRepo, eventService)
 	exportService := usecase.NewExportService(logger, vmRepo, workspaceRepo, credentialRepo, auditLogRepo)
 

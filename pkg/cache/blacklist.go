@@ -8,20 +8,18 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"go.uber.org/zap"
+	"skyclust/pkg/logger"
 )
 
 // TokenBlacklist manages JWT token blacklist using Redis
 type TokenBlacklist struct {
-	redis  *redis.Client
-	logger *zap.Logger
+	redis *redis.Client
 }
 
 // NewTokenBlacklist creates a new token blacklist service
-func NewTokenBlacklist(redis *redis.Client, logger *zap.Logger) *TokenBlacklist {
+func NewTokenBlacklist(redis *redis.Client) *TokenBlacklist {
 	return &TokenBlacklist{
-		redis:  redis,
-		logger: logger,
+		redis: redis,
 	}
 }
 
@@ -33,15 +31,11 @@ func (tb *TokenBlacklist) AddToBlacklist(ctx context.Context, token string, expi
 	// Store in Redis with expiry
 	err := tb.redis.Set(ctx, fmt.Sprintf("blacklist:%s", tokenHash), "1", expiry).Err()
 	if err != nil {
-		tb.logger.Error("Failed to add token to blacklist",
-			zap.Error(err),
-			zap.String("token_hash", tokenHash))
+		logger.Errorf("Failed to add token to blacklist: %v", err)
 		return fmt.Errorf("failed to add token to blacklist: %w", err)
 	}
 
-	tb.logger.Info("Token added to blacklist",
-		zap.String("token_hash", tokenHash),
-		zap.Duration("expiry", expiry))
+	logger.Infof("Token added to blacklist: %s (expiry: %v)", tokenHash, expiry)
 
 	return nil
 }
@@ -59,9 +53,7 @@ func (tb *TokenBlacklist) IsBlacklisted(ctx context.Context, token string) bool 
 		return false
 	}
 	if err != nil {
-		tb.logger.Error("Failed to check token blacklist",
-			zap.Error(err),
-			zap.String("token_hash", tokenHash))
+		logger.Errorf("Failed to check token blacklist: %v", err)
 		// In case of error, assume token is not blacklisted to avoid blocking valid users
 		return false
 	}
@@ -76,14 +68,11 @@ func (tb *TokenBlacklist) RemoveFromBlacklist(ctx context.Context, token string)
 
 	err := tb.redis.Del(ctx, fmt.Sprintf("blacklist:%s", tokenHash)).Err()
 	if err != nil {
-		tb.logger.Error("Failed to remove token from blacklist",
-			zap.Error(err),
-			zap.String("token_hash", tokenHash))
+		logger.Errorf("Failed to remove token from blacklist: %v", err)
 		return fmt.Errorf("failed to remove token from blacklist: %w", err)
 	}
 
-	tb.logger.Info("Token removed from blacklist",
-		zap.String("token_hash", tokenHash))
+	logger.Infof("Token removed from blacklist: %s", tokenHash)
 
 	return nil
 }
@@ -95,7 +84,7 @@ func (tb *TokenBlacklist) CleanupExpiredTokens(ctx context.Context) error {
 
 	keys, err := tb.redis.Keys(ctx, pattern).Result()
 	if err != nil {
-		tb.logger.Error("Failed to get blacklist keys", zap.Error(err))
+		logger.Errorf("Failed to get blacklist keys: %v", err)
 		return fmt.Errorf("failed to get blacklist keys: %w", err)
 	}
 
@@ -108,9 +97,7 @@ func (tb *TokenBlacklist) CleanupExpiredTokens(ctx context.Context) error {
 	for _, key := range keys {
 		ttl, err := tb.redis.TTL(ctx, key).Result()
 		if err != nil {
-			tb.logger.Warn("Failed to get TTL for key",
-				zap.String("key", key),
-				zap.Error(err))
+			logger.Warnf("Failed to get TTL for key %s: %v", key, err)
 			continue
 		}
 
@@ -122,12 +109,11 @@ func (tb *TokenBlacklist) CleanupExpiredTokens(ctx context.Context) error {
 	if len(expiredKeys) > 0 {
 		err = tb.redis.Del(ctx, expiredKeys...).Err()
 		if err != nil {
-			tb.logger.Error("Failed to cleanup expired tokens", zap.Error(err))
+			logger.Errorf("Failed to cleanup expired tokens: %v", err)
 			return fmt.Errorf("failed to cleanup expired tokens: %w", err)
 		}
 
-		tb.logger.Info("Cleaned up expired tokens",
-			zap.Int("count", len(expiredKeys)))
+		logger.Infof("Cleaned up expired tokens: %d", len(expiredKeys))
 	}
 
 	return nil
@@ -144,6 +130,7 @@ func (tb *TokenBlacklist) GetBlacklistStats(ctx context.Context) (map[string]int
 	for {
 		keys, nextCursor, err := tb.redis.Scan(ctx, cursor, pattern, 100).Result()
 		if err != nil {
+			logger.Errorf("Failed to scan blacklist keys: %v", err)
 			return nil, fmt.Errorf("failed to scan blacklist keys: %w", err)
 		}
 

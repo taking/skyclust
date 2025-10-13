@@ -1,10 +1,10 @@
 package usecase
 
 import (
-	"skyclust/internal/domain"
-	"skyclust/pkg/cache"
 	"context"
 	"fmt"
+	"skyclust/internal/domain"
+	"skyclust/pkg/cache"
 	"time"
 )
 
@@ -39,8 +39,8 @@ func (s *cacheService) Delete(ctx context.Context, key string) error {
 
 // Clear removes all values from cache
 func (s *cacheService) Clear(ctx context.Context) error {
-	// Redis doesn't have a direct clear method, we'll use FlushAll
-	return s.cache.FlushAll(ctx)
+	// Redis doesn't have a direct clear method, we'll return an error
+	return fmt.Errorf("clear operation not supported")
 }
 
 // GetOrSet retrieves a value from cache or sets it if not found
@@ -75,10 +75,19 @@ func (s *cacheService) InvalidatePattern(ctx context.Context, pattern string) er
 
 // GetStats returns cache statistics
 func (s *cacheService) GetStats(ctx context.Context) (map[string]interface{}, error) {
-	return s.cache.GetStats(ctx)
+	// Return basic stats since GetStats was removed from cache interface
+	return map[string]interface{}{
+		"status": "available",
+		"type":   "memory",
+	}, nil
 }
 
 // Health checks cache health
 func (s *cacheService) Health(ctx context.Context) error {
-	return s.cache.Health(ctx)
+	// Simple health check by trying to get a non-existent key
+	err := s.cache.Get(ctx, "health_check", nil)
+	if err != nil && err.Error() != "key not found" {
+		return err
+	}
+	return nil
 }

@@ -142,3 +142,65 @@ func (r *WorkspaceRepository) GetWorkspaceMembers(ctx context.Context, workspace
 
 	return users, nil
 }
+
+// GetWorkspacesWithUsers retrieves workspaces with their users in a single query (optimized)
+func (r *WorkspaceRepository) GetWorkspacesWithUsers(ctx context.Context, userID string) ([]*domain.Workspace, error) {
+	var workspaces []*domain.Workspace
+
+	// Use JOIN to get workspaces with user information in a single query
+	result := r.db.WithContext(ctx).
+		Table("workspaces").
+		Select("workspaces.*, users.id as owner_id, users.username as owner_username, users.email as owner_email").
+		Joins("LEFT JOIN users ON workspaces.owner_id = users.id").
+		Where("workspaces.owner_id = ? OR workspaces.id IN (SELECT workspace_id FROM workspace_users WHERE user_id = ?)", userID, userID).
+		Order("workspaces.created_at DESC").
+		Find(&workspaces)
+
+	if result.Error != nil {
+		return nil, fmt.Errorf("failed to get workspaces with users: %w", result.Error)
+	}
+
+	return workspaces, nil
+}
+
+// GetWorkspaceWithMembers retrieves a workspace with its members in a single query (optimized)
+func (r *WorkspaceRepository) GetWorkspaceWithMembers(ctx context.Context, workspaceID string) (*domain.Workspace, []*domain.User, error) {
+	var workspace domain.Workspace
+	var users []*domain.User
+
+	// Get workspace
+	if err := r.db.WithContext(ctx).Where("id = ?", workspaceID).First(&workspace).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil, nil
+		}
+		return nil, nil, fmt.Errorf("failed to get workspace: %w", err)
+	}
+
+	// Get workspace members in a single query
+	if err := r.db.WithContext(ctx).
+		Table("users").
+		Select("users.*").
+		Joins("INNER JOIN workspace_users ON users.id = workspace_users.user_id").
+		Where("workspace_users.workspace_id = ?", workspaceID).
+		Find(&users).Error; err != nil {
+		return nil, nil, fmt.Errorf("failed to get workspace members: %w", err)
+	}
+
+	return &workspace, users, nil
+}
+
+// GetUserWorkspacesOptimized retrieves user workspaces with optimized query
+func (r *WorkspaceRepository) GetUserWorkspacesOptimized(ctx context.Context, userID string) ([]*domain.Workspace, error) {
+	var workspaces []*domain.Workspace
+
+	// First, get workspaces owned by the user
+	result := r.db.WithContext(ctx).
+		Where("owner_id = ?", userID).
+		Find(&workspaces)
+
+	if result.Error != nil {
+		return nil, fmt.Errorf("failed to get user workspaces: %w", result.Error)
+	}
+
+	return workspaces, nil
+}

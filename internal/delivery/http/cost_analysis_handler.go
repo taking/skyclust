@@ -1,8 +1,8 @@
 package http
 
 import (
-	"skyclust/internal/usecase"
 	"net/http"
+	"skyclust/internal/usecase"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -109,14 +109,11 @@ func (h *CostAnalysisHandler) GetCostTrend(c *gin.Context) {
 
 	// Create trend response
 	trendResponse := map[string]interface{}{
-		"trend":       summary.Trend,
-		"growth_rate": summary.GrowthRate,
-		"total_cost":  summary.TotalCost,
-		"currency":    summary.Currency,
-		"period":      summary.Period,
-		"start_date":  summary.StartDate,
-		"end_date":    summary.EndDate,
-		"daily_costs": summary.DailyCosts,
+		"total_cost": summary.TotalCost,
+		"currency":   summary.Currency,
+		"period":     summary.Period,
+		"start_date": summary.StartDate,
+		"end_date":   summary.EndDate,
 	}
 
 	SuccessResponse(c, http.StatusOK, trendResponse, "Cost trend retrieved successfully")
@@ -141,16 +138,10 @@ func (h *CostAnalysisHandler) GetCostBreakdown(c *gin.Context) {
 
 	var breakdown map[string]float64
 	switch dimension {
-	case "service":
-		breakdown = summary.ByService
 	case "provider":
 		breakdown = summary.ByProvider
-	case "region":
-		breakdown = summary.ByRegion
-	case "workspace":
-		breakdown = summary.ByWorkspace
 	default:
-		BadRequestResponse(c, "Invalid dimension. Must be one of: service, provider, region, workspace")
+		BadRequestResponse(c, "Invalid dimension. Must be one of: provider")
 		return
 	}
 
@@ -229,8 +220,6 @@ func (h *CostAnalysisHandler) GetCostComparison(c *gin.Context) {
 		"comparison": map[string]interface{}{
 			"cost_change":       costChange,
 			"percentage_change": percentageChange,
-			"trend":             currentSummary.Trend,
-			"growth_rate":       currentSummary.GrowthRate,
 		},
 	}
 

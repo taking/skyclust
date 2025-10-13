@@ -19,7 +19,7 @@ func SetupRESTfulRoutes(router *gin.Engine,
 
 	// Authentication routes (public)
 	authGroup := v1.Group("/auth")
-	SetupAuthRoutes(authGroup, authService, userService, logoutService)
+	SetupPublicAuthRoutes(authGroup, authService, userService, logoutService)
 
 	// OIDC routes (public)
 	oidcGroup := v1.Group("/auth/oidc")

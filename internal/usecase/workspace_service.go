@@ -137,7 +137,7 @@ func (s *WorkspaceService) DeleteWorkspace(ctx context.Context, id string) error
 	return nil
 }
 
-// GetUserWorkspaces retrieves workspaces for a user
+// GetUserWorkspaces retrieves workspaces for a user (optimized)
 func (s *WorkspaceService) GetUserWorkspaces(ctx context.Context, userID string) ([]*domain.Workspace, error) {
 	// Check if user exists
 	userUUID, err := uuid.Parse(userID)
@@ -153,7 +153,8 @@ func (s *WorkspaceService) GetUserWorkspaces(ctx context.Context, userID string)
 		return nil, domain.ErrUserNotFound
 	}
 
-	workspaces, err := s.workspaceRepo.GetUserWorkspaces(ctx, userID)
+	// Use optimized query to avoid N+1 problem
+	workspaces, err := s.workspaceRepo.GetUserWorkspacesOptimized(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user workspaces: %w", err)
 	}
@@ -254,18 +255,16 @@ func (s *WorkspaceService) RemoveUserFromWorkspace(ctx context.Context, workspac
 	return nil
 }
 
-// GetWorkspaceMembers retrieves all members of a workspace
+// GetWorkspaceMembers retrieves all members of a workspace (optimized)
 func (s *WorkspaceService) GetWorkspaceMembers(ctx context.Context, workspaceID string) ([]*domain.User, error) {
-	// Check if workspace exists
-	workspace, err := s.workspaceRepo.GetByID(ctx, workspaceID)
+	// Use optimized query to get workspace with members in a single query
+	workspace, members, err := s.workspaceRepo.GetWorkspaceWithMembers(ctx, workspaceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get workspace: %w", err)
+		return nil, fmt.Errorf("failed to get workspace members: %w", err)
 	}
 	if workspace == nil {
 		return nil, domain.ErrWorkspaceNotFound
 	}
 
-	// TODO: Implement GetWorkspaceMembers in workspace repository
-	// For now, return empty list
-	return []*domain.User{}, nil
+	return members, nil
 }

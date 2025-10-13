@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,17 +11,12 @@ import (
 
 // Response represents a standardized API response
 type Response struct {
-	Success   bool           `json:"success"`
-	Data      interface{}    `json:"data,omitempty"`
-	Message   string         `json:"message,omitempty"`
-	Error     *Error         `json:"error,omitempty"`
-	Meta      *ResponseMeta  `json:"meta,omitempty"`
-	Links     *ResponseLinks `json:"links,omitempty"`
-	Debug     *ResponseDebug `json:"debug,omitempty"`
-	Cache     *ResponseCache `json:"cache,omitempty"`
-	Timestamp time.Time      `json:"timestamp"`
-	RequestID string         `json:"request_id,omitempty"`
-	Version   string         `json:"version,omitempty"`
+	Success   bool        `json:"success"`
+	Data      interface{} `json:"data,omitempty"`
+	Message   string      `json:"message,omitempty"`
+	Error     *Error      `json:"error,omitempty"`
+	Timestamp time.Time   `json:"timestamp"`
+	RequestID string      `json:"request_id,omitempty"`
 }
 
 // Error represents a unified error structure
@@ -39,18 +33,7 @@ type Error struct {
 	SpanID      string                 `json:"span_id,omitempty"`
 }
 
-// ResponseMeta represents response metadata
-type ResponseMeta struct {
-	Pagination *PaginationMeta `json:"pagination,omitempty"`
-	Sorting    *SortingMeta    `json:"sorting,omitempty"`
-	Filtering  *FilteringMeta  `json:"filtering,omitempty"`
-	Total      int64           `json:"total,omitempty"`
-	Count      int             `json:"count,omitempty"`
-	Duration   int64           `json:"duration,omitempty"` // milliseconds
-	RateLimit  *RateLimitMeta  `json:"rate_limit,omitempty"`
-}
-
-// PaginationMeta represents pagination metadata
+// PaginationMeta represents pagination metadata (simplified)
 type PaginationMeta struct {
 	Page       int   `json:"page"`
 	Limit      int   `json:"limit"`
@@ -58,90 +41,6 @@ type PaginationMeta struct {
 	TotalPages int   `json:"total_pages"`
 	HasNext    bool  `json:"has_next"`
 	HasPrev    bool  `json:"has_prev"`
-	NextPage   *int  `json:"next_page,omitempty"`
-	PrevPage   *int  `json:"prev_page,omitempty"`
-}
-
-// SortingMeta represents sorting metadata
-type SortingMeta struct {
-	Field string `json:"field"`
-	Order string `json:"order"` // asc, desc
-}
-
-// FilteringMeta represents filtering metadata
-type FilteringMeta struct {
-	Applied []FilterMeta `json:"applied"`
-	Total   int          `json:"total"`
-}
-
-// FilterMeta represents a single filter
-type FilterMeta struct {
-	Field    string      `json:"field"`
-	Operator string      `json:"operator"`
-	Value    interface{} `json:"value"`
-}
-
-// RateLimitMeta represents rate limiting metadata
-type RateLimitMeta struct {
-	Limit      int   `json:"limit"`
-	Remaining  int   `json:"remaining"`
-	Reset      int64 `json:"reset"`
-	RetryAfter int   `json:"retry_after,omitempty"`
-}
-
-// ResponseLinks represents HATEOAS links
-type ResponseLinks struct {
-	Self    *Link  `json:"self,omitempty"`
-	First   *Link  `json:"first,omitempty"`
-	Last    *Link  `json:"last,omitempty"`
-	Next    *Link  `json:"next,omitempty"`
-	Prev    *Link  `json:"prev,omitempty"`
-	Related []Link `json:"related,omitempty"`
-}
-
-// Link represents a HATEOAS link
-type Link struct {
-	Href  string `json:"href"`
-	Rel   string `json:"rel"`
-	Type  string `json:"type,omitempty"`
-	Title string `json:"title,omitempty"`
-}
-
-// ResponseDebug represents debug information
-type ResponseDebug struct {
-	QueryTime    int64                  `json:"query_time,omitempty"` // milliseconds
-	CacheHit     bool                   `json:"cache_hit,omitempty"`
-	CacheKey     string                 `json:"cache_key,omitempty"`
-	DatabaseTime int64                  `json:"database_time,omitempty"` // milliseconds
-	ExternalAPIs []ExternalAPIMeta      `json:"external_apis,omitempty"`
-	MemoryUsage  *MemoryUsageMeta       `json:"memory_usage,omitempty"`
-	Custom       map[string]interface{} `json:"custom,omitempty"`
-}
-
-// ExternalAPIMeta represents external API call metadata
-type ExternalAPIMeta struct {
-	Service string `json:"service"`
-	URL     string `json:"url"`
-	Method  string `json:"method"`
-	Status  int    `json:"status"`
-	Time    int64  `json:"time"` // milliseconds
-	Success bool   `json:"success"`
-}
-
-// MemoryUsageMeta represents memory usage metadata
-type MemoryUsageMeta struct {
-	Allocated int64 `json:"allocated"` // bytes
-	Used      int64 `json:"used"`      // bytes
-	Free      int64 `json:"free"`      // bytes
-}
-
-// ResponseCache represents cache metadata
-type ResponseCache struct {
-	Hit       bool      `json:"hit"`
-	Key       string    `json:"key,omitempty"`
-	TTL       int64     `json:"ttl,omitempty"` // seconds
-	ExpiresAt time.Time `json:"expires_at,omitempty"`
-	Strategy  string    `json:"strategy,omitempty"` // memory, redis, etc.
 }
 
 // ResponseBuilder provides a fluent interface for building responses
@@ -157,7 +56,6 @@ func NewResponseBuilder(c *gin.Context) *ResponseBuilder {
 			Success:   true,
 			Timestamp: time.Now(),
 			RequestID: c.GetString("request_id"),
-			Version:   c.GetString("api_version"),
 		},
 		context: c,
 	}
@@ -220,150 +118,23 @@ func (rb *ResponseBuilder) WithSuggestions(suggestions []string) *ResponseBuilde
 	return rb
 }
 
-// WithPagination sets pagination metadata
+// WithPagination sets pagination metadata (simplified)
 func (rb *ResponseBuilder) WithPagination(page, limit int, total int64) *ResponseBuilder {
-	if rb.response.Meta == nil {
-		rb.response.Meta = &ResponseMeta{}
+	// Simple pagination info in data field
+	if rb.response.Data == nil {
+		rb.response.Data = make(map[string]interface{})
 	}
 
-	totalPages := int((total + int64(limit) - 1) / int64(limit))
-
-	rb.response.Meta.Pagination = &PaginationMeta{
-		Page:       page,
-		Limit:      limit,
-		Total:      total,
-		TotalPages: totalPages,
-		HasNext:    page < totalPages,
-		HasPrev:    page > 1,
+	if dataMap, ok := rb.response.Data.(map[string]interface{}); ok {
+		dataMap["pagination"] = PaginationMeta{
+			Page:       page,
+			Limit:      limit,
+			Total:      total,
+			TotalPages: int((total + int64(limit) - 1) / int64(limit)),
+			HasNext:    page < int((total+int64(limit)-1)/int64(limit)),
+			HasPrev:    page > 1,
+		}
 	}
-
-	if page < totalPages {
-		nextPage := page + 1
-		rb.response.Meta.Pagination.NextPage = &nextPage
-	}
-	if page > 1 {
-		prevPage := page - 1
-		rb.response.Meta.Pagination.PrevPage = &prevPage
-	}
-
-	return rb
-}
-
-// WithSorting sets sorting metadata
-func (rb *ResponseBuilder) WithSorting(field, order string) *ResponseBuilder {
-	if rb.response.Meta == nil {
-		rb.response.Meta = &ResponseMeta{}
-	}
-	rb.response.Meta.Sorting = &SortingMeta{
-		Field: field,
-		Order: order,
-	}
-	return rb
-}
-
-// WithFiltering sets filtering metadata
-func (rb *ResponseBuilder) WithFiltering(filters []FilterMeta) *ResponseBuilder {
-	if rb.response.Meta == nil {
-		rb.response.Meta = &ResponseMeta{}
-	}
-	rb.response.Meta.Filtering = &FilteringMeta{
-		Applied: filters,
-		Total:   len(filters),
-	}
-	return rb
-}
-
-// WithTotal sets the total count
-func (rb *ResponseBuilder) WithTotal(total int64) *ResponseBuilder {
-	if rb.response.Meta == nil {
-		rb.response.Meta = &ResponseMeta{}
-	}
-	rb.response.Meta.Total = total
-	return rb
-}
-
-// WithCount sets the current count
-func (rb *ResponseBuilder) WithCount(count int) *ResponseBuilder {
-	if rb.response.Meta == nil {
-		rb.response.Meta = &ResponseMeta{}
-	}
-	rb.response.Meta.Count = count
-	return rb
-}
-
-// WithDuration sets the response duration
-func (rb *ResponseBuilder) WithDuration(duration time.Duration) *ResponseBuilder {
-	if rb.response.Meta == nil {
-		rb.response.Meta = &ResponseMeta{}
-	}
-	rb.response.Meta.Duration = duration.Milliseconds()
-	return rb
-}
-
-// WithRateLimit sets rate limiting metadata
-func (rb *ResponseBuilder) WithRateLimit(limit, remaining int, reset time.Time) *ResponseBuilder {
-	if rb.response.Meta == nil {
-		rb.response.Meta = &ResponseMeta{}
-	}
-	rb.response.Meta.RateLimit = &RateLimitMeta{
-		Limit:     limit,
-		Remaining: remaining,
-		Reset:     reset.Unix(),
-	}
-	return rb
-}
-
-// WithLinks sets HATEOAS links
-func (rb *ResponseBuilder) WithLinks(links *ResponseLinks) *ResponseBuilder {
-	rb.response.Links = links
-	return rb
-}
-
-// WithSelfLink sets the self link
-func (rb *ResponseBuilder) WithSelfLink(href string) *ResponseBuilder {
-	if rb.response.Links == nil {
-		rb.response.Links = &ResponseLinks{}
-	}
-	rb.response.Links.Self = &Link{
-		Href: href,
-		Rel:  "self",
-	}
-	return rb
-}
-
-// WithNextLink sets the next page link
-func (rb *ResponseBuilder) WithNextLink(href string) *ResponseBuilder {
-	if rb.response.Links == nil {
-		rb.response.Links = &ResponseLinks{}
-	}
-	rb.response.Links.Next = &Link{
-		Href: href,
-		Rel:  "next",
-	}
-	return rb
-}
-
-// WithPrevLink sets the previous page link
-func (rb *ResponseBuilder) WithPrevLink(href string) *ResponseBuilder {
-	if rb.response.Links == nil {
-		rb.response.Links = &ResponseLinks{}
-	}
-	rb.response.Links.Prev = &Link{
-		Href: href,
-		Rel:  "prev",
-	}
-	return rb
-}
-
-// WithDebug sets debug information
-func (rb *ResponseBuilder) WithDebug(debug *ResponseDebug) *ResponseBuilder {
-	rb.response.Debug = debug
-	return rb
-}
-
-// WithCache sets cache metadata
-func (rb *ResponseBuilder) WithCache(cache *ResponseCache) *ResponseBuilder {
-	rb.response.Cache = cache
 	return rb
 }
 
@@ -378,17 +149,9 @@ func (rb *ResponseBuilder) WithTraceInfo(traceID, spanID string) *ResponseBuilde
 
 // Send sends the response with the specified status code
 func (rb *ResponseBuilder) Send(statusCode int) {
-	// Set response headers
+	// Set basic response headers
 	rb.context.Header("X-Request-ID", rb.response.RequestID)
-	rb.context.Header("X-API-Version", rb.response.Version)
 	rb.context.Header("X-Response-Time", time.Now().Format(time.RFC3339))
-
-	// Set rate limit headers if available
-	if rb.response.Meta != nil && rb.response.Meta.RateLimit != nil {
-		rb.context.Header("X-RateLimit-Limit", strconv.Itoa(rb.response.Meta.RateLimit.Limit))
-		rb.context.Header("X-RateLimit-Remaining", strconv.Itoa(rb.response.Meta.RateLimit.Remaining))
-		rb.context.Header("X-RateLimit-Reset", strconv.FormatInt(rb.response.Meta.RateLimit.Reset, 10))
-	}
 
 	rb.context.JSON(statusCode, rb.response)
 }
@@ -515,17 +278,14 @@ func Paginated(c *gin.Context, data interface{}, page, limit int, total int64, m
 	return NewResponseBuilder(c).
 		WithData(data).
 		WithMessage(message).
-		WithPagination(page, limit, total).
-		WithTotal(total).
-		WithCount(len(data.([]interface{})))
+		WithPagination(page, limit, total)
 }
 
 // List creates a list response
 func List(c *gin.Context, data interface{}, message string) *ResponseBuilder {
 	return NewResponseBuilder(c).
 		WithData(data).
-		WithMessage(message).
-		WithCount(len(data.([]interface{})))
+		WithMessage(message)
 }
 
 // Item creates a single item response

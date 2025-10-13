@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"skyclust/internal/domain"
 	"skyclust/pkg/cache"
+	"skyclust/pkg/logger"
 	"time"
 
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 )
 
 // LogoutService handles unified logout for both JWT and OIDC authentication
@@ -16,7 +16,6 @@ type LogoutService struct {
 	blacklist    *cache.TokenBlacklist
 	oidcService  domain.OIDCService
 	auditLogRepo domain.AuditLogRepository
-	logger       *zap.Logger
 }
 
 // LogoutRequest represents a logout request
@@ -42,13 +41,11 @@ func NewLogoutService(
 	blacklist *cache.TokenBlacklist,
 	oidcService domain.OIDCService,
 	auditLogRepo domain.AuditLogRepository,
-	logger *zap.Logger,
 ) *LogoutService {
 	return &LogoutService{
 		blacklist:    blacklist,
 		oidcService:  oidcService,
 		auditLogRepo: auditLogRepo,
-		logger:       logger,
 	}
 }
 
@@ -70,9 +67,7 @@ func (ls *LogoutService) handleJWTLogout(ctx context.Context, req LogoutRequest)
 	// Set expiry to 15 minutes (matching JWT expiry for better security)
 	expiry := 15 * time.Minute
 	if err := ls.blacklist.AddToBlacklist(ctx, req.Token, expiry); err != nil {
-		ls.logger.Error("Failed to add JWT token to blacklist",
-			zap.Error(err),
-			zap.String("user_id", req.UserID.String()))
+		logger.Errorf("Failed to add JWT token to blacklist: %v", err)
 		return nil, domain.NewDomainError(domain.ErrCodeInternalError, "failed to invalidate token", 500)
 	}
 
@@ -87,8 +82,7 @@ func (ls *LogoutService) handleJWTLogout(ctx context.Context, req LogoutRequest)
 		},
 	})
 
-	ls.logger.Info("JWT logout successful",
-		zap.String("user_id", req.UserID.String()))
+	logger.Infof("JWT logout successful for user: %s", req.UserID.String())
 
 	return &LogoutResponse{
 		Success: true,
@@ -100,25 +94,18 @@ func (ls *LogoutService) handleJWTLogout(ctx context.Context, req LogoutRequest)
 func (ls *LogoutService) handleOIDCLogout(ctx context.Context, req LogoutRequest) (*LogoutResponse, error) {
 	// Call OIDC provider's end_session_endpoint
 	if err := ls.oidcService.EndSession(ctx, req.UserID, req.Provider, req.IDToken, req.PostLogoutRedirectURI); err != nil {
-		ls.logger.Error("Failed to call OIDC end session endpoint",
-			zap.Error(err),
-			zap.String("user_id", req.UserID.String()),
-			zap.String("provider", req.Provider))
+		logger.Errorf("Failed to call OIDC end session endpoint: %v", err)
 		return nil, domain.NewDomainError(domain.ErrCodeInternalError, "failed to logout from OIDC provider", 500)
 	}
 
 	// Get logout URL for front-channel logout
 	logoutURL, err := ls.oidcService.GetLogoutURL(ctx, req.Provider, req.PostLogoutRedirectURI)
 	if err != nil {
-		ls.logger.Warn("Failed to get OIDC logout URL",
-			zap.Error(err),
-			zap.String("provider", req.Provider))
+		logger.Warnf("Failed to get OIDC logout URL: %v", err)
 		// Don't fail the logout if we can't get the URL
 	}
 
-	ls.logger.Info("OIDC logout successful",
-		zap.String("user_id", req.UserID.String()),
-		zap.String("provider", req.Provider))
+	logger.Infof("OIDC logout successful for user: %s, provider: %s", req.UserID.String(), req.Provider)
 
 	return &LogoutResponse{
 		Success:               true,
@@ -149,9 +136,7 @@ func (ls *LogoutService) BatchLogout(ctx context.Context, userID uuid.UUID, toke
 		return fmt.Errorf("batch logout failed for %d tokens: %v", len(errors), errors)
 	}
 
-	ls.logger.Info("Batch logout successful",
-		zap.String("user_id", userID.String()),
-		zap.Int("token_count", len(tokens)))
+	logger.Infof("Batch logout successful for user %s, token count: %d", userID.String(), len(tokens))
 
 	return nil
 }
@@ -176,11 +161,11 @@ func (ls *LogoutService) GetLogoutStats(ctx context.Context) (map[string]interfa
 // CleanupExpiredTokens removes expired tokens from blacklist
 func (ls *LogoutService) CleanupExpiredTokens(ctx context.Context) error {
 	if err := ls.blacklist.CleanupExpiredTokens(ctx); err != nil {
-		ls.logger.Error("Failed to cleanup expired tokens", zap.Error(err))
+		logger.Errorf("Failed to cleanup expired tokens: %v", err)
 		return fmt.Errorf("failed to cleanup expired tokens: %w", err)
 	}
 
-	ls.logger.Info("Expired tokens cleanup completed")
+	logger.Info("Expired tokens cleanup completed")
 	return nil
 }
 

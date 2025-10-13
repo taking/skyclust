@@ -577,6 +577,7 @@ func (m *Middleware) extractUserID(user interface{}) string {
 			}
 		}
 	}
+
 	return ""
 }
 
