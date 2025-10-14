@@ -1,8 +1,8 @@
 package postgres
 
 import (
-	"skyclust/internal/domain"
 	"fmt"
+	"skyclust/internal/domain"
 	"strings"
 	"time"
 

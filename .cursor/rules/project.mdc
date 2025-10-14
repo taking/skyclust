@@ -1,0 +1,114 @@
+---
+alwaysApply: true
+---
+
+# Project Rules: Clean Architecture + Simplified Structure + RESTful Design
+
+## 🎯 Goal
+Maintain a **clean, consistent, and minimalistic Go project structure** aligned with:
+- Clean Architecture principles
+- YAGNI (You Aren’t Gonna Need It)
+- Readability, maintainability, and performance optimization
+- RESTful API design consistency
+
+---
+
+## 🧱 Project Architecture Rules
+
+- Follow **Clean Architecture** layering:
+  - `/api` → HTTP handlers, request/response DTOs  
+  - `/service` → Business logic (application layer)
+  - `/repository` → Data access (DB, external APIs)
+  - `/internal` → Private packages and shared helpers
+  - `/pkg` → Optional public utilities reusable across modules
+- Avoid deeply nested directories unless strictly necessary.
+- Each layer should depend **only inward** (no circular dependencies).
+- Keep interfaces minimal; define them where they are used (not globally).
+
+---
+
+## 📦 Folder & File Simplification
+
+- Prefer **fewer files** with clear purposes over excessive fragmentation.
+- Merge trivial files (e.g., small model definitions) if they serve the same context.
+- Avoid unnecessary abstractions; follow **YAGNI** — don’t implement until needed.
+- Each folder should represent a clear domain boundary or technical concern.
+- Consistent naming convention:
+  - `user_service.go`, `order_repository.go`, etc.
+- Avoid placeholder files (e.g., empty `README.md`, `init.go`).
+
+---
+
+## 🌐 RESTful API Guidelines
+
+- Follow RESTful conventions:
+  - Use plural resource names (`/users`, `/orders`)
+  - Prefer nouns for endpoints, verbs for actions only if necessary (`/users/login`)
+  - Use appropriate HTTP verbs and status codes
+- Keep handlers small and delegate business logic to the service layer.
+- Use DTOs for request/response structs, separate from DB entities.
+
+---
+
+## 🧹 Code Quality & Readability
+
+- Write **clear, idiomatic Go code**.
+- Maintain consistent formatting (use `gofmt`, `goimports`).
+- Prefer explicit over implicit behavior.
+- Keep functions short, focused, and self-documenting.
+- Use meaningful naming for variables, methods, and packages.
+- Avoid magic numbers, inline constants, and commented-out code.
+
+---
+
+## ⚙️ Optimization Principles
+
+- Prioritize readability and maintainability over micro-optimizations.
+- Optimize only after profiling or identifying real bottlenecks.
+- Use caching (e.g., Valkey/Redis) appropriately — no premature optimization.
+- Favor Go’s built-in concurrency primitives (goroutines, channels) when relevant.
+
+---
+
+## 🧭 Consistency Rules
+
+- Follow a **consistent structure across all modules**.
+- Match function naming patterns (`Create`, `Get`, `Update`, `Delete`).
+- Enforce consistent error handling patterns and logging styles.
+- Return well-defined error types, avoid generic `errors.New()` where context is needed.
+
+---
+
+## 🚫 Anti-patterns to Avoid
+
+- Over-engineered abstractions (e.g., generic repositories with no benefit)
+- Deeply nested folder hierarchies
+- God packages (everything in one place)
+- Unused dependency injection frameworks
+- Interface pollution without clear usage
+
+---
+
+## ✅ Example Minimal Structure
+```
+/cmd/app/main.go
+/api/
+├── user_handler.go
+├── order_handler.go
+/service/
+├── user_service.go
+├── order_service.go
+/repository/
+├── user_repository.go
+├── order_repository.go
+/internal/
+├── config/
+└── utils/
+```
+
+
+---
+
+> 🧠 **Remember:**  
+> Keep it clean, consistent, and only as complex as necessary.  
+> Simplicity scales better than over-abstraction.

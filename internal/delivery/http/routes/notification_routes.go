@@ -6,8 +6,8 @@
 package routes
 
 import (
-	"skyclust/internal/delivery/http"
 	"github.com/gin-gonic/gin"
+	"skyclust/internal/delivery/http"
 )
 
 // SetupNotificationRoutes 알림 관련 라우트 설정

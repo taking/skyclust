@@ -32,6 +32,42 @@ type AuditLogRepository interface {
 	DeleteOldLogs(before time.Time) error
 }
 
+// AuditLogFilters represents filters for audit log queries
+type AuditLogFilters struct {
+	UserID    *uuid.UUID
+	Action    string
+	Resource  string
+	StartTime *time.Time
+	EndTime   *time.Time
+	Page      int
+	Limit     int
+}
+
+// AuditStatsFilters represents filters for audit statistics
+type AuditStatsFilters struct {
+	StartTime *time.Time
+	EndTime   *time.Time
+}
+
+// AuditStats represents audit log statistics
+type AuditStats struct {
+	TotalEvents  int64                    `json:"total_events"`
+	UniqueUsers  int64                    `json:"unique_users"`
+	TopActions   []map[string]interface{} `json:"top_actions"`
+	TopResources []map[string]interface{} `json:"top_resources"`
+	EventsByDay  []map[string]interface{} `json:"events_by_day"`
+}
+
+// AuditLogSummary represents a summary of audit log activities
+type AuditLogSummary struct {
+	TotalEvents    int64                    `json:"total_events"`
+	UniqueUsers    int64                    `json:"unique_users"`
+	MostActiveUser string                   `json:"most_active_user"`
+	TopActions     []map[string]interface{} `json:"top_actions"`
+	SecurityEvents int64                    `json:"security_events"`
+	ErrorEvents    int64                    `json:"error_events"`
+}
+
 // AuditLogService defines the interface for audit log business logic
 type AuditLogService interface {
 	LogAction(userID uuid.UUID, action, resource string, details map[string]interface{}) error
@@ -39,6 +75,14 @@ type AuditLogService interface {
 	GetLogsByAction(action string, limit, offset int) ([]*AuditLog, error)
 	GetLogsByDateRange(start, end time.Time, limit, offset int) ([]*AuditLog, error)
 	CleanupOldLogs(retentionDays int) error
+
+	// Admin-specific methods
+	GetAuditLogs(filters AuditLogFilters) ([]*AuditLog, int64, error)
+	GetAuditLogByID(id uuid.UUID) (*AuditLog, error)
+	GetAuditStats(filters AuditStatsFilters) (*AuditStats, error)
+	ExportAuditLogs(filters AuditLogFilters, format string) ([]byte, error)
+	CleanupAuditLogs(retentionDays int) (int64, error)
+	GetAuditLogSummary(startTime, endTime time.Time) (*AuditLogSummary, error)
 }
 
 // AuditAction constants for different actions

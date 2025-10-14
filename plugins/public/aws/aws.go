@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"skyclust/internal/plugin/interfaces"
+	"skyclust/pkg/plugin"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -26,7 +26,7 @@ type AWSProvider struct {
 
 // New creates a new AWS provider instance
 // This function is required for plugin loading
-func New() interfaces.CloudProvider {
+func New() plugin.CloudProvider {
 	return &AWSProvider{}
 }
 
@@ -118,7 +118,7 @@ func (p *AWSProvider) Initialize(config map[string]interface{}) error {
 }
 
 // ListInstances returns a list of AWS EC2 instances
-func (p *AWSProvider) ListInstances(ctx context.Context) ([]interfaces.Instance, error) {
+func (p *AWSProvider) ListInstances(ctx context.Context) ([]plugin.Instance, error) {
 	// Check if client is initialized
 	if p.ec2Client == nil {
 		return nil, fmt.Errorf("AWS provider not initialized. Please configure AWS credentials")
@@ -130,7 +130,7 @@ func (p *AWSProvider) ListInstances(ctx context.Context) ([]interfaces.Instance,
 		return nil, fmt.Errorf("failed to describe instances: %w", err)
 	}
 
-	var instances []interfaces.Instance
+	var instances []plugin.Instance
 	for _, reservation := range result.Reservations {
 		for _, instance := range reservation.Instances {
 			// Get instance name from tags
@@ -160,7 +160,7 @@ func (p *AWSProvider) ListInstances(ctx context.Context) ([]interfaces.Instance,
 				tags[aws.ToString(tag.Key)] = aws.ToString(tag.Value)
 			}
 
-			instances = append(instances, interfaces.Instance{
+			instances = append(instances, plugin.Instance{
 				ID:        aws.ToString(instance.InstanceId),
 				Name:      name,
 				Status:    string(instance.State.Name),
@@ -178,7 +178,7 @@ func (p *AWSProvider) ListInstances(ctx context.Context) ([]interfaces.Instance,
 }
 
 // CreateInstance creates a new AWS EC2 instance
-func (p *AWSProvider) CreateInstance(ctx context.Context, req interfaces.CreateInstanceRequest) (*interfaces.Instance, error) {
+func (p *AWSProvider) CreateInstance(ctx context.Context, req plugin.CreateInstanceRequest) (*plugin.Instance, error) {
 	// Prepare tags
 	var tags []types.Tag
 	for key, value := range req.Tags {
@@ -244,7 +244,7 @@ func (p *AWSProvider) CreateInstance(ctx context.Context, req interfaces.CreateI
 
 	fmt.Printf("Creating AWS instance: %s (%s) in %s\n", req.Name, req.Type, req.Region)
 
-	return &interfaces.Instance{
+	return &plugin.Instance{
 		ID:        aws.ToString(instance.InstanceId),
 		Name:      req.Name,
 		Status:    string(instance.State.Name),
@@ -287,15 +287,15 @@ func (p *AWSProvider) GetInstanceStatus(ctx context.Context, instanceID string) 
 }
 
 // ListRegions returns available AWS regions
-func (p *AWSProvider) ListRegions(ctx context.Context) ([]interfaces.Region, error) {
+func (p *AWSProvider) ListRegions(ctx context.Context) ([]plugin.Region, error) {
 	result, err := p.ec2Client.DescribeRegions(ctx, &ec2.DescribeRegionsInput{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to describe regions: %w", err)
 	}
 
-	var regions []interfaces.Region
+	var regions []plugin.Region
 	for _, region := range result.Regions {
-		regions = append(regions, interfaces.Region{
+		regions = append(regions, plugin.Region{
 			ID:          aws.ToString(region.RegionName),
 			Name:        aws.ToString(region.RegionName),
 			DisplayName: aws.ToString(region.RegionName),
@@ -307,7 +307,7 @@ func (p *AWSProvider) ListRegions(ctx context.Context) ([]interfaces.Region, err
 }
 
 // GetCostEstimate returns cost estimate for AWS resources
-func (p *AWSProvider) GetCostEstimate(ctx context.Context, req interfaces.CostEstimateRequest) (*interfaces.CostEstimate, error) {
+func (p *AWSProvider) GetCostEstimate(ctx context.Context, req plugin.CostEstimateRequest) (*plugin.CostEstimate, error) {
 	// Mock cost calculation
 	var costPerHour float64
 	switch req.InstanceType {
@@ -334,7 +334,7 @@ func (p *AWSProvider) GetCostEstimate(ctx context.Context, req interfaces.CostEs
 		multiplier = 1
 	}
 
-	return &interfaces.CostEstimate{
+	return &plugin.CostEstimate{
 		InstanceType: req.InstanceType,
 		Region:       req.Region,
 		Duration:     req.Duration,
@@ -344,11 +344,11 @@ func (p *AWSProvider) GetCostEstimate(ctx context.Context, req interfaces.CostEs
 }
 
 // GetNetworkProvider returns the network provider (not implemented for AWS in this example)
-func (p *AWSProvider) GetNetworkProvider() interfaces.NetworkProvider {
+func (p *AWSProvider) GetNetworkProvider() plugin.NetworkProvider {
 	return nil
 }
 
 // GetIAMProvider returns the IAM provider (not implemented for AWS in this example)
-func (p *AWSProvider) GetIAMProvider() interfaces.IAMProvider {
+func (p *AWSProvider) GetIAMProvider() plugin.IAMProvider {
 	return nil
 }

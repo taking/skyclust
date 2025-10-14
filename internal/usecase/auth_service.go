@@ -4,6 +4,7 @@ import (
 	"context"
 	"skyclust/internal/domain"
 	"skyclust/pkg/cache"
+	"skyclust/pkg/logger"
 	"skyclust/pkg/security"
 	"time"
 
@@ -124,15 +125,40 @@ func (s *authService) Login(username, password string) (*domain.User, string, er
 		return nil, "", domain.NewDomainError(domain.ErrCodeInternalError, "failed to generate token", 500)
 	}
 
-	// Log login
-	_ = s.auditLogRepo.Create(&domain.AuditLog{
-		UserID:   user.ID,
-		Action:   domain.ActionUserLogin,
-		Resource: "POST /api/v1/auth/login",
+	// Note: Audit log is now created in LoginWithContext method
+
+	return user, token, nil
+}
+
+// LoginWithContext performs login with client context information
+func (s *authService) LoginWithContext(username, password, clientIP, userAgent string) (*domain.User, string, error) {
+	// Use the existing Login method for authentication
+	user, token, err := s.Login(username, password)
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Create audit log with client context
+	auditLog := &domain.AuditLog{
+		UserID:    user.ID,
+		Action:    domain.ActionUserLogin,
+		Resource:  "POST /api/v1/auth/login",
+		IPAddress: clientIP,
+		UserAgent: userAgent,
 		Details: map[string]interface{}{
 			"username": user.Username,
 		},
-	})
+	}
+
+	// Only set IPAddress if it's not empty
+	if clientIP == "" {
+		auditLog.IPAddress = "127.0.0.1" // Default to localhost if no IP
+	}
+
+	if err := s.auditLogRepo.Create(auditLog); err != nil {
+		// Log the error but don't fail the login
+		logger.Errorf("Failed to create audit log: %v", err)
+	}
 
 	return user, token, nil
 }

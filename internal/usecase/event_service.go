@@ -1,9 +1,9 @@
 package usecase
 
 import (
+	"context"
 	"skyclust/internal/domain"
 	"skyclust/internal/infrastructure/messaging"
-	"context"
 )
 
 // eventService implements the event business logic

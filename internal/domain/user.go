@@ -42,21 +42,45 @@ type UserRepository interface {
 	List(limit, offset int, filters map[string]interface{}) ([]*User, int64, error)
 }
 
+// UserFilters represents filters for user queries
+type UserFilters struct {
+	Search string
+	Role   string
+	Status string
+	Page   int
+	Limit  int
+}
+
+// UserStats represents user statistics
+type UserStats struct {
+	TotalUsers    int64
+	ActiveUsers   int64
+	InactiveUsers int64
+	NewUsersToday int64
+}
+
 // UserService defines the interface for user business logic
 type UserService interface {
 	CreateUser(ctx context.Context, req CreateUserRequest) (*User, error)
 	GetUser(ctx context.Context, id string) (*User, error)
 	GetUsers(ctx context.Context, limit, offset int, filters map[string]interface{}) ([]*User, int64, error)
 	UpdateUser(ctx context.Context, id string, req UpdateUserRequest) (*User, error)
-	DeleteUser(ctx context.Context, id string) error
+
+	// Admin-specific methods
+	GetUserByID(id uuid.UUID) (*User, error)
+	GetUsersWithFilters(filters UserFilters) ([]*User, int64, error)
+	UpdateUserDirect(user *User) (*User, error)
+	DeleteUserByID(id uuid.UUID) error
+	GetUserStats() (*UserStats, error)
 	Authenticate(ctx context.Context, email, password string) (*User, error)
 	ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error
 }
 
 // AuthService defines the interface for authentication business logic
 type AuthService interface {
-	Register(req CreateUserRequest) (*User, string, error)  // Returns user and JWT token
-	Login(username, password string) (*User, string, error) // Returns user and JWT token
+	Register(req CreateUserRequest) (*User, string, error)                                  // Returns user and JWT token
+	Login(username, password string) (*User, string, error)                                 // Returns user and JWT token
+	LoginWithContext(username, password, clientIP, userAgent string) (*User, string, error) // Returns user and JWT token with context
 	ValidateToken(token string) (*User, error)
 	Logout(userID uuid.UUID, token string) error
 }

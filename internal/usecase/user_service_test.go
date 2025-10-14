@@ -1,8 +1,8 @@
 package usecase
 
 import (
-	"skyclust/internal/domain"
 	"context"
+	"skyclust/internal/domain"
 	"testing"
 	"time"
 

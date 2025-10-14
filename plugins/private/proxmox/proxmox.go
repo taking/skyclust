@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"skyclust/internal/plugin/interfaces"
+	"skyclust/pkg/plugin"
 
 	"github.com/luthermonson/go-proxmox"
 )
@@ -22,7 +22,7 @@ type ProxmoxProvider struct {
 
 // New creates a new Proxmox provider instance
 // This function is required for plugin loading
-func New() interfaces.CloudProvider {
+func New() plugin.CloudProvider {
 	return &ProxmoxProvider{}
 }
 
@@ -74,24 +74,24 @@ func (p *ProxmoxProvider) Initialize(config map[string]interface{}) error {
 }
 
 // GetNetworkProvider returns the network provider (not implemented for Proxmox in this example)
-func (p *ProxmoxProvider) GetNetworkProvider() interfaces.NetworkProvider {
+func (p *ProxmoxProvider) GetNetworkProvider() plugin.NetworkProvider {
 	return nil
 }
 
 // GetIAMProvider returns the IAM provider (not implemented for Proxmox in this example)
-func (p *ProxmoxProvider) GetIAMProvider() interfaces.IAMProvider {
+func (p *ProxmoxProvider) GetIAMProvider() plugin.IAMProvider {
 	return nil
 }
 
 // ListInstances returns a list of Proxmox VMs
-func (p *ProxmoxProvider) ListInstances(ctx context.Context) ([]interfaces.Instance, error) {
+func (p *ProxmoxProvider) ListInstances(ctx context.Context) ([]plugin.Instance, error) {
 	// Get all nodes
 	nodes, err := p.client.Nodes(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get nodes: %w", err)
 	}
 
-	var instances []interfaces.Instance
+	var instances []plugin.Instance
 	for _, node := range nodes {
 		// Get VMs for each node using the correct API
 		nodeObj, err := p.client.Node(ctx, node.Node)
@@ -140,7 +140,7 @@ func (p *ProxmoxProvider) ListInstances(ctx context.Context) ([]interfaces.Insta
 			tags["Node"] = node.Node
 			tags["VMID"] = fmt.Sprintf("%d", vm.VMID)
 
-			instances = append(instances, interfaces.Instance{
+			instances = append(instances, plugin.Instance{
 				ID:        fmt.Sprintf("%d", vm.VMID),
 				Name:      name,
 				Status:    statusStr,
@@ -158,7 +158,7 @@ func (p *ProxmoxProvider) ListInstances(ctx context.Context) ([]interfaces.Insta
 }
 
 // CreateInstance creates a new Proxmox VM
-func (p *ProxmoxProvider) CreateInstance(ctx context.Context, req interfaces.CreateInstanceRequest) (*interfaces.Instance, error) {
+func (p *ProxmoxProvider) CreateInstance(ctx context.Context, req plugin.CreateInstanceRequest) (*plugin.Instance, error) {
 	// Get all nodes to find the first available one
 	nodes, err := p.client.Nodes(ctx)
 	if err != nil {
@@ -191,23 +191,23 @@ func (p *ProxmoxProvider) CreateInstance(ctx context.Context, req interfaces.Cre
 
 	// Create VM configuration options
 	options := []proxmox.VirtualMachineOption{
-		proxmox.VirtualMachineOption{
+		{
 			Name:  "name",
 			Value: req.Name,
 		},
-		proxmox.VirtualMachineOption{
+		{
 			Name:  "memory",
 			Value: "1024", // Default memory
 		},
-		proxmox.VirtualMachineOption{
+		{
 			Name:  "cores",
 			Value: "1", // Default cores
 		},
-		proxmox.VirtualMachineOption{
+		{
 			Name:  "net0",
 			Value: "virtio,bridge=vmbr0", // Default network
 		},
-		proxmox.VirtualMachineOption{
+		{
 			Name:  "scsi0",
 			Value: "local-lvm:8", // Default storage
 		},
@@ -221,7 +221,7 @@ func (p *ProxmoxProvider) CreateInstance(ctx context.Context, req interfaces.Cre
 
 	fmt.Printf("Creating Proxmox VM: %s (ID: %d) on node %s\n", req.Name, vmid, node.Node)
 
-	return &interfaces.Instance{
+	return &plugin.Instance{
 		ID:        fmt.Sprintf("%d", vmid),
 		Name:      req.Name,
 		Status:    "stopped",
@@ -300,15 +300,15 @@ func (p *ProxmoxProvider) GetInstanceStatus(ctx context.Context, instanceID stri
 }
 
 // ListRegions returns available Proxmox nodes as regions
-func (p *ProxmoxProvider) ListRegions(ctx context.Context) ([]interfaces.Region, error) {
+func (p *ProxmoxProvider) ListRegions(ctx context.Context) ([]plugin.Region, error) {
 	nodes, err := p.client.Nodes(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get nodes: %w", err)
 	}
 
-	var regions []interfaces.Region
+	var regions []plugin.Region
 	for _, node := range nodes {
-		regions = append(regions, interfaces.Region{
+		regions = append(regions, plugin.Region{
 			ID:          node.Node,
 			Name:        node.Node,
 			DisplayName: node.Node,
@@ -320,7 +320,7 @@ func (p *ProxmoxProvider) ListRegions(ctx context.Context) ([]interfaces.Region,
 }
 
 // GetCostEstimate returns cost estimate for Proxmox resources (mock implementation)
-func (p *ProxmoxProvider) GetCostEstimate(ctx context.Context, req interfaces.CostEstimateRequest) (*interfaces.CostEstimate, error) {
+func (p *ProxmoxProvider) GetCostEstimate(ctx context.Context, req plugin.CostEstimateRequest) (*plugin.CostEstimate, error) {
 	// Mock cost calculation for Proxmox (usually free for self-hosted)
 	var costPerHour float64
 	switch req.InstanceType {
@@ -343,7 +343,7 @@ func (p *ProxmoxProvider) GetCostEstimate(ctx context.Context, req interfaces.Co
 		multiplier = 1
 	}
 
-	return &interfaces.CostEstimate{
+	return &plugin.CostEstimate{
 		InstanceType: req.InstanceType,
 		Region:       req.Region,
 		Duration:     req.Duration,

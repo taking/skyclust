@@ -1,8 +1,8 @@
 package database
 
 import (
-	"skyclust/internal/domain"
 	"fmt"
+	"skyclust/internal/domain"
 	"time"
 
 	"gorm.io/gorm"

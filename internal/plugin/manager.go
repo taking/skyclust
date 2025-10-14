@@ -10,12 +10,12 @@ import (
 	"sync"
 	"time"
 
-	"skyclust/internal/plugin/interfaces"
+	plugininterfaces "skyclust/pkg/plugin"
 )
 
 // Manager handles loading and managing cloud provider plugins
 type Manager struct {
-	plugins     map[string]interfaces.CloudProvider
+	plugins     map[string]plugininterfaces.CloudProvider
 	configs     map[string]map[string]interface{}
 	loading     map[string]bool
 	errors      map[string]error
@@ -26,7 +26,7 @@ type Manager struct {
 // NewManager creates a new plugin manager
 func NewManager() *Manager {
 	return &Manager{
-		plugins:     make(map[string]interfaces.CloudProvider),
+		plugins:     make(map[string]plugininterfaces.CloudProvider),
 		configs:     make(map[string]map[string]interface{}),
 		loading:     make(map[string]bool),
 		errors:      make(map[string]error),
@@ -98,7 +98,7 @@ type LoadResult struct {
 	PluginName string
 	Success    bool
 	Error      error
-	Provider   interfaces.CloudProvider
+	Provider   plugininterfaces.CloudProvider
 }
 
 // loadPluginsFromDir loads plugins from a specific directory (synchronous)
@@ -210,7 +210,7 @@ func (m *Manager) loadPluginAsync(pluginPath, pluginName string, resultChan chan
 }
 
 // loadPluginWithContext loads a plugin with context support
-func (m *Manager) loadPluginWithContext(ctx context.Context, pluginPath, pluginName string) (interfaces.CloudProvider, error) {
+func (m *Manager) loadPluginWithContext(ctx context.Context, pluginPath, pluginName string) (plugininterfaces.CloudProvider, error) {
 	// Check if context is cancelled
 	select {
 	case <-ctx.Done():
@@ -231,7 +231,7 @@ func (m *Manager) loadPluginWithContext(ctx context.Context, pluginPath, pluginN
 	}
 
 	// Type assert to the expected function signature
-	newProvider, ok := newFunc.(func() interfaces.CloudProvider)
+	newProvider, ok := newFunc.(func() plugininterfaces.CloudProvider)
 	if !ok {
 		return nil, fmt.Errorf("plugin %s 'New' function has wrong signature", pluginName)
 	}
@@ -257,7 +257,7 @@ func (m *Manager) loadPlugin(pluginPath, pluginName string) error {
 	}
 
 	// Type assert to the expected function signature
-	newProvider, ok := newFunc.(func() interfaces.CloudProvider)
+	newProvider, ok := newFunc.(func() plugininterfaces.CloudProvider)
 	if !ok {
 		return fmt.Errorf("plugin %s 'New' function has wrong signature", pluginName)
 	}
@@ -273,7 +273,7 @@ func (m *Manager) loadPlugin(pluginPath, pluginName string) error {
 }
 
 // GetProvider returns a cloud provider by name
-func (m *Manager) GetProvider(name string) (interfaces.CloudProvider, error) {
+func (m *Manager) GetProvider(name string) (plugininterfaces.CloudProvider, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 

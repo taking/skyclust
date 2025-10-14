@@ -1,16 +1,14 @@
 module gcp-plugin
 
-go 1.22
-
-toolchain go1.23.0
+go 1.24.0
 
 require (
 	cloud.google.com/go/compute v1.23.0
-	cmp v0.0.0
 	google.golang.org/api v0.143.0
+	skyclust v0.0.0-00010101000000-000000000000
 )
 
-replace cmp => ../../../
+replace skyclust => ../../../
 
 require (
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
@@ -20,11 +18,11 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.1 // indirect
 	github.com/googleapis/gax-go/v2 v2.12.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
-	golang.org/x/crypto v0.17.0 // indirect
-	golang.org/x/net v0.19.0 // indirect
+	golang.org/x/crypto v0.42.0 // indirect
+	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/oauth2 v0.12.0 // indirect
-	golang.org/x/sys v0.19.0 // indirect
-	golang.org/x/text v0.14.0 // indirect
+	golang.org/x/sys v0.36.0 // indirect
+	golang.org/x/text v0.29.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20230913181813-007df8e322eb // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20230913181813-007df8e322eb // indirect

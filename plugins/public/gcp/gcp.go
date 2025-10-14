@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"skyclust/internal/plugin/interfaces"
+	"skyclust/pkg/plugin"
 
 	compute "cloud.google.com/go/compute/apiv1"
 	"cloud.google.com/go/compute/apiv1/computepb"
@@ -24,7 +24,7 @@ type GCPProvider struct {
 
 // New creates a new GCP provider instance
 // This function is required for plugin loading
-func New() interfaces.CloudProvider {
+func New() plugin.CloudProvider {
 	return &GCPProvider{}
 }
 
@@ -74,14 +74,14 @@ func (p *GCPProvider) Initialize(config map[string]interface{}) error {
 }
 
 // ListInstances returns a list of GCP Compute Engine instances
-func (p *GCPProvider) ListInstances(ctx context.Context) ([]interfaces.Instance, error) {
+func (p *GCPProvider) ListInstances(ctx context.Context) ([]plugin.Instance, error) {
 	// Get zones in the region
 	zones, err := p.getZonesInRegion(ctx, p.region)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get zones: %w", err)
 	}
 
-	var instances []interfaces.Instance
+	var instances []plugin.Instance
 
 	// List instances in each zone
 	for _, zone := range zones {
@@ -148,7 +148,7 @@ func (p *GCPProvider) ListInstances(ctx context.Context) ([]interfaces.Instance,
 			tags["Project"] = p.projectID
 			tags["Zone"] = zone
 
-			instances = append(instances, interfaces.Instance{
+			instances = append(instances, plugin.Instance{
 				ID:        instance.GetName(),
 				Name:      name,
 				Status:    status,
@@ -193,7 +193,7 @@ func (p *GCPProvider) getZonesInRegion(ctx context.Context, region string) ([]st
 }
 
 // CreateInstance creates a new GCP Compute Engine instance
-func (p *GCPProvider) CreateInstance(ctx context.Context, req interfaces.CreateInstanceRequest) (*interfaces.Instance, error) {
+func (p *GCPProvider) CreateInstance(ctx context.Context, req plugin.CreateInstanceRequest) (*plugin.Instance, error) {
 	// Get zones in the region
 	zones, err := p.getZonesInRegion(ctx, req.Region)
 	if err != nil {
@@ -268,7 +268,7 @@ func (p *GCPProvider) CreateInstance(ctx context.Context, req interfaces.CreateI
 
 	fmt.Printf("Creating GCP instance: %s (%s) in %s\n", req.Name, req.Type, req.Region)
 
-	return &interfaces.Instance{
+	return &plugin.Instance{
 		ID:        req.Name,
 		Name:      req.Name,
 		Status:    "PROVISIONING",
@@ -332,7 +332,7 @@ func (p *GCPProvider) GetInstanceStatus(ctx context.Context, instanceID string) 
 }
 
 // ListRegions returns available GCP regions
-func (p *GCPProvider) ListRegions(ctx context.Context) ([]interfaces.Region, error) {
+func (p *GCPProvider) ListRegions(ctx context.Context) ([]plugin.Region, error) {
 	// Get all zones and extract unique regions
 	req := &computepb.ListZonesRequest{
 		Project: p.projectID,
@@ -359,9 +359,9 @@ func (p *GCPProvider) ListRegions(ctx context.Context) ([]interfaces.Region, err
 		}
 	}
 
-	var regions []interfaces.Region
+	var regions []plugin.Region
 	for region, description := range regionMap {
-		regions = append(regions, interfaces.Region{
+		regions = append(regions, plugin.Region{
 			ID:          region,
 			Name:        region,
 			DisplayName: description,
@@ -373,7 +373,7 @@ func (p *GCPProvider) ListRegions(ctx context.Context) ([]interfaces.Region, err
 }
 
 // GetCostEstimate returns cost estimate for GCP resources
-func (p *GCPProvider) GetCostEstimate(ctx context.Context, req interfaces.CostEstimateRequest) (*interfaces.CostEstimate, error) {
+func (p *GCPProvider) GetCostEstimate(ctx context.Context, req plugin.CostEstimateRequest) (*plugin.CostEstimate, error) {
 	// Mock cost calculation
 	var costPerHour float64
 	switch req.InstanceType {
@@ -400,7 +400,7 @@ func (p *GCPProvider) GetCostEstimate(ctx context.Context, req interfaces.CostEs
 		multiplier = 1
 	}
 
-	return &interfaces.CostEstimate{
+	return &plugin.CostEstimate{
 		InstanceType: req.InstanceType,
 		Region:       req.Region,
 		Duration:     req.Duration,
@@ -410,11 +410,11 @@ func (p *GCPProvider) GetCostEstimate(ctx context.Context, req interfaces.CostEs
 }
 
 // GetNetworkProvider returns the network provider (not implemented for GCP in this example)
-func (p *GCPProvider) GetNetworkProvider() interfaces.NetworkProvider {
+func (p *GCPProvider) GetNetworkProvider() plugin.NetworkProvider {
 	return nil
 }
 
 // GetIAMProvider returns the IAM provider (not implemented for GCP in this example)
-func (p *GCPProvider) GetIAMProvider() interfaces.IAMProvider {
+func (p *GCPProvider) GetIAMProvider() plugin.IAMProvider {
 	return nil
 }

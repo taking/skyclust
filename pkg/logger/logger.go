@@ -288,12 +288,16 @@ func (l *Logger) LogDebug(ctx context.Context, message string, fields ...zap.Fie
 
 // Sync flushes any buffered log entries
 func (l *Logger) Sync() error {
-	return l.logger.Sync()
+	// Ignore sync errors for stderr as it's a known issue on some systems
+	_ = l.logger.Sync()
+	return nil
 }
 
 // Close closes the logger
 func (l *Logger) Close() error {
-	return l.logger.Sync()
+	// Ignore sync errors for stderr as it's a known issue on some systems
+	_ = l.logger.Sync()
+	return nil
 }
 
 // GetLogger returns the underlying zap logger

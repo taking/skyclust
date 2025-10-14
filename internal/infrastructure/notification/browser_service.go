@@ -6,9 +6,9 @@
 package notification
 
 import (
-	"skyclust/internal/domain"
 	"context"
 	"encoding/json"
+	"skyclust/internal/domain"
 	"time"
 
 	"skyclust/pkg/logger"

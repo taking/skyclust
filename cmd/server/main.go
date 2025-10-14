@@ -174,7 +174,7 @@ func setupRouter(container *container.Container, pluginManager *plugin.Manager, 
 	// Create error handler
 	errorHandler := httpdelivery.NewErrorHandler(logger)
 
-	// Middleware
+	// Global middleware
 	router.Use(errorHandler.RequestIDMiddleware())
 	router.Use(errorHandler.LoggingMiddleware())
 	router.Use(errorHandler.RecoveryMiddleware())
@@ -194,14 +194,6 @@ func setupRouter(container *container.Container, pluginManager *plugin.Manager, 
 		c.Next()
 	})
 
-	// Health check
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":    "healthy",
-			"timestamp": time.Now().Format(time.RFC3339),
-		})
-	})
-
 	// SSE endpoint (인증 필요)
 	router.GET("/api/events", func(c *gin.Context) {
 		// SSE 핸들러는 별도 구현 필요
@@ -209,71 +201,27 @@ func setupRouter(container *container.Container, pluginManager *plugin.Manager, 
 		c.JSON(http.StatusNotImplemented, gin.H{"message": "SSE endpoint will be implemented"})
 	})
 
-	// API routes
-	api := router.Group("/api/v1")
-	{
-		// Public routes (no authentication required)
-		// RESTful authentication routes
-		routes.SetupRESTfulRoutes(router, container.AuthService, container.UserService, container.OIDCService, container.LogoutService)
+	// Create authentication middleware
+	authMiddleware := middleware.NewMiddleware(
+		logger,
+		&middleware.MiddlewareConfig{
+			APIVersion:        "1.0",
+			DefaultPageSize:   10,
+			MaxPageSize:       100,
+			LoggingEnabled:    true,
+			StructuredLogging: true,
+		},
+		nil,                   // rateLimiter
+		container.AuthService, // authService
+		nil,                   // rbacService
+		nil,                   // auditLogger
+	)
 
-		// Protected routes (require authentication)
-		protected := api.Group("")
+	// Create route manager
+	routeManager := routes.NewRouteManager(container, pluginManager, authMiddleware, logger, cfg)
 
-		// Create authentication middleware
-		authMiddleware := middleware.NewMiddleware(
-			logger,
-			&middleware.MiddlewareConfig{
-				APIVersion:        "1.0",
-				DefaultPageSize:   10,
-				MaxPageSize:       100,
-				LoggingEnabled:    true,
-				StructuredLogging: true,
-			},
-			nil,                   // rateLimiter
-			container.AuthService, // authService
-			nil,                   // rbacService
-			nil,                   // auditLogger
-		)
-
-		// Apply authentication middleware
-		protected.Use(authMiddleware.AuthMiddleware())
-		{
-			// Authentication routes (protected)
-			authProtected := protected.Group("/auth")
-			routes.SetupAuthRoutes(authProtected, container.AuthService, container.UserService, container.LogoutService)
-
-			// Credential management
-			credentials := protected.Group("/credentials")
-			routes.SetupCredentialRoutes(credentials, container.CredentialService)
-
-			// Workspace routes
-			workspaces := protected.Group("/workspaces")
-			routes.SetupWorkspaceRoutes(workspaces, container.WorkspaceService, container.UserService)
-
-			// Provider routes
-			providers := protected.Group("/providers")
-			routes.SetupProviderRoutes(providers, pluginManager, container.AuditLogRepo)
-
-			// Cost analysis routes
-			costAnalysis := protected.Group("/cost-analysis")
-			costAnalysisHandler := httpdelivery.NewCostAnalysisHandler(logger, container.CostAnalysisService)
-			routes.SetupCostAnalysisRoutes(costAnalysis, costAnalysisHandler)
-
-			// Notification routes
-			notifications := protected.Group("/notifications")
-			notificationHandler := httpdelivery.NewNotificationHandler(container.NotificationService, logger)
-			routes.SetupNotificationRoutes(notifications, notificationHandler)
-
-			// Export routes
-			exports := protected.Group("/exports")
-			exportHandler := httpdelivery.NewExportHandler(logger, container.ExportService)
-			routes.SetupExportRoutes(exports, exportHandler)
-
-			// User management routes
-			users := protected.Group("/users")
-			routes.SetupUsersRoutes(users, container.AuthService, container.UserService)
-		}
-	}
+	// Setup all routes using the route manager
+	routeManager.SetupAllRoutes(router)
 
 	return router
 }

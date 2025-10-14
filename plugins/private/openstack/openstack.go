@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"skyclust/internal/plugin/interfaces"
+	"skyclust/pkg/plugin"
 )
 
 // OpenStackProvider implements the CloudProvider interface for OpenStack
@@ -17,7 +17,7 @@ type OpenStackProvider struct {
 
 // New creates a new OpenStack provider instance
 // This function is required for plugin loading
-func New() interfaces.CloudProvider {
+func New() plugin.CloudProvider {
 	return &OpenStackProvider{
 		networkProvider: &OpenStackNetworkProvider{},
 		iamProvider:     &OpenStackIAMProvider{},
@@ -37,7 +37,7 @@ func (p *OpenStackProvider) GetVersion() string {
 // Initialize initializes the OpenStack provider with configuration
 func (p *OpenStackProvider) Initialize(config map[string]interface{}) error {
 	p.config = config
-	
+
 	// Validate required configuration
 	if _, ok := config["auth_url"]; !ok {
 		return fmt.Errorf("OpenStack auth_url is required")
@@ -59,25 +59,25 @@ func (p *OpenStackProvider) Initialize(config map[string]interface{}) error {
 	p.networkProvider.Initialize(config)
 	p.iamProvider.Initialize(config)
 
-	fmt.Printf("OpenStack provider initialized for project: %s, region: %s\n", 
+	fmt.Printf("OpenStack provider initialized for project: %s, region: %s\n",
 		config["project_id"], config["region"])
 	return nil
 }
 
 // GetNetworkProvider returns the network provider
-func (p *OpenStackProvider) GetNetworkProvider() interfaces.NetworkProvider {
+func (p *OpenStackProvider) GetNetworkProvider() plugin.NetworkProvider {
 	return p.networkProvider
 }
 
 // GetIAMProvider returns the IAM provider
-func (p *OpenStackProvider) GetIAMProvider() interfaces.IAMProvider {
+func (p *OpenStackProvider) GetIAMProvider() plugin.IAMProvider {
 	return p.iamProvider
 }
 
 // ListInstances returns a list of OpenStack instances
-func (p *OpenStackProvider) ListInstances(ctx context.Context) ([]interfaces.Instance, error) {
+func (p *OpenStackProvider) ListInstances(ctx context.Context) ([]plugin.Instance, error) {
 	// This is a mock implementation - in real implementation, you'd use OpenStack SDK
-	instances := []interfaces.Instance{
+	instances := []plugin.Instance{
 		{
 			ID:        "openstack-vm-001",
 			Name:      "web-server-openstack",
@@ -113,9 +113,9 @@ func (p *OpenStackProvider) ListInstances(ctx context.Context) ([]interfaces.Ins
 }
 
 // CreateInstance creates a new OpenStack instance
-func (p *OpenStackProvider) CreateInstance(ctx context.Context, req interfaces.CreateInstanceRequest) (*interfaces.Instance, error) {
+func (p *OpenStackProvider) CreateInstance(ctx context.Context, req plugin.CreateInstanceRequest) (*plugin.Instance, error) {
 	// Mock implementation
-	instance := &interfaces.Instance{
+	instance := &plugin.Instance{
 		ID:        fmt.Sprintf("openstack-vm-%d", time.Now().Unix()),
 		Name:      req.Name,
 		Status:    "BUILD",
@@ -126,7 +126,7 @@ func (p *OpenStackProvider) CreateInstance(ctx context.Context, req interfaces.C
 	}
 
 	fmt.Printf("Creating OpenStack instance: %s (%s) in %s\n", req.Name, req.Type, req.Region)
-	
+
 	// Log network configuration if provided
 	if req.VPCID != "" {
 		fmt.Printf("  - VPC: %s\n", req.VPCID)
@@ -140,7 +140,7 @@ func (p *OpenStackProvider) CreateInstance(ctx context.Context, req interfaces.C
 	if req.KeyPairName != "" {
 		fmt.Printf("  - Key Pair: %s\n", req.KeyPairName)
 	}
-	
+
 	return instance, nil
 }
 
@@ -157,8 +157,8 @@ func (p *OpenStackProvider) GetInstanceStatus(ctx context.Context, instanceID st
 }
 
 // ListRegions returns available OpenStack regions
-func (p *OpenStackProvider) ListRegions(ctx context.Context) ([]interfaces.Region, error) {
-	regions := []interfaces.Region{
+func (p *OpenStackProvider) ListRegions(ctx context.Context) ([]plugin.Region, error) {
+	regions := []plugin.Region{
 		{ID: "RegionOne", Name: "RegionOne", DisplayName: "Region One", Status: "available"},
 		{ID: "RegionTwo", Name: "RegionTwo", DisplayName: "Region Two", Status: "available"},
 		{ID: "RegionThree", Name: "RegionThree", DisplayName: "Region Three", Status: "available"},
@@ -168,7 +168,7 @@ func (p *OpenStackProvider) ListRegions(ctx context.Context) ([]interfaces.Regio
 }
 
 // GetCostEstimate returns cost estimate for OpenStack resources
-func (p *OpenStackProvider) GetCostEstimate(ctx context.Context, req interfaces.CostEstimateRequest) (*interfaces.CostEstimate, error) {
+func (p *OpenStackProvider) GetCostEstimate(ctx context.Context, req plugin.CostEstimateRequest) (*plugin.CostEstimate, error) {
 	// Mock cost calculation
 	var costPerHour float64
 	switch req.InstanceType {
@@ -197,7 +197,7 @@ func (p *OpenStackProvider) GetCostEstimate(ctx context.Context, req interfaces.
 		multiplier = 1
 	}
 
-	return &interfaces.CostEstimate{
+	return &plugin.CostEstimate{
 		InstanceType: req.InstanceType,
 		Region:       req.Region,
 		Duration:     req.Duration,
@@ -225,8 +225,8 @@ func (p *OpenStackNetworkProvider) Initialize(config map[string]interface{}) err
 }
 
 // VPC Management (Neutron Networks)
-func (p *OpenStackNetworkProvider) CreateVPC(ctx context.Context, req interfaces.CreateVPCRequest) (*interfaces.VPC, error) {
-	vpc := &interfaces.VPC{
+func (p *OpenStackNetworkProvider) CreateVPC(ctx context.Context, req plugin.CreateVPCRequest) (*plugin.VPC, error) {
+	vpc := &plugin.VPC{
 		ID:        fmt.Sprintf("openstack-network-%d", time.Now().Unix()),
 		Name:      req.Name,
 		CIDR:      req.CIDR,
@@ -235,14 +235,14 @@ func (p *OpenStackNetworkProvider) CreateVPC(ctx context.Context, req interfaces
 		CreatedAt: time.Now().Format(time.RFC3339),
 		Tags:      req.Tags,
 	}
-	
+
 	fmt.Printf("Creating OpenStack network: %s (%s)\n", req.Name, req.CIDR)
 	return vpc, nil
 }
 
-func (p *OpenStackNetworkProvider) GetVPC(ctx context.Context, vpcID string) (*interfaces.VPC, error) {
+func (p *OpenStackNetworkProvider) GetVPC(ctx context.Context, vpcID string) (*plugin.VPC, error) {
 	// Mock implementation
-	return &interfaces.VPC{
+	return &plugin.VPC{
 		ID:        vpcID,
 		Name:      "mock-network",
 		CIDR:      "10.0.0.0/16",
@@ -252,9 +252,9 @@ func (p *OpenStackNetworkProvider) GetVPC(ctx context.Context, vpcID string) (*i
 	}, nil
 }
 
-func (p *OpenStackNetworkProvider) ListVPCs(ctx context.Context) ([]interfaces.VPC, error) {
+func (p *OpenStackNetworkProvider) ListVPCs(ctx context.Context) ([]plugin.VPC, error) {
 	// Mock implementation
-	return []interfaces.VPC{
+	return []plugin.VPC{
 		{
 			ID:        "openstack-network-001",
 			Name:      "default-network",
@@ -266,9 +266,9 @@ func (p *OpenStackNetworkProvider) ListVPCs(ctx context.Context) ([]interfaces.V
 	}, nil
 }
 
-func (p *OpenStackNetworkProvider) UpdateVPC(ctx context.Context, vpcID string, req interfaces.UpdateVPCRequest) (*interfaces.VPC, error) {
+func (p *OpenStackNetworkProvider) UpdateVPC(ctx context.Context, vpcID string, req plugin.UpdateVPCRequest) (*plugin.VPC, error) {
 	// Mock implementation
-	return &interfaces.VPC{
+	return &plugin.VPC{
 		ID:        vpcID,
 		Name:      req.Name,
 		CIDR:      "10.0.0.0/16",
@@ -285,8 +285,8 @@ func (p *OpenStackNetworkProvider) DeleteVPC(ctx context.Context, vpcID string) 
 }
 
 // Subnet Management (Neutron Subnets)
-func (p *OpenStackNetworkProvider) CreateSubnet(ctx context.Context, req interfaces.CreateSubnetRequest) (*interfaces.Subnet, error) {
-	subnet := &interfaces.Subnet{
+func (p *OpenStackNetworkProvider) CreateSubnet(ctx context.Context, req plugin.CreateSubnetRequest) (*plugin.Subnet, error) {
+	subnet := &plugin.Subnet{
 		ID:               fmt.Sprintf("openstack-subnet-%d", time.Now().Unix()),
 		Name:             req.Name,
 		VPCID:            req.VPCID,
@@ -296,14 +296,14 @@ func (p *OpenStackNetworkProvider) CreateSubnet(ctx context.Context, req interfa
 		CreatedAt:        time.Now().Format(time.RFC3339),
 		Tags:             req.Tags,
 	}
-	
+
 	fmt.Printf("Creating OpenStack subnet: %s (%s) in network %s\n", req.Name, req.CIDR, req.VPCID)
 	return subnet, nil
 }
 
-func (p *OpenStackNetworkProvider) GetSubnet(ctx context.Context, subnetID string) (*interfaces.Subnet, error) {
+func (p *OpenStackNetworkProvider) GetSubnet(ctx context.Context, subnetID string) (*plugin.Subnet, error) {
 	// Mock implementation
-	return &interfaces.Subnet{
+	return &plugin.Subnet{
 		ID:               subnetID,
 		Name:             "mock-subnet",
 		VPCID:            "openstack-network-001",
@@ -314,9 +314,9 @@ func (p *OpenStackNetworkProvider) GetSubnet(ctx context.Context, subnetID strin
 	}, nil
 }
 
-func (p *OpenStackNetworkProvider) ListSubnets(ctx context.Context, vpcID string) ([]interfaces.Subnet, error) {
+func (p *OpenStackNetworkProvider) ListSubnets(ctx context.Context, vpcID string) ([]plugin.Subnet, error) {
 	// Mock implementation
-	return []interfaces.Subnet{
+	return []plugin.Subnet{
 		{
 			ID:               "openstack-subnet-001",
 			Name:             "default-subnet",
@@ -329,9 +329,9 @@ func (p *OpenStackNetworkProvider) ListSubnets(ctx context.Context, vpcID string
 	}, nil
 }
 
-func (p *OpenStackNetworkProvider) UpdateSubnet(ctx context.Context, subnetID string, req interfaces.UpdateSubnetRequest) (*interfaces.Subnet, error) {
+func (p *OpenStackNetworkProvider) UpdateSubnet(ctx context.Context, subnetID string, req plugin.UpdateSubnetRequest) (*plugin.Subnet, error) {
 	// Mock implementation
-	return &interfaces.Subnet{
+	return &plugin.Subnet{
 		ID:               subnetID,
 		Name:             req.Name,
 		VPCID:            "openstack-network-001",
@@ -349,8 +349,8 @@ func (p *OpenStackNetworkProvider) DeleteSubnet(ctx context.Context, subnetID st
 }
 
 // Security Group Management (Neutron Security Groups)
-func (p *OpenStackNetworkProvider) CreateSecurityGroup(ctx context.Context, req interfaces.CreateSecurityGroupRequest) (*interfaces.SecurityGroup, error) {
-	sg := &interfaces.SecurityGroup{
+func (p *OpenStackNetworkProvider) CreateSecurityGroup(ctx context.Context, req plugin.CreateSecurityGroupRequest) (*plugin.SecurityGroup, error) {
+	sg := &plugin.SecurityGroup{
 		ID:          fmt.Sprintf("openstack-sg-%d", time.Now().Unix()),
 		Name:        req.Name,
 		Description: req.Description,
@@ -358,14 +358,14 @@ func (p *OpenStackNetworkProvider) CreateSecurityGroup(ctx context.Context, req 
 		CreatedAt:   time.Now().Format(time.RFC3339),
 		Tags:        req.Tags,
 	}
-	
+
 	fmt.Printf("Creating OpenStack security group: %s\n", req.Name)
 	return sg, nil
 }
 
-func (p *OpenStackNetworkProvider) GetSecurityGroup(ctx context.Context, sgID string) (*interfaces.SecurityGroup, error) {
+func (p *OpenStackNetworkProvider) GetSecurityGroup(ctx context.Context, sgID string) (*plugin.SecurityGroup, error) {
 	// Mock implementation
-	return &interfaces.SecurityGroup{
+	return &plugin.SecurityGroup{
 		ID:          sgID,
 		Name:        "mock-security-group",
 		Description: "Mock security group",
@@ -374,9 +374,9 @@ func (p *OpenStackNetworkProvider) GetSecurityGroup(ctx context.Context, sgID st
 	}, nil
 }
 
-func (p *OpenStackNetworkProvider) ListSecurityGroups(ctx context.Context, vpcID string) ([]interfaces.SecurityGroup, error) {
+func (p *OpenStackNetworkProvider) ListSecurityGroups(ctx context.Context, vpcID string) ([]plugin.SecurityGroup, error) {
 	// Mock implementation
-	return []interfaces.SecurityGroup{
+	return []plugin.SecurityGroup{
 		{
 			ID:          "openstack-sg-001",
 			Name:        "default",
@@ -387,9 +387,9 @@ func (p *OpenStackNetworkProvider) ListSecurityGroups(ctx context.Context, vpcID
 	}, nil
 }
 
-func (p *OpenStackNetworkProvider) UpdateSecurityGroup(ctx context.Context, sgID string, req interfaces.UpdateSecurityGroupRequest) (*interfaces.SecurityGroup, error) {
+func (p *OpenStackNetworkProvider) UpdateSecurityGroup(ctx context.Context, sgID string, req plugin.UpdateSecurityGroupRequest) (*plugin.SecurityGroup, error) {
 	// Mock implementation
-	return &interfaces.SecurityGroup{
+	return &plugin.SecurityGroup{
 		ID:          sgID,
 		Name:        req.Name,
 		Description: req.Description,
@@ -405,8 +405,8 @@ func (p *OpenStackNetworkProvider) DeleteSecurityGroup(ctx context.Context, sgID
 }
 
 // Security Group Rules
-func (p *OpenStackNetworkProvider) CreateSecurityGroupRule(ctx context.Context, req interfaces.CreateSecurityGroupRuleRequest) (*interfaces.SecurityGroupRule, error) {
-	rule := &interfaces.SecurityGroupRule{
+func (p *OpenStackNetworkProvider) CreateSecurityGroupRule(ctx context.Context, req plugin.CreateSecurityGroupRuleRequest) (*plugin.SecurityGroupRule, error) {
+	rule := &plugin.SecurityGroupRule{
 		ID:              fmt.Sprintf("openstack-sg-rule-%d", time.Now().Unix()),
 		SecurityGroupID: req.SecurityGroupID,
 		Type:            req.Type,
@@ -417,15 +417,15 @@ func (p *OpenStackNetworkProvider) CreateSecurityGroupRule(ctx context.Context, 
 		Description:     req.Description,
 		CreatedAt:       time.Now().Format(time.RFC3339),
 	}
-	
-	fmt.Printf("Creating OpenStack security group rule: %s %s %d-%d\n", 
+
+	fmt.Printf("Creating OpenStack security group rule: %s %s %d-%d\n",
 		req.Type, req.Protocol, req.PortFrom, req.PortTo)
 	return rule, nil
 }
 
-func (p *OpenStackNetworkProvider) GetSecurityGroupRule(ctx context.Context, ruleID string) (*interfaces.SecurityGroupRule, error) {
+func (p *OpenStackNetworkProvider) GetSecurityGroupRule(ctx context.Context, ruleID string) (*plugin.SecurityGroupRule, error) {
 	// Mock implementation
-	return &interfaces.SecurityGroupRule{
+	return &plugin.SecurityGroupRule{
 		ID:              ruleID,
 		SecurityGroupID: "openstack-sg-001",
 		Type:            "ingress",
@@ -438,9 +438,9 @@ func (p *OpenStackNetworkProvider) GetSecurityGroupRule(ctx context.Context, rul
 	}, nil
 }
 
-func (p *OpenStackNetworkProvider) ListSecurityGroupRules(ctx context.Context, sgID string) ([]interfaces.SecurityGroupRule, error) {
+func (p *OpenStackNetworkProvider) ListSecurityGroupRules(ctx context.Context, sgID string) ([]plugin.SecurityGroupRule, error) {
 	// Mock implementation
-	return []interfaces.SecurityGroupRule{
+	return []plugin.SecurityGroupRule{
 		{
 			ID:              "openstack-sg-rule-001",
 			SecurityGroupID: sgID,
@@ -461,23 +461,23 @@ func (p *OpenStackNetworkProvider) DeleteSecurityGroupRule(ctx context.Context, 
 }
 
 // Key Pair Management (Nova Key Pairs)
-func (p *OpenStackNetworkProvider) CreateKeyPair(ctx context.Context, req interfaces.CreateKeyPairRequest) (*interfaces.KeyPair, error) {
-	keyPair := &interfaces.KeyPair{
-		ID:         fmt.Sprintf("openstack-keypair-%d", time.Now().Unix()),
-		Name:       req.Name,
+func (p *OpenStackNetworkProvider) CreateKeyPair(ctx context.Context, req plugin.CreateKeyPairRequest) (*plugin.KeyPair, error) {
+	keyPair := &plugin.KeyPair{
+		ID:          fmt.Sprintf("openstack-keypair-%d", time.Now().Unix()),
+		Name:        req.Name,
 		Fingerprint: "mock-fingerprint",
-		PublicKey:  req.PublicKey,
-		CreatedAt:  time.Now().Format(time.RFC3339),
-		Tags:       req.Tags,
+		PublicKey:   req.PublicKey,
+		CreatedAt:   time.Now().Format(time.RFC3339),
+		Tags:        req.Tags,
 	}
-	
+
 	fmt.Printf("Creating OpenStack key pair: %s\n", req.Name)
 	return keyPair, nil
 }
 
-func (p *OpenStackNetworkProvider) GetKeyPair(ctx context.Context, keyPairID string) (*interfaces.KeyPair, error) {
+func (p *OpenStackNetworkProvider) GetKeyPair(ctx context.Context, keyPairID string) (*plugin.KeyPair, error) {
 	// Mock implementation
-	return &interfaces.KeyPair{
+	return &plugin.KeyPair{
 		ID:          keyPairID,
 		Name:        "mock-keypair",
 		Fingerprint: "mock-fingerprint",
@@ -486,9 +486,9 @@ func (p *OpenStackNetworkProvider) GetKeyPair(ctx context.Context, keyPairID str
 	}, nil
 }
 
-func (p *OpenStackNetworkProvider) ListKeyPairs(ctx context.Context) ([]interfaces.KeyPair, error) {
+func (p *OpenStackNetworkProvider) ListKeyPairs(ctx context.Context) ([]plugin.KeyPair, error) {
 	// Mock implementation
-	return []interfaces.KeyPair{
+	return []plugin.KeyPair{
 		{
 			ID:          "openstack-keypair-001",
 			Name:        "default-keypair",
@@ -505,8 +505,8 @@ func (p *OpenStackNetworkProvider) DeleteKeyPair(ctx context.Context, keyPairID 
 }
 
 // Load Balancer Management (Neutron LBaaS)
-func (p *OpenStackNetworkProvider) CreateLoadBalancer(ctx context.Context, req interfaces.CreateLoadBalancerRequest) (*interfaces.LoadBalancer, error) {
-	lb := &interfaces.LoadBalancer{
+func (p *OpenStackNetworkProvider) CreateLoadBalancer(ctx context.Context, req plugin.CreateLoadBalancerRequest) (*plugin.LoadBalancer, error) {
+	lb := &plugin.LoadBalancer{
 		ID:        fmt.Sprintf("openstack-lb-%d", time.Now().Unix()),
 		Name:      req.Name,
 		Type:      req.Type,
@@ -519,14 +519,14 @@ func (p *OpenStackNetworkProvider) CreateLoadBalancer(ctx context.Context, req i
 		CreatedAt: time.Now().Format(time.RFC3339),
 		Tags:      req.Tags,
 	}
-	
+
 	fmt.Printf("Creating OpenStack load balancer: %s\n", req.Name)
 	return lb, nil
 }
 
-func (p *OpenStackNetworkProvider) GetLoadBalancer(ctx context.Context, lbID string) (*interfaces.LoadBalancer, error) {
+func (p *OpenStackNetworkProvider) GetLoadBalancer(ctx context.Context, lbID string) (*plugin.LoadBalancer, error) {
 	// Mock implementation
-	return &interfaces.LoadBalancer{
+	return &plugin.LoadBalancer{
 		ID:        lbID,
 		Name:      "mock-loadbalancer",
 		Type:      "application",
@@ -540,9 +540,9 @@ func (p *OpenStackNetworkProvider) GetLoadBalancer(ctx context.Context, lbID str
 	}, nil
 }
 
-func (p *OpenStackNetworkProvider) ListLoadBalancers(ctx context.Context) ([]interfaces.LoadBalancer, error) {
+func (p *OpenStackNetworkProvider) ListLoadBalancers(ctx context.Context) ([]plugin.LoadBalancer, error) {
 	// Mock implementation
-	return []interfaces.LoadBalancer{
+	return []plugin.LoadBalancer{
 		{
 			ID:        "openstack-lb-001",
 			Name:      "default-loadbalancer",
@@ -558,9 +558,9 @@ func (p *OpenStackNetworkProvider) ListLoadBalancers(ctx context.Context) ([]int
 	}, nil
 }
 
-func (p *OpenStackNetworkProvider) UpdateLoadBalancer(ctx context.Context, lbID string, req interfaces.UpdateLoadBalancerRequest) (*interfaces.LoadBalancer, error) {
+func (p *OpenStackNetworkProvider) UpdateLoadBalancer(ctx context.Context, lbID string, req plugin.UpdateLoadBalancerRequest) (*plugin.LoadBalancer, error) {
 	// Mock implementation
-	return &interfaces.LoadBalancer{
+	return &plugin.LoadBalancer{
 		ID:        lbID,
 		Name:      req.Name,
 		Type:      "application",
@@ -599,8 +599,8 @@ func (p *OpenStackIAMProvider) Initialize(config map[string]interface{}) error {
 }
 
 // User Management
-func (p *OpenStackIAMProvider) CreateUser(ctx context.Context, req interfaces.CreateUserRequest) (*interfaces.User, error) {
-	user := &interfaces.User{
+func (p *OpenStackIAMProvider) CreateUser(ctx context.Context, req plugin.CreateUserRequest) (*plugin.User, error) {
+	user := &plugin.User{
 		ID:          fmt.Sprintf("openstack-user-%d", time.Now().Unix()),
 		Username:    req.Username,
 		Email:       req.Email,
@@ -609,14 +609,14 @@ func (p *OpenStackIAMProvider) CreateUser(ctx context.Context, req interfaces.Cr
 		CreatedAt:   time.Now().Format(time.RFC3339),
 		Tags:        req.Tags,
 	}
-	
+
 	fmt.Printf("Creating OpenStack user: %s\n", req.Username)
 	return user, nil
 }
 
-func (p *OpenStackIAMProvider) GetUser(ctx context.Context, userID string) (*interfaces.User, error) {
+func (p *OpenStackIAMProvider) GetUser(ctx context.Context, userID string) (*plugin.User, error) {
 	// Mock implementation
-	return &interfaces.User{
+	return &plugin.User{
 		ID:          userID,
 		Username:    "mock-user",
 		Email:       "user@example.com",
@@ -626,9 +626,9 @@ func (p *OpenStackIAMProvider) GetUser(ctx context.Context, userID string) (*int
 	}, nil
 }
 
-func (p *OpenStackIAMProvider) ListUsers(ctx context.Context) ([]interfaces.User, error) {
+func (p *OpenStackIAMProvider) ListUsers(ctx context.Context) ([]plugin.User, error) {
 	// Mock implementation
-	return []interfaces.User{
+	return []plugin.User{
 		{
 			ID:          "openstack-user-001",
 			Username:    "admin",
@@ -640,9 +640,9 @@ func (p *OpenStackIAMProvider) ListUsers(ctx context.Context) ([]interfaces.User
 	}, nil
 }
 
-func (p *OpenStackIAMProvider) UpdateUser(ctx context.Context, userID string, req interfaces.UpdateUserRequest) (*interfaces.User, error) {
+func (p *OpenStackIAMProvider) UpdateUser(ctx context.Context, userID string, req plugin.UpdateUserRequest) (*plugin.User, error) {
 	// Mock implementation
-	return &interfaces.User{
+	return &plugin.User{
 		ID:          userID,
 		Username:    "mock-user",
 		Email:       req.Email,
@@ -659,22 +659,22 @@ func (p *OpenStackIAMProvider) DeleteUser(ctx context.Context, userID string) er
 }
 
 // Group Management
-func (p *OpenStackIAMProvider) CreateGroup(ctx context.Context, req interfaces.CreateGroupRequest) (*interfaces.Group, error) {
-	group := &interfaces.Group{
+func (p *OpenStackIAMProvider) CreateGroup(ctx context.Context, req plugin.CreateGroupRequest) (*plugin.Group, error) {
+	group := &plugin.Group{
 		ID:          fmt.Sprintf("openstack-group-%d", time.Now().Unix()),
 		Name:        req.Name,
 		Description: req.Description,
 		CreatedAt:   time.Now().Format(time.RFC3339),
 		Tags:        req.Tags,
 	}
-	
+
 	fmt.Printf("Creating OpenStack group: %s\n", req.Name)
 	return group, nil
 }
 
-func (p *OpenStackIAMProvider) GetGroup(ctx context.Context, groupID string) (*interfaces.Group, error) {
+func (p *OpenStackIAMProvider) GetGroup(ctx context.Context, groupID string) (*plugin.Group, error) {
 	// Mock implementation
-	return &interfaces.Group{
+	return &plugin.Group{
 		ID:          groupID,
 		Name:        "mock-group",
 		Description: "Mock group",
@@ -682,9 +682,9 @@ func (p *OpenStackIAMProvider) GetGroup(ctx context.Context, groupID string) (*i
 	}, nil
 }
 
-func (p *OpenStackIAMProvider) ListGroups(ctx context.Context) ([]interfaces.Group, error) {
+func (p *OpenStackIAMProvider) ListGroups(ctx context.Context) ([]plugin.Group, error) {
 	// Mock implementation
-	return []interfaces.Group{
+	return []plugin.Group{
 		{
 			ID:          "openstack-group-001",
 			Name:        "admin",
@@ -694,9 +694,9 @@ func (p *OpenStackIAMProvider) ListGroups(ctx context.Context) ([]interfaces.Gro
 	}, nil
 }
 
-func (p *OpenStackIAMProvider) UpdateGroup(ctx context.Context, groupID string, req interfaces.UpdateGroupRequest) (*interfaces.Group, error) {
+func (p *OpenStackIAMProvider) UpdateGroup(ctx context.Context, groupID string, req plugin.UpdateGroupRequest) (*plugin.Group, error) {
 	// Mock implementation
-	return &interfaces.Group{
+	return &plugin.Group{
 		ID:          groupID,
 		Name:        req.Name,
 		Description: req.Description,
@@ -711,8 +711,8 @@ func (p *OpenStackIAMProvider) DeleteGroup(ctx context.Context, groupID string) 
 }
 
 // Role Management
-func (p *OpenStackIAMProvider) CreateRole(ctx context.Context, req interfaces.CreateRoleRequest) (*interfaces.Role, error) {
-	role := &interfaces.Role{
+func (p *OpenStackIAMProvider) CreateRole(ctx context.Context, req plugin.CreateRoleRequest) (*plugin.Role, error) {
+	role := &plugin.Role{
 		ID:          fmt.Sprintf("openstack-role-%d", time.Now().Unix()),
 		Name:        req.Name,
 		Description: req.Description,
@@ -720,14 +720,14 @@ func (p *OpenStackIAMProvider) CreateRole(ctx context.Context, req interfaces.Cr
 		CreatedAt:   time.Now().Format(time.RFC3339),
 		Tags:        req.Tags,
 	}
-	
+
 	fmt.Printf("Creating OpenStack role: %s\n", req.Name)
 	return role, nil
 }
 
-func (p *OpenStackIAMProvider) GetRole(ctx context.Context, roleID string) (*interfaces.Role, error) {
+func (p *OpenStackIAMProvider) GetRole(ctx context.Context, roleID string) (*plugin.Role, error) {
 	// Mock implementation
-	return &interfaces.Role{
+	return &plugin.Role{
 		ID:          roleID,
 		Name:        "mock-role",
 		Description: "Mock role",
@@ -736,9 +736,9 @@ func (p *OpenStackIAMProvider) GetRole(ctx context.Context, roleID string) (*int
 	}, nil
 }
 
-func (p *OpenStackIAMProvider) ListRoles(ctx context.Context) ([]interfaces.Role, error) {
+func (p *OpenStackIAMProvider) ListRoles(ctx context.Context) ([]plugin.Role, error) {
 	// Mock implementation
-	return []interfaces.Role{
+	return []plugin.Role{
 		{
 			ID:          "openstack-role-001",
 			Name:        "admin",
@@ -749,9 +749,9 @@ func (p *OpenStackIAMProvider) ListRoles(ctx context.Context) ([]interfaces.Role
 	}, nil
 }
 
-func (p *OpenStackIAMProvider) UpdateRole(ctx context.Context, roleID string, req interfaces.UpdateRoleRequest) (*interfaces.Role, error) {
+func (p *OpenStackIAMProvider) UpdateRole(ctx context.Context, roleID string, req plugin.UpdateRoleRequest) (*plugin.Role, error) {
 	// Mock implementation
-	return &interfaces.Role{
+	return &plugin.Role{
 		ID:          roleID,
 		Name:        req.Name,
 		Description: req.Description,
@@ -767,8 +767,8 @@ func (p *OpenStackIAMProvider) DeleteRole(ctx context.Context, roleID string) er
 }
 
 // Policy Management
-func (p *OpenStackIAMProvider) CreatePolicy(ctx context.Context, req interfaces.CreatePolicyRequest) (*interfaces.Policy, error) {
-	policy := &interfaces.Policy{
+func (p *OpenStackIAMProvider) CreatePolicy(ctx context.Context, req plugin.CreatePolicyRequest) (*plugin.Policy, error) {
+	policy := &plugin.Policy{
 		ID:          fmt.Sprintf("openstack-policy-%d", time.Now().Unix()),
 		Name:        req.Name,
 		Description: req.Description,
@@ -777,14 +777,14 @@ func (p *OpenStackIAMProvider) CreatePolicy(ctx context.Context, req interfaces.
 		CreatedAt:   time.Now().Format(time.RFC3339),
 		Tags:        req.Tags,
 	}
-	
+
 	fmt.Printf("Creating OpenStack policy: %s\n", req.Name)
 	return policy, nil
 }
 
-func (p *OpenStackIAMProvider) GetPolicy(ctx context.Context, policyID string) (*interfaces.Policy, error) {
+func (p *OpenStackIAMProvider) GetPolicy(ctx context.Context, policyID string) (*plugin.Policy, error) {
 	// Mock implementation
-	return &interfaces.Policy{
+	return &plugin.Policy{
 		ID:          policyID,
 		Name:        "mock-policy",
 		Description: "Mock policy",
@@ -794,9 +794,9 @@ func (p *OpenStackIAMProvider) GetPolicy(ctx context.Context, policyID string) (
 	}, nil
 }
 
-func (p *OpenStackIAMProvider) ListPolicies(ctx context.Context) ([]interfaces.Policy, error) {
+func (p *OpenStackIAMProvider) ListPolicies(ctx context.Context) ([]plugin.Policy, error) {
 	// Mock implementation
-	return []interfaces.Policy{
+	return []plugin.Policy{
 		{
 			ID:          "openstack-policy-001",
 			Name:        "admin-policy",
@@ -808,9 +808,9 @@ func (p *OpenStackIAMProvider) ListPolicies(ctx context.Context) ([]interfaces.P
 	}, nil
 }
 
-func (p *OpenStackIAMProvider) UpdatePolicy(ctx context.Context, policyID string, req interfaces.UpdatePolicyRequest) (*interfaces.Policy, error) {
+func (p *OpenStackIAMProvider) UpdatePolicy(ctx context.Context, policyID string, req plugin.UpdatePolicyRequest) (*plugin.Policy, error) {
 	// Mock implementation
-	return &interfaces.Policy{
+	return &plugin.Policy{
 		ID:          policyID,
 		Name:        req.Name,
 		Description: req.Description,
@@ -858,8 +858,8 @@ func (p *OpenStackIAMProvider) DetachPolicyFromRole(ctx context.Context, roleID,
 }
 
 // Access Key Management
-func (p *OpenStackIAMProvider) CreateAccessKey(ctx context.Context, userID string) (*interfaces.AccessKey, error) {
-	accessKey := &interfaces.AccessKey{
+func (p *OpenStackIAMProvider) CreateAccessKey(ctx context.Context, userID string) (*plugin.AccessKey, error) {
+	accessKey := &plugin.AccessKey{
 		ID:        fmt.Sprintf("openstack-key-%d", time.Now().Unix()),
 		UserID:    userID,
 		AccessKey: fmt.Sprintf("AKIA%d", time.Now().Unix()),
@@ -867,14 +867,14 @@ func (p *OpenStackIAMProvider) CreateAccessKey(ctx context.Context, userID strin
 		Status:    "active",
 		CreatedAt: time.Now().Format(time.RFC3339),
 	}
-	
+
 	fmt.Printf("Creating access key for user: %s\n", userID)
 	return accessKey, nil
 }
 
-func (p *OpenStackIAMProvider) ListAccessKeys(ctx context.Context, userID string) ([]interfaces.AccessKey, error) {
+func (p *OpenStackIAMProvider) ListAccessKeys(ctx context.Context, userID string) ([]plugin.AccessKey, error) {
 	// Mock implementation
-	return []interfaces.AccessKey{
+	return []plugin.AccessKey{
 		{
 			ID:        "openstack-key-001",
 			UserID:    userID,

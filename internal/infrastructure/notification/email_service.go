@@ -7,10 +7,10 @@ package notification
 
 import (
 	"bytes"
-	"skyclust/internal/domain"
 	"fmt"
 	"html/template"
 	"net/smtp"
+	"skyclust/internal/domain"
 	"strings"
 
 	"skyclust/pkg/logger"

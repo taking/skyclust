@@ -3,6 +3,7 @@ package container
 import (
 	"context"
 	"fmt"
+	httpdelivery "skyclust/internal/delivery/http"
 	"skyclust/internal/domain"
 
 	"go.uber.org/zap"
@@ -13,6 +14,7 @@ import (
 	"skyclust/internal/usecase"
 	"skyclust/pkg/cache"
 	"skyclust/pkg/config"
+	pkglogger "skyclust/pkg/logger"
 	"skyclust/pkg/security"
 )
 
@@ -40,6 +42,19 @@ type Container struct {
 	CostAnalysisService     *usecase.CostAnalysisService
 	NotificationService     *usecase.NotificationService
 	ExportService           *usecase.ExportService
+	RBACService             domain.RBACService
+
+	// HTTP Handlers
+	AuthHandler         *httpdelivery.AuthHandler
+	CredentialHandler   *httpdelivery.CredentialHandler
+	WorkspaceHandler    *httpdelivery.WorkspaceHandler
+	ProviderHandler     *httpdelivery.ProviderHandler
+	CostAnalysisHandler *httpdelivery.CostAnalysisHandler
+	NotificationHandler *httpdelivery.NotificationHandler
+	ExportHandler       *httpdelivery.ExportHandler
+	AdminUserHandler    *httpdelivery.AdminUserHandler
+	SystemHandler       *httpdelivery.SystemHandler
+	AuditHandler        *httpdelivery.AuditHandler
 
 	// Infrastructure
 	DB        *gorm.DB
@@ -133,9 +148,28 @@ func NewContainer(ctx context.Context, cfg *config.Config) (*Container, error) {
 	// Initialize logout service
 	logoutService := usecase.NewLogoutService(tokenBlacklist, oidcService, auditLogRepo)
 
+	// Initialize RBAC service
+	rbacService := usecase.NewRBACService(db.GetDB())
+
 	costAnalysisService := usecase.NewCostAnalysisService(vmRepo, credentialRepo, workspaceRepo, auditLogRepo)
 	notificationService := usecase.NewNotificationService(logger, auditLogRepo, userRepo, workspaceRepo, eventService)
 	exportService := usecase.NewExportService(logger, vmRepo, workspaceRepo, credentialRepo, auditLogRepo)
+
+	// Initialize HTTP handlers
+	authHandler := httpdelivery.NewAuthHandler(authService, userService)
+	credentialHandler := httpdelivery.NewCredentialHandler(credentialService)
+	workspaceHandler := httpdelivery.NewWorkspaceHandler(workspaceService, userService)
+	// TODO: Initialize plugin manager properly
+	// providerHandler := httpdelivery.NewProviderHandler(pluginManager, auditLogRepo)
+	providerHandler := &httpdelivery.ProviderHandler{} // Placeholder
+	costAnalysisHandler := httpdelivery.NewCostAnalysisHandler(logger, costAnalysisService)
+	notificationHandler := httpdelivery.NewNotificationHandler(notificationService, logger)
+	exportHandler := httpdelivery.NewExportHandler(logger, exportService)
+	// Create logger for handlers that need pkg/logger.Logger
+	pkgLog, _ := pkglogger.NewLogger(&pkglogger.LoggerConfig{})
+	adminUserHandler := httpdelivery.NewAdminUserHandler(userService, rbacService, pkgLog)
+	systemHandler := httpdelivery.NewSystemHandler(pkgLog)
+	auditHandler := httpdelivery.NewAuditHandler(auditLogService, pkgLog)
 
 	return &Container{
 		UserRepo:       userRepo,
@@ -158,6 +192,19 @@ func NewContainer(ctx context.Context, cfg *config.Config) (*Container, error) {
 		CostAnalysisService:     costAnalysisService,
 		NotificationService:     notificationService,
 		ExportService:           exportService,
+		RBACService:             rbacService,
+
+		// HTTP Handlers
+		AuthHandler:         authHandler,
+		CredentialHandler:   credentialHandler,
+		WorkspaceHandler:    workspaceHandler,
+		ProviderHandler:     providerHandler,
+		CostAnalysisHandler: costAnalysisHandler,
+		NotificationHandler: notificationHandler,
+		ExportHandler:       exportHandler,
+		AdminUserHandler:    adminUserHandler,
+		SystemHandler:       systemHandler,
+		AuditHandler:        auditHandler,
 
 		DB:        db.GetDB(),
 		EventBus:  eventBus,

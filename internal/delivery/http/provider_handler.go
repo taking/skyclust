@@ -3,7 +3,7 @@ package http
 import (
 	"skyclust/internal/domain"
 	"skyclust/internal/plugin"
-	"skyclust/internal/plugin/interfaces"
+	plugininterfaces "skyclust/pkg/plugin"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -145,7 +145,7 @@ func (h *ProviderHandler) GetInstances(c *gin.Context) {
 
 	// Filter instances by region if specified
 	if region != "" {
-		filteredInstances := make([]interfaces.Instance, 0)
+		filteredInstances := make([]plugininterfaces.Instance, 0)
 		for _, instance := range instances {
 			if instance.Region == region {
 				filteredInstances = append(filteredInstances, instance)
@@ -211,7 +211,7 @@ func (h *ProviderHandler) GetInstance(c *gin.Context) {
 		return
 	}
 
-	var instance *interfaces.Instance
+	var instance *plugininterfaces.Instance
 	for _, inst := range instances {
 		if inst.ID == instanceID {
 			instance = &inst
@@ -327,7 +327,7 @@ func (h *ProviderHandler) CreateInstance(c *gin.Context) {
 	}
 
 	// Create instance
-	createReq := interfaces.CreateInstanceRequest{
+	createReq := plugininterfaces.CreateInstanceRequest{
 		Name:     req["name"].(string),
 		Type:     req["type"].(string),
 		Region:   req["region"].(string),
@@ -488,7 +488,7 @@ func (h *ProviderHandler) CreateCostEstimate(c *gin.Context) {
 	}
 
 	// Get cost estimate
-	costReq := interfaces.CostEstimateRequest{
+	costReq := plugininterfaces.CostEstimateRequest{
 		InstanceType: req["instance_type"].(string),
 		Region:       req["region"].(string),
 		Duration:     req["duration"].(string),

@@ -113,6 +113,9 @@ var (
 	ErrCredentialNotFound  = NewDomainError(ErrCodeNotFound, "credential not found", http.StatusNotFound)
 	ErrNoActiveCredentials = NewDomainError(ErrCodeNotFound, "no active credentials found", http.StatusNotFound)
 
+	// Audit log errors
+	ErrAuditLogNotFound = NewDomainError(ErrCodeNotFound, "audit log not found", http.StatusNotFound)
+
 	// Plugin errors
 	ErrPluginNotFound  = NewDomainError(ErrCodePluginNotFound, "plugin not found", http.StatusNotFound)
 	ErrPluginNotActive = NewDomainError(ErrCodePluginError, "plugin not active", http.StatusBadRequest)

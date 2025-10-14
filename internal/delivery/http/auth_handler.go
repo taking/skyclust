@@ -92,7 +92,11 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	user, token, err := h.authService.Login(req.Username, req.Password)
+	// Extract client information
+	clientIP := c.ClientIP()
+	userAgent := c.GetHeader("User-Agent")
+
+	user, token, err := h.authService.LoginWithContext(req.Username, req.Password, clientIP, userAgent)
 	if err != nil {
 		// Use domain error handling
 		if domain.IsDomainError(err) {
@@ -185,32 +189,37 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	}, "Logout successful")
 }
 
-// Me returns the current user information
+// Me returns the current user information from the JWT token
 func (h *AuthHandler) Me(c *gin.Context) {
-	userID, exists := c.Get("user_id")
+	// Get user from context (set by auth middleware)
+	user, exists := c.Get("user")
 	if !exists {
 		UnauthorizedResponse(c, "User not authenticated")
 		return
 	}
 
-	userUUID, ok := userID.(uuid.UUID)
+	// Type assert to domain.User
+	domainUser, ok := user.(*domain.User)
 	if !ok {
-		InternalServerErrorResponse(c, "Invalid user ID")
+		InternalServerErrorResponse(c, "Invalid user data")
 		return
 	}
 
-	user, err := h.userService.GetUser(c.Request.Context(), userUUID.String())
-	if err != nil {
-		InternalServerErrorResponse(c, "Failed to get user")
-		return
+	// Return user information (excluding sensitive data)
+	userResponse := gin.H{
+		"id":            domainUser.ID,
+		"username":      domainUser.Username,
+		"email":         domainUser.Email,
+		"is_active":     domainUser.IsActive,
+		"created_at":    domainUser.CreatedAt,
+		"updated_at":    domainUser.UpdatedAt,
+		"oidc_provider": domainUser.OIDCProvider,
+		"oidc_subject":  domainUser.OIDCSubject,
 	}
 
-	if user == nil {
-		NotFoundResponse(c, "User not found")
-		return
-	}
-
-	OKResponse(c, user, "User information retrieved successfully")
+	OKResponse(c, gin.H{
+		"user": userResponse,
+	}, "User information retrieved successfully")
 }
 
 // GetUsers returns a list of users with pagination
@@ -322,7 +331,12 @@ func (h *AuthHandler) DeleteUser(c *gin.Context) {
 	}
 
 	// Delete user
-	err := h.userService.DeleteUser(c.Request.Context(), userID)
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		BadRequestResponse(c, "Invalid user ID")
+		return
+	}
+	err = h.userService.DeleteUserByID(userUUID)
 	if err != nil {
 		if domain.IsDomainError(err) {
 			DomainErrorResponse(c, domain.GetDomainError(err))

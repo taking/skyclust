@@ -19,4 +19,3 @@ func SetupOIDCProvidersRoutes(router *gin.RouterGroup, oidcService domain.OIDCSe
 	router.POST("/oidc/sessions", oidcHandler.Login)                              // Create OIDC session
 	router.DELETE("/oidc/sessions", oidcHandler.Logout)                           // Delete OIDC session
 }
-

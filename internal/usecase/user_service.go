@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 	"skyclust/pkg/logger"
 	"skyclust/pkg/security"
 )
@@ -237,4 +238,105 @@ func (s *UserService) ChangePassword(ctx context.Context, userID, oldPassword, n
 
 	logger.Info(fmt.Sprintf("Password changed successfully: %s", userID))
 	return nil
+}
+
+// GetUserByID retrieves a user by ID (admin method)
+func (s *UserService) GetUserByID(id uuid.UUID) (*domain.User, error) {
+	user, err := s.userRepo.GetByID(id)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, domain.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	return user, nil
+}
+
+// GetUsersWithFilters retrieves users with filters (admin method)
+func (s *UserService) GetUsersWithFilters(filters domain.UserFilters) ([]*domain.User, int64, error) {
+	// Convert filters to map for repository
+	filterMap := make(map[string]interface{})
+	if filters.Search != "" {
+		filterMap["search"] = filters.Search
+	}
+	if filters.Role != "" {
+		filterMap["role"] = filters.Role
+	}
+	if filters.Status != "" {
+		filterMap["status"] = filters.Status
+	}
+
+	offset := (filters.Page - 1) * filters.Limit
+	users, total, err := s.userRepo.List(filters.Limit, offset, filterMap)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get users: %w", err)
+	}
+
+	return users, total, nil
+}
+
+// UpdateUserDirect updates a user (admin method)
+func (s *UserService) UpdateUserDirect(user *domain.User) (*domain.User, error) {
+	user.UpdatedAt = time.Now()
+
+	if err := s.userRepo.Update(user); err != nil {
+		return nil, fmt.Errorf("failed to update user: %w", err)
+	}
+
+	logger.Info(fmt.Sprintf("User updated successfully: %s", user.ID))
+	return user, nil
+}
+
+// DeleteUserByID deletes a user (admin method)
+func (s *UserService) DeleteUserByID(id uuid.UUID) error {
+	// Check if user exists
+	_, err := s.userRepo.GetByID(id)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return domain.ErrUserNotFound
+		}
+		return fmt.Errorf("failed to get user: %w", err)
+	}
+
+	if err := s.userRepo.Delete(id); err != nil {
+		return fmt.Errorf("failed to delete user: %w", err)
+	}
+
+	logger.Info(fmt.Sprintf("User deleted successfully: %s", id))
+	return nil
+}
+
+// GetUserStats retrieves user statistics (admin method)
+func (s *UserService) GetUserStats() (*domain.UserStats, error) {
+	// Get all users to calculate stats
+	users, total, err := s.userRepo.List(1000, 0, map[string]interface{}{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get users: %w", err)
+	}
+
+	// Calculate statistics
+	activeUsers := int64(0)
+	inactiveUsers := int64(0)
+	newUsersToday := int64(0)
+
+	today := time.Now().Truncate(24 * time.Hour)
+
+	for _, user := range users {
+		if user.IsActive {
+			activeUsers++
+		} else {
+			inactiveUsers++
+		}
+
+		if user.CreatedAt.After(today) {
+			newUsersToday++
+		}
+	}
+
+	return &domain.UserStats{
+		TotalUsers:    total,
+		ActiveUsers:   activeUsers,
+		InactiveUsers: inactiveUsers,
+		NewUsersToday: newUsersToday,
+	}, nil
 }

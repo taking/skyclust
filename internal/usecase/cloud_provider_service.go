@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"skyclust/internal/plugin"
-	"skyclust/internal/plugin/interfaces"
 	"skyclust/pkg/logger"
+	plugininterfaces "skyclust/pkg/plugin"
 )
 
 // cloudProviderService implements the CloudProviderService interface
@@ -30,7 +30,7 @@ func (s *cloudProviderService) CreateInstance(ctx context.Context, provider stri
 	}
 
 	// Convert request to plugin format
-	pluginReq := interfaces.CreateInstanceRequest{
+	pluginReq := plugininterfaces.CreateInstanceRequest{
 		Name:   req.Name,
 		Type:   req.Type,
 		Region: req.Region,

@@ -1,10 +1,10 @@
 package http
 
 import (
-	"skyclust/internal/domain"
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+	"skyclust/internal/domain"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"

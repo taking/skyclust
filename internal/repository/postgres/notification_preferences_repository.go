@@ -6,8 +6,8 @@
 package postgres
 
 import (
-	"skyclust/internal/domain"
 	"context"
+	"skyclust/internal/domain"
 
 	"gorm.io/gorm"
 )

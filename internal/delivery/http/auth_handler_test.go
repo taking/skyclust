@@ -8,11 +8,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"skyclust/internal/domain"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"skyclust/internal/domain"
 )
 
 // MockAuthService for testing
@@ -42,6 +42,14 @@ func (m *MockAuthService) ValidateToken(token string) (*domain.User, error) {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*domain.User), args.Error(1)
+}
+
+func (m *MockAuthService) LoginWithContext(username, password, clientIP, userAgent string) (*domain.User, string, error) {
+	args := m.Called(username, password, clientIP, userAgent)
+	if args.Get(0) == nil {
+		return nil, "", args.Error(3)
+	}
+	return args.Get(0).(*domain.User), args.String(1), args.Error(3)
 }
 
 func (m *MockAuthService) Logout(userID uuid.UUID, token string) error {
@@ -102,6 +110,44 @@ func (m *MockUserService) Authenticate(ctx context.Context, username, password s
 func (m *MockUserService) ChangePassword(ctx context.Context, username, oldPassword, newPassword string) error {
 	args := m.Called(ctx, username, oldPassword, newPassword)
 	return args.Error(0)
+}
+
+// Admin-specific methods
+func (m *MockUserService) GetUserByID(id uuid.UUID) (*domain.User, error) {
+	args := m.Called(id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.User), args.Error(1)
+}
+
+func (m *MockUserService) GetUsersWithFilters(filters domain.UserFilters) ([]*domain.User, int64, error) {
+	args := m.Called(filters)
+	if args.Get(0) == nil {
+		return nil, 0, args.Error(2)
+	}
+	return args.Get(0).([]*domain.User), args.Get(1).(int64), args.Error(2)
+}
+
+func (m *MockUserService) UpdateUserDirect(user *domain.User) (*domain.User, error) {
+	args := m.Called(user)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.User), args.Error(1)
+}
+
+func (m *MockUserService) DeleteUserByID(id uuid.UUID) error {
+	args := m.Called(id)
+	return args.Error(0)
+}
+
+func (m *MockUserService) GetUserStats() (*domain.UserStats, error) {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.UserStats), args.Error(1)
 }
 
 func TestAuthHandler_Register_Simple(t *testing.T) {

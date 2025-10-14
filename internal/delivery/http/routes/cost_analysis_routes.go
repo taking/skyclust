@@ -1,8 +1,8 @@
 package routes
 
 import (
-	"skyclust/internal/delivery/http"
 	"github.com/gin-gonic/gin"
+	"skyclust/internal/delivery/http"
 )
 
 func SetupCostAnalysisRoutes(router *gin.RouterGroup, costAnalysisHandler *http.CostAnalysisHandler) {

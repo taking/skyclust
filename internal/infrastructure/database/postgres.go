@@ -110,6 +110,8 @@ func NewPostgresService(config PostgresConfig) (*PostgresService, error) {
 		&domain.Credential{},
 		&domain.AuditLog{},
 		&domain.WorkspaceUser{},
+		&domain.UserRole{},
+		&domain.RolePermission{},
 	); err != nil {
 		return nil, fmt.Errorf("failed to auto-migrate schema: %w", err)
 	}

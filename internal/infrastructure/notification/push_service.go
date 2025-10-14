@@ -7,11 +7,11 @@ package notification
 
 import (
 	"bytes"
-	"skyclust/internal/domain"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"skyclust/internal/domain"
 	"time"
 
 	"skyclust/pkg/logger"

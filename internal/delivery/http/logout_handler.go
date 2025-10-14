@@ -1,9 +1,9 @@
 package http
 
 import (
+	"net/http"
 	"skyclust/internal/domain"
 	"skyclust/internal/usecase"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -145,4 +145,3 @@ func (h *LogoutHandler) CleanupExpiredTokens(c *gin.Context) {
 		"message": "Expired tokens cleanup completed",
 	}, "Cleanup completed successfully")
 }
-

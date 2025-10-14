@@ -1,8 +1,8 @@
 package routes
 
 import (
-	"skyclust/internal/domain"
 	httpDelivery "skyclust/internal/delivery/http"
+	"skyclust/internal/domain"
 
 	"github.com/gin-gonic/gin"
 )

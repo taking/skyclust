@@ -1,9 +1,7 @@
 module openstack-plugin
 
-go 1.22
+go 1.24.0
 
-toolchain go1.23.0
+require skyclust v0.0.0-00010101000000-000000000000
 
-require cmp v0.0.0
-
-replace cmp => ../../../
+replace skyclust => ../../../

@@ -29,9 +29,18 @@ func (h *CredentialHandler) CreateCredential(c *gin.Context) {
 		return
 	}
 
-	userUUID, ok := userID.(uuid.UUID)
-	if !ok {
-		InternalServerErrorResponse(c, "Invalid user ID")
+	// Handle both string and uuid.UUID types
+	var userUUID uuid.UUID
+	var err error
+
+	if userIDStr, ok := userID.(string); ok {
+		userUUID, err = uuid.Parse(userIDStr)
+		if err != nil {
+			InternalServerErrorResponse(c, "Invalid user ID format")
+			return
+		}
+	} else if userUUID, ok = userID.(uuid.UUID); !ok {
+		InternalServerErrorResponse(c, "Invalid user ID type")
 		return
 	}
 
@@ -63,9 +72,18 @@ func (h *CredentialHandler) GetCredentials(c *gin.Context) {
 		return
 	}
 
-	userUUID, ok := userID.(uuid.UUID)
-	if !ok {
-		InternalServerErrorResponse(c, "Invalid user ID")
+	// Handle both string and uuid.UUID types
+	var userUUID uuid.UUID
+	var err error
+
+	if userIDStr, ok := userID.(string); ok {
+		userUUID, err = uuid.Parse(userIDStr)
+		if err != nil {
+			InternalServerErrorResponse(c, "Invalid user ID format")
+			return
+		}
+	} else if userUUID, ok = userID.(uuid.UUID); !ok {
+		InternalServerErrorResponse(c, "Invalid user ID type")
 		return
 	}
 
