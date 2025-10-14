@@ -1,907 +1,881 @@
-# SkyClust API 엔드포인트 목록
+# SkyClust API 엔드포인트
 
-이 문서는 SkyClust 프로젝트의 모든 API 엔드포인트를 정리한 것입니다.
+이 문서는 SkyClust API의 모든 엔드포인트와 사용법을 설명합니다.
 
-## 📋 목차
+## 기본 정보
 
-- [인증 API](#인증-api)
-- [사용자 API](#사용자-api)
-- [워크스페이스 API](#워크스페이스-api)
-- [자격증명 API](#자격증명-api)
-- [VM API](#vm-api)
-- [프로바이더 API](#프로바이더-api)
-- [IaC API](#iac-api)
-- [OIDC API](#oidc-api)
-- [시스템 API](#시스템-api)
+- **Base URL**: `http://localhost:8080/api/v1`
+- **인증**: JWT Bearer Token
+- **응답 형식**: JSON
+- **문자 인코딩**: UTF-8
 
----
+## 인증
 
-## 인증 API
+### 사용자 등록
 
-### 회원가입
-- **POST** `/api/v1/auth/register`
-- **설명**: 새 사용자 계정을 생성합니다.
-- **요청 본문**:
-  ```json
-  {
-    "email": "user@example.com",
-    "password": "password123",
-    "name": "사용자 이름"
-  }
-  ```
-- **응답**: `201 Created`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "user-uuid",
-      "email": "user@example.com",
-      "name": "사용자 이름",
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  }
-  ```
+```http
+POST /auth/register
+```
 
-### 로그인
-- **POST** `/api/v1/auth/login`
-- **설명**: 사용자 인증을 수행하고 JWT 토큰을 반환합니다.
-- **요청 본문**:
-  ```json
-  {
-    "email": "user@example.com",
-    "password": "password123"
-  }
-  ```
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "token": "jwt-token",
-      "expires_at": "2024-01-02T00:00:00Z",
-      "user": {
-        "id": "user-uuid",
-        "email": "user@example.com",
-        "name": "사용자 이름"
-      }
-    }
-  }
-  ```
+**요청 본문:**
+```json
+{
+  "username": "string",
+  "email": "string",
+  "password": "string"
+}
+```
 
-### 로그아웃
-- **POST** `/api/v1/auth/logout`
-- **설명**: 사용자 로그아웃을 수행합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "message": "로그아웃되었습니다."
-  }
-  ```
-
----
-
-## 사용자 API
-
-### 사용자 조회
-- **GET** `/api/v1/users/:id`
-- **설명**: 특정 사용자 정보를 조회합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "user-uuid",
-      "email": "user@example.com",
-      "name": "사용자 이름",
-      "created_at": "2024-01-01T00:00:00Z",
-      "updated_at": "2024-01-01T00:00:00Z"
-    }
-  }
-  ```
-
-### 사용자 정보 수정
-- **PUT** `/api/v1/users/:id`
-- **설명**: 사용자 정보를 수정합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **요청 본문**:
-  ```json
-  {
-    "name": "새로운 이름",
-    "email": "new@example.com"
-  }
-  ```
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "user-uuid",
-      "email": "new@example.com",
-      "name": "새로운 이름",
-      "updated_at": "2024-01-01T12:00:00Z"
-    }
-  }
-  ```
-
-### 사용자 삭제
-- **DELETE** `/api/v1/users/:id`
-- **설명**: 사용자 계정을 삭제합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "message": "사용자가 삭제되었습니다."
-  }
-  ```
-
----
-
-## 워크스페이스 API
-
-### 워크스페이스 생성
-- **POST** `/api/v1/workspaces`
-- **설명**: 새 워크스페이스를 생성합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **요청 본문**:
-  ```json
-  {
-    "name": "워크스페이스 이름",
-    "description": "워크스페이스 설명"
-  }
-  ```
-- **응답**: `201 Created`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "workspace-uuid",
-      "name": "워크스페이스 이름",
-      "description": "워크스페이스 설명",
-      "owner_id": "user-uuid",
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  }
-  ```
-
-### 워크스페이스 조회
-- **GET** `/api/v1/workspaces/:id`
-- **설명**: 특정 워크스페이스 정보를 조회합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "workspace-uuid",
-      "name": "워크스페이스 이름",
-      "description": "워크스페이스 설명",
-      "owner_id": "user-uuid",
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  }
-  ```
-
-### 워크스페이스 목록 조회
-- **GET** `/api/v1/workspaces`
-- **설명**: 사용자의 워크스페이스 목록을 조회합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": [
-      {
-        "id": "workspace-uuid",
-        "name": "워크스페이스 이름",
-        "description": "워크스페이스 설명",
-        "owner_id": "user-uuid",
-        "created_at": "2024-01-01T00:00:00Z"
-      }
-    ]
-  }
-  ```
-
-### 워크스페이스 수정
-- **PUT** `/api/v1/workspaces/:id`
-- **설명**: 워크스페이스 정보를 수정합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **요청 본문**:
-  ```json
-  {
-    "name": "수정된 이름",
-    "description": "수정된 설명"
-  }
-  ```
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "workspace-uuid",
-      "name": "수정된 이름",
-      "description": "수정된 설명",
-      "updated_at": "2024-01-01T12:00:00Z"
-    }
-  }
-  ```
-
-### 워크스페이스 삭제
-- **DELETE** `/api/v1/workspaces/:id`
-- **설명**: 워크스페이스를 삭제합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "message": "워크스페이스가 삭제되었습니다."
-  }
-  ```
-
-### 멤버 추가
-- **POST** `/api/v1/workspaces/:id/members`
-- **설명**: 워크스페이스에 멤버를 추가합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **요청 본문**:
-  ```json
-  {
-    "user_id": "user-uuid",
-    "role": "member"
-  }
-  ```
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "message": "멤버가 추가되었습니다."
-  }
-  ```
-
-### 멤버 제거
-- **DELETE** `/api/v1/workspaces/:id/members/:userID`
-- **설명**: 워크스페이스에서 멤버를 제거합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "message": "멤버가 제거되었습니다."
-  }
-  ```
-
----
-
-## 자격증명 API
-
-### 자격증명 생성
-- **POST** `/api/v1/credentials`
-- **설명**: 새 클라우드 자격증명을 생성합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **요청 본문**:
-  ```json
-  {
-    "workspace_id": "workspace-uuid",
-    "provider": "aws",
-    "credentials": {
-      "access_key": "AKIA...",
-      "secret_key": "...",
-      "region": "us-east-1"
-    }
-  }
-  ```
-- **응답**: `201 Created`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "credential-uuid",
-      "workspace_id": "workspace-uuid",
-      "provider": "aws",
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  }
-  ```
-
-### 자격증명 목록 조회
-- **GET** `/api/v1/credentials`
-- **설명**: 워크스페이스의 자격증명 목록을 조회합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **쿼리 파라미터**: `workspace_id`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": [
-      {
-        "id": "credential-uuid",
-        "workspace_id": "workspace-uuid",
-        "provider": "aws",
-        "created_at": "2024-01-01T00:00:00Z"
-      }
-    ]
-  }
-  ```
-
-### 자격증명 조회
-- **GET** `/api/v1/credentials/:id`
-- **설명**: 특정 자격증명을 조회합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "credential-uuid",
-      "workspace_id": "workspace-uuid",
-      "provider": "aws",
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  }
-  ```
-
-### 자격증명 수정
-- **PUT** `/api/v1/credentials/:id`
-- **설명**: 자격증명을 수정합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **요청 본문**:
-  ```json
-  {
-    "credentials": {
-      "access_key": "NEW_AKIA...",
-      "secret_key": "new_secret...",
-      "region": "us-west-2"
-    }
-  }
-  ```
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "credential-uuid",
-      "updated_at": "2024-01-01T12:00:00Z"
-    }
-  }
-  ```
-
-### 자격증명 삭제
-- **DELETE** `/api/v1/credentials/:id`
-- **설명**: 자격증명을 삭제합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "message": "자격증명이 삭제되었습니다."
-  }
-  ```
-
----
-
-## VM API
-
-### VM 생성
-- **POST** `/api/v1/vms`
-- **설명**: 새 가상머신을 생성합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **요청 본문**:
-  ```json
-  {
-    "workspace_id": "workspace-uuid",
-    "name": "vm-name",
-    "provider": "aws",
-    "instance_type": "t3.micro",
-    "region": "us-east-1",
-    "image_id": "ami-12345678"
-  }
-  ```
-- **응답**: `201 Created`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "vm-uuid",
-      "workspace_id": "workspace-uuid",
-      "name": "vm-name",
-      "provider": "aws",
-      "instance_id": "i-1234567890abcdef0",
-      "status": "running",
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  }
-  ```
-
-### VM 목록 조회
-- **GET** `/api/v1/vms`
-- **설명**: 워크스페이스의 VM 목록을 조회합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **쿼리 파라미터**: `workspace_id`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": [
-      {
-        "id": "vm-uuid",
-        "workspace_id": "workspace-uuid",
-        "name": "vm-name",
-        "provider": "aws",
-        "instance_id": "i-1234567890abcdef0",
-        "status": "running",
-        "created_at": "2024-01-01T00:00:00Z"
-      }
-    ]
-  }
-  ```
-
-### VM 조회
-- **GET** `/api/v1/vms/:id`
-- **설명**: 특정 VM 정보를 조회합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "vm-uuid",
-      "workspace_id": "workspace-uuid",
-      "name": "vm-name",
-      "provider": "aws",
-      "instance_id": "i-1234567890abcdef0",
-      "status": "running",
-      "public_ip": "1.2.3.4",
-      "private_ip": "10.0.1.100",
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  }
-  ```
-
-### VM 시작
-- **POST** `/api/v1/vms/:id/start`
-- **설명**: VM을 시작합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "message": "VM이 시작되었습니다."
-  }
-  ```
-
-### VM 중지
-- **POST** `/api/v1/vms/:id/stop`
-- **설명**: VM을 중지합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "message": "VM이 중지되었습니다."
-  }
-  ```
-
-### VM 삭제
-- **DELETE** `/api/v1/vms/:id`
-- **설명**: VM을 삭제합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "message": "VM이 삭제되었습니다."
-  }
-  ```
-
----
-
-## 프로바이더 API
-
-### 프로바이더 목록 조회
-- **GET** `/api/v1/providers`
-- **설명**: 사용 가능한 클라우드 프로바이더 목록을 조회합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "providers": [
-        {
-          "name": "AWS",
-          "version": "1.0.0"
-        },
-        {
-          "name": "GCP",
-          "version": "1.0.0"
-        }
-      ]
-    }
-  }
-  ```
-
-### 프로바이더 조회
-- **GET** `/api/v1/providers/:name`
-- **설명**: 특정 프로바이더 정보를 조회합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "name": "AWS",
-      "version": "1.0.0"
-    }
-  }
-  ```
-
-### 인스턴스 목록 조회
-- **GET** `/api/v1/providers/:name/instances`
-- **설명**: 프로바이더의 인스턴스 목록을 조회합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **쿼리 파라미터**: `region` (선택사항)
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": [
-      {
-        "id": "i-1234567890abcdef0",
-        "name": "instance-name",
-        "status": "running",
-        "type": "t3.micro",
-        "region": "us-east-1",
-        "public_ip": "1.2.3.4",
-        "private_ip": "10.0.1.100",
-        "created_at": "2024-01-01T00:00:00Z"
-      }
-    ]
-  }
-  ```
-
-### 인스턴스 조회
-- **GET** `/api/v1/providers/:name/instances/:instanceID`
-- **설명**: 특정 인스턴스 정보를 조회합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "i-1234567890abcdef0",
-      "name": "instance-name",
-      "status": "running",
-      "type": "t3.micro",
-      "region": "us-east-1",
-      "public_ip": "1.2.3.4",
-      "private_ip": "10.0.1.100",
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  }
-  ```
-
-### 리전 목록 조회
-- **GET** `/api/v1/providers/:name/regions`
-- **설명**: 프로바이더의 리전 목록을 조회합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": [
-      {
-        "name": "us-east-1",
-        "display_name": "US East (N. Virginia)"
-      },
-      {
-        "name": "us-west-2",
-        "display_name": "US West (Oregon)"
-      }
-    ]
-  }
-  ```
-
-### 비용 추정 조회
-- **GET** `/api/v1/providers/:name/cost-estimates`
-- **설명**: 프로바이더의 비용 추정 목록을 조회합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": []
-  }
-  ```
-
-### 비용 추정 생성
-- **POST** `/api/v1/providers/:name/cost-estimates`
-- **설명**: 새 비용 추정을 생성합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **요청 본문**:
-  ```json
-  {
-    "instance_type": "t3.micro",
-    "region": "us-east-1",
-    "duration_hours": 720
-  }
-  ```
-- **응답**: `201 Created`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "estimate-uuid",
-      "instance_type": "t3.micro",
-      "region": "us-east-1",
-      "estimated_cost": 8.64,
-      "currency": "USD",
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  }
-  ```
-
----
-
-## IaC API
-
-### OpenTofu 계획
-- **POST** `/api/v1/iac/plan`
-- **설명**: OpenTofu 계획을 실행합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **요청 본문**:
-  ```json
-  {
-    "workspace_id": "workspace-uuid",
-    "config": "terraform configuration"
-  }
-  ```
-- **응답**: `201 Created`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "execution-uuid",
-      "workspace_id": "workspace-uuid",
-      "command": "plan",
-      "status": "running",
-      "started_at": "2024-01-01T00:00:00Z"
-    }
-  }
-  ```
-
-### OpenTofu 적용
-- **POST** `/api/v1/iac/apply`
-- **설명**: OpenTofu 적용을 실행합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **요청 본문**:
-  ```json
-  {
-    "workspace_id": "workspace-uuid",
-    "config": "terraform configuration"
-  }
-  ```
-- **응답**: `201 Created`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "execution-uuid",
-      "workspace_id": "workspace-uuid",
-      "command": "apply",
-      "status": "running",
-      "started_at": "2024-01-01T00:00:00Z"
-    }
-  }
-  ```
-
-### OpenTofu 파괴
-- **POST** `/api/v1/iac/destroy`
-- **설명**: OpenTofu 파괴를 실행합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **요청 본문**:
-  ```json
-  {
-    "workspace_id": "workspace-uuid",
-    "config": "terraform configuration"
-  }
-  ```
-- **응답**: `201 Created`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "execution-uuid",
-      "workspace_id": "workspace-uuid",
-      "command": "destroy",
-      "status": "running",
-      "started_at": "2024-01-01T00:00:00Z"
-    }
-  }
-  ```
-
-### 실행 목록 조회
-- **GET** `/api/v1/iac/executions`
-- **설명**: OpenTofu 실행 목록을 조회합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **쿼리 파라미터**: `workspace_id`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": [
-      {
-        "id": "execution-uuid",
-        "workspace_id": "workspace-uuid",
-        "command": "plan",
-        "status": "completed",
-        "started_at": "2024-01-01T00:00:00Z",
-        "completed_at": "2024-01-01T00:05:00Z"
-      }
-    ]
-  }
-  ```
-
-### 실행 조회
-- **GET** `/api/v1/iac/executions/:id`
-- **설명**: 특정 OpenTofu 실행 정보를 조회합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "execution-uuid",
-      "workspace_id": "workspace-uuid",
-      "command": "plan",
-      "status": "completed",
-      "output": "Plan: 2 to add, 0 to change, 0 to destroy.",
-      "error": "",
-      "started_at": "2024-01-01T00:00:00Z",
-      "completed_at": "2024-01-01T00:05:00Z"
-    }
-  }
-  ```
-
----
-
-## OIDC API
-
-### OIDC 인증 URL
-- **GET** `/api/v1/oidc/:provider/auth`
-- **설명**: OIDC 프로바이더의 인증 URL을 생성합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "auth_url": "https://accounts.google.com/oauth/authorize?...",
-      "state": "random-state-string"
-    }
-  }
-  ```
-
-### OIDC 콜백 처리
-- **POST** `/api/v1/oidc/:provider/callback`
-- **설명**: OIDC 인증 콜백을 처리합니다.
-- **헤더**: `Authorization: Bearer <token>`
-- **요청 본문**:
-  ```json
-  {
-    "code": "authorization-code",
-    "state": "random-state-string"
-  }
-  ```
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "token": "jwt-token",
-      "user": {
-        "id": "user-uuid",
-        "email": "user@example.com",
-        "name": "사용자 이름"
-      }
-    }
-  }
-  ```
-
----
-
-## 시스템 API
-
-### 헬스 체크
-- **GET** `/health`
-- **설명**: 시스템 상태를 확인합니다.
-- **응답**: `200 OK`
-  ```json
-  {
-    "status": "healthy",
-    "timestamp": "2024-01-01T00:00:00Z",
-    "version": "1.0.0"
-  }
-  ```
-
-### 설정 조회
-- **GET** `/debug/config`
-- **설명**: 현재 설정을 조회합니다. (디버그용)
-- **헤더**: `Authorization: Bearer <token>`
-- **응답**: `200 OK`
-  ```json
-  {
-    "success": true,
-    "data": {
-      "database": {
-        "host": "localhost",
-        "port": 5432,
-        "name": "skyclust"
-      },
-      "redis": {
-        "host": "localhost",
-        "port": 6379
-      }
-    }
-  }
-  ```
-
----
-
-## 🔧 공통 응답 형식
-
-### 성공 응답
+**응답:**
 ```json
 {
   "success": true,
-  "data": { ... },
-  "message": "성공 메시지" // 선택사항
-}
-```
-
-### 에러 응답
-```json
-{
-  "success": false,
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "에러 메시지",
-    "details": { ... } // 선택사항
+  "message": "사용자가 성공적으로 등록되었습니다",
+  "data": {
+    "token": "jwt-token",
+    "user": {
+      "id": "uuid",
+      "username": "string",
+      "email": "string",
+      "created_at": "2024-01-01T00:00:00Z"
+    }
   }
 }
 ```
 
-### 에러 코드
-- `VALIDATION_ERROR`: 입력 데이터 검증 실패
-- `UNAUTHORIZED`: 인증 실패
-- `FORBIDDEN`: 권한 없음
-- `NOT_FOUND`: 리소스 없음
-- `CONFLICT`: 리소스 충돌
-- `INTERNAL_ERROR`: 내부 서버 오류
+### 로그인
 
----
-
-## 🔐 인증
-
-대부분의 API는 JWT 토큰 인증이 필요합니다.
-
-### 헤더 형식
-```
-Authorization: Bearer <jwt-token>
+```http
+POST /auth/login
 ```
 
-### 토큰 획득
-1. `/api/v1/auth/login` 엔드포인트로 로그인
-2. 응답에서 `token` 필드 사용
-3. 모든 API 호출 시 `Authorization` 헤더에 포함
+**요청 본문:**
+```json
+{
+  "email": "string",
+  "password": "string"
+}
+```
 
----
+**응답:**
+```json
+{
+  "success": true,
+  "message": "로그인 성공",
+  "data": {
+    "token": "jwt-token",
+    "user": {
+      "id": "uuid",
+      "username": "string",
+      "email": "string"
+    }
+  }
+}
+```
 
-## 📝 참고사항
+### 로그아웃
 
-- 모든 API는 JSON 형식을 사용합니다.
-- 날짜/시간은 ISO 8601 형식(UTC)을 사용합니다.
-- 페이지네이션은 `limit`과 `offset` 쿼리 파라미터를 사용합니다.
-- 필터링은 쿼리 파라미터를 통해 수행됩니다.
-- 모든 API 호출은 감사 로그에 기록됩니다.
+```http
+POST /auth/logout
+```
+
+**응답:**
+```json
+{
+  "success": true,
+  "message": "로그아웃 성공"
+}
+```
+
+## 워크스페이스 관리
+
+### 워크스페이스 목록 조회
+
+```http
+GET /workspaces
+```
+
+**쿼리 매개변수:**
+- `limit` (int): 결과 수 (기본값: 10, 최대: 100)
+- `offset` (int): 건너뛸 결과 수 (기본값: 0)
+- `sort` (string): 정렬 필드와 방향 (예: "name:asc")
+
+**응답:**
+```json
+{
+  "success": true,
+  "data": {
+    "workspaces": [
+      {
+        "id": "uuid",
+        "name": "string",
+        "description": "string",
+        "owner_id": "uuid",
+        "is_active": true,
+        "created_at": "2024-01-01T00:00:00Z",
+        "updated_at": "2024-01-01T00:00:00Z"
+      }
+    ],
+    "pagination": {
+      "limit": 10,
+      "offset": 0,
+      "total": 25
+    }
+  }
+}
+```
+
+### 워크스페이스 생성
+
+```http
+POST /workspaces
+```
+
+**요청 본문:**
+```json
+{
+  "name": "string",
+  "description": "string"
+}
+```
+
+**응답:**
+```json
+{
+  "success": true,
+  "message": "워크스페이스가 성공적으로 생성되었습니다",
+  "data": {
+    "id": "uuid",
+    "name": "string",
+    "description": "string",
+    "owner_id": "uuid",
+    "is_active": true,
+    "created_at": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+### 워크스페이스 조회
+
+```http
+GET /workspaces/{id}
+```
+
+**응답:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "name": "string",
+    "description": "string",
+    "owner_id": "uuid",
+    "is_active": true,
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+### 워크스페이스 수정
+
+```http
+PUT /workspaces/{id}
+```
+
+**요청 본문:**
+```json
+{
+  "name": "string",
+  "description": "string"
+}
+```
+
+**응답:**
+```json
+{
+  "success": true,
+  "message": "워크스페이스가 성공적으로 수정되었습니다",
+  "data": {
+    "id": "uuid",
+    "name": "string",
+    "description": "string",
+    "updated_at": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+### 워크스페이스 삭제
+
+```http
+DELETE /workspaces/{id}
+```
+
+**응답:**
+```json
+{
+  "success": true,
+  "message": "워크스페이스가 성공적으로 삭제되었습니다"
+}
+```
+
+## VM 관리
+
+### VM 목록 조회
+
+```http
+GET /vms
+```
+
+**쿼리 매개변수:**
+- `workspace_id` (string): 워크스페이스별 필터
+- `provider` (string): 클라우드 프로바이더별 필터
+- `status` (string): VM 상태별 필터
+- `limit` (int): 결과 수 (기본값: 20)
+- `offset` (int): 건너뛸 결과 수 (기본값: 0)
+
+**응답:**
+```json
+{
+  "success": true,
+  "data": {
+    "vms": [
+      {
+        "id": "uuid",
+        "name": "string",
+        "provider": "aws",
+        "instance_type": "t3.micro",
+        "status": "running",
+        "region": "us-east-1",
+        "workspace_id": "uuid",
+        "created_at": "2024-01-01T00:00:00Z"
+      }
+    ],
+    "pagination": {
+      "limit": 20,
+      "offset": 0,
+      "total": 50
+    }
+  }
+}
+```
+
+### VM 생성
+
+```http
+POST /vms
+```
+
+**요청 본문:**
+```json
+{
+  "name": "string",
+  "provider": "aws",
+  "instance_type": "t3.micro",
+  "region": "us-east-1",
+  "workspace_id": "uuid",
+  "image_id": "ami-12345678",
+  "key_pair": "my-key-pair"
+}
+```
+
+**응답:**
+```json
+{
+  "success": true,
+  "message": "VM 생성이 시작되었습니다",
+  "data": {
+    "id": "uuid",
+    "name": "string",
+    "provider": "aws",
+    "status": "pending",
+    "workspace_id": "uuid"
+  }
+}
+```
+
+### VM 조회
+
+```http
+GET /vms/{id}
+```
+
+**응답:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "name": "string",
+    "provider": "aws",
+    "instance_type": "t3.micro",
+    "status": "running",
+    "region": "us-east-1",
+    "public_ip": "1.2.3.4",
+    "private_ip": "10.0.0.1",
+    "workspace_id": "uuid",
+    "created_at": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+### VM 삭제
+
+```http
+DELETE /vms/{id}
+```
+
+**응답:**
+```json
+{
+  "success": true,
+  "message": "VM 삭제가 시작되었습니다"
+}
+```
+
+## 자격증명 관리
+
+### 자격증명 목록 조회
+
+```http
+GET /credentials
+```
+
+**쿼리 매개변수:**
+- `provider` (string): 클라우드 프로바이더별 필터
+- `limit` (int): 결과 수 (기본값: 20)
+- `offset` (int): 건너뛸 결과 수 (기본값: 0)
+
+**응답:**
+```json
+{
+  "success": true,
+  "data": {
+    "credentials": [
+      {
+        "id": "uuid",
+        "name": "string",
+        "provider": "aws",
+        "is_active": true,
+        "created_at": "2024-01-01T00:00:00Z"
+      }
+    ],
+    "pagination": {
+      "limit": 20,
+      "offset": 0,
+      "total": 10
+    }
+  }
+}
+```
+
+### 자격증명 생성
+
+```http
+POST /credentials
+```
+
+**요청 본문:**
+```json
+{
+  "name": "string",
+  "provider": "aws",
+  "data": {
+    "access_key": "string",
+    "secret_key": "string",
+    "region": "us-east-1"
+  }
+}
+```
+
+**응답:**
+```json
+{
+  "success": true,
+  "message": "자격증명이 성공적으로 생성되었습니다",
+  "data": {
+    "id": "uuid",
+    "name": "string",
+    "provider": "aws",
+    "is_active": true,
+    "created_at": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+### 자격증명 수정
+
+```http
+PUT /credentials/{id}
+```
+
+**요청 본문:**
+```json
+{
+  "name": "string",
+  "data": {
+    "access_key": "string",
+    "secret_key": "string",
+    "region": "us-east-1"
+  }
+}
+```
+
+**응답:**
+```json
+{
+  "success": true,
+  "message": "자격증명이 성공적으로 수정되었습니다",
+  "data": {
+    "id": "uuid",
+    "name": "string",
+    "provider": "aws",
+    "updated_at": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+### 자격증명 삭제
+
+```http
+DELETE /credentials/{id}
+```
+
+**응답:**
+```json
+{
+  "success": true,
+  "message": "자격증명이 성공적으로 삭제되었습니다"
+}
+```
+
+## 비용 분석
+
+### 비용 분석 조회
+
+```http
+GET /cost-analysis
+```
+
+**쿼리 매개변수:**
+- `period` (string): 기간 (1d, 7d, 30d, 90d)
+- `workspace_id` (string): 워크스페이스별 필터
+- `provider` (string): 클라우드 프로바이더별 필터
+
+**응답:**
+```json
+{
+  "success": true,
+  "data": {
+    "total_cost": 1250.50,
+    "currency": "USD",
+    "period": "30d",
+    "breakdown": [
+      {
+        "provider": "aws",
+        "cost": 800.25,
+        "percentage": 64.0
+      },
+      {
+        "provider": "gcp",
+        "cost": 450.25,
+        "percentage": 36.0
+      }
+    ],
+    "trend": [
+      {
+        "date": "2024-01-01",
+        "cost": 45.50
+      }
+    ]
+  }
+}
+```
+
+### 비용 세부 분석
+
+```http
+GET /cost-analysis/breakdown
+```
+
+**쿼리 매개변수:**
+- `provider` (string): 클라우드 프로바이더
+- `service` (string): 서비스 유형
+- `period` (string): 기간
+
+**응답:**
+```json
+{
+  "success": true,
+  "data": {
+    "provider": "aws",
+    "total_cost": 800.25,
+    "services": [
+      {
+        "service": "EC2",
+        "cost": 600.00,
+        "percentage": 75.0
+      },
+      {
+        "service": "S3",
+        "cost": 200.25,
+        "percentage": 25.0
+      }
+    ]
+  }
+}
+```
+
+## 알림 관리
+
+### 알림 목록 조회
+
+```http
+GET /notifications
+```
+
+**쿼리 매개변수:**
+- `unread_only` (boolean): 읽지 않은 알림만 필터
+- `type` (string): 알림 유형별 필터
+- `priority` (string): 우선순위별 필터
+- `limit` (int): 결과 수 (기본값: 20)
+- `offset` (int): 건너뛸 결과 수 (기본값: 0)
+
+**응답:**
+```json
+{
+  "success": true,
+  "data": {
+    "notifications": [
+      {
+        "id": "uuid",
+        "title": "string",
+        "message": "string",
+        "type": "info",
+        "priority": "medium",
+        "is_read": false,
+        "created_at": "2024-01-01T00:00:00Z"
+      }
+    ],
+    "pagination": {
+      "limit": 20,
+      "offset": 0,
+      "total": 15
+    }
+  }
+}
+```
+
+### 알림 읽음 처리
+
+```http
+PUT /notifications/{id}/read
+```
+
+**응답:**
+```json
+{
+  "success": true,
+  "message": "알림이 읽음 처리되었습니다"
+}
+```
+
+### 모든 알림 읽음 처리
+
+```http
+PUT /notifications/read-all
+```
+
+**응답:**
+```json
+{
+  "success": true,
+  "message": "모든 알림이 읽음 처리되었습니다"
+}
+```
+
+## 감사 로그
+
+### 감사 로그 조회
+
+```http
+GET /audit-logs
+```
+
+**쿼리 매개변수:**
+- `user_id` (string): 사용자별 필터
+- `action` (string): 액션별 필터
+- `resource` (string): 리소스별 필터
+- `start_time` (string): 시작 시간 (ISO 8601)
+- `end_time` (string): 종료 시간 (ISO 8601)
+- `limit` (int): 결과 수 (기본값: 50)
+- `offset` (int): 건너뛸 결과 수 (기본값: 0)
+
+**응답:**
+```json
+{
+  "success": true,
+  "data": {
+    "audit_logs": [
+      {
+        "id": "uuid",
+        "user_id": "uuid",
+        "action": "create",
+        "resource": "vm",
+        "resource_id": "uuid",
+        "success": true,
+        "ip_address": "192.168.1.1",
+        "user_agent": "Mozilla/5.0...",
+        "created_at": "2024-01-01T00:00:00Z"
+      }
+    ],
+    "pagination": {
+      "limit": 50,
+      "offset": 0,
+      "total": 100
+    }
+  }
+}
+```
+
+## 시스템 상태
+
+### 헬스 체크
+
+```http
+GET /health
+```
+
+**응답:**
+```json
+{
+  "success": true,
+  "data": {
+    "status": "healthy",
+    "timestamp": "2024-01-01T00:00:00Z",
+    "uptime": "72h30m15s",
+    "version": "1.0.0",
+    "environment": "production",
+    "metrics": {
+      "memory": {
+        "alloc_mb": 45.2,
+        "total_alloc_mb": 120.5,
+        "sys_mb": 256.0,
+        "num_gc": 15
+      },
+      "goroutines": 25
+    }
+  }
+}
+```
+
+### 데이터베이스 헬스 체크
+
+```http
+GET /health/db
+```
+
+**응답:**
+```json
+{
+  "success": true,
+  "data": {
+    "status": "healthy",
+    "connection_count": 5,
+    "max_connections": 100,
+    "response_time": "2ms"
+  }
+}
+```
+
+### Redis 헬스 체크
+
+```http
+GET /health/redis
+```
+
+**응답:**
+```json
+{
+  "success": true,
+  "data": {
+    "status": "healthy",
+    "connected_clients": 3,
+    "used_memory": "2.5MB",
+    "response_time": "1ms"
+  }
+}
+```
+
+## 에러 코드
+
+| 코드 | HTTP 상태 | 설명 |
+|------|-----------|------|
+| `VALIDATION_ERROR` | 400 | 요청 검증 실패 |
+| `UNAUTHORIZED` | 401 | 인증 필요 |
+| `FORBIDDEN` | 403 | 권한 부족 |
+| `NOT_FOUND` | 404 | 리소스 없음 |
+| `CONFLICT` | 409 | 리소스 중복 |
+| `RATE_LIMITED` | 429 | 요청 제한 초과 |
+| `INTERNAL_ERROR` | 500 | 내부 서버 오류 |
+| `SERVICE_UNAVAILABLE` | 503 | 서비스 일시 중단 |
+
+## Rate Limiting
+
+API 요청은 남용 방지를 위해 제한됩니다:
+
+- **인증된 사용자**: 시간당 1000 요청
+- **인증되지 않은 사용자**: 시간당 100 요청
+- **API 키**: 시간당 10000 요청
+
+Rate limit 헤더가 응답에 포함됩니다:
+
+```http
+X-RateLimit-Limit: 1000
+X-RateLimit-Remaining: 999
+X-RateLimit-Reset: 1640995200
+```
+
+## 페이지네이션
+
+목록 엔드포인트는 페이지네이션을 지원합니다:
+
+- `limit`: 결과 수 (기본값: 20, 최대: 100)
+- `offset`: 건너뛸 결과 수 (기본값: 0)
+
+응답에 페이지네이션 메타데이터가 포함됩니다:
+
+```json
+{
+  "pagination": {
+    "limit": 20,
+    "offset": 0,
+    "total": 150,
+    "has_next": true,
+    "has_prev": false
+  }
+}
+```
+
+## 정렬
+
+목록 엔드포인트는 정렬을 지원합니다:
+
+- `sort`: 정렬 필드와 방향 (예: "name:asc", "created_at:desc")
+- 사용 가능한 필드는 엔드포인트마다 다름
+
+## 필터링
+
+목록 엔드포인트는 필터링을 지원합니다:
+
+- 쿼리 매개변수로 필터링
+- 여러 값 지원 (예: `status=running&status=pending`)
+- 날짜 범위 지원 (예: `start_date=2024-01-01&end_date=2024-01-31`)
+
+## WebSocket 이벤트
+
+실시간 업데이트는 WebSocket을 통해 제공됩니다:
+
+### 연결
+
+```javascript
+const ws = new WebSocket('ws://localhost:8080/ws');
+```
+
+### 인증
+
+```javascript
+ws.send(JSON.stringify({
+  type: 'auth',
+  token: 'jwt-token'
+}));
+```
+
+### 이벤트 유형
+
+- `vm_status_changed`: VM 상태 업데이트
+- `cost_updated`: 비용 분석 업데이트
+- `notification_received`: 새 알림
+- `audit_log_created`: 새 감사 로그 항목
+
+### 예시 이벤트
+
+```json
+{
+  "type": "vm_status_changed",
+  "data": {
+    "vm_id": "uuid",
+    "status": "running",
+    "timestamp": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+## SDK 예제
+
+### JavaScript/TypeScript
+
+```typescript
+import { SkyClustClient } from '@skyclust/sdk';
+
+const client = new SkyClustClient({
+  baseURL: 'http://localhost:8080/api/v1',
+  token: 'your-jwt-token'
+});
+
+// 워크스페이스 목록 조회
+const workspaces = await client.workspaces.list();
+
+// VM 생성
+const vm = await client.vms.create({
+  name: 'my-vm',
+  provider: 'aws',
+  instance_type: 't3.micro',
+  region: 'us-east-1'
+});
+```
+
+### Python
+
+```python
+from skyclust import SkyClustClient
+
+client = SkyClustClient(
+    base_url='http://localhost:8080/api/v1',
+    token='your-jwt-token'
+)
+
+# 워크스페이스 목록 조회
+workspaces = client.workspaces.list()
+
+# VM 생성
+vm = client.vms.create({
+    'name': 'my-vm',
+    'provider': 'aws',
+    'instance_type': 't3.micro',
+    'region': 'us-east-1'
+})
+```
+
+### Go
+
+```go
+package main
+
+import (
+    "github.com/skyclust/sdk-go"
+)
+
+client := skyclust.NewClient("http://localhost:8080/api/v1", "your-jwt-token")
+
+// 워크스페이스 목록 조회
+workspaces, err := client.Workspaces.List()
+
+// VM 생성
+vm, err := client.VMs.Create(skyclust.CreateVMRequest{
+    Name: "my-vm",
+    Provider: "aws",
+    InstanceType: "t3.micro",
+    Region: "us-east-1",
+})
+```
