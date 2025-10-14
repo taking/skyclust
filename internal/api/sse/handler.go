@@ -35,12 +35,6 @@ type SSEClient struct {
 	SubscribedProviders map[string]bool
 }
 
-type SSEMessage struct {
-	Type      string      `json:"type"`
-	Data      interface{} `json:"data"`
-	Timestamp int64       `json:"timestamp"`
-}
-
 func NewSSEHandler(logger *zap.Logger, natsConn *nats.Conn) *SSEHandler {
 	handler := &SSEHandler{
 		logger:   logger,
@@ -156,9 +150,10 @@ func (h *SSEHandler) HandleSSE(c *gin.Context) {
 
 func (h *SSEHandler) sendToClient(client *SSEClient, eventType string, data interface{}) {
 	message := SSEMessage{
-		Type:      eventType,
-		Data:      data,
-		Timestamp: time.Now().Unix(),
+		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		Event:     eventType,
+		Data:      map[string]interface{}{"data": data},
+		Timestamp: time.Now(),
 	}
 
 	jsonData, err := json.Marshal(message)

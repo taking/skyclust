@@ -23,3 +23,41 @@ type Meta struct {
 	HasNext    bool  `json:"has_next,omitempty"`
 	HasPrev    bool  `json:"has_prev,omitempty"`
 }
+
+// ErrorResponse represents a standardized error response
+type ErrorResponse struct {
+	Success   bool        `json:"success"`
+	Error     string      `json:"error"`
+	Code      string      `json:"code"`
+	RequestID string      `json:"request_id,omitempty"`
+	Timestamp time.Time   `json:"timestamp"`
+	Details   interface{} `json:"details,omitempty"`
+}
+
+// PaginationRequest represents pagination parameters
+type PaginationRequest struct {
+	Page  int `json:"page,omitempty" form:"page" validate:"min=1"`
+	Limit int `json:"limit,omitempty" form:"limit" validate:"min=1,max=100"`
+}
+
+// PaginationResponse represents pagination information in responses
+type PaginationResponse struct {
+	Page       int   `json:"page"`
+	Limit      int   `json:"limit"`
+	Total      int64 `json:"total"`
+	TotalPages int   `json:"total_pages"`
+	HasNext    bool  `json:"has_next"`
+	HasPrev    bool  `json:"has_prev"`
+}
+
+// SortRequest represents sorting parameters
+type SortRequest struct {
+	SortBy    string `json:"sort_by,omitempty" form:"sort_by"`
+	SortOrder string `json:"sort_order,omitempty" form:"sort_order" validate:"omitempty,oneof=asc desc"`
+}
+
+// FilterRequest represents filtering parameters
+type FilterRequest struct {
+	Search  string                 `json:"search,omitempty" form:"search"`
+	Filters map[string]interface{} `json:"filters,omitempty"`
+}
