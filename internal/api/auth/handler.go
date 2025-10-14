@@ -14,18 +14,26 @@ import (
 
 // Handler handles authentication-related HTTP requests
 type Handler struct {
-	authService    domain.AuthService
-	userService    domain.UserService
-	logoutService  *usecase.LogoutService
-	tokenExtractor *utils.TokenExtractor
+	authService        domain.AuthService
+	userService        domain.UserService
+	logoutService      *usecase.LogoutService
+	tokenExtractor     *utils.TokenExtractor
+	performanceTracker *common.PerformanceTracker
+	requestLogger      *common.RequestLogger
+	auditLogger        *common.AuditLogger
+	validationRules    *common.ValidationRules
 }
 
 // NewHandler creates a new authentication handler
 func NewHandler(authService domain.AuthService, userService domain.UserService) *Handler {
 	return &Handler{
-		authService:    authService,
-		userService:    userService,
-		tokenExtractor: utils.NewTokenExtractor(),
+		authService:        authService,
+		userService:        userService,
+		tokenExtractor:     utils.NewTokenExtractor(),
+		performanceTracker: common.NewPerformanceTracker("auth"),
+		requestLogger:      common.NewRequestLogger(nil),
+		auditLogger:        common.NewAuditLogger(nil),
+		validationRules:    common.NewValidationRules(),
 	}
 }
 
@@ -41,21 +49,52 @@ func NewHandlerWithLogout(authService domain.AuthService, userService domain.Use
 
 // Register handles user registration
 func (h *Handler) Register(c *gin.Context) {
+	// Start performance tracking
+	tracker := common.NewPerformanceTracker("register")
+	defer tracker.TrackRequest(c, "", http.StatusOK)
+
 	var req domain.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		// Create validation error
-		validationErr := domain.NewDomainError(
-			domain.ErrCodeValidationFailed,
-			"Invalid request body",
-			http.StatusBadRequest,
-		).WithDetails("binding_error", err.Error())
+		// Enhanced validation with new validation rules
+		validationErrors := make(map[string]string)
+		validationErrors["binding"] = err.Error()
 
-		common.DomainError(c, validationErr)
+		// Additional validation using new validation rules
+		if !h.validationRules.ValidateEmail(req.Email) {
+			validationErrors["email"] = "Invalid email format"
+		}
+		if !h.validationRules.ValidateUsername(req.Username) {
+			validationErrors["username"] = "Invalid username format"
+		}
+		if !h.validationRules.ValidatePassword(req.Password) {
+			validationErrors["password"] = "Password must be at least 8 characters"
+		}
+
+		common.ValidationError(c, validationErrors)
 		return
 	}
 
+	// Log business event
+	common.LogBusinessEvent(c, "user_registration_attempt", "", "", map[string]interface{}{
+		"username": req.Username,
+		"email":    req.Email,
+	})
+
+	// Log audit event
+	auditCtx := common.NewAuditContext("", "user_registration", "user", "").
+		WithDetails(map[string]interface{}{
+			"username": req.Username,
+			"email":    req.Email,
+		})
+
 	user, token, err := h.authService.Register(req)
 	if err != nil {
+		// Log error
+		common.LogError(c, err, "Failed to register user")
+
+		// Log failed audit event
+		auditCtx.LogFailure(c, h.auditLogger, err.Error())
+
 		// Use domain error handling
 		if domain.IsDomainError(err) {
 			common.DomainError(c, domain.GetDomainError(err))
@@ -71,6 +110,18 @@ func (h *Handler) Register(c *gin.Context) {
 		}
 		return
 	}
+
+	// Log successful registration
+	common.LogBusinessEvent(c, "user_registration_success", user.ID.String(), "", map[string]interface{}{
+		"user_id":  user.ID.String(),
+		"username": user.Username,
+		"email":    user.Email,
+	})
+
+	// Log successful audit event
+	auditCtx.UserID = user.ID.String()
+	auditCtx.ResourceID = user.ID.String()
+	auditCtx.LogSuccess(c, h.auditLogger)
 
 	common.Success(c, http.StatusCreated, gin.H{
 		"token": token,

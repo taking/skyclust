@@ -16,17 +16,23 @@ import (
 
 // Handler handles workspace-related HTTP requests
 type Handler struct {
-	workspaceService domain.WorkspaceService
-	userService      domain.UserService
-	tokenExtractor   *utils.TokenExtractor
+	workspaceService   domain.WorkspaceService
+	userService        domain.UserService
+	tokenExtractor     *utils.TokenExtractor
+	performanceTracker *common.PerformanceTracker
+	requestLogger      *common.RequestLogger
+	validationRules    *common.ValidationRules
 }
 
 // NewHandler creates a new workspace handler
 func NewHandler(workspaceService domain.WorkspaceService, userService domain.UserService) *Handler {
 	return &Handler{
-		workspaceService: workspaceService,
-		userService:      userService,
-		tokenExtractor:   utils.NewTokenExtractor(),
+		workspaceService:   workspaceService,
+		userService:        userService,
+		tokenExtractor:     utils.NewTokenExtractor(),
+		performanceTracker: common.NewPerformanceTracker("workspace"),
+		requestLogger:      common.NewRequestLogger(nil),
+		validationRules:    common.NewValidationRules(),
 	}
 }
 
@@ -102,9 +108,28 @@ func (h *Handler) GetWorkspaces(c *gin.Context) {
 		offset = 0
 	}
 
-	// Get workspaces for user - using a placeholder for now
-	// TODO: Implement proper GetWorkspaces method in service
-	workspaces := []domain.Workspace{} // Placeholder
+	// Get workspaces for user
+	workspaces, err := h.workspaceService.GetUserWorkspaces(c.Request.Context(), userID.String())
+	if err != nil {
+		common.InternalServerError(c, "Failed to retrieve workspaces")
+		return
+	}
+
+	// Apply pagination manually
+	total := len(workspaces)
+	start := offset
+	end := offset + limit
+	if start > total {
+		start = total
+	}
+	if end > total {
+		end = total
+	}
+	if start < 0 {
+		start = 0
+	}
+
+	workspaces = workspaces[start:end]
 
 	// Set telemetry attributes
 	telemetry.SetAttributes(span, map[string]interface{}{
@@ -120,7 +145,7 @@ func (h *Handler) GetWorkspaces(c *gin.Context) {
 		"pagination": gin.H{
 			"limit":  limit,
 			"offset": offset,
-			"total":  len(workspaces),
+			"total":  total,
 		},
 	}, "Workspaces retrieved successfully")
 }

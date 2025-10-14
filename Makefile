@@ -208,10 +208,27 @@ test: ## 테스트 실행
 	@go test ./...
 	@echo "$(GREEN)✓ Tests completed$(RESET)"
 
+test-unit: ## 단위 테스트 실행
+	@echo "$(YELLOW)Running unit tests...$(RESET)"
+	@go test -v -short ./internal/api/...
+	@echo "$(GREEN)✓ Unit tests completed$(RESET)"
+
+test-integration: ## 통합 테스트 실행
+	@echo "$(YELLOW)Running integration tests...$(RESET)"
+	@go test -v -run Integration ./...
+	@echo "$(GREEN)✓ Integration tests completed$(RESET)"
+
 test-coverage: ## 테스트 커버리지 실행
 	@echo "$(YELLOW)Running tests with coverage...$(RESET)"
-	@go test -coverprofile=coverage.out ./...
+	@go test -v -coverprofile=coverage.out ./...
 	@go tool cover -html=coverage.out -o coverage.html
+	@echo "$(GREEN)✓ Coverage report generated: coverage.html$(RESET)"
+
+test-benchmark: ## 벤치마크 테스트 실행
+	@echo "$(YELLOW)Running benchmark tests...$(RESET)"
+	@go test -v -bench=. -benchmem ./...
+	@echo "$(GREEN)✓ Benchmark tests completed$(RESET)"
+
 	@echo "$(GREEN)✓ Coverage report generated: coverage.html$(RESET)"
 
 # 설정 타겟

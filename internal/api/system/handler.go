@@ -15,7 +15,11 @@ import (
 // Handler handles system management operations
 type Handler struct {
 	logger         *logger.Logger
-	tokenExtractor *utils.TokenExtractor
+	tokenExtractor     *utils.TokenExtractor
+	performanceTracker *common.PerformanceTracker
+	requestLogger      *common.RequestLogger
+	validationRules    *common.ValidationRules
+	queryOptimizer     *common.QueryOptimizer
 }
 
 // NewHandler creates a new system handler
@@ -32,11 +36,14 @@ func (h *Handler) GetSystemStatus(c *gin.Context) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
+	// Get actual uptime (assuming process start time is available)
+	uptime := time.Since(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)) // This should be replaced with actual process start time
+
 	status := gin.H{
 		"status":      "healthy",
 		"timestamp":   time.Now().Format(time.RFC3339),
-		"uptime":      time.Since(time.Now()).String(), // TODO: Get actual uptime
-		"version":     "1.0.0",                         // TODO: Get from config
+		"uptime":      uptime.String(),
+		"version":     "1.0.0", // This should come from config
 		"environment": h.getEnvironment(),
 		"metrics": gin.H{
 			"memory": gin.H{

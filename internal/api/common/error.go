@@ -93,6 +93,39 @@ func (eb *ErrorBuilder) ValidationError(c *gin.Context, errors map[string]string
 	c.JSON(http.StatusBadRequest, response)
 }
 
+// Global convenience functions for error handling
+func BadRequest(c *gin.Context, message string) {
+	NewErrorBuilder(nil).BadRequest(c, message)
+}
+
+func Unauthorized(c *gin.Context, message string) {
+	NewErrorBuilder(nil).Unauthorized(c, message)
+}
+
+func Forbidden(c *gin.Context, message string) {
+	NewErrorBuilder(nil).Forbidden(c, message)
+}
+
+func NotFound(c *gin.Context, message string) {
+	NewErrorBuilder(nil).NotFound(c, message)
+}
+
+func Conflict(c *gin.Context, message string) {
+	NewErrorBuilder(nil).Conflict(c, message)
+}
+
+func InternalServerError(c *gin.Context, message string) {
+	NewErrorBuilder(nil).InternalServerError(c, message)
+}
+
+func DomainError(c *gin.Context, err *domain.DomainError) {
+	NewErrorBuilder(nil).DomainError(c, err)
+}
+
+func ValidationError(c *gin.Context, errors map[string]string) {
+	NewErrorBuilder(nil).ValidationError(c, errors)
+}
+
 // Handle handles errors and sends appropriate HTTP responses
 func (eb *ErrorBuilder) Handle(c *gin.Context, err error) {
 	// Extract request ID
@@ -135,77 +168,4 @@ func (eb *ErrorBuilder) Handle(c *gin.Context, err error) {
 		// Default to internal server error
 		eb.InternalServerError(c, "An unexpected error occurred")
 	}
-}
-
-// Global convenience functions
-func BadRequest(c *gin.Context, message string) {
-	// Note: This requires a logger instance, should be injected
-	c.JSON(http.StatusBadRequest, APIResponse{
-		Success: false,
-		Error:   message,
-		Code:    "BAD_REQUEST",
-	})
-}
-
-func Unauthorized(c *gin.Context, message string) {
-	c.JSON(http.StatusUnauthorized, APIResponse{
-		Success: false,
-		Error:   message,
-		Code:    "UNAUTHORIZED",
-	})
-}
-
-func Forbidden(c *gin.Context, message string) {
-	c.JSON(http.StatusForbidden, APIResponse{
-		Success: false,
-		Error:   message,
-		Code:    "FORBIDDEN",
-	})
-}
-
-func NotFound(c *gin.Context, message string) {
-	c.JSON(http.StatusNotFound, APIResponse{
-		Success: false,
-		Error:   message,
-		Code:    "NOT_FOUND",
-	})
-}
-
-func Conflict(c *gin.Context, message string) {
-	c.JSON(http.StatusConflict, APIResponse{
-		Success: false,
-		Error:   message,
-		Code:    "CONFLICT",
-	})
-}
-
-func InternalServerError(c *gin.Context, message string) {
-	c.JSON(http.StatusInternalServerError, APIResponse{
-		Success: false,
-		Error:   message,
-		Code:    "INTERNAL_SERVER_ERROR",
-	})
-}
-
-func DomainError(c *gin.Context, err *domain.DomainError) {
-	response := APIResponse{
-		Success:   false,
-		Error:     err.Message,
-		Code:      string(err.Code),
-		RequestID: getRequestID(c),
-		Timestamp: time.Now(),
-	}
-	if err.Details != nil {
-		response.Data = err.Details
-	}
-	c.JSON(err.StatusCode, response)
-}
-
-func ValidationError(c *gin.Context, errors map[string]string) {
-	c.JSON(http.StatusBadRequest, APIResponse{
-		Success: false,
-		Error:   "Validation failed",
-		Code:    "VALIDATION_ERROR",
-		Data:    errors,
-	})
 }

@@ -13,15 +13,23 @@ import (
 
 // Handler handles audit log management operations
 type Handler struct {
-	auditLogService domain.AuditLogService
-	tokenExtractor  *utils.TokenExtractor
+	auditLogService    domain.AuditLogService
+	tokenExtractor     *utils.TokenExtractor
+	performanceTracker *common.PerformanceTracker
+	requestLogger      *common.RequestLogger
+	validationRules    *common.ValidationRules
+	queryOptimizer     *common.QueryOptimizer
 }
 
 // NewHandler creates a new audit handler
 func NewHandler(auditLogService domain.AuditLogService) *Handler {
 	return &Handler{
-		auditLogService: auditLogService,
-		tokenExtractor:  utils.NewTokenExtractor(),
+		auditLogService:    auditLogService,
+		tokenExtractor:     utils.NewTokenExtractor(),
+		performanceTracker: common.NewPerformanceTracker("audit"),
+		requestLogger:      common.NewRequestLogger(nil),
+		validationRules:    common.NewValidationRules(),
+		queryOptimizer:     nil, // Will be set by dependency injection
 	}
 }
 

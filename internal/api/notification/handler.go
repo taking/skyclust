@@ -14,6 +14,10 @@ import (
 type Handler struct {
 	notificationService domain.NotificationService
 	tokenExtractor      *utils.TokenExtractor
+	performanceTracker  *common.PerformanceTracker
+	requestLogger       *common.RequestLogger
+	validationRules     *common.ValidationRules
+	queryOptimizer      *common.QueryOptimizer
 }
 
 // NewHandler creates a new notification handler
@@ -21,15 +25,30 @@ func NewHandler(notificationService domain.NotificationService) *Handler {
 	return &Handler{
 		notificationService: notificationService,
 		tokenExtractor:      utils.NewTokenExtractor(),
+		performanceTracker:  common.NewPerformanceTracker("notification"),
+		requestLogger:       common.NewRequestLogger(nil),
+		validationRules:     common.NewValidationRules(),
+		queryOptimizer:      nil, // Will be set by dependency injection
 	}
 }
 
 // GetNotifications retrieves notifications
 func (h *Handler) GetNotifications(c *gin.Context) {
+	// Get user ID from token
+	userID, err := h.tokenExtractor.GetUserIDFromToken(c)
+	if err != nil {
+		if domainErr, ok := err.(*domain.DomainError); ok {
+			common.DomainError(c, domainErr)
+		} else {
+			common.InternalServerError(c, "Failed to get user ID from token")
+		}
+		return
+	}
+
 	// Parse query parameters
 	limitStr := c.DefaultQuery("limit", "20")
 	offsetStr := c.DefaultQuery("offset", "0")
-	_ = c.DefaultQuery("unread_only", "false") // TODO: implement unread_only filter
+	unreadOnlyStr := c.DefaultQuery("unread_only", "false")
 
 	limit, err := strconv.Atoi(limitStr)
 	if err != nil || limit < 1 {
@@ -41,21 +60,34 @@ func (h *Handler) GetNotifications(c *gin.Context) {
 		offset = 0
 	}
 
-	// TODO: Implement actual notification retrieval
-	notifications := []gin.H{
-		{
-			"id":         uuid.New().String(),
-			"title":      "Sample Notification",
-			"message":    "This is a sample notification",
-			"type":       "info",
-			"read":       false,
-			"created_at": "2024-01-01T00:00:00Z",
-		},
+	unreadOnly := unreadOnlyStr == "true"
+
+	// Get notifications from service
+	notifications, total, err := h.notificationService.GetNotifications(c.Request.Context(), userID.String(), limit, offset, unreadOnly, "", "")
+	if err != nil {
+		common.InternalServerError(c, "Failed to retrieve notifications")
+		return
+	}
+
+	// Convert to response format
+	notificationResponses := make([]*NotificationResponse, len(notifications))
+	for i, notification := range notifications {
+		notificationResponses[i] = &NotificationResponse{
+			ID:        notification.ID,
+			UserID:    notification.UserID,
+			Title:     notification.Title,
+			Message:   notification.Message,
+			Type:      notification.Type,
+			Status:    notification.Priority,                             // Using Priority as Status
+			Data:      map[string]interface{}{"data": notification.Data}, // Convert string to map
+			CreatedAt: notification.CreatedAt,
+			ReadAt:    notification.ReadAt,
+		}
 	}
 
 	common.OK(c, gin.H{
-		"notifications": notifications,
-		"total":         len(notifications),
+		"notifications": notificationResponses,
+		"total":         total,
 		"limit":         limit,
 		"offset":        offset,
 	}, "Notifications retrieved successfully")

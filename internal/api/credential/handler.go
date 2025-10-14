@@ -12,15 +12,23 @@ import (
 
 // Handler handles credential management operations
 type Handler struct {
-	credentialService domain.CredentialService
-	tokenExtractor    *utils.TokenExtractor
+	credentialService  domain.CredentialService
+	tokenExtractor     *utils.TokenExtractor
+	performanceTracker *common.PerformanceTracker
+	requestLogger      *common.RequestLogger
+	validationRules    *common.ValidationRules
+	queryOptimizer     *common.QueryOptimizer
 }
 
 // NewHandler creates a new credential handler
 func NewHandler(credentialService domain.CredentialService) *Handler {
 	return &Handler{
-		credentialService: credentialService,
-		tokenExtractor:    utils.NewTokenExtractor(),
+		credentialService:  credentialService,
+		tokenExtractor:     utils.NewTokenExtractor(),
+		performanceTracker: common.NewPerformanceTracker("credential"),
+		requestLogger:      common.NewRequestLogger(nil),
+		validationRules:    common.NewValidationRules(),
+		queryOptimizer:     nil, // Will be set by dependency injection
 	}
 }
 

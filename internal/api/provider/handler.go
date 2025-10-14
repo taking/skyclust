@@ -14,7 +14,11 @@ import (
 type Handler struct {
 	pluginManager  *plugin.Manager
 	auditLogRepo   domain.AuditLogRepository
-	tokenExtractor *utils.TokenExtractor
+	tokenExtractor     *utils.TokenExtractor
+	performanceTracker *common.PerformanceTracker
+	requestLogger      *common.RequestLogger
+	validationRules    *common.ValidationRules
+	queryOptimizer     *common.QueryOptimizer
 }
 
 // NewHandler creates a new provider handler

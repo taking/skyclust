@@ -18,7 +18,11 @@ type Handler struct {
 	userService    domain.UserService
 	rbacService    domain.RBACService
 	logger         *logger.Logger
-	tokenExtractor *utils.TokenExtractor
+	tokenExtractor     *utils.TokenExtractor
+	performanceTracker *common.PerformanceTracker
+	requestLogger      *common.RequestLogger
+	validationRules    *common.ValidationRules
+	queryOptimizer     *common.QueryOptimizer
 }
 
 // NewHandler creates a new admin user handler
