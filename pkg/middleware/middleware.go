@@ -422,6 +422,35 @@ func (m *Middleware) ErrorHandlingMiddleware() gin.HandlerFunc {
 	}
 }
 
+// RecoveryMiddleware provides panic recovery with structured error response
+func (m *Middleware) RecoveryMiddleware() gin.HandlerFunc {
+	return gin.CustomRecovery(func(c *gin.Context, recovered interface{}) {
+		requestID := c.GetString("request_id")
+		if requestID == "" {
+			requestID = uuid.New().String()
+		}
+
+		// Log the panic with structured logging
+		m.logger.Error("Panic recovered",
+			zap.Any("panic", recovered),
+			zap.String("request_id", requestID),
+			zap.String("path", c.Request.URL.Path),
+			zap.String("method", c.Request.Method),
+			zap.Stack("stack"),
+		)
+
+		// Send structured error response
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success":    false,
+			"error":      "Internal server error",
+			"code":       "INTERNAL_SERVER_ERROR",
+			"request_id": requestID,
+			"timestamp":  time.Now(),
+		})
+		c.Abort()
+	})
+}
+
 // ValidationMiddleware provides request validation
 func (m *Middleware) ValidationMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {

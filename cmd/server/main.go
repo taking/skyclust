@@ -11,10 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"skyclust/internal/container"
-	httpdelivery "skyclust/internal/delivery/http"
-	"skyclust/internal/delivery/http/routes"
+	"skyclust/internal/di"
 	"skyclust/internal/plugin"
+	"skyclust/internal/routes"
 	"skyclust/pkg/config"
 	"skyclust/pkg/middleware"
 
@@ -92,7 +91,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 
 	// Initialize dependency injection container
-	appContainer, err := container.NewContainer(ctx, cfg)
+	appContainer, err := di.NewContainerBuilder(ctx, cfg).Build()
 	if err != nil {
 		log.Fatalf("Failed to initialize container: %v", err)
 	}
@@ -163,7 +162,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	log.Println("Server exited")
 }
 
-func setupRouter(container *container.Container, pluginManager *plugin.Manager, cfg *config.Config, logger *zap.Logger) *gin.Engine {
+func setupRouter(container *di.Container, pluginManager *plugin.Manager, cfg *config.Config, logger *zap.Logger) *gin.Engine {
 	// Set Gin mode
 	if cfg.Server.Host == "0.0.0.0" {
 		gin.SetMode(gin.ReleaseMode)
@@ -171,14 +170,20 @@ func setupRouter(container *container.Container, pluginManager *plugin.Manager, 
 
 	router := gin.New()
 
-	// Create error handler
-	errorHandler := httpdelivery.NewErrorHandler(logger)
+	// Create middleware with default config
+	middlewareInstance := middleware.NewMiddleware(
+		logger,
+		middleware.GetDefaultMiddlewareConfig(),
+		nil,                   // rateLimiter
+		container.AuthService, // authService
+		nil,                   // rbacService - interface mismatch, using nil for now
+		nil,                   // auditLogger
+	)
 
-	// Global middleware
-	router.Use(errorHandler.RequestIDMiddleware())
-	router.Use(errorHandler.LoggingMiddleware())
-	router.Use(errorHandler.RecoveryMiddleware())
-	router.Use(errorHandler.ErrorHandlerMiddleware())
+	// Apply core middleware
+	router.Use(middlewareInstance.RequestIDMiddleware())
+	router.Use(middlewareInstance.LoggingMiddleware())
+	router.Use(middlewareInstance.RecoveryMiddleware())
 
 	// CORS middleware
 	router.Use(func(c *gin.Context) {
@@ -192,13 +197,6 @@ func setupRouter(container *container.Container, pluginManager *plugin.Manager, 
 		}
 
 		c.Next()
-	})
-
-	// SSE endpoint (인증 필요)
-	router.GET("/api/events", func(c *gin.Context) {
-		// SSE 핸들러는 별도 구현 필요
-		// TODO: Add authentication middleware
-		c.JSON(http.StatusNotImplemented, gin.H{"message": "SSE endpoint will be implemented"})
 	})
 
 	// Create authentication middleware
