@@ -100,6 +100,8 @@ type RBACService interface {
 
 	// Role hierarchy
 	GetUserEffectivePermissions(userID uuid.UUID) ([]Permission, error)
+	GetInheritedRoles(role Role) ([]Role, error)
+	HasInheritedRole(userID uuid.UUID, role Role) (bool, error)
 
 	// Statistics
 	GetRoleDistribution() (map[Role]int, error)
@@ -115,13 +117,18 @@ var DefaultRolePermissions = map[Role][]Permission{
 		ProviderRead, ProviderManage,
 	},
 	UserRoleType: {
-		UserRead, UserUpdate,
-		WorkspaceCreate, WorkspaceRead, WorkspaceUpdate, WorkspaceDelete,
+		WorkspaceCreate, WorkspaceRead, WorkspaceUpdate,
 		ProviderRead,
 	},
 	ViewerRoleType: {
-		UserRead,
 		WorkspaceRead,
 		ProviderRead,
 	},
+}
+
+// RoleHierarchy defines the role inheritance hierarchy
+var RoleHierarchy = map[Role][]Role{
+	AdminRoleType:  {UserRoleType, ViewerRoleType},
+	UserRoleType:   {ViewerRoleType},
+	ViewerRoleType: {},
 }

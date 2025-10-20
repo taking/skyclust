@@ -15,6 +15,9 @@ type RequestLogger struct {
 
 // NewRequestLogger creates a new request logger
 func NewRequestLogger(logger *zap.Logger) *RequestLogger {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
 	return &RequestLogger{
 		logger: logger,
 	}

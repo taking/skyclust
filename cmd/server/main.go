@@ -176,7 +176,7 @@ func setupRouter(container *di.Container, pluginManager *plugin.Manager, cfg *co
 		middleware.GetDefaultMiddlewareConfig(),
 		nil,                   // rateLimiter
 		container.AuthService, // authService
-		nil,                   // rbacService - interface mismatch, using nil for now
+		container.RBACService, // rbacService
 		nil,                   // auditLogger
 	)
 
@@ -211,7 +211,7 @@ func setupRouter(container *di.Container, pluginManager *plugin.Manager, cfg *co
 		},
 		nil,                   // rateLimiter
 		container.AuthService, // authService
-		nil,                   // rbacService
+		container.RBACService, // rbacService
 		nil,                   // auditLogger
 	)
 

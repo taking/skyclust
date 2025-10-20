@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"net/http"
 	"strconv"
 	"time"
 
@@ -15,9 +16,9 @@ import (
 
 // Handler handles admin user management operations
 type Handler struct {
-	userService    domain.UserService
-	rbacService    domain.RBACService
-	logger         *logger.Logger
+	userService        domain.UserService
+	rbacService        domain.RBACService
+	logger             *logger.Logger
 	tokenExtractor     *utils.TokenExtractor
 	performanceTracker *common.PerformanceTracker
 	requestLogger      *common.RequestLogger
@@ -37,6 +38,10 @@ func NewHandler(userService domain.UserService, rbacService domain.RBACService, 
 
 // GetUsers retrieves all users with pagination and filtering
 func (h *Handler) GetUsers(c *gin.Context) {
+	// Check admin permission
+	if !h.checkAdminPermission(c) {
+		return
+	}
 	// Parse query parameters
 	limitStr := c.DefaultQuery("limit", "10")
 	offsetStr := c.DefaultQuery("offset", "0")
@@ -88,6 +93,10 @@ func (h *Handler) GetUsers(c *gin.Context) {
 
 // GetUser retrieves a specific user by ID
 func (h *Handler) GetUser(c *gin.Context) {
+	// Check admin permission
+	if !h.checkAdminPermission(c) {
+		return
+	}
 	userIDStr := c.Param("id")
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
@@ -111,6 +120,10 @@ func (h *Handler) GetUser(c *gin.Context) {
 
 // UpdateUser updates a specific user
 func (h *Handler) UpdateUser(c *gin.Context) {
+	// Check admin permission
+	if !h.checkAdminPermission(c) {
+		return
+	}
 	userIDStr := c.Param("id")
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
@@ -157,6 +170,10 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 
 // DeleteUser deletes a specific user
 func (h *Handler) DeleteUser(c *gin.Context) {
+	// Check admin permission
+	if !h.checkAdminPermission(c) {
+		return
+	}
 	userIDStr := c.Param("id")
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
@@ -189,6 +206,10 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 
 // AssignRole assigns a role to a user
 func (h *Handler) AssignRole(c *gin.Context) {
+	// Check admin permission
+	if !h.checkAdminPermission(c) {
+		return
+	}
 	userIDStr := c.Param("id")
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
@@ -232,6 +253,10 @@ func (h *Handler) AssignRole(c *gin.Context) {
 
 // RemoveRole removes a role from a user
 func (h *Handler) RemoveRole(c *gin.Context) {
+	// Check admin permission
+	if !h.checkAdminPermission(c) {
+		return
+	}
 	userIDStr := c.Param("id")
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
@@ -275,6 +300,10 @@ func (h *Handler) RemoveRole(c *gin.Context) {
 
 // GetUserStats retrieves user statistics
 func (h *Handler) GetUserStats(c *gin.Context) {
+	// Check admin permission
+	if !h.checkAdminPermission(c) {
+		return
+	}
 	stats, err := h.userService.GetUserStats()
 	if err != nil {
 		h.logger.Errorf("Failed to get user stats: %v", err)
@@ -298,4 +327,30 @@ func (h *Handler) GetUserStats(c *gin.Context) {
 		"role_distribution": roleStats,
 		"last_updated":      time.Now().Format(time.RFC3339),
 	}, "User statistics retrieved successfully")
+}
+
+// checkAdminPermission checks if the current user has admin permission
+func (h *Handler) checkAdminPermission(c *gin.Context) bool {
+	// Get current user role from token for authorization
+	userRole, err := h.tokenExtractor.GetUserRoleFromToken(c)
+	if err != nil {
+		if domainErr, ok := err.(*domain.DomainError); ok {
+			common.DomainError(c, domainErr)
+		} else {
+			common.InternalServerError(c, "Failed to get user role from token")
+		}
+		return false
+	}
+
+	// Check if user has admin role
+	if userRole != domain.AdminRoleType {
+		common.DomainError(c, domain.NewDomainError(
+			domain.ErrCodeForbidden,
+			"Insufficient permissions - admin role required",
+			http.StatusForbidden,
+		))
+		return false
+	}
+
+	return true
 }

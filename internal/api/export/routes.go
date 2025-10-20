@@ -8,19 +8,16 @@ import (
 func SetupRoutes(router *gin.RouterGroup) {
 	exportHandler := NewHandler()
 
-	exports := router.Group("/exports")
-	{
-		// Export data
-		exports.POST("", exportHandler.ExportData)
+	// Export data
+	router.POST("", exportHandler.ExportData)
 
-		// Get supported formats and types
-		exports.GET("/formats", exportHandler.GetSupportedFormats)
+	// Get supported formats and types
+	router.GET("/formats", exportHandler.GetSupportedFormats)
 
-		// Export history
-		exports.GET("/history", exportHandler.GetExportHistory)
+	// Export history
+	router.GET("/history", exportHandler.GetExportHistory)
 
-		// Export status and download
-		exports.GET("/:id/status", exportHandler.GetExportStatus)
-		exports.GET("/:id/download", exportHandler.DownloadExport)
-	}
+	// Export status and download
+	router.GET("/:id/status", exportHandler.GetExportStatus)
+	router.GET("/:id/download", exportHandler.DownloadExport)
 }

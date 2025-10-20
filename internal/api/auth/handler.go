@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"skyclust/internal/api/common"
 	"skyclust/internal/domain"
-	"skyclust/internal/usecase"
+	"skyclust/internal/service"
 	"skyclust/internal/utils"
 	"strconv"
 
@@ -16,7 +16,7 @@ import (
 type Handler struct {
 	authService        domain.AuthService
 	userService        domain.UserService
-	logoutService      *usecase.LogoutService
+	logoutService      *service.LogoutService
 	tokenExtractor     *utils.TokenExtractor
 	performanceTracker *common.PerformanceTracker
 	requestLogger      *common.RequestLogger
@@ -38,12 +38,16 @@ func NewHandler(authService domain.AuthService, userService domain.UserService) 
 }
 
 // NewHandlerWithLogout creates a new authentication handler with logout service
-func NewHandlerWithLogout(authService domain.AuthService, userService domain.UserService, logoutService *usecase.LogoutService) *Handler {
+func NewHandlerWithLogout(authService domain.AuthService, userService domain.UserService, logoutService *service.LogoutService) *Handler {
 	return &Handler{
-		authService:    authService,
-		userService:    userService,
-		logoutService:  logoutService,
-		tokenExtractor: utils.NewTokenExtractor(),
+		authService:        authService,
+		userService:        userService,
+		logoutService:      logoutService,
+		tokenExtractor:     utils.NewTokenExtractor(),
+		performanceTracker: common.NewPerformanceTracker("auth"),
+		requestLogger:      common.NewRequestLogger(nil),
+		auditLogger:        common.NewAuditLogger(nil),
+		validationRules:    common.NewValidationRules(),
 	}
 }
 

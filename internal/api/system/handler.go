@@ -1,11 +1,13 @@
 package system
 
 import (
+	"net/http"
 	"runtime"
 	"strconv"
 	"time"
 
 	"skyclust/internal/api/common"
+	"skyclust/internal/domain"
 	"skyclust/internal/utils"
 	"skyclust/pkg/logger"
 
@@ -14,7 +16,7 @@ import (
 
 // Handler handles system management operations
 type Handler struct {
-	logger         *logger.Logger
+	logger             *logger.Logger
 	tokenExtractor     *utils.TokenExtractor
 	performanceTracker *common.PerformanceTracker
 	requestLogger      *common.RequestLogger
@@ -32,6 +34,10 @@ func NewHandler(logger *logger.Logger) *Handler {
 
 // GetSystemStatus returns the current system status
 func (h *Handler) GetSystemStatus(c *gin.Context) {
+	// Check admin permission
+	if !h.checkAdminPermission(c) {
+		return
+	}
 	// Get system metrics
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
@@ -61,6 +67,10 @@ func (h *Handler) GetSystemStatus(c *gin.Context) {
 
 // GetSystemHealth returns detailed health information
 func (h *Handler) GetSystemHealth(c *gin.Context) {
+	// Check admin permission
+	if !h.checkAdminPermission(c) {
+		return
+	}
 	// TODO: Implement comprehensive health checks
 	health := gin.H{
 		"status": "healthy",
@@ -77,6 +87,10 @@ func (h *Handler) GetSystemHealth(c *gin.Context) {
 
 // GetSystemConfig returns current system configuration
 func (h *Handler) GetSystemConfig(c *gin.Context) {
+	// Check admin permission
+	if !h.checkAdminPermission(c) {
+		return
+	}
 	// TODO: Return actual configuration
 	config := gin.H{
 		"server": gin.H{
@@ -98,6 +112,10 @@ func (h *Handler) GetSystemConfig(c *gin.Context) {
 
 // UpdateSystemConfig updates system configuration
 func (h *Handler) UpdateSystemConfig(c *gin.Context) {
+	// Check admin permission
+	if !h.checkAdminPermission(c) {
+		return
+	}
 	var req gin.H
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.BadRequest(c, "Invalid request body")
@@ -113,6 +131,10 @@ func (h *Handler) UpdateSystemConfig(c *gin.Context) {
 
 // GetSystemLogs retrieves system logs
 func (h *Handler) GetSystemLogs(c *gin.Context) {
+	// Check admin permission
+	if !h.checkAdminPermission(c) {
+		return
+	}
 	// Parse query parameters
 	level := c.DefaultQuery("level", "info")
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
@@ -149,6 +171,10 @@ func (h *Handler) GetSystemLogs(c *gin.Context) {
 
 // RestartSystem restarts the system
 func (h *Handler) RestartSystem(c *gin.Context) {
+	// Check admin permission
+	if !h.checkAdminPermission(c) {
+		return
+	}
 	// TODO: Implement system restart
 	// This would typically involve:
 	// 1. Graceful shutdown
@@ -169,4 +195,30 @@ func (h *Handler) getEnvironment() string {
 
 func bToMb(b uint64) uint64 {
 	return b / 1024 / 1024
+}
+
+// checkAdminPermission checks if the current user has admin permission
+func (h *Handler) checkAdminPermission(c *gin.Context) bool {
+	// Get current user role from token for authorization
+	userRole, err := h.tokenExtractor.GetUserRoleFromToken(c)
+	if err != nil {
+		if domainErr, ok := err.(*domain.DomainError); ok {
+			common.DomainError(c, domainErr)
+		} else {
+			common.InternalServerError(c, "Failed to get user role from token")
+		}
+		return false
+	}
+
+	// Check if user has admin role
+	if userRole != domain.AdminRoleType {
+		common.DomainError(c, domain.NewDomainError(
+			domain.ErrCodeForbidden,
+			"Insufficient permissions - admin role required",
+			http.StatusForbidden,
+		))
+		return false
+	}
+
+	return true
 }

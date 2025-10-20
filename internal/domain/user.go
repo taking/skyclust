@@ -23,6 +23,7 @@ type User struct {
 	// Relationships
 	Credentials []Credential `json:"credentials,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 	AuditLogs   []AuditLog   `json:"audit_logs,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+	UserRoles   []UserRole   `json:"user_roles,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 }
 
 // TableName specifies the table name for User
@@ -40,6 +41,7 @@ type UserRepository interface {
 	Update(user *User) error
 	Delete(id uuid.UUID) error
 	List(limit, offset int, filters map[string]interface{}) ([]*User, int64, error)
+	Count() (int64, error)
 }
 
 // UserFilters represents filters for user queries

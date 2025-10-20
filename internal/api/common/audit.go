@@ -14,6 +14,9 @@ type AuditLogger struct {
 
 // NewAuditLogger creates a new audit logger
 func NewAuditLogger(logger *zap.Logger) *AuditLogger {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
 	return &AuditLogger{
 		logger: logger,
 	}

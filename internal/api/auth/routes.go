@@ -2,13 +2,13 @@ package auth
 
 import (
 	"skyclust/internal/domain"
-	"skyclust/internal/usecase"
+	"skyclust/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
 // SetupRoutes sets up authentication routes
-func SetupRoutes(router *gin.RouterGroup, authService domain.AuthService, userService domain.UserService, logoutService *usecase.LogoutService) {
+func SetupRoutes(router *gin.RouterGroup, authService domain.AuthService, userService domain.UserService, logoutService *service.LogoutService) {
 	authHandler := NewHandlerWithLogout(authService, userService, logoutService)
 
 	// Public authentication routes (no authentication required)
@@ -25,9 +25,9 @@ func SetupUserRoutes(router *gin.RouterGroup, authService domain.AuthService, us
 	authHandler := NewHandler(authService, userService)
 
 	// User management routes
-	router.POST("/users", authHandler.Register)         // Create user
-	router.GET("/users", authHandler.GetUsers)          // List users
-	router.GET("/users/:id", authHandler.GetUser)       // Get specific user
-	router.PUT("/users/:id", authHandler.UpdateUser)    // Update user
-	router.DELETE("/users/:id", authHandler.DeleteUser) // Delete user
+	router.POST("", authHandler.Register)         // Create user
+	router.GET("", authHandler.GetUsers)          // List users
+	router.GET("/:id", authHandler.GetUser)       // Get specific user
+	router.PUT("/:id", authHandler.UpdateUser)    // Update user
+	router.DELETE("/:id", authHandler.DeleteUser) // Delete user
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"skyclust/internal/domain"
-	"skyclust/internal/usecase"
+	"skyclust/internal/service"
 	"skyclust/pkg/config"
 
 	"go.uber.org/zap"
@@ -28,15 +28,15 @@ type Container struct {
 	AuditLogService         domain.AuditLogService
 	AuthService             domain.AuthService
 	OIDCService             domain.OIDCService
-	LogoutService           *usecase.LogoutService
+	LogoutService           *service.LogoutService
 	PluginActivationService domain.PluginActivationService
 	CacheService            domain.CacheService
 	EventService            domain.EventService
 	WorkspaceService        domain.WorkspaceService
 	VMService               domain.VMService
-	CostAnalysisService     *usecase.CostAnalysisService
-	NotificationService     *usecase.NotificationService
-	ExportService           *usecase.ExportService
+	CostAnalysisService     *service.CostAnalysisService
+	NotificationService     *service.NotificationService
+	ExportService           *service.ExportService
 	RBACService             domain.RBACService
 
 	// HTTP Handlers

@@ -137,3 +137,13 @@ func (r *userRepository) List(limit, offset int, filters map[string]interface{})
 
 	return users, total, nil
 }
+
+// Count returns the total number of users
+func (r *userRepository) Count() (int64, error) {
+	var count int64
+	if err := r.db.Model(&domain.User{}).Where("deleted_at IS NULL").Count(&count).Error; err != nil {
+		logger.Errorf("Failed to count users: %v", err)
+		return 0, err
+	}
+	return count, nil
+}

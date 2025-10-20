@@ -3,7 +3,7 @@ package di
 import (
 	"fmt"
 	"skyclust/internal/domain"
-	"skyclust/internal/usecase"
+	"skyclust/internal/service"
 	"skyclust/pkg/cache"
 	pkglogger "skyclust/pkg/logger"
 )
@@ -15,24 +15,24 @@ type Services struct {
 	AuditLogService         domain.AuditLogService
 	AuthService             domain.AuthService
 	OIDCService             domain.OIDCService
-	LogoutService           *usecase.LogoutService
+	LogoutService           *service.LogoutService
 	PluginActivationService domain.PluginActivationService
 	CacheService            domain.CacheService
 	EventService            domain.EventService
 	WorkspaceService        domain.WorkspaceService
 	VMService               domain.VMService
-	CostAnalysisService     *usecase.CostAnalysisService
-	NotificationService     *usecase.NotificationService
-	ExportService           *usecase.ExportService
+	CostAnalysisService     *service.CostAnalysisService
+	NotificationService     *service.NotificationService
+	ExportService           *service.ExportService
 	RBACService             domain.RBACService
 }
 
 // buildServices initializes all services
 func (b *ContainerBuilder) buildServices(repos *Repositories, infra *Infrastructure) (*Services, error) {
 	// Initialize services
-	userService := usecase.NewUserService(repos.UserRepo, infra.Hasher, repos.AuditLogRepo)
-	credentialService := usecase.NewCredentialService(repos.CredentialRepo, repos.AuditLogRepo, infra.Encryptor)
-	auditLogService := usecase.NewAuditLogService(repos.AuditLogRepo)
+	userService := service.NewUserService(repos.UserRepo, infra.Hasher, repos.AuditLogRepo)
+	credentialService := service.NewCredentialService(repos.CredentialRepo, repos.AuditLogRepo, infra.Encryptor)
+	auditLogService := service.NewAuditLogService(repos.AuditLogRepo)
 
 	// Initialize Redis service
 	redisService, err := cache.NewRedisService(cache.RedisConfig{
@@ -49,26 +49,26 @@ func (b *ContainerBuilder) buildServices(repos *Repositories, infra *Infrastruct
 	// Initialize token blacklist
 	tokenBlacklist := cache.NewTokenBlacklist(redisService.GetClient())
 
-	authService := usecase.NewAuthService(repos.UserRepo, repos.AuditLogRepo, infra.Hasher, tokenBlacklist, b.config.Security.JWTSecret, b.config.Security.JWTExpiration)
-	oidcService := usecase.NewOIDCService(repos.UserRepo, repos.AuditLogRepo, authService)
-	pluginActivationService := usecase.NewPluginActivationService(repos.CredentialRepo, infra.EventBus)
-	cacheService := usecase.NewCacheService(redisService)
-	eventService := usecase.NewEventService(infra.EventBus)
-	workspaceService := usecase.NewWorkspaceService(repos.WorkspaceRepo, repos.UserRepo, infra.EventBus, repos.AuditLogRepo)
-	vmService := usecase.NewVMService(repos.VMRepo, repos.WorkspaceRepo, nil, infra.EventBus, repos.AuditLogRepo) // Cloud provider will be injected later
+	// Initialize RBAC service first
+	rbacService := service.NewRBACService(infra.DB)
+
+	authService := service.NewAuthService(repos.UserRepo, repos.AuditLogRepo, rbacService, infra.Hasher, tokenBlacklist, b.config.Security.JWTSecret, b.config.Security.JWTExpiration)
+	oidcService := service.NewOIDCService(repos.UserRepo, repos.AuditLogRepo, authService)
+	pluginActivationService := service.NewPluginActivationService(repos.CredentialRepo, infra.EventBus)
+	cacheService := service.NewCacheService(redisService)
+	eventService := service.NewEventService(infra.EventBus)
+	workspaceService := service.NewWorkspaceService(repos.WorkspaceRepo, repos.UserRepo, infra.EventBus, repos.AuditLogRepo)
+	vmService := service.NewVMService(repos.VMRepo, repos.WorkspaceRepo, nil, infra.EventBus, repos.AuditLogRepo) // Cloud provider will be injected later
 
 	// Initialize logout service
-	logoutService := usecase.NewLogoutService(tokenBlacklist, oidcService, repos.AuditLogRepo)
+	logoutService := service.NewLogoutService(tokenBlacklist, oidcService, repos.AuditLogRepo)
 
-	// Initialize RBAC service
-	rbacService := usecase.NewRBACService(infra.DB)
-
-	costAnalysisService := usecase.NewCostAnalysisService(repos.VMRepo, repos.CredentialRepo, repos.WorkspaceRepo, repos.AuditLogRepo)
+	costAnalysisService := service.NewCostAnalysisService(repos.VMRepo, repos.CredentialRepo, repos.WorkspaceRepo, repos.AuditLogRepo)
 
 	// Create logger for services that need pkg/logger.Logger
 	_, _ = pkglogger.NewLogger(&pkglogger.LoggerConfig{})
-	notificationService := usecase.NewNotificationService(infra.Logger, repos.AuditLogRepo, repos.UserRepo, repos.WorkspaceRepo, eventService)
-	exportService := usecase.NewExportService(infra.Logger, repos.VMRepo, repos.WorkspaceRepo, repos.CredentialRepo, repos.AuditLogRepo)
+	notificationService := service.NewNotificationService(infra.Logger, repos.AuditLogRepo, repos.UserRepo, repos.WorkspaceRepo, eventService)
+	exportService := service.NewExportService(infra.Logger, repos.VMRepo, repos.WorkspaceRepo, repos.CredentialRepo, repos.AuditLogRepo)
 
 	return &Services{
 		UserService:             userService,

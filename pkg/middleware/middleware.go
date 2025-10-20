@@ -72,8 +72,9 @@ type AuthService interface {
 
 // RBACService interface for role-based access control
 type RBACService interface {
-	CheckPermission(userID string, resource, action string) (bool, error)
-	GetUserRoles(userID string) ([]string, error)
+	GetUserRoles(userID uuid.UUID) ([]domain.Role, error)
+	HasRole(userID uuid.UUID, role domain.Role) (bool, error)
+	CheckPermission(userID uuid.UUID, permission domain.Permission) (bool, error)
 }
 
 // AuditLogger interface for audit logging
@@ -307,6 +308,19 @@ func (m *Middleware) AuthMiddleware() gin.HandlerFunc {
 			c.Set("user_id", userID)
 		}
 
+		// Get user roles from RBAC service and set primary role in context
+		if m.rbacService != nil {
+			userRoles, err := m.rbacService.GetUserRoles(user.ID)
+			if err == nil && len(userRoles) > 0 {
+				c.Set("user_role", string(userRoles[0])) // Primary role
+				c.Set("user_roles", userRoles)           // All roles
+			} else {
+				c.Set("user_role", string(domain.UserRoleType)) // Default role
+			}
+		} else {
+			c.Set("user_role", string(domain.UserRoleType)) // Default role
+		}
+
 		c.Next()
 	}
 }
@@ -334,16 +348,22 @@ func (m *Middleware) RBACMiddleware(requiredPermissions []string) gin.HandlerFun
 
 		// Check permissions
 		hasPermission := true
-		for _, permission := range requiredPermissions {
-			allowed, err := m.rbacService.CheckPermission(userIDStr, permission, "execute")
-			if err != nil {
-				m.logger.Error("Permission check failed", zap.Error(err), zap.String("permission", permission))
-				hasPermission = false
-				break
-			}
-			if !allowed {
-				hasPermission = false
-				break
+		userUUID, err := uuid.Parse(userIDStr)
+		if err != nil {
+			m.logger.Error("Invalid user ID", zap.Error(err), zap.String("user_id", userIDStr))
+			hasPermission = false
+		} else {
+			for _, permission := range requiredPermissions {
+				allowed, err := m.rbacService.CheckPermission(userUUID, domain.Permission(permission))
+				if err != nil {
+					m.logger.Error("Permission check failed", zap.Error(err), zap.String("permission", permission))
+					hasPermission = false
+					break
+				}
+				if !allowed {
+					hasPermission = false
+					break
+				}
 			}
 		}
 

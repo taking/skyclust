@@ -8,14 +8,11 @@ import (
 func SetupRoutes(router *gin.RouterGroup) {
 	costAnalysisHandler := NewHandler()
 
-	cost := router.Group("/cost-analysis")
-	{
-		// Workspace-specific cost analysis
-		cost.GET("/workspaces/:workspaceId/summary", costAnalysisHandler.GetCostSummary)
-		cost.GET("/workspaces/:workspaceId/predictions", costAnalysisHandler.GetCostPredictions)
-		cost.GET("/workspaces/:workspaceId/budget-alerts", costAnalysisHandler.GetBudgetAlerts)
-		cost.GET("/workspaces/:workspaceId/trend", costAnalysisHandler.GetCostTrend)
-		cost.GET("/workspaces/:workspaceId/breakdown", costAnalysisHandler.GetCostBreakdown)
-		cost.GET("/workspaces/:workspaceId/comparison", costAnalysisHandler.GetCostComparison)
-	}
+	// Workspace-specific cost analysis
+	router.GET("/workspaces/:workspaceId/summary", costAnalysisHandler.GetCostSummary)
+	router.GET("/workspaces/:workspaceId/predictions", costAnalysisHandler.GetCostPredictions)
+	router.GET("/workspaces/:workspaceId/budget-alerts", costAnalysisHandler.GetBudgetAlerts)
+	router.GET("/workspaces/:workspaceId/trend", costAnalysisHandler.GetCostTrend)
+	router.GET("/workspaces/:workspaceId/breakdown", costAnalysisHandler.GetCostBreakdown)
+	router.GET("/workspaces/:workspaceId/comparison", costAnalysisHandler.GetCostComparison)
 }

@@ -75,9 +75,9 @@ func (rm *RouteManager) setupPublicRoutes(router *gin.Engine) {
 	router.GET("/health", rm.healthCheck)
 
 	// API v1 public routes
-	v1Public := router.Group("/api/v1/public")
+	v1Public := router.Group("/api/v1")
 	{
-		// Authentication routes (public)
+		// Authentication routes (public) - register and login
 		authGroup := v1Public.Group("/auth")
 		rm.setupPublicAuthRoutes(authGroup)
 
@@ -99,7 +99,7 @@ func (rm *RouteManager) setupProtectedRoutes(router *gin.Engine) {
 	// Apply authentication middleware to all protected routes
 	v1Protected.Use(rm.middleware.AuthMiddleware())
 	{
-		// Authentication routes (protected)
+		// Authentication routes (protected) - logout and profile
 		authGroup := v1Protected.Group("/auth")
 		rm.setupProtectedAuthRoutes(authGroup)
 
@@ -157,6 +157,10 @@ func (rm *RouteManager) setupAdminRoutes(router *gin.Engine) {
 		// Audit logs
 		auditGroup := v1Admin.Group("/audit")
 		rm.setupAuditRoutes(auditGroup)
+
+		// Permission management
+		permissionsGroup := v1Admin.Group("/permissions")
+		rm.setupPermissionRoutes(permissionsGroup)
 	}
 }
 
@@ -210,12 +214,22 @@ func (rm *RouteManager) healthCheck(c *gin.Context) {
 
 // setupPublicAuthRoutes sets up public authentication routes
 func (rm *RouteManager) setupPublicAuthRoutes(router *gin.RouterGroup) {
-	auth.SetupRoutes(router, rm.container.AuthService, rm.container.UserService, rm.container.LogoutService)
+	// Create a temporary handler for public auth routes
+	authHandler := auth.NewHandlerWithLogout(rm.container.AuthService, rm.container.UserService, rm.container.LogoutService)
+
+	// Public authentication routes (no authentication required)
+	router.POST("/register", authHandler.Register)
+	router.POST("/login", authHandler.Login)
 }
 
 // setupProtectedAuthRoutes sets up protected authentication routes
 func (rm *RouteManager) setupProtectedAuthRoutes(router *gin.RouterGroup) {
-	auth.SetupRoutes(router, rm.container.AuthService, rm.container.UserService, rm.container.LogoutService)
+	// Create a temporary handler for protected auth routes
+	authHandler := auth.NewHandlerWithLogout(rm.container.AuthService, rm.container.UserService, rm.container.LogoutService)
+
+	// Protected authentication routes (authentication required)
+	router.POST("/logout", authHandler.Logout)
+	router.GET("/me", authHandler.Me)
 }
 
 // setupOIDCRoutes sets up OIDC routes
@@ -278,6 +292,11 @@ func (rm *RouteManager) setupSystemRoutes(router *gin.RouterGroup) {
 // setupAuditRoutes sets up audit log routes
 func (rm *RouteManager) setupAuditRoutes(router *gin.RouterGroup) {
 	audit.SetupRoutes(router, rm.container.AuditLogService)
+}
+
+// setupPermissionRoutes sets up permission management routes
+func (rm *RouteManager) setupPermissionRoutes(router *gin.RouterGroup) {
+	admin.SetupPermissionRoutes(router, rm.container.RBACService)
 }
 
 // setupSSERoutes sets up SSE routes

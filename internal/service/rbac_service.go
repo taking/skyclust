@@ -1,4 +1,4 @@
-package usecase
+package service
 
 import (
 	"fmt"
@@ -271,4 +271,57 @@ func (r *rbacService) GetRoleDistribution() (map[domain.Role]int, error) {
 	}
 
 	return distribution, nil
+}
+
+// GetInheritedRoles returns all roles that inherit from the given role
+func (r *rbacService) GetInheritedRoles(role domain.Role) ([]domain.Role, error) {
+	inheritedRoles, exists := domain.RoleHierarchy[role]
+	if !exists {
+		return []domain.Role{}, nil
+	}
+
+	// Recursively get all inherited roles
+	var allInheritedRoles []domain.Role
+	for _, inheritedRole := range inheritedRoles {
+		allInheritedRoles = append(allInheritedRoles, inheritedRole)
+
+		// Get roles inherited by this role
+		subInherited, err := r.GetInheritedRoles(inheritedRole)
+		if err != nil {
+			return nil, err
+		}
+		allInheritedRoles = append(allInheritedRoles, subInherited...)
+	}
+
+	return allInheritedRoles, nil
+}
+
+// HasInheritedRole checks if a user has a role through inheritance
+func (r *rbacService) HasInheritedRole(userID uuid.UUID, role domain.Role) (bool, error) {
+	// Get user's direct roles
+	userRoles, err := r.GetUserRoles(userID)
+	if err != nil {
+		return false, err
+	}
+
+	// Check if user has the role directly
+	for _, userRole := range userRoles {
+		if userRole == role {
+			return true, nil
+		}
+
+		// Check if user's role inherits the target role
+		inheritedRoles, err := r.GetInheritedRoles(userRole)
+		if err != nil {
+			return false, err
+		}
+
+		for _, inheritedRole := range inheritedRoles {
+			if inheritedRole == role {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
 }
