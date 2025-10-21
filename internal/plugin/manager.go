@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	plugininterfaces "skyclust/pkg/plugin"
+	plugininterfaces "skyclust/internal/plugin/interfaces"
 )
 
 // Manager handles loading and managing cloud provider plugins

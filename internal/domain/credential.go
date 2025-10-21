@@ -9,7 +9,7 @@ import (
 
 // Credential represents a cloud provider credential
 type Credential struct {
-	ID            uuid.UUID  `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	ID            uuid.UUID  `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
 	UserID        uuid.UUID  `json:"user_id" gorm:"type:uuid;not null;index"`
 	Provider      string     `json:"provider" gorm:"not null;size:20;index"` // aws, gcp, openstack, azure
 	Name          string     `json:"name" gorm:"not null;size:100"`

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -91,8 +92,10 @@ func runServer(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 
 	// Initialize dependency injection container
-	appContainer, err := di.NewContainerBuilder(ctx, cfg).Build()
-	if err != nil {
+	appContainer := &di.Container{}
+
+	// Initialize container with configuration
+	if err := appContainer.Initialize(ctx, cfg); err != nil {
 		log.Fatalf("Failed to initialize container: %v", err)
 	}
 	defer appContainer.Close()
@@ -111,18 +114,34 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Initialize plugin manager
 	pluginManager := plugin.NewManager()
 
+	// Get current working directory for debugging
+	cwd, _ := os.Getwd()
+	log.Printf("Current working directory: %s", cwd)
+	log.Printf("Plugin directory (config): %s", cfg.Plugins.Directory)
+
+	// Check if plugin directory exists
+	pluginDirAbs := cfg.Plugins.Directory
+	if !filepath.IsAbs(pluginDirAbs) {
+		pluginDirAbs = filepath.Join(cwd, cfg.Plugins.Directory)
+	}
+	log.Printf("Plugin directory (absolute): %s", pluginDirAbs)
+	if _, err := os.Stat(pluginDirAbs); os.IsNotExist(err) {
+		log.Printf("Warning: plugin directory does not exist: %s", pluginDirAbs)
+	}
+
 	// Load plugins
 	if err := pluginManager.LoadPlugins(cfg.Plugins.Directory); err != nil {
 		log.Printf("Warning: failed to load plugins: %v", err)
 	}
 
-	// TODO: Initialize plugins with configuration
-	// This would be done after loading plugins
-	// for _, providerName := range pluginManager.ListProviders() {
-	//     if err := pluginManager.InitializeProvider(providerName, cfg.Providers[providerName]); err != nil {
-	//         log.Printf("Warning: failed to initialize provider %s: %v", providerName, err)
-	//     }
-	// }
+	// Initialize plugins with configuration
+	for _, providerName := range pluginManager.ListProviders() {
+		// TODO: Implement provider configuration when available
+		// if err := pluginManager.InitializeProvider(providerName, cfg.Providers[providerName]); err != nil {
+		// 	log.Printf("Warning: failed to initialize provider %s: %v", providerName, err)
+		// }
+		_ = providerName // Avoid unused variable warning
+	}
 
 	// Setup router
 	router := setupRouter(appContainer, pluginManager, cfg, logger)
@@ -162,7 +181,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	log.Println("Server exited")
 }
 
-func setupRouter(container *di.Container, pluginManager *plugin.Manager, cfg *config.Config, logger *zap.Logger) *gin.Engine {
+func setupRouter(container di.ContainerInterface, pluginManager *plugin.Manager, cfg *config.Config, logger *zap.Logger) *gin.Engine {
 	// Set Gin mode
 	if cfg.Server.Host == "0.0.0.0" {
 		gin.SetMode(gin.ReleaseMode)
@@ -174,10 +193,10 @@ func setupRouter(container *di.Container, pluginManager *plugin.Manager, cfg *co
 	middlewareInstance := middleware.NewMiddleware(
 		logger,
 		middleware.GetDefaultMiddlewareConfig(),
-		nil,                   // rateLimiter
-		container.AuthService, // authService
-		container.RBACService, // rbacService
-		nil,                   // auditLogger
+		nil,                        // rateLimiter
+		container.GetAuthService(), // authService
+		container.GetRBACService(), // rbacService
+		nil,                        // auditLogger
 	)
 
 	// Apply core middleware
@@ -209,10 +228,10 @@ func setupRouter(container *di.Container, pluginManager *plugin.Manager, cfg *co
 			LoggingEnabled:    true,
 			StructuredLogging: true,
 		},
-		nil,                   // rateLimiter
-		container.AuthService, // authService
-		container.RBACService, // rbacService
-		nil,                   // auditLogger
+		nil,                        // rateLimiter
+		container.GetAuthService(), // authService
+		container.GetRBACService(), // rbacService
+		nil,                        // auditLogger
 	)
 
 	// Create route manager

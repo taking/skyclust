@@ -51,11 +51,11 @@ func (o *DatabaseOptimizer) createUserIndexes() error {
 		// Primary lookup indexes
 		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_email ON users(email) WHERE deleted_at IS NULL",
 		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_username ON users(username) WHERE deleted_at IS NULL",
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_active ON users(is_active) WHERE deleted_at IS NULL",
+		// Temporarily disabled until schema is aligned: idx_users_active
 
 		// Composite indexes for common queries
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_active_created ON users(is_active, created_at) WHERE deleted_at IS NULL",
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_email_active ON users(email, is_active) WHERE deleted_at IS NULL",
+		// Temporarily disabled until schema is aligned: idx_users_active_created
+		// Temporarily disabled until schema is aligned: idx_users_email_active
 
 		// Soft delete optimization
 		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_deleted_at ON users(deleted_at)",

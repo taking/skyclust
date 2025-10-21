@@ -39,21 +39,8 @@ func NewPostgresService(config PostgresConfig) (*PostgresService, error) {
 	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		config.Host, config.Port, config.User, config.Password, config.Database, config.SSLMode)
 
-	// Configure GORM logger based on slow query settings
-	var logger gormLogger.Interface
-	if config.SlowQueryLog {
-		logger = gormLogger.New(
-			nil, // Use default writer
-			gormLogger.Config{
-				SlowThreshold:             config.SlowQueryTime,
-				LogLevel:                  gormLogger.Info,
-				IgnoreRecordNotFoundError: true,
-				Colorful:                  false,
-			},
-		)
-	} else {
-		logger = gormLogger.Default.LogMode(gormLogger.Silent)
-	}
+	// Configure GORM logger - use silent mode for now
+	logger := gormLogger.Default.LogMode(gormLogger.Silent)
 
 	// Configure GORM
 	gormConfig := &gorm.Config{
@@ -101,6 +88,12 @@ func NewPostgresService(config PostgresConfig) (*PostgresService, error) {
 		db:        db,
 		config:    config,
 		optimizer: NewDatabaseOptimizer(db),
+	}
+
+	// Enable UUID extension
+	if err := db.Exec("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"").Error; err != nil {
+		// Log warning but don't fail startup - some databases might not support this
+		fmt.Printf("Warning: Failed to enable uuid-ossp extension: %v\n", err)
 	}
 
 	// Auto-migrate the schema

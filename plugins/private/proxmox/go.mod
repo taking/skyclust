@@ -2,11 +2,12 @@ module proxmox-plugin
 
 go 1.24.0
 
-require skyclust v0.0.0-00010101000000-000000000000
-
 replace skyclust => ../../../
 
-require github.com/luthermonson/go-proxmox v0.2.3
+require (
+	github.com/luthermonson/go-proxmox v0.2.3
+	skyclust v0.0.0-00010101000000-000000000000
+)
 
 require (
 	github.com/buger/goterm v1.0.4 // indirect

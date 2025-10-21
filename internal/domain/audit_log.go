@@ -8,7 +8,7 @@ import (
 
 // AuditLog represents an audit log entry
 type AuditLog struct {
-	ID        uuid.UUID              `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	ID        uuid.UUID              `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
 	UserID    uuid.UUID              `json:"user_id" gorm:"type:uuid;not null;index"`
 	Action    string                 `json:"action" gorm:"not null;size:50;index"` // login, logout, create_credential, etc.
 	Resource  string                 `json:"resource" gorm:"size:100"`             // api endpoint

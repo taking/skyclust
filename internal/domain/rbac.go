@@ -49,7 +49,7 @@ const (
 
 // UserRole represents the relationship between users and roles
 type UserRole struct {
-	ID        uuid.UUID  `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	ID        uuid.UUID  `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
 	UserID    uuid.UUID  `json:"user_id" gorm:"type:uuid;not null;index"`
 	Role      Role       `json:"role" gorm:"not null;size:20;index"`
 	CreatedAt time.Time  `json:"created_at" gorm:"autoCreateTime"`
@@ -67,7 +67,7 @@ func (UserRole) TableName() string {
 
 // RolePermission represents the relationship between roles and permissions
 type RolePermission struct {
-	ID         uuid.UUID  `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	ID         uuid.UUID  `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
 	Role       Role       `json:"role" gorm:"not null;size:20;index"`
 	Permission Permission `json:"permission" gorm:"not null;size:50;index"`
 	CreatedAt  time.Time  `json:"created_at" gorm:"autoCreateTime"`

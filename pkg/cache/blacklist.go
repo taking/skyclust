@@ -25,23 +25,41 @@ func NewTokenBlacklist(redis *redis.Client) *TokenBlacklist {
 
 // AddToBlacklist adds a token to the blacklist
 func (tb *TokenBlacklist) AddToBlacklist(ctx context.Context, token string, expiry time.Duration) error {
+	logger.Infof("AddToBlacklist called with token length: %d, expiry: %v", len(token), expiry)
+
+	// If Redis is not initialized, skip blacklisting (auth will still work)
+	if tb.redis == nil {
+		logger.Warn("Redis not initialized, token blacklisting disabled")
+		return nil
+	}
+
+	logger.Info("Redis client is available, proceeding to add token to blacklist")
+
 	// Hash the token for security (don't store raw tokens)
 	tokenHash := tb.hashToken(token)
+	key := fmt.Sprintf("blacklist:%s", tokenHash)
+
+	logger.Infof("Storing token in Redis with key: %s", key)
 
 	// Store in Redis with expiry
-	err := tb.redis.Set(ctx, fmt.Sprintf("blacklist:%s", tokenHash), "1", expiry).Err()
+	err := tb.redis.Set(ctx, key, "1", expiry).Err()
 	if err != nil {
 		logger.Errorf("Failed to add token to blacklist: %v", err)
 		return fmt.Errorf("failed to add token to blacklist: %w", err)
 	}
 
-	logger.Infof("Token added to blacklist: %s (expiry: %v)", tokenHash, expiry)
+	logger.Infof("Token successfully added to blacklist: %s (expiry: %v)", tokenHash, expiry)
 
 	return nil
 }
 
 // IsBlacklisted checks if a token is in the blacklist
 func (tb *TokenBlacklist) IsBlacklisted(ctx context.Context, token string) bool {
+	// If Redis is not initialized, assume token is not blacklisted
+	if tb.redis == nil {
+		return false
+	}
+
 	tokenHash := tb.hashToken(token)
 	key := fmt.Sprintf("blacklist:%s", tokenHash)
 
@@ -64,6 +82,10 @@ func (tb *TokenBlacklist) IsBlacklisted(ctx context.Context, token string) bool 
 
 // RemoveFromBlacklist removes a token from the blacklist (for testing purposes)
 func (tb *TokenBlacklist) RemoveFromBlacklist(ctx context.Context, token string) error {
+	if tb.redis == nil {
+		return nil
+	}
+
 	tokenHash := tb.hashToken(token)
 
 	err := tb.redis.Del(ctx, fmt.Sprintf("blacklist:%s", tokenHash)).Err()
@@ -79,6 +101,10 @@ func (tb *TokenBlacklist) RemoveFromBlacklist(ctx context.Context, token string)
 
 // CleanupExpiredTokens removes expired tokens from blacklist
 func (tb *TokenBlacklist) CleanupExpiredTokens(ctx context.Context) error {
+	if tb.redis == nil {
+		return nil
+	}
+
 	// Redis automatically handles TTL, but we can add manual cleanup if needed
 	pattern := "blacklist:*"
 
@@ -121,6 +147,14 @@ func (tb *TokenBlacklist) CleanupExpiredTokens(ctx context.Context) error {
 
 // GetBlacklistStats returns statistics about the blacklist
 func (tb *TokenBlacklist) GetBlacklistStats(ctx context.Context) (map[string]interface{}, error) {
+	if tb.redis == nil {
+		return map[string]interface{}{
+			"total_blacklisted_tokens": 0,
+			"timestamp":                time.Now().Unix(),
+			"scan_method":              "disabled", // Redis not initialized
+		}, nil
+	}
+
 	pattern := "blacklist:*"
 
 	// Use SCAN instead of KEYS for better performance in production
