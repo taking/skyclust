@@ -1,0 +1,754 @@
+{
+  "version": "1",
+  "name": "SkyClust API",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ],
+  "environments": [
+    {
+      "id": "env-1",
+      "name": "Development",
+      "data": {
+        "baseUrl": "http://localhost:8081",
+        "apiVersion": "v1"
+      }
+    },
+    {
+      "id": "env-2", 
+      "name": "Production",
+      "data": {
+        "baseUrl": "https://api.skyclust.com",
+        "apiVersion": "v1"
+      }
+    }
+  ],
+  "folders": [
+    {
+      "id": "folder-1",
+      "name": "Health & System",
+      "requests": [
+        {
+          "id": "req-1",
+          "name": "Health Check",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/health",
+          "body": {},
+          "headers": [],
+          "tests": []
+        },
+        {
+          "id": "req-2",
+          "name": "System Info",
+          "type": "http", 
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/system/info",
+          "body": {},
+          "headers": [],
+          "tests": []
+        }
+      ]
+    },
+    {
+      "id": "folder-2",
+      "name": "Authentication",
+      "requests": [
+        {
+          "id": "req-3",
+          "name": "User Registration",
+          "type": "http",
+          "method": "POST",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/auth/register",
+          "body": {
+            "mode": "json",
+            "json": {
+              "username": "testuser",
+              "email": "test@example.com",
+              "password": "password123"
+            }
+          },
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-4",
+          "name": "User Login",
+          "type": "http",
+          "method": "POST",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/auth/login",
+          "body": {
+            "mode": "json",
+            "json": {
+              "username": "testuser",
+              "password": "password123"
+            }
+          },
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-5",
+          "name": "User Logout",
+          "type": "http",
+          "method": "POST",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/auth/logout",
+          "body": {},
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        }
+      ]
+    },
+    {
+      "id": "folder-3",
+      "name": "OIDC Authentication",
+      "requests": [
+        {
+          "id": "req-6",
+          "name": "Get OIDC Auth URL - Google",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/oidc/google",
+          "body": {},
+          "headers": [],
+          "tests": []
+        },
+        {
+          "id": "req-7",
+          "name": "OIDC Callback - Google",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/oidc/google/callback?code=test_code&state=test_state",
+          "body": {},
+          "headers": [],
+          "tests": []
+        },
+        {
+          "id": "req-8",
+          "name": "OIDC Login - Google",
+          "type": "http",
+          "method": "POST",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/oidc/login",
+          "body": {
+            "mode": "json",
+            "json": {
+              "provider": "google",
+              "code": "test_code",
+              "state": "test_state"
+            }
+          },
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "tests": []
+        }
+      ]
+    },
+    {
+      "id": "folder-4",
+      "name": "Cloud Providers",
+      "requests": [
+        {
+          "id": "req-9",
+          "name": "Get All Providers",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/providers",
+          "body": {},
+          "headers": [],
+          "tests": []
+        },
+        {
+          "id": "req-10",
+          "name": "Get AWS Provider",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/providers/aws",
+          "body": {},
+          "headers": [],
+          "tests": []
+        },
+        {
+          "id": "req-11",
+          "name": "Get AWS Instances",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/providers/aws/instances",
+          "body": {},
+          "headers": [],
+          "tests": []
+        },
+        {
+          "id": "req-12",
+          "name": "Get AWS Instances by Region",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/providers/aws/instances?region=us-east-1",
+          "body": {},
+          "headers": [],
+          "tests": []
+        }
+      ]
+    },
+    {
+      "id": "folder-5",
+      "name": "Workspaces",
+      "requests": [
+        {
+          "id": "req-13",
+          "name": "Create Workspace",
+          "type": "http",
+          "method": "POST",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/workspaces",
+          "body": {
+            "mode": "json",
+            "json": {
+              "name": "Test Workspace",
+              "description": "A test workspace for API testing"
+            }
+          },
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-14",
+          "name": "Get All Workspaces",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/workspaces",
+          "body": {},
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-15",
+          "name": "Get Workspace by ID",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/workspaces/{{workspaceId}}",
+          "body": {},
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-16",
+          "name": "Update Workspace",
+          "type": "http",
+          "method": "PUT",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/workspaces/{{workspaceId}}",
+          "body": {
+            "mode": "json",
+            "json": {
+              "name": "Updated Workspace",
+              "description": "Updated description"
+            }
+          },
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-17",
+          "name": "Delete Workspace",
+          "type": "http",
+          "method": "DELETE",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/workspaces/{{workspaceId}}",
+          "body": {},
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        }
+      ]
+    },
+    {
+      "id": "folder-6",
+      "name": "Credentials",
+      "requests": [
+        {
+          "id": "req-18",
+          "name": "Create AWS Credential",
+          "type": "http",
+          "method": "POST",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/credentials",
+          "body": {
+            "mode": "json",
+            "json": {
+              "name": "AWS Production",
+              "provider": "aws",
+              "data": {
+                "access_key": "AKIAIOSFODNN7EXAMPLE",
+                "secret_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+                "region": "us-east-1"
+              }
+            }
+          },
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-19",
+          "name": "Get All Credentials",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/credentials",
+          "body": {},
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-20",
+          "name": "Get Credential by ID",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/credentials/{{credentialId}}",
+          "body": {},
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-21",
+          "name": "Update Credential",
+          "type": "http",
+          "method": "PUT",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/credentials/{{credentialId}}",
+          "body": {
+            "mode": "json",
+            "json": {
+              "name": "Updated AWS Credential",
+              "data": {
+                "access_key": "AKIAIOSFODNN7UPDATED",
+                "secret_key": "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",
+                "region": "us-west-2"
+              }
+            }
+          },
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-22",
+          "name": "Delete Credential",
+          "type": "http",
+          "method": "DELETE",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/credentials/{{credentialId}}",
+          "body": {},
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        }
+      ]
+    },
+    {
+      "id": "folder-7",
+      "name": "Cost Analysis",
+      "requests": [
+        {
+          "id": "req-23",
+          "name": "Get Cost Analysis",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/cost-analysis?period=30d&workspace_id={{workspaceId}}",
+          "body": {},
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-24",
+          "name": "Get Cost Predictions",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/cost-analysis/predictions?days=30&workspace_id={{workspaceId}}",
+          "body": {},
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-25",
+          "name": "Get Cost Estimates",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/providers/aws/cost-estimates",
+          "body": {},
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-26",
+          "name": "Create Cost Estimate",
+          "type": "http",
+          "method": "POST",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/providers/aws/cost-estimates",
+          "body": {
+            "mode": "json",
+            "json": {
+              "instance_type": "t3.micro",
+              "region": "us-east-1",
+              "duration_hours": 24,
+              "quantity": 1
+            }
+          },
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        }
+      ]
+    },
+    {
+      "id": "folder-8",
+      "name": "Notifications",
+      "requests": [
+        {
+          "id": "req-27",
+          "name": "Get Notifications",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/notifications",
+          "body": {},
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-28",
+          "name": "Get Notification by ID",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/notifications/{{notificationId}}",
+          "body": {},
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-29",
+          "name": "Mark Notification as Read",
+          "type": "http",
+          "method": "PUT",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/notifications/{{notificationId}}/read",
+          "body": {},
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-30",
+          "name": "Delete Notification",
+          "type": "http",
+          "method": "DELETE",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/notifications/{{notificationId}}",
+          "body": {},
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-31",
+          "name": "Get Notification Preferences",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/notifications/preferences",
+          "body": {},
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-32",
+          "name": "Update Notification Preferences",
+          "type": "http",
+          "method": "PUT",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/notifications/preferences",
+          "body": {
+            "mode": "json",
+            "json": {
+              "email": true,
+              "browser": true,
+              "sms": false,
+              "in_app": true,
+              "webhook": false,
+              "preferences": {
+                "info": true,
+                "warning": true,
+                "error": true,
+                "success": true,
+                "budget": true,
+                "vm": true,
+                "system": true
+              }
+            }
+          },
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        }
+      ]
+    },
+    {
+      "id": "folder-9",
+      "name": "Exports",
+      "requests": [
+        {
+          "id": "req-33",
+          "name": "Export VMs to CSV",
+          "type": "http",
+          "method": "POST",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/exports",
+          "body": {
+            "mode": "json",
+            "json": {
+              "type": "vms",
+              "format": "csv",
+              "workspace_id": "{{workspaceId}}",
+              "filters": {
+                "provider": "aws"
+              }
+            }
+          },
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-34",
+          "name": "Export Workspaces to JSON",
+          "type": "http",
+          "method": "POST",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/exports",
+          "body": {
+            "mode": "json",
+            "json": {
+              "type": "workspaces",
+              "format": "json"
+            }
+          },
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-35",
+          "name": "Get Export Status",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/exports/{{exportId}}",
+          "body": {},
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-36",
+          "name": "Download Export",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/exports/{{exportId}}/download",
+          "body": {},
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        }
+      ]
+    },
+    {
+      "id": "folder-10",
+      "name": "Server-Sent Events",
+      "requests": [
+        {
+          "id": "req-37",
+          "name": "SSE Monitoring Stream",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/sse/monitoring",
+          "body": {},
+          "headers": [
+            {
+              "name": "Accept",
+              "value": "text/event-stream"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        },
+        {
+          "id": "req-38",
+          "name": "SSE Notifications Stream",
+          "type": "http",
+          "method": "GET",
+          "url": "{{baseUrl}}/api/{{apiVersion}}/sse/notifications",
+          "body": {},
+          "headers": [
+            {
+              "name": "Accept",
+              "value": "text/event-stream"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{token}}"
+            }
+          ],
+          "tests": []
+        }
+      ]
+    }
+  ]
+}

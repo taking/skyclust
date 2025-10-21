@@ -1,0 +1,39 @@
+meta {
+  name: Get Notifications
+  type: http
+  seq: 27
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/notifications
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains notifications array", function() {
+    expect(res.getBody()).to.have.property('notifications');
+    expect(res.getBody().notifications).to.be.an('array');
+  });
+  
+  test("Notifications have required fields", function() {
+    const notifications = res.getBody().notifications;
+    if (notifications.length > 0) {
+      expect(notifications[0]).to.have.property('id');
+      expect(notifications[0]).to.have.property('title');
+      expect(notifications[0]).to.have.property('message');
+    }
+  });
+}

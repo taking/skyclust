@@ -1,0 +1,37 @@
+meta {
+  name: Get Notification Preferences
+  type: http
+  seq: 31
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/notifications/preferences
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains preferences", function() {
+    expect(res.getBody()).to.have.property('email');
+    expect(res.getBody()).to.have.property('browser');
+    expect(res.getBody()).to.have.property('in_app');
+  });
+  
+  test("Preferences have required fields", function() {
+    const prefs = res.getBody();
+    expect(prefs).to.have.property('preferences');
+    expect(prefs.preferences).to.be.an('object');
+  });
+}

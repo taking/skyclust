@@ -1,0 +1,38 @@
+meta {
+  name: Get Cost Analysis
+  type: http
+  seq: 23
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/cost-analysis?period=30d&workspace_id={{workspaceId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains cost data", function() {
+    expect(res.getBody()).to.have.property('total_cost');
+    expect(res.getBody()).to.have.property('currency');
+    expect(res.getBody()).to.have.property('period');
+  });
+  
+  test("Cost analysis has required fields", function() {
+    const costData = res.getBody();
+    expect(costData).to.have.property('by_service');
+    expect(costData).to.have.property('by_provider');
+    expect(costData).to.have.property('daily_costs');
+  });
+}

@@ -15,64 +15,64 @@ import (
 // Config holds application configuration
 type Config struct {
 	// Server Configuration
-	Server ServerConfig `json:"server"`
+	Server ServerConfig `json:"server" yaml:"server"`
 
 	// Database Configuration
-	Database DatabaseConfig `json:"database"`
+	Database DatabaseConfig `json:"database" yaml:"database"`
 
 	// Security Configuration
-	Security SecurityConfig `json:"security"`
+	Security SecurityConfig `json:"security" yaml:"security"`
 
 	// Encryption Configuration
-	Encryption EncryptionConfig `json:"encryption"`
+	Encryption EncryptionConfig `json:"encryption" yaml:"encryption"`
 
 	// Logging Configuration
-	Logging LoggingConfig `json:"logging"`
+	Logging LoggingConfig `json:"logging" yaml:"logging"`
 
 	// Cache Configuration
-	Cache CacheConfig `json:"cache"`
+	Cache CacheConfig `json:"cache" yaml:"cache"`
 
 	// Monitoring Configuration
-	Monitoring MonitoringConfig `json:"monitoring"`
+	Monitoring MonitoringConfig `json:"monitoring" yaml:"monitoring"`
 
 	// NATS Configuration
-	NATS NATSConfig `json:"nats"`
+	NATS NATSConfig `json:"nats" yaml:"nats"`
 
 	// Redis Configuration
-	Redis RedisConfig `json:"redis"`
+	Redis RedisConfig `json:"redis" yaml:"redis"`
 
 	// Plugin Configuration
-	Plugins PluginsConfig `json:"plugins"`
+	Plugins PluginsConfig `json:"plugins" yaml:"plugins"`
 }
 
 // ServerConfig holds server configuration
 type ServerConfig struct {
-	Host         string        `json:"host"`
-	Port         int           `json:"port"`
-	ReadTimeout  time.Duration `json:"read_timeout"`
-	WriteTimeout time.Duration `json:"write_timeout"`
-	IdleTimeout  time.Duration `json:"idle_timeout"`
+	Host         string        `json:"host" yaml:"host"`
+	Port         int           `json:"port" yaml:"port"`
+	ReadTimeout  time.Duration `json:"read_timeout" yaml:"read_timeout"`
+	WriteTimeout time.Duration `json:"write_timeout" yaml:"write_timeout"`
+	IdleTimeout  time.Duration `json:"idle_timeout" yaml:"idle_timeout"`
 }
 
 // DatabaseConfig holds database configuration
 type DatabaseConfig struct {
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	User     string `json:"user"`
-	Password string `json:"password"`
-	Name     string `json:"name"`
-	SSLMode  string `json:"ssl_mode"`
-	MaxConns int    `json:"max_conns"`
-	MinConns int    `json:"min_conns"`
+	Host     string `json:"host" yaml:"host"`
+	Port     int    `json:"port" yaml:"port"`
+	User     string `json:"user" yaml:"user"`
+	Password string `json:"password" yaml:"password"`
+	Name     string `json:"name" yaml:"name"`
+	SSLMode  string `json:"ssl_mode" yaml:"ssl_mode"`
+	MaxConns int    `json:"max_conns" yaml:"max_conns"`
+	MinConns int    `json:"min_conns" yaml:"min_conns"`
 }
 
 // SecurityConfig holds security configuration
 type SecurityConfig struct {
-	JWTSecret     string        `json:"jwt_secret"`
-	JWTExpiration time.Duration `json:"jwt_expiration"`
-	JWTIssuer     string        `json:"jwt_issuer"`
-	BCryptCost    int           `json:"bcrypt_cost"`
-	EncryptionKey string        `json:"encryption_key"`
+	JWTSecret     string        `json:"jwt_secret" yaml:"jwt_secret"`
+	JWTExpiration time.Duration `json:"jwt_expiration" yaml:"jwt_expiration"`
+	JWTIssuer     string        `json:"jwt_issuer" yaml:"jwt_issuer"`
+	BCryptCost    int           `json:"bcrypt_cost" yaml:"bcrypt_cost"`
+	EncryptionKey string        `json:"encryption_key" yaml:"encryption_key"`
 }
 
 // EncryptionConfig holds encryption configuration
@@ -152,34 +152,31 @@ func LoadConfigFromFile(configFile string) (*Config, error) {
 
 // LoadConfig loads configuration from file and environment variables
 func LoadConfig(configFile string) (*Config, error) {
-	// Set up viper
-	viper.SetConfigFile(configFile)
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(".")
-	viper.AddConfigPath("$HOME/.skyclust")
-	viper.AddConfigPath("/etc/skyclust")
+	// Read YAML file directly first
+	data, err := os.ReadFile(configFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
 
-	// Set defaults
-	setDefaults()
-
-	// Read config file
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, fmt.Errorf("error reading config file: %w", err)
-		}
+	// Parse YAML directly
+	var config Config
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
 	// Override with environment variables
-	overrideWithEnvVars()
-
-	// Unmarshal into struct
-	var config Config
-	if err := viper.Unmarshal(&config); err != nil {
-		return nil, fmt.Errorf("error unmarshaling config: %w", err)
+	if jwtSecret := os.Getenv("JWT_SECRET"); jwtSecret != "" {
+		config.Security.JWTSecret = jwtSecret
 	}
-
-	// Handle empty values by falling back to environment variables
-	handleEmptyValues(&config)
+	if encKey := os.Getenv("ENCRYPTION_KEY"); encKey != "" {
+		config.Security.EncryptionKey = encKey
+	}
+	if dbHost := os.Getenv("DB_HOST"); dbHost != "" {
+		config.Database.Host = dbHost
+	}
+	if dbPassword := os.Getenv("DB_PASSWORD"); dbPassword != "" {
+		config.Database.Password = dbPassword
+	}
 
 	// Validate and generate secrets if needed
 	if err := validateAndGenerateSecrets(&config); err != nil {
@@ -396,6 +393,10 @@ func validateAndGenerateSecrets(config *Config) error {
 	}
 
 	// Validate encryption key
+	fmt.Printf("[CONFIG] Loaded encryption_key length: %d, first 10 chars: %s...\n",
+		len(config.Security.EncryptionKey),
+		config.Security.EncryptionKey[:min(10, len(config.Security.EncryptionKey))])
+
 	if config.Security.EncryptionKey == "" || config.Security.EncryptionKey == "your-32-byte-encryption-key-here" {
 		key, err := generateRandomSecret(32)
 		if err != nil {
@@ -404,6 +405,8 @@ func validateAndGenerateSecrets(config *Config) error {
 		config.Security.EncryptionKey = key
 		config.Encryption.Key = key
 		fmt.Println("WARNING: Generated new encryption key. Please set ENCRYPTION_KEY environment variable for production.")
+	} else {
+		fmt.Println("[CONFIG] Using encryption_key from config file")
 	}
 
 	// Additional security checks for production
@@ -437,6 +440,14 @@ func isProduction() bool {
 	return env == "production" || env == "prod"
 }
 
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // Helper functions
 
 func getEnv(key, defaultValue string) string {
@@ -461,8 +472,8 @@ func (c *Config) ValidateConfig() error {
 		return fmt.Errorf("JWT_SECRET must be at least 32 characters long")
 	}
 
-	if len(c.Security.EncryptionKey) != 32 {
-		return fmt.Errorf("ENCRYPTION_KEY must be exactly 32 characters long")
+	if len(c.Security.EncryptionKey) < 32 {
+		return fmt.Errorf("ENCRYPTION_KEY must be at least 32 characters long")
 	}
 
 	return nil

@@ -1,0 +1,43 @@
+meta {
+  name: Export Workspaces to JSON
+  type: http
+  seq: 34
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/exports
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "type": "workspaces",
+    "format": "json"
+  }
+}
+
+headers {
+  Content-Type: application/json
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response contains export data", function() {
+    expect(res.getBody()).to.have.property('id');
+    expect(res.getBody()).to.have.property('status');
+    expect(res.getBody()).to.have.property('type');
+  });
+  
+  test("Export type is correct", function() {
+    expect(res.getBody().type).to.equal('workspaces');
+    expect(res.getBody().format).to.equal('json');
+  });
+}

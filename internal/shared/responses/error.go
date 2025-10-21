@@ -58,10 +58,8 @@ func (eb *ErrorBuilder) Error(c *gin.Context, statusCode int, code, message stri
 	response := APIResponse{
 		Success: false,
 		Error: &Error{
-			Code:      code,
-			Message:   message,
-			Timestamp: time.Now(),
-			RequestID: getRequestID(c),
+			Code:    code,
+			Message: message,
 		},
 		RequestID: getRequestID(c),
 		Timestamp: time.Now(),
@@ -74,10 +72,8 @@ func (eb *ErrorBuilder) DomainError(c *gin.Context, err *domain.DomainError) {
 	response := APIResponse{
 		Success: false,
 		Error: &Error{
-			Code:      string(err.Code),
-			Message:   err.Message,
-			Timestamp: time.Now(),
-			RequestID: getRequestID(c),
+			Code:    string(err.Code),
+			Message: err.Message,
 		},
 		RequestID: getRequestID(c),
 		Timestamp: time.Now(),
@@ -93,10 +89,8 @@ func (eb *ErrorBuilder) ValidationError(c *gin.Context, errors map[string]string
 	response := APIResponse{
 		Success: false,
 		Error: &Error{
-			Code:      "VALIDATION_ERROR",
-			Message:   "Validation failed",
-			Timestamp: time.Now(),
-			RequestID: getRequestID(c),
+			Code:    "VALIDATION_ERROR",
+			Message: "Validation failed",
 		},
 		RequestID: getRequestID(c),
 		Timestamp: time.Now(),

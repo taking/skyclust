@@ -1,0 +1,39 @@
+meta {
+  name: Get Cost Predictions
+  type: http
+  seq: 24
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/cost-analysis/predictions?days=30&workspace_id={{workspaceId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains predictions array", function() {
+    expect(res.getBody()).to.have.property('predictions');
+    expect(res.getBody().predictions).to.be.an('array');
+  });
+  
+  test("Predictions have required fields", function() {
+    const predictions = res.getBody().predictions;
+    if (predictions.length > 0) {
+      expect(predictions[0]).to.have.property('date');
+      expect(predictions[0]).to.have.property('predicted');
+      expect(predictions[0]).to.have.property('confidence');
+    }
+  });
+}

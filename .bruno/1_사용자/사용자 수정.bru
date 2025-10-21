@@ -1,0 +1,34 @@
+meta {
+  name: 사용자 수정
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/{{apiVersion}}/users/{{userId}}
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+    {
+      "username": "updateduser",
+      "email": "updated@example.com",
+      "password": "newpassword123",
+      "is_active": true
+    }
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+}

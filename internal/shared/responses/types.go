@@ -32,8 +32,6 @@ type Error struct {
 	Field       string                 `json:"field,omitempty"`
 	Value       interface{}            `json:"value,omitempty"`
 	Suggestions []string               `json:"suggestions,omitempty"`
-	Timestamp   time.Time              `json:"timestamp"`
-	RequestID   string                 `json:"request_id,omitempty"`
 	TraceID     string                 `json:"trace_id,omitempty"`
 	SpanID      string                 `json:"span_id,omitempty"`
 }

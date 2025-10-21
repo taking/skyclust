@@ -1,0 +1,34 @@
+meta {
+  name: Get All Providers
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/providers
+  body: none
+  auth: none
+}
+
+headers {
+  
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains providers array", function() {
+    expect(res.getBody()).to.have.property('providers');
+    expect(res.getBody().providers).to.be.an('array');
+  });
+  
+  test("Providers have required fields", function() {
+    const providers = res.getBody().providers;
+    if (providers.length > 0) {
+      expect(providers[0]).to.have.property('name');
+      expect(providers[0]).to.have.property('version');
+    }
+  });
+}

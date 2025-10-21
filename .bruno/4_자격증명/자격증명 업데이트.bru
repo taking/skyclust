@@ -1,0 +1,46 @@
+meta {
+  name: 자격증명 업데이트
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/{{apiVersion}}/credentials/{{credentialsId}}
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "name": "Updated AWS Credential",
+    "data": {
+      "access_key": "AKIAIOSFODNN7UPDATED",
+      "secret_key": "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",
+      "region": "us-west-2"
+    }
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains updated credential", function() {
+    expect(res.getBody()).to.have.property('id');
+    expect(res.getBody()).to.have.property('name');
+    expect(res.getBody()).to.have.property('provider');
+  });
+  
+  test("Credential name is updated", function() {
+    expect(res.getBody().name).to.equal('Updated AWS Credential');
+  });
+}

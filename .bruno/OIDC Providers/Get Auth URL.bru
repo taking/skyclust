@@ -1,0 +1,31 @@
+meta {
+  name: Get Auth URL
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/api/v1/oidc/providers/google/auth-urls
+  body: none
+  auth: none
+}
+
+headers {
+  
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains auth URL", function() {
+    expect(res.getBody()).to.have.property('auth_url');
+  });
+  
+  test("Auth URL is valid", function() {
+    const authUrl = res.getBody().auth_url;
+    expect(authUrl).to.include('google');
+    expect(authUrl).to.include('oauth');
+  });
+}

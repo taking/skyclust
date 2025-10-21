@@ -1,0 +1,24 @@
+meta {
+  name: 클러스터 목록 (WIP)
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/gke/kubernetes/clusters?credential_id=9e9e37a0-0065-41a1-99ba-8ab7bb2c964e&region=us-east-1
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: 9e9e37a0-0065-41a1-99ba-8ab7bb2c964e
+  region: us-east-1
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+settings {
+  encodeUrl: true
+}

@@ -1,0 +1,45 @@
+meta {
+  name: 회원가입
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/auth/register
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "username": "testuser",
+    "email": "test6@example.com",
+    "password": "password123"
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("token", res.body.data.token);
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response contains user data", function() {
+    expect(res.getBody()).to.have.property('user');
+    expect(res.getBody()).to.have.property('token');
+  });
+  
+  test("User has required fields", function() {
+    const user = res.getBody().user;
+    expect(user).to.have.property('id');
+    expect(user).to.have.property('username');
+    expect(user).to.have.property('email');
+  });
+}

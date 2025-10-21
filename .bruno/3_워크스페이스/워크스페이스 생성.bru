@@ -1,0 +1,48 @@
+meta {
+  name: 워크스페이스 생성
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/workspaces
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "name": "Test Workspace",
+    "description": "A test workspace for API testing"
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("workspaceId", res.body.data.workspace.id);
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response contains workspace data", function() {
+    expect(res.getBody()).to.have.property('id');
+    expect(res.getBody()).to.have.property('name');
+    expect(res.getBody()).to.have.property('description');
+  });
+  
+  test("Workspace has required fields", function() {
+    const workspace = res.getBody();
+    expect(workspace.name).to.equal('Test Workspace');
+    expect(workspace.description).to.equal('A test workspace for API testing');
+  });
+}

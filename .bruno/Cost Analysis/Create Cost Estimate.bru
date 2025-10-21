@@ -1,0 +1,44 @@
+meta {
+  name: Create Cost Estimate
+  type: http
+  seq: 26
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/providers/aws/cost-estimates
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "instance_type": "t3.micro",
+    "region": "us-east-1",
+    "duration_hours": 24,
+    "quantity": 1
+  }
+}
+
+headers {
+  Content-Type: application/json
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response contains cost estimate", function() {
+    expect(res.getBody()).to.have.property('estimated_cost');
+    expect(res.getBody()).to.have.property('currency');
+    expect(res.getBody()).to.have.property('instance_type');
+  });
+  
+  test("Estimate has correct instance type", function() {
+    expect(res.getBody().instance_type).to.equal('t3.micro');
+  });
+}

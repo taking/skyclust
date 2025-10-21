@@ -4,153 +4,59 @@ import (
 	"context"
 	"fmt"
 
-	"skyclust/internal/plugin"
-	plugininterfaces "skyclust/internal/plugin/interfaces"
 	"skyclust/pkg/logger"
 )
 
 // cloudProviderService implements the CloudProviderService interface
+// NOTE: This service is deprecated and will be replaced by gRPC-based provider services
 type cloudProviderService struct {
-	pluginManager *plugin.Manager
+	// TODO: Replace with gRPC client manager
 }
 
 // NewCloudProviderService creates a new cloud provider service
-func NewCloudProviderService(pluginManager *plugin.Manager) CloudProviderService {
-	return &cloudProviderService{
-		pluginManager: pluginManager,
-	}
+// DEPRECATED: Use gRPC-based provider services instead
+func NewCloudProviderService() CloudProviderService {
+	return &cloudProviderService{}
 }
 
 // CreateInstance creates a new cloud instance
+// DEPRECATED: Use gRPC-based provider services instead
 func (s *cloudProviderService) CreateInstance(ctx context.Context, provider string, req CreateInstanceRequest) (*CloudInstance, error) {
-	// Get the cloud provider plugin
-	cloudProvider, err := s.pluginManager.GetProvider(provider)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get provider %s: %w", provider, err)
-	}
-
-	// Convert request to plugin format
-	pluginReq := plugininterfaces.CreateInstanceRequest{
-		Name:   req.Name,
-		Type:   req.Type,
-		Region: req.Region,
-		Tags:   convertToStringMap(req.Metadata),
-	}
-
-	// Create instance using plugin
-	instance, err := cloudProvider.CreateInstance(ctx, pluginReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create instance: %w", err)
-	}
-
-	// Convert plugin response to service format
-	cloudInstance := &CloudInstance{
-		ID:       instance.ID,
-		Status:   instance.Status,
-		Type:     instance.Type,
-		Region:   instance.Region,
-		Metadata: convertToInterfaceMap(instance.Tags),
-	}
-
-	logger.Info(fmt.Sprintf("Created instance %s on provider %s", instance.ID, provider))
-	return cloudInstance, nil
+	logger.DefaultLogger.Warn("cloud_provider_service.CreateInstance is deprecated, use gRPC-based provider services")
+	return nil, fmt.Errorf("cloud_provider_service is deprecated, use gRPC-based provider services")
 }
 
 // GetInstance retrieves a cloud instance
+// DEPRECATED: Use gRPC-based provider services instead
 func (s *cloudProviderService) GetInstance(ctx context.Context, provider, instanceID string) (*CloudInstance, error) {
-	// Get the cloud provider plugin
-	cloudProvider, err := s.pluginManager.GetProvider(provider)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get provider %s: %w", provider, err)
-	}
-
-	// List instances and find the one with matching ID
-	instances, err := cloudProvider.ListInstances(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list instances: %w", err)
-	}
-
-	for _, instance := range instances {
-		if instance.ID == instanceID {
-			return &CloudInstance{
-				ID:       instance.ID,
-				Status:   instance.Status,
-				Type:     instance.Type,
-				Region:   instance.Region,
-				Metadata: convertToInterfaceMap(instance.Tags),
-			}, nil
-		}
-	}
-
-	return nil, fmt.Errorf("instance %s not found", instanceID)
+	logger.DefaultLogger.Warn("cloud_provider_service.GetInstance is deprecated, use gRPC-based provider services")
+	return nil, fmt.Errorf("cloud_provider_service is deprecated, use gRPC-based provider services")
 }
 
 // DeleteInstance deletes a cloud instance
+// DEPRECATED: Use gRPC-based provider services instead
 func (s *cloudProviderService) DeleteInstance(ctx context.Context, provider, instanceID string) error {
-	// Get the cloud provider plugin
-	cloudProvider, err := s.pluginManager.GetProvider(provider)
-	if err != nil {
-		return fmt.Errorf("failed to get provider %s: %w", provider, err)
-	}
-
-	// Delete instance using plugin
-	err = cloudProvider.DeleteInstance(ctx, instanceID)
-	if err != nil {
-		return fmt.Errorf("failed to delete instance: %w", err)
-	}
-
-	logger.Info(fmt.Sprintf("Deleted instance %s on provider %s", instanceID, provider))
-	return nil
+	logger.DefaultLogger.Warn("cloud_provider_service.DeleteInstance is deprecated, use gRPC-based provider services")
+	return fmt.Errorf("cloud_provider_service is deprecated, use gRPC-based provider services")
 }
 
 // StartInstance starts a cloud instance
+// DEPRECATED: Use gRPC-based provider services instead
 func (s *cloudProviderService) StartInstance(ctx context.Context, provider, instanceID string) error {
-	// Note: Start/Stop operations are typically handled by the cloud provider's API
-	// This is a placeholder implementation
-	logger.Info(fmt.Sprintf("Start instance operation requested for %s on provider %s", instanceID, provider))
-	return fmt.Errorf("start instance operation not implemented for provider %s", provider)
+	logger.DefaultLogger.Warn("cloud_provider_service.StartInstance is deprecated, use gRPC-based provider services")
+	return fmt.Errorf("cloud_provider_service is deprecated, use gRPC-based provider services")
 }
 
 // StopInstance stops a cloud instance
+// DEPRECATED: Use gRPC-based provider services instead
 func (s *cloudProviderService) StopInstance(ctx context.Context, provider, instanceID string) error {
-	// Note: Start/Stop operations are typically handled by the cloud provider's API
-	// This is a placeholder implementation
-	logger.Info(fmt.Sprintf("Stop instance operation requested for %s on provider %s", instanceID, provider))
-	return fmt.Errorf("stop instance operation not implemented for provider %s", provider)
+	logger.DefaultLogger.Warn("cloud_provider_service.StopInstance is deprecated, use gRPC-based provider services")
+	return fmt.Errorf("cloud_provider_service is deprecated, use gRPC-based provider services")
 }
 
 // GetInstanceStatus gets the status of a cloud instance
+// DEPRECATED: Use gRPC-based provider services instead
 func (s *cloudProviderService) GetInstanceStatus(ctx context.Context, provider, instanceID string) (string, error) {
-	// Get the cloud provider plugin
-	cloudProvider, err := s.pluginManager.GetProvider(provider)
-	if err != nil {
-		return "", fmt.Errorf("failed to get provider %s: %w", provider, err)
-	}
-
-	// Get instance status using plugin
-	status, err := cloudProvider.GetInstanceStatus(ctx, instanceID)
-	if err != nil {
-		return "", fmt.Errorf("failed to get instance status: %w", err)
-	}
-
-	return status, nil
-}
-
-// Helper functions for type conversion
-func convertToStringMap(m map[string]interface{}) map[string]string {
-	result := make(map[string]string)
-	for k, v := range m {
-		if str, ok := v.(string); ok {
-			result[k] = str
-		}
-	}
-	return result
-}
-
-func convertToInterfaceMap(m map[string]string) map[string]interface{} {
-	result := make(map[string]interface{})
-	for k, v := range m {
-		result[k] = v
-	}
-	return result
+	logger.DefaultLogger.Warn("cloud_provider_service.GetInstanceStatus is deprecated, use gRPC-based provider services")
+	return "", fmt.Errorf("cloud_provider_service is deprecated, use gRPC-based provider services")
 }

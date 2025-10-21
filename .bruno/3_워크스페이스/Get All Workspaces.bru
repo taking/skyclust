@@ -1,0 +1,39 @@
+meta {
+  name: Get All Workspaces
+  type: http
+  seq: 14
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/workspaces
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains workspaces array", function() {
+    expect(res.getBody()).to.have.property('workspaces');
+    expect(res.getBody().workspaces).to.be.an('array');
+  });
+  
+  test("Workspaces have required fields", function() {
+    const workspaces = res.getBody().workspaces;
+    if (workspaces.length > 0) {
+      expect(workspaces[0]).to.have.property('id');
+      expect(workspaces[0]).to.have.property('name');
+      expect(workspaces[0]).to.have.property('description');
+    }
+  });
+}

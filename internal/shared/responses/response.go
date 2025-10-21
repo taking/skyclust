@@ -42,10 +42,8 @@ func (rb *ResponseBuilder) WithMessage(message string) *ResponseBuilder {
 func (rb *ResponseBuilder) WithError(code, message string) *ResponseBuilder {
 	rb.response.Success = false
 	rb.response.Error = &Error{
-		Code:      code,
-		Message:   message,
-		Timestamp: time.Now(),
-		RequestID: rb.response.RequestID,
+		Code:    code,
+		Message: message,
 	}
 	return rb
 }
@@ -54,12 +52,10 @@ func (rb *ResponseBuilder) WithError(code, message string) *ResponseBuilder {
 func (rb *ResponseBuilder) WithFieldError(code, message, field string, value interface{}) *ResponseBuilder {
 	rb.response.Success = false
 	rb.response.Error = &Error{
-		Code:      code,
-		Message:   message,
-		Field:     field,
-		Value:     value,
-		Timestamp: time.Now(),
-		RequestID: rb.response.RequestID,
+		Code:    code,
+		Message: message,
+		Field:   field,
+		Value:   value,
 	}
 	return rb
 }

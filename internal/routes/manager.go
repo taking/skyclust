@@ -10,14 +10,15 @@ import (
 	"skyclust/internal/application/handlers/cost_analysis"
 	"skyclust/internal/application/handlers/credential"
 	"skyclust/internal/application/handlers/export"
+	"skyclust/internal/application/handlers/kubernetes"
 	"skyclust/internal/application/handlers/notification"
 	"skyclust/internal/application/handlers/oidc"
 	"skyclust/internal/application/handlers/provider"
 	"skyclust/internal/application/handlers/sse"
 	"skyclust/internal/application/handlers/system"
 	"skyclust/internal/application/handlers/workspace"
+	service "skyclust/internal/application/services"
 	"skyclust/internal/di"
-	"skyclust/internal/plugin"
 	"skyclust/pkg/config"
 	"skyclust/pkg/middleware"
 
@@ -27,33 +28,33 @@ import (
 
 // RouteManager manages all API routes with centralized configuration
 type RouteManager struct {
-	container     di.ContainerInterface
-	pluginManager *plugin.Manager
-	middleware    *middleware.Middleware
-	logger        *zap.Logger
-	config        *config.Config
-	startTime     time.Time
-	requestCount  int64
-	errorCount    int64
+	container       di.ContainerInterface
+	providerManager interface{} // gRPC Provider Manager
+	middleware      *middleware.Middleware
+	logger          *zap.Logger
+	config          *config.Config
+	startTime       time.Time
+	requestCount    int64
+	errorCount      int64
 }
 
 // NewRouteManager creates a new route manager
 func NewRouteManager(
 	container di.ContainerInterface,
-	pluginManager *plugin.Manager,
+	providerManager interface{},
 	middleware *middleware.Middleware,
 	logger *zap.Logger,
 	config *config.Config,
 ) *RouteManager {
 	return &RouteManager{
-		container:     container,
-		pluginManager: pluginManager,
-		middleware:    middleware,
-		logger:        logger,
-		config:        config,
-		startTime:     time.Now(),
-		requestCount:  0,
-		errorCount:    0,
+		container:       container,
+		providerManager: providerManager,
+		middleware:      middleware,
+		logger:          logger,
+		config:          config,
+		startTime:       time.Now(),
+		requestCount:    0,
+		errorCount:      0,
 	}
 }
 
@@ -118,6 +119,9 @@ func (rm *RouteManager) setupProtectedRoutes(router *gin.Engine) {
 		// Provider routes
 		providersGroup := v1Protected.Group("/providers")
 		rm.setupProviderRoutes(providersGroup)
+
+		// Provider-specific routes (RESTful)
+		rm.setupProviderSpecificRoutes(v1Protected)
 
 		// Cost analysis routes
 		costAnalysisGroup := v1Protected.Group("/cost-analysis")
@@ -201,9 +205,9 @@ func (rm *RouteManager) healthCheck(c *gin.Context) {
 		"services":     services,
 		"dependencies": dependencies,
 		"metrics":      metrics,
-		"plugins": gin.H{
-			"loaded": rm.pluginManager.ListProviders(),
-			"count":  len(rm.pluginManager.ListProviders()),
+		"providers": gin.H{
+			"type": "gRPC",
+			"note": "Use /api/v1/providers endpoint for details",
 		},
 		"config": gin.H{
 			"environment": rm.getEnvironment(),
@@ -256,7 +260,82 @@ func (rm *RouteManager) setupWorkspaceRoutes(router *gin.RouterGroup) {
 
 // setupProviderRoutes sets up cloud provider routes
 func (rm *RouteManager) setupProviderRoutes(router *gin.RouterGroup) {
-	provider.SetupRoutes(router, rm.pluginManager, rm.container.GetAuditLogRepository())
+	provider.SetupRoutes(router, rm.providerManager, rm.container.GetAuditLogRepository())
+}
+
+// setupProviderSpecificRoutes sets up provider-specific routes (RESTful)
+func (rm *RouteManager) setupProviderSpecificRoutes(router *gin.RouterGroup) {
+	// AWS-specific routes
+	awsGroup := router.Group("/aws")
+	rm.setupAWSRoutes(awsGroup)
+
+	// GCP-specific routes
+	gcpGroup := router.Group("/gcp")
+	rm.setupGCPRoutes(gcpGroup)
+
+	// Azure-specific routes
+	azureGroup := router.Group("/azure")
+	rm.setupAzureRoutes(azureGroup)
+
+	// NCP (Naver Cloud Platform) routes
+	ncpGroup := router.Group("/ncp")
+	rm.setupNCPRoutes(ncpGroup)
+}
+
+// setupAWSRoutes sets up AWS-specific routes
+func (rm *RouteManager) setupAWSRoutes(router *gin.RouterGroup) {
+	// Kubernetes (EKS)
+	k8sGroup := router.Group("/kubernetes")
+	k8sService := rm.container.GetKubernetesService().(*service.KubernetesService)
+	kubernetes.SetupRoutes(k8sGroup, k8sService, rm.container.GetCredentialService(), "aws")
+
+	// TODO: Add more AWS-specific services
+	// - EC2
+	// - RDS
+	// - S3
+	// - Lambda
+}
+
+// setupGCPRoutes sets up GCP-specific routes
+func (rm *RouteManager) setupGCPRoutes(router *gin.RouterGroup) {
+	// Kubernetes (GKE)
+	k8sGroup := router.Group("/kubernetes")
+	k8sService := rm.container.GetKubernetesService().(*service.KubernetesService)
+	kubernetes.SetupRoutes(k8sGroup, k8sService, rm.container.GetCredentialService(), "gcp")
+
+	// TODO: Add more GCP-specific services
+	// - Compute Engine
+	// - Cloud SQL
+	// - Cloud Storage
+	// - Cloud Functions
+}
+
+// setupAzureRoutes sets up Azure-specific routes
+func (rm *RouteManager) setupAzureRoutes(router *gin.RouterGroup) {
+	// Kubernetes (AKS)
+	k8sGroup := router.Group("/kubernetes")
+	k8sService := rm.container.GetKubernetesService().(*service.KubernetesService)
+	kubernetes.SetupRoutes(k8sGroup, k8sService, rm.container.GetCredentialService(), "azure")
+
+	// TODO: Add more Azure-specific services
+	// - Virtual Machines
+	// - SQL Database
+	// - Blob Storage
+	// - Azure Functions
+}
+
+// setupNCPRoutes sets up Naver Cloud Platform routes
+func (rm *RouteManager) setupNCPRoutes(router *gin.RouterGroup) {
+	// Kubernetes (NKS - Naver Kubernetes Service)
+	k8sGroup := router.Group("/kubernetes")
+	k8sService := rm.container.GetKubernetesService().(*service.KubernetesService)
+	kubernetes.SetupRoutes(k8sGroup, k8sService, rm.container.GetCredentialService(), "ncp")
+
+	// TODO: Add more NCP-specific services
+	// - Server
+	// - Cloud DB
+	// - Object Storage
+	// - Cloud Functions
 }
 
 // setupCostAnalysisRoutes sets up cost analysis routes
@@ -357,14 +436,13 @@ func (rm *RouteManager) checkRedisStatus() gin.H {
 	return gin.H{"healthy": true, "status": "not implemented"}
 }
 
-// checkPluginStatus checks plugin manager status
+// checkPluginStatus checks provider manager status
 func (rm *RouteManager) checkPluginStatus() gin.H {
-	providers := rm.pluginManager.ListProviders()
 	return gin.H{
-		"healthy":   true,
-		"status":    "loaded",
-		"count":     len(providers),
-		"providers": providers,
+		"healthy": true,
+		"status":  "gRPC",
+		"type":    "gRPC Provider Manager",
+		"note":    "Use /api/v1/providers for details",
 	}
 }
 
@@ -552,23 +630,12 @@ func (rm *RouteManager) checkRedisDependency() gin.H {
 	}
 }
 
-// checkPluginDependencies checks plugin dependencies
+// checkPluginDependencies checks provider dependencies
 func (rm *RouteManager) checkPluginDependencies() gin.H {
-	providers := rm.pluginManager.ListProviders()
-	healthyCount := 0
-
-	// Check each plugin
-	for range providers {
-		// Simple check - if plugin is listed, consider it healthy
-		// In real implementation, you might want to test actual plugin functionality
-		healthyCount++
-	}
-
 	return gin.H{
-		"healthy":          healthyCount == len(providers),
-		"status":           "loaded",
-		"total_plugins":    len(providers),
-		"healthy_plugins":  healthyCount,
-		"response_time_ms": 0,
+		"healthy": true,
+		"status":  "gRPC",
+		"type":    "gRPC Provider Manager",
+		"note":    "Providers are managed via gRPC",
 	}
 }

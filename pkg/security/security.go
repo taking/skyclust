@@ -1,6 +1,7 @@
 package security
 
 import (
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,6 +10,7 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 // PasswordHasher interface for password hashing
@@ -50,36 +52,62 @@ type Encryptor interface {
 	Decrypt(data []byte) ([]byte, error)
 }
 
-// AESEncryptor provides encryption functionality
-type AESEncryptor struct {
-	key []byte
+// ChaChaEncryptor provides encryption functionality using ChaCha20-Poly1305
+type ChaChaEncryptor struct {
+	aead cipher.AEAD
 }
 
-// NewAESEncryptor creates a new AES-based encryptor
+// NewAESEncryptor creates a new ChaCha20-Poly1305 encryptor
+// Note: Renamed to maintain backward compatibility, but uses ChaCha20-Poly1305
 func NewAESEncryptor(key []byte) Encryptor {
-	return &AESEncryptor{
-		key: key,
+	// Derive a 32-byte key using SHA-256
+	hash := sha256.Sum256(key)
+
+	aead, err := chacha20poly1305.NewX(hash[:])
+	if err != nil {
+		// Fallback to standard ChaCha20-Poly1305 if XChaCha20-Poly1305 fails
+		aead, err = chacha20poly1305.New(hash[:])
+		if err != nil {
+			panic(fmt.Sprintf("failed to create cipher: %v", err))
+		}
+	}
+
+	return &ChaChaEncryptor{
+		aead: aead,
 	}
 }
 
-// Encrypt encrypts data
-func (e *AESEncryptor) Encrypt(data []byte) ([]byte, error) {
-	// Simple XOR encryption for now
-	result := make([]byte, len(data))
-	for i, b := range data {
-		result[i] = b ^ e.key[i%len(e.key)]
+// Encrypt encrypts data using ChaCha20-Poly1305
+func (e *ChaChaEncryptor) Encrypt(data []byte) ([]byte, error) {
+	// Generate nonce
+	nonce := make([]byte, e.aead.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, fmt.Errorf("failed to generate nonce: %w", err)
 	}
-	return result, nil
+
+	// Encrypt data (nonce is prepended to ciphertext)
+	ciphertext := e.aead.Seal(nonce, nonce, data, nil)
+	return ciphertext, nil
 }
 
-// Decrypt decrypts data
-func (e *AESEncryptor) Decrypt(data []byte) ([]byte, error) {
-	// Simple XOR decryption for now
-	result := make([]byte, len(data))
-	for i, b := range data {
-		result[i] = b ^ e.key[i%len(e.key)]
+// Decrypt decrypts data using ChaCha20-Poly1305
+func (e *ChaChaEncryptor) Decrypt(data []byte) ([]byte, error) {
+	// Check minimum length
+	nonceSize := e.aead.NonceSize()
+	if len(data) < nonceSize {
+		return nil, fmt.Errorf("ciphertext too short: got %d bytes, need at least %d", len(data), nonceSize)
 	}
-	return result, nil
+
+	// Extract nonce and ciphertext
+	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
+
+	// Decrypt data
+	plaintext, err := e.aead.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt: %w", err)
+	}
+
+	return plaintext, nil
 }
 
 // GenerateSecureToken generates a cryptographically secure random token
@@ -91,18 +119,27 @@ func GenerateSecureToken(length int) (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-// HashPassword creates a SHA-256 hash of the password
-func HashPassword(password string) string {
-	hash := sha256.Sum256([]byte(password))
-	return hex.EncodeToString(hash[:])
+// HashPassword is a convenience function for hashing passwords
+func HashPassword(password string) (string, error) {
+	hasher := NewBcryptHasher(12)
+	return hasher.HashPassword(password)
 }
 
-// ValidateEnvironment validates that all required environment variables are set
-func ValidateEnvironment() error {
-	// Only validate if we're in production mode
-	if IsProductionEnvironment() {
-		requiredVars := []string{
+// VerifyPassword is a convenience function for verifying passwords
+func VerifyPassword(password, hash string) bool {
+	hasher := NewBcryptHasher(12)
+	return hasher.VerifyPassword(password, hash)
+}
+
+// ValidateEnvironment validates required environment variables
+func ValidateEnvironment(requiredVars []string) error {
+	if requiredVars == nil {
+		// Default production environment variables
+		requiredVars = []string{
+			"JWT_SECRET",
+			"ENCRYPTION_KEY",
 			"CMP_DB_HOST",
+			"CMP_DB_PORT",
 			"CMP_DB_USER",
 			"CMP_DB_PASSWORD",
 			"CMP_DB_NAME",

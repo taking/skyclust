@@ -327,6 +327,13 @@ func (c *Container) GetNotificationService() domain.NotificationService {
 	return c.serviceModule.GetContainer().NotificationService
 }
 
+// GetKubernetesService returns the kubernetes service
+func (c *Container) GetKubernetesService() interface{} {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.serviceModule.GetContainer().KubernetesService
+}
+
 // GetExportService returns the export service
 func (c *Container) GetExportService() interface{} {
 	c.mu.RLock()

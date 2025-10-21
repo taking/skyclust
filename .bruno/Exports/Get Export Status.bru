@@ -1,0 +1,35 @@
+meta {
+  name: Get Export Status
+  type: http
+  seq: 35
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/exports/{{exportId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains export status", function() {
+    expect(res.getBody()).to.have.property('id');
+    expect(res.getBody()).to.have.property('status');
+    expect(res.getBody()).to.have.property('type');
+  });
+  
+  test("Export ID matches", function() {
+    expect(res.getBody().id).to.equal('{{exportId}}');
+  });
+}

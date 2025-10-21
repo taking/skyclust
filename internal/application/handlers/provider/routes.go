@@ -2,14 +2,13 @@ package provider
 
 import (
 	"skyclust/internal/domain"
-	"skyclust/internal/plugin"
 
 	"github.com/gin-gonic/gin"
 )
 
 // SetupRoutes sets up cloud provider routes
-func SetupRoutes(router *gin.RouterGroup, pluginManager *plugin.Manager, auditLogRepo domain.AuditLogRepository) {
-	providerHandler := NewHandler(pluginManager, auditLogRepo)
+func SetupRoutes(router *gin.RouterGroup, providerManager interface{}, auditLogRepo domain.AuditLogRepository) {
+	providerHandler := NewHandler(providerManager, auditLogRepo)
 
 	router.GET("", providerHandler.GetProviders)
 	router.GET("/:name", providerHandler.GetProvider)

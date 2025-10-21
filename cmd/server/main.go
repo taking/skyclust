@@ -6,14 +6,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"skyclust/internal/di"
-	"skyclust/internal/plugin"
 	"skyclust/internal/routes"
 	"skyclust/pkg/config"
 	"skyclust/pkg/middleware"
@@ -25,7 +23,6 @@ import (
 
 var (
 	configFile string
-	pluginDir  string
 	port       string
 )
 
@@ -33,12 +30,11 @@ func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "cmp-server",
 		Short: "Cloud Management Portal Server",
-		Long:  "A plugin-based cloud management platform",
+		Long:  "A gRPC-based cloud management platform",
 		Run:   runServer,
 	}
 
 	rootCmd.Flags().StringVarP(&configFile, "config", "c", "config.yaml", "Configuration file path")
-	rootCmd.Flags().StringVarP(&pluginDir, "plugins", "p", "plugins", "Plugin directory path")
 	rootCmd.Flags().StringVarP(&port, "port", "P", "8081", "Server port")
 
 	if err := rootCmd.Execute(); err != nil {
@@ -78,9 +74,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	log.Printf("Loaded configuration from %s", configFile)
 
 	// Override with command line flags (only if not set via environment)
-	if pluginDir != "" {
-		cfg.Plugins.Directory = pluginDir
-	}
 	if port != "" && port != "8081" {
 		// Only override if port flag is explicitly set and different from default
 		if portInt, err := strconv.Atoi(port); err == nil {
@@ -111,40 +104,13 @@ func runServer(cmd *cobra.Command, args []string) {
 		}
 	}()
 
-	// Initialize plugin manager
-	pluginManager := plugin.NewManager()
-
-	// Get current working directory for debugging
-	cwd, _ := os.Getwd()
-	log.Printf("Current working directory: %s", cwd)
-	log.Printf("Plugin directory (config): %s", cfg.Plugins.Directory)
-
-	// Check if plugin directory exists
-	pluginDirAbs := cfg.Plugins.Directory
-	if !filepath.IsAbs(pluginDirAbs) {
-		pluginDirAbs = filepath.Join(cwd, cfg.Plugins.Directory)
-	}
-	log.Printf("Plugin directory (absolute): %s", pluginDirAbs)
-	if _, err := os.Stat(pluginDirAbs); os.IsNotExist(err) {
-		log.Printf("Warning: plugin directory does not exist: %s", pluginDirAbs)
-	}
-
-	// Load plugins
-	if err := pluginManager.LoadPlugins(cfg.Plugins.Directory); err != nil {
-		log.Printf("Warning: failed to load plugins: %v", err)
-	}
-
-	// Initialize plugins with configuration
-	for _, providerName := range pluginManager.ListProviders() {
-		// TODO: Implement provider configuration when available
-		// if err := pluginManager.InitializeProvider(providerName, cfg.Providers[providerName]); err != nil {
-		// 	log.Printf("Warning: failed to initialize provider %s: %v", providerName, err)
-		// }
-		_ = providerName // Avoid unused variable warning
-	}
+	// Initialize gRPC Provider Manager
+	// TODO: Implement gRPC provider manager
+	var providerManager interface{} = nil
+	log.Println("Provider manager: using gRPC-based providers")
 
 	// Setup router
-	router := setupRouter(appContainer, pluginManager, cfg, logger)
+	router := setupRouter(appContainer, providerManager, cfg, logger)
 
 	// Start server
 	server := &http.Server{
@@ -160,8 +126,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	}()
 
 	log.Printf("Starting CMP server on port %d", cfg.Server.Port)
-	log.Printf("Plugin directory: %s", cfg.Plugins.Directory)
-	log.Printf("Loaded providers: %v", pluginManager.ListProviders())
+	log.Printf("gRPC Provider Manager initialized")
 
 	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
@@ -181,7 +146,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	log.Println("Server exited")
 }
 
-func setupRouter(container di.ContainerInterface, pluginManager *plugin.Manager, cfg *config.Config, logger *zap.Logger) *gin.Engine {
+func setupRouter(container di.ContainerInterface, providerManager interface{}, cfg *config.Config, logger *zap.Logger) *gin.Engine {
 	// Set Gin mode
 	if cfg.Server.Host == "0.0.0.0" {
 		gin.SetMode(gin.ReleaseMode)
@@ -235,7 +200,7 @@ func setupRouter(container di.ContainerInterface, pluginManager *plugin.Manager,
 	)
 
 	// Create route manager
-	routeManager := routes.NewRouteManager(container, pluginManager, authMiddleware, logger, cfg)
+	routeManager := routes.NewRouteManager(container, providerManager, authMiddleware, logger, cfg)
 
 	// Setup all routes using the route manager
 	routeManager.SetupAllRoutes(router)

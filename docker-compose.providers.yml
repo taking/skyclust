@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  # AWS Provider Service
+  aws-provider:
+    build:
+      context: ./providers/aws
+      dockerfile: Dockerfile
+    container_name: skyclust-aws-provider
+    ports:
+      - "50051:50051"
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+    restart: unless-stopped
+    networks:
+      - skyclust-network
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:50051"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # GCP Provider Service
+  gcp-provider:
+    build:
+      context: ./providers/gcp
+      dockerfile: Dockerfile
+    container_name: skyclust-gcp-provider
+    ports:
+      - "50052:50052"
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcp-credentials.json
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - GCP_REGION=${GCP_REGION:-us-central1}
+    volumes:
+      - ${GCP_CREDENTIALS_PATH}:/secrets/gcp-credentials.json:ro
+    restart: unless-stopped
+    networks:
+      - skyclust-network
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:50052"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # OpenStack Provider Service
+  openstack-provider:
+    build:
+      context: ./providers/openstack
+      dockerfile: Dockerfile
+    container_name: skyclust-openstack-provider
+    ports:
+      - "50053:50053"
+    environment:
+      - OS_AUTH_URL=${OS_AUTH_URL}
+      - OS_USERNAME=${OS_USERNAME}
+      - OS_PASSWORD=${OS_PASSWORD}
+      - OS_PROJECT_ID=${OS_PROJECT_ID}
+      - OS_REGION_NAME=${OS_REGION_NAME:-RegionOne}
+    restart: unless-stopped
+    networks:
+      - skyclust-network
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:50053"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Proxmox Provider Service
+  proxmox-provider:
+    build:
+      context: ./providers/proxmox
+      dockerfile: Dockerfile
+    container_name: skyclust-proxmox-provider
+    ports:
+      - "50054:50054"
+    environment:
+      - PROXMOX_HOST=${PROXMOX_HOST}
+      - PROXMOX_USER=${PROXMOX_USER}
+      - PROXMOX_PASSWORD=${PROXMOX_PASSWORD}
+      - PROXMOX_REALM=${PROXMOX_REALM:-pve}
+    restart: unless-stopped
+    networks:
+      - skyclust-network
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:50054"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  skyclust-network:
+    driver: bridge
+    name: skyclust-network
+

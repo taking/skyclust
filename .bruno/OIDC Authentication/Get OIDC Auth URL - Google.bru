@@ -1,0 +1,31 @@
+meta {
+  name: Get OIDC Auth URL - Google
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/oidc/google
+  body: none
+  auth: none
+}
+
+headers {
+  
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains auth URL", function() {
+    expect(res.getBody()).to.have.property('auth_url');
+  });
+  
+  test("Auth URL is valid", function() {
+    const authUrl = res.getBody().auth_url;
+    expect(authUrl).to.include('google');
+    expect(authUrl).to.include('oauth');
+  });
+}

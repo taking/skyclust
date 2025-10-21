@@ -1,0 +1,47 @@
+meta {
+  name: Export VMs to CSV
+  type: http
+  seq: 33
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/exports
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "type": "vms",
+    "format": "csv",
+    "workspace_id": "{{workspaceId}}",
+    "filters": {
+      "provider": "aws"
+    }
+  }
+}
+
+headers {
+  Content-Type: application/json
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response contains export data", function() {
+    expect(res.getBody()).to.have.property('id');
+    expect(res.getBody()).to.have.property('status');
+    expect(res.getBody()).to.have.property('type');
+  });
+  
+  test("Export type is correct", function() {
+    expect(res.getBody().type).to.equal('vms');
+    expect(res.getBody().format).to.equal('csv');
+  });
+}

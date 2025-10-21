@@ -3,10 +3,13 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"skyclust/internal/domain"
+	"skyclust/pkg/logger"
 	"skyclust/pkg/security"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // credentialService implements the credential business logic
@@ -86,16 +89,19 @@ func (s *credentialService) GetCredentials(ctx context.Context, userID uuid.UUID
 		return nil, domain.NewDomainError(domain.ErrCodeInternalError, "failed to get credentials", 500)
 	}
 
-	// Decrypt credential data for each credential
+	// Decrypt and mask credential data for each credential
 	for _, credential := range credentials {
 		decryptedData, err := s.DecryptCredentialData(ctx, credential.EncryptedData)
 		if err != nil {
-			// Log error but don't fail the request
+			// Log error but don't fail the request, just skip masking
+			logger.DefaultLogger.GetLogger().Warn("Failed to decrypt credential for masking",
+				zap.String("credential_id", credential.ID.String()),
+				zap.Error(err))
 			continue
 		}
-		// Note: In a real implementation, you might want to return decrypted data
-		// or have a separate endpoint for getting decrypted credentials
-		_ = decryptedData
+
+		// Add masked data to credential
+		credential.MaskedData = domain.MaskCredentialData(decryptedData)
 	}
 
 	return credentials, nil
@@ -211,19 +217,38 @@ func (s *credentialService) EncryptCredentialData(ctx context.Context, data map[
 
 // DecryptCredentialData decrypts credential data
 func (s *credentialService) DecryptCredentialData(ctx context.Context, encryptedData []byte) (map[string]interface{}, error) {
+	// Check if encrypted data is empty
+	if len(encryptedData) == 0 {
+		return nil, fmt.Errorf("encrypted data is empty")
+	}
+
 	// Decrypt using AES
 	decrypted, err := s.encryptor.Decrypt(encryptedData)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decryption failed: %w", err)
 	}
+
+	// Debug log (will be removed after fix)
+	logger.DefaultLogger.GetLogger().Debug("Decrypted credential data",
+		zap.Int("encrypted_length", len(encryptedData)),
+		zap.Int("decrypted_length", len(decrypted)),
+		zap.String("decrypted_preview", string(decrypted[:min(100, len(decrypted))])))
 
 	// Convert from JSON
 	var data map[string]interface{}
 	if err := json.Unmarshal(decrypted, &data); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("json unmarshal failed: %w (data: %s)", err, string(decrypted[:min(200, len(decrypted))]))
 	}
 
 	return data, nil
+}
+
+// Helper function for min
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // isValidProvider checks if the provider is supported

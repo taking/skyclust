@@ -1,14 +1,13 @@
 package auth
 
 import (
-	"skyclust/internal/application/services"
 	"skyclust/internal/domain"
 
 	"github.com/gin-gonic/gin"
 )
 
 // SetupRoutes sets up authentication routes
-func SetupRoutes(router *gin.RouterGroup, authService domain.AuthService, userService domain.UserService, logoutService *service.LogoutService) {
+func SetupRoutes(router *gin.RouterGroup, authService domain.AuthService, userService domain.UserService, logoutService domain.LogoutService) {
 	authHandler := NewHandlerWithLogout(authService, userService, logoutService)
 
 	// Public authentication routes (no authentication required)

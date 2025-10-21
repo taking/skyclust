@@ -24,6 +24,7 @@ type ContainerInterface interface {
 	GetOIDCService() domain.OIDCService
 	GetLogoutService() domain.LogoutService
 	GetNotificationService() domain.NotificationService
+	GetKubernetesService() interface{}
 	GetExportService() interface{}
 	GetCostAnalysisService() interface{}
 	GetCloudProviderService() interface{}
@@ -66,6 +67,7 @@ type ServiceContainer struct {
 	OIDCService          domain.OIDCService
 	LogoutService        domain.LogoutService
 	NotificationService  domain.NotificationService
+	KubernetesService    interface{} // KubernetesService for K8s cluster management
 	ExportService        interface{} // TODO: Define ExportService interface in domain
 	CostAnalysisService  interface{} // TODO: Define CostAnalysisService interface in domain
 	CloudProviderService interface{} // TODO: Define CloudProviderService interface in domain

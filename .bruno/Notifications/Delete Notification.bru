@@ -1,0 +1,29 @@
+meta {
+  name: Delete Notification
+  type: http
+  seq: 30
+}
+
+delete {
+  url: {{baseUrl}}/api/{{apiVersion}}/notifications/{{notificationId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  
+}
+
+tests {
+  test("Status code is 204", function() {
+    expect(res.getStatus()).to.equal(204);
+  });
+  
+  test("Response is empty", function() {
+    expect(res.getBody()).to.be.empty;
+  });
+}

@@ -1,0 +1,40 @@
+meta {
+  name: 로그인
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/auth/login
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "test@example.com",
+    "password": "password123"
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("token", res.body.data.token);
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains token", function() {
+    expect(res.getBody()).to.have.property('token');
+  });
+  
+  test("Token is not empty", function() {
+    expect(res.getBody().token).to.not.be.empty;
+  });
+}

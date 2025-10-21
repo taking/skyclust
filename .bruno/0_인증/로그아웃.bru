@@ -1,0 +1,26 @@
+meta {
+  name: 로그아웃
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/auth/logout
+  body: none
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "username": "testuser",
+    "password": "password123"
+  }
+}

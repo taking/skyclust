@@ -2,7 +2,6 @@ package auth
 
 import (
 	"net/http"
-	"skyclust/internal/application/services"
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
 
@@ -14,7 +13,7 @@ type Handler struct {
 	*handlers.BaseHandler
 	authService   domain.AuthService
 	userService   domain.UserService
-	logoutService *service.LogoutService
+	logoutService domain.LogoutService
 }
 
 // NewHandler creates a new authentication handler
@@ -27,7 +26,7 @@ func NewHandler(authService domain.AuthService, userService domain.UserService) 
 }
 
 // NewHandlerWithLogout creates a new authentication handler with logout service
-func NewHandlerWithLogout(authService domain.AuthService, userService domain.UserService, logoutService *service.LogoutService) *Handler {
+func NewHandlerWithLogout(authService domain.AuthService, userService domain.UserService, logoutService domain.LogoutService) *Handler {
 	return &Handler{
 		BaseHandler:   handlers.NewBaseHandler("auth"),
 		authService:   authService,
@@ -161,7 +160,7 @@ func (h *Handler) Logout(c *gin.Context) {
 		return
 	}
 
-	h.OK(c, gin.H{"message": "Logout successful"}, "Logout successful")
+	h.OK(c, nil, "Logout successful")
 }
 
 // Me returns the current user's information

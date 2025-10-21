@@ -1,0 +1,35 @@
+meta {
+  name: Get Notification by ID
+  type: http
+  seq: 28
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/notifications/{{notificationId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains notification data", function() {
+    expect(res.getBody()).to.have.property('id');
+    expect(res.getBody()).to.have.property('title');
+    expect(res.getBody()).to.have.property('message');
+  });
+  
+  test("Notification ID matches", function() {
+    expect(res.getBody().id).to.equal('{{notificationId}}');
+  });
+}

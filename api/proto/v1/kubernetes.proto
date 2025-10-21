@@ -1,0 +1,408 @@
+syntax = "proto3";
+
+package skyclust.provider.v1;
+
+option go_package = "skyclust/api/proto/v1;providerv1";
+
+import "google/protobuf/timestamp.proto";
+
+// KubernetesService defines the gRPC service for Kubernetes operations
+service KubernetesService {
+  // Cluster Management
+  rpc CreateCluster(CreateClusterRequest) returns (CreateClusterResponse);
+  rpc DeleteCluster(DeleteClusterRequest) returns (DeleteClusterResponse);
+  rpc ListClusters(ListClustersRequest) returns (ListClustersResponse);
+  rpc GetCluster(GetClusterRequest) returns (GetClusterResponse);
+  rpc GetClusterKubeconfig(GetClusterKubeconfigRequest) returns (GetClusterKubeconfigResponse);
+  
+  // Node Pool Management
+  rpc CreateNodePool(CreateNodePoolRequest) returns (CreateNodePoolResponse);
+  rpc DeleteNodePool(DeleteNodePoolRequest) returns (DeleteNodePoolResponse);
+  rpc ListNodePools(ListNodePoolsRequest) returns (ListNodePoolsResponse);
+  rpc GetNodePool(GetNodePoolRequest) returns (GetNodePoolResponse);
+  rpc ScaleNodePool(ScaleNodePoolRequest) returns (ScaleNodePoolResponse);
+  
+  // Addon Management
+  rpc EnableAddon(EnableAddonRequest) returns (EnableAddonResponse);
+  rpc DisableAddon(DisableAddonRequest) returns (DisableAddonResponse);
+  rpc ListAddons(ListAddonsRequest) returns (ListAddonsResponse);
+  
+  // Node Management
+  rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
+  rpc GetNode(GetNodeRequest) returns (GetNodeResponse);
+  rpc DrainNode(DrainNodeRequest) returns (DrainNodeResponse);
+  rpc CordonNode(CordonNodeRequest) returns (CordonNodeResponse);
+  rpc UncordonNode(UncordonNodeRequest) returns (UncordonNodeResponse);
+  
+  // SSH Access Management
+  rpc GetNodeSSHConfig(GetNodeSSHConfigRequest) returns (GetNodeSSHConfigResponse);
+  rpc CreateSSHTunnel(CreateSSHTunnelRequest) returns (CreateSSHTunnelResponse);
+  rpc CloseSSHTunnel(CloseSSHTunnelRequest) returns (CloseSSHTunnelResponse);
+  rpc ExecuteRemoteCommand(ExecuteRemoteCommandRequest) returns (ExecuteRemoteCommandResponse);
+  
+  // Cluster Upgrade
+  rpc UpgradeCluster(UpgradeClusterRequest) returns (UpgradeClusterResponse);
+  rpc GetUpgradeStatus(GetUpgradeStatusRequest) returns (GetUpgradeStatusResponse);
+}
+
+// Cluster Management Messages
+message CreateClusterRequest {
+  string name = 1;
+  string region = 2;
+  string version = 3;
+  string vpc_id = 4;
+  repeated string subnet_ids = 5;
+  ClusterNetworking networking = 6;
+  map<string, string> tags = 7;
+}
+
+message CreateClusterResponse {
+  Cluster cluster = 1;
+}
+
+message DeleteClusterRequest {
+  string cluster_id = 1;
+  string region = 2;
+}
+
+message DeleteClusterResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ListClustersRequest {
+  string region = 1;
+  map<string, string> filters = 2;
+}
+
+message ListClustersResponse {
+  repeated Cluster clusters = 1;
+}
+
+message GetClusterRequest {
+  string cluster_id = 1;
+  string region = 2;
+}
+
+message GetClusterResponse {
+  Cluster cluster = 1;
+}
+
+message GetClusterKubeconfigRequest {
+  string cluster_id = 1;
+  string region = 2;
+}
+
+message GetClusterKubeconfigResponse {
+  string kubeconfig = 1;
+}
+
+// Node Pool Management Messages
+message CreateNodePoolRequest {
+  string cluster_id = 1;
+  string name = 2;
+  string instance_type = 3;
+  int32 desired_size = 4;
+  int32 min_size = 5;
+  int32 max_size = 6;
+  repeated string subnet_ids = 7;
+  map<string, string> labels = 8;
+  repeated string taints = 9;
+  map<string, string> tags = 10;
+}
+
+message CreateNodePoolResponse {
+  NodePool node_pool = 1;
+}
+
+message DeleteNodePoolRequest {
+  string cluster_id = 1;
+  string node_pool_id = 2;
+  string region = 3;
+}
+
+message DeleteNodePoolResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ListNodePoolsRequest {
+  string cluster_id = 1;
+  string region = 2;
+}
+
+message ListNodePoolsResponse {
+  repeated NodePool node_pools = 1;
+}
+
+message GetNodePoolRequest {
+  string cluster_id = 1;
+  string node_pool_id = 2;
+  string region = 3;
+}
+
+message GetNodePoolResponse {
+  NodePool node_pool = 1;
+}
+
+message ScaleNodePoolRequest {
+  string cluster_id = 1;
+  string node_pool_id = 2;
+  int32 desired_size = 3;
+  string region = 4;
+}
+
+message ScaleNodePoolResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Addon Management Messages
+message EnableAddonRequest {
+  string cluster_id = 1;
+  string addon_name = 2;
+  string version = 3;
+  map<string, string> configuration = 4;
+  string region = 5;
+}
+
+message EnableAddonResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message DisableAddonRequest {
+  string cluster_id = 1;
+  string addon_name = 2;
+  string region = 3;
+}
+
+message DisableAddonResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ListAddonsRequest {
+  string cluster_id = 1;
+  string region = 2;
+}
+
+message ListAddonsResponse {
+  repeated Addon addons = 1;
+}
+
+// Common Kubernetes Types
+message Cluster {
+  string id = 1;
+  string name = 2;
+  string status = 3;
+  string version = 4;
+  string endpoint = 5;
+  string region = 6;
+  string vpc_id = 7;
+  repeated string subnet_ids = 8;
+  ClusterNetworking networking = 9;
+  map<string, string> tags = 10;
+  google.protobuf.Timestamp created_at = 11;
+}
+
+message ClusterNetworking {
+  string service_cidr = 1;
+  string pod_cidr = 2;
+  repeated string security_group_ids = 3;
+}
+
+message NodePool {
+  string id = 1;
+  string name = 2;
+  string cluster_id = 3;
+  string status = 4;
+  string instance_type = 5;
+  int32 desired_size = 6;
+  int32 min_size = 7;
+  int32 max_size = 8;
+  int32 current_size = 9;
+  repeated string subnet_ids = 10;
+  map<string, string> labels = 11;
+  repeated string taints = 12;
+  map<string, string> tags = 13;
+  google.protobuf.Timestamp created_at = 14;
+}
+
+message Addon {
+  string name = 1;
+  string version = 2;
+  string status = 3;
+  map<string, string> configuration = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+// Node Management Messages
+message ListNodesRequest {
+  string cluster_id = 1;
+  string region = 2;
+  map<string, string> filters = 3;
+}
+
+message ListNodesResponse {
+  repeated Node nodes = 1;
+}
+
+message GetNodeRequest {
+  string cluster_id = 1;
+  string node_id = 2;
+  string region = 3;
+}
+
+message GetNodeResponse {
+  Node node = 1;
+}
+
+message DrainNodeRequest {
+  string cluster_id = 1;
+  string node_id = 2;
+  string region = 3;
+  bool force = 4;
+  int32 grace_period_seconds = 5;
+}
+
+message DrainNodeResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message CordonNodeRequest {
+  string cluster_id = 1;
+  string node_id = 2;
+  string region = 3;
+}
+
+message CordonNodeResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message UncordonNodeRequest {
+  string cluster_id = 1;
+  string node_id = 2;
+  string region = 3;
+}
+
+message UncordonNodeResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message Node {
+  string id = 1;
+  string name = 2;
+  string cluster_id = 3;
+  string status = 4;
+  string instance_type = 5;
+  string availability_zone = 6;
+  string public_ip = 7;
+  string private_ip = 8;
+  NodeCapacity capacity = 9;
+  map<string, string> labels = 10;
+  repeated string taints = 11;
+  google.protobuf.Timestamp created_at = 12;
+}
+
+message NodeCapacity {
+  string cpu = 1;
+  string memory = 2;
+  string pods = 3;
+  string storage = 4;
+}
+
+// SSH Access Messages
+message GetNodeSSHConfigRequest {
+  string cluster_id = 1;
+  string node_id = 2;
+  string region = 3;
+}
+
+message GetNodeSSHConfigResponse {
+  SSHConfig ssh_config = 1;
+}
+
+message CreateSSHTunnelRequest {
+  string cluster_id = 1;
+  string node_id = 2;
+  string region = 3;
+  int32 local_port = 4;
+  int32 remote_port = 5;
+}
+
+message CreateSSHTunnelResponse {
+  string tunnel_id = 1;
+  string local_endpoint = 2;
+  bool success = 3;
+  string message = 4;
+}
+
+message CloseSSHTunnelRequest {
+  string tunnel_id = 1;
+}
+
+message CloseSSHTunnelResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ExecuteRemoteCommandRequest {
+  string cluster_id = 1;
+  string node_id = 2;
+  string region = 3;
+  string command = 4;
+  int32 timeout_seconds = 5;
+}
+
+message ExecuteRemoteCommandResponse {
+  string stdout = 1;
+  string stderr = 2;
+  int32 exit_code = 3;
+  bool success = 4;
+}
+
+message SSHConfig {
+  string host = 1;
+  int32 port = 2;
+  string username = 3;
+  string private_key = 4;
+  string bastion_host = 5;
+  int32 bastion_port = 6;
+  string bastion_username = 7;
+  string bastion_private_key = 8;
+}
+
+// Cluster Upgrade Messages
+message UpgradeClusterRequest {
+  string cluster_id = 1;
+  string region = 2;
+  string target_version = 3;
+}
+
+message UpgradeClusterResponse {
+  string upgrade_id = 1;
+  string status = 2;
+  string message = 3;
+}
+
+message GetUpgradeStatusRequest {
+  string cluster_id = 1;
+  string upgrade_id = 2;
+  string region = 3;
+}
+
+message GetUpgradeStatusResponse {
+  string upgrade_id = 1;
+  string status = 2;
+  string current_version = 3;
+  string target_version = 4;
+  int32 progress_percentage = 5;
+  string message = 6;
+  google.protobuf.Timestamp started_at = 7;
+  google.protobuf.Timestamp completed_at = 8;
+}
+
