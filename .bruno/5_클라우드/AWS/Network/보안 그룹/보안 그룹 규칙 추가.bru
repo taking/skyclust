@@ -1,0 +1,37 @@
+meta {
+  name: 보안 그룹 규칙 추가
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/network/security-groups/{{sgId}}/rules
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "credential_id": "{{credentialsId}}",
+    "security_group_id": "{{sgId}}",
+    "region": "ap-northeast-3",
+    "type": "ingress",
+    "protocol": "tcp",
+    "from_port": 443,
+    "to_port": 443,
+    "cidr_blocks": ["0.0.0.0/0"],
+    "description": "Allow HTTP traffic"
+  }
+}
+
+vars:pre-request {
+  securityGroupId: sg-12345678
+}

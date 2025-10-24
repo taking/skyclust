@@ -26,6 +26,69 @@ script:post-response {
   bru.setEnvVar("token", res.body.data.token);
 }
 
+docs {
+  # 사용자 회원가입
+  
+  새로운 사용자 계정을 생성합니다.
+  
+  ## Request Body
+  
+  ```json
+  {
+    "username": "testuser",
+    "email": "test6@example.com",
+    "password": "password123"
+  }
+  ```
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "user": {
+        "id": "123e4567-e89b-12d3-a456-426614174000",
+        "username": "testuser",
+        "email": "test6@example.com",
+        "role": "user",
+        "created_at": "2025-10-23T10:00:00Z"
+      },
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NjEyNjkzNjIsImlhdCI6MTc2MTE4Mjk2Miwicm9sZSI6ImFkbWluIiwidXNlcl9pZCI6IjgzOTczZjZiLTVkOTAtNGU0ZS05Y2Y2LTA5ZTMzZjY4NWEzMiIsInVzZXJuYW1lIjoidGVzdHVzZXIifQ.O__1_kjqJxvEBYpiG_uKJ8YyEuGX3taSTpMg6DYDMRo",
+      "expires_in": 3600
+    },
+    "message": "User registered successfully",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
+  }
+  ```
+  
+  ## 필드 설명
+  
+  - `username`: 사용자명 (고유해야 함)
+  - `email`: 이메일 주소 (고유해야 함)
+  - `password`: 비밀번호 (최소 8자 이상)
+  
+  ## 사용 예시
+  
+  ```bash
+  POST /api/v1/auth/register
+  Content-Type: application/json
+  
+  {
+    "username": "testuser",
+    "email": "test6@example.com",
+    "password": "password123"
+  }
+  ```
+  
+  ## 주의사항
+  
+  - 회원가입 시 자동으로 로그인되어 JWT 토큰이 발급됩니다
+  - 이메일과 사용자명은 고유해야 합니다
+  - 비밀번호는 암호화되어 저장됩니다
+}
+
 tests {
   test("Status code is 201", function() {
     expect(res.getStatus()).to.equal(201);

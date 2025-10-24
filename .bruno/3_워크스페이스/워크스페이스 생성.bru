@@ -29,6 +29,62 @@ script:post-response {
   bru.setEnvVar("workspaceId", res.body.data.workspace.id);
 }
 
+docs {
+  # 워크스페이스 생성
+  
+  새로운 워크스페이스를 생성합니다.
+  
+  ## Request Body
+  
+  ```json
+  {
+    "name": "Test Workspace",
+    "description": "A test workspace for API testing"
+  }
+  ```
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "workspace": {
+        "id": "123e4567-e89b-12d3-a456-426614174000",
+        "name": "Test Workspace",
+        "description": "A test workspace for API testing",
+        "owner_id": "123e4567-e89b-12d3-a456-426614174001",
+        "is_active": true,
+        "created_at": "2025-10-23T10:00:00Z",
+        "updated_at": "2025-10-23T10:00:00Z"
+      }
+    },
+    "message": "Workspace created successfully",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
+  }
+  ```
+  
+  ## 사용 예시
+  
+  ```bash
+  POST /api/v1/workspaces
+  Authorization: Bearer your-jwt-token
+  Content-Type: application/json
+  
+  {
+    "name": "Test Workspace",
+    "description": "A test workspace for API testing"
+  }
+  ```
+  
+  ## 주의사항
+  
+  - 워크스페이스 이름은 고유해야 합니다
+  - 생성자는 자동으로 워크스페이스 소유자가 됩니다
+  - 워크스페이스는 생성 즉시 활성화됩니다
+}
+
 tests {
   test("Status code is 201", function() {
     expect(res.getStatus()).to.equal(201);

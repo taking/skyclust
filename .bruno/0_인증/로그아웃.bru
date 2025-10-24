@@ -18,9 +18,32 @@ auth:bearer {
   token: {{token}}
 }
 
-body:json {
+docs {
+  # 사용자 로그아웃
+  
+  현재 세션을 종료하고 JWT 토큰을 무효화합니다.
+  
+  ## Response
+  
+  ```json
   {
-    "username": "testuser",
-    "password": "password123"
+    "success": true,
+    "message": "Logout successful",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
   }
+  ```
+  
+  ## 사용 예시
+  
+  ```bash
+  POST /api/v1/auth/logout
+  Authorization: Bearer your-jwt-token
+  ```
+  
+  ## 주의사항
+  
+  - 로그아웃 후 해당 토큰은 더 이상 사용할 수 없습니다
+  - 토큰이 블랙리스트에 추가되어 무효화됩니다
+  - 다른 API 호출 시 새로운 로그인이 필요합니다
 }

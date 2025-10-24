@@ -100,6 +100,35 @@ func (s *KubernetesService) createAWSEKSCluster(ctx context.Context, credential 
 		input.Tags = req.Tags
 	}
 
+	// Add Access Entry configuration
+	if req.AccessConfig != nil {
+		accessConfig := &types.CreateAccessConfigRequest{}
+
+		// Set authentication mode
+		if req.AccessConfig.AuthenticationMode != "" {
+			accessConfig.AuthenticationMode = types.AuthenticationMode(req.AccessConfig.AuthenticationMode)
+		} else {
+			// Default to API mode for Access Entries
+			accessConfig.AuthenticationMode = types.AuthenticationModeApi
+		}
+
+		// Set bootstrap cluster creator admin permissions
+		if req.AccessConfig.BootstrapClusterCreatorAdminPermissions != nil {
+			accessConfig.BootstrapClusterCreatorAdminPermissions = req.AccessConfig.BootstrapClusterCreatorAdminPermissions
+		} else {
+			// Default to true for automatic admin access
+			accessConfig.BootstrapClusterCreatorAdminPermissions = aws.Bool(true)
+		}
+
+		input.AccessConfig = accessConfig
+	} else {
+		// Default Access Entry configuration
+		input.AccessConfig = &types.CreateAccessConfigRequest{
+			AuthenticationMode:                      types.AuthenticationModeApi,
+			BootstrapClusterCreatorAdminPermissions: aws.Bool(true),
+		}
+	}
+
 	// Create cluster
 	output, err := eksClient.CreateCluster(ctx, input)
 	if err != nil {
@@ -133,24 +162,27 @@ func (s *KubernetesService) createAWSEKSCluster(ctx context.Context, credential 
 }
 
 // ListEKSClusters lists all Kubernetes clusters (supports multiple providers)
-func (s *KubernetesService) ListEKSClusters(ctx context.Context, credential *domain.Credential, region string) ([]string, error) {
+func (s *KubernetesService) ListEKSClusters(ctx context.Context, credential *domain.Credential, region string) (*dto.ListClustersResponse, error) {
 	// Route to provider-specific implementation
 	switch credential.Provider {
 	case "aws":
 		return s.listAWSEKSClusters(ctx, credential, region)
 	case "gcp":
-		return s.listGCPGKEClusters(ctx, credential, region)
+		// TODO: Implement GCP GKE cluster listing
+		return &dto.ListClustersResponse{Clusters: []dto.ClusterInfo{}}, nil
 	case "azure":
-		return s.listAzureAKSClusters(ctx, credential, region)
+		// TODO: Implement Azure AKS cluster listing
+		return &dto.ListClustersResponse{Clusters: []dto.ClusterInfo{}}, nil
 	case "ncp":
-		return s.listNCPNKSClusters(ctx, credential, region)
+		// TODO: Implement NCP NKS cluster listing
+		return &dto.ListClustersResponse{Clusters: []dto.ClusterInfo{}}, nil
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", credential.Provider)
 	}
 }
 
 // listAWSEKSClusters lists all AWS EKS clusters
-func (s *KubernetesService) listAWSEKSClusters(ctx context.Context, credential *domain.Credential, region string) ([]string, error) {
+func (s *KubernetesService) listAWSEKSClusters(ctx context.Context, credential *domain.Credential, region string) (*dto.ListClustersResponse, error) {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
 	if err != nil {
@@ -216,7 +248,43 @@ func (s *KubernetesService) listAWSEKSClusters(ctx context.Context, credential *
 		return nil, fmt.Errorf("failed to list EKS clusters: %w", err)
 	}
 
-	return output.Clusters, nil
+	// Get detailed information for each cluster
+	var clusters []dto.ClusterInfo
+	for _, clusterName := range output.Clusters {
+		// Describe each cluster to get detailed information
+		describeOutput, err := eksClient.DescribeCluster(ctx, &eks.DescribeClusterInput{
+			Name: aws.String(clusterName),
+		})
+		if err != nil {
+			s.logger.Warn("Failed to describe cluster",
+				zap.String("cluster_name", clusterName),
+				zap.Error(err))
+			continue
+		}
+
+		cluster := dto.ClusterInfo{
+			ID:      aws.ToString(describeOutput.Cluster.Arn),
+			Name:    aws.ToString(describeOutput.Cluster.Name),
+			Version: aws.ToString(describeOutput.Cluster.Version),
+			Status:  string(describeOutput.Cluster.Status),
+			Region:  region,
+			Tags:    describeOutput.Cluster.Tags,
+		}
+
+		if describeOutput.Cluster.Endpoint != nil {
+			cluster.Endpoint = *describeOutput.Cluster.Endpoint
+		}
+
+		if describeOutput.Cluster.CreatedAt != nil {
+			cluster.CreatedAt = describeOutput.Cluster.CreatedAt.String()
+		}
+
+		clusters = append(clusters, cluster)
+	}
+
+	return &dto.ListClustersResponse{
+		Clusters: clusters,
+	}, nil
 }
 
 // Helper function to get map keys
@@ -228,8 +296,8 @@ func getMapKeys(m map[string]interface{}) []string {
 	return keys
 }
 
-// GetEKSCluster gets details of an EKS cluster
-func (s *KubernetesService) GetEKSCluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (*dto.CreateClusterResponse, error) {
+// GetEKSCluster gets details of an EKS cluster by name
+func (s *KubernetesService) GetEKSCluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (*dto.ClusterInfo, error) {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
 	if err != nil {
@@ -271,25 +339,25 @@ func (s *KubernetesService) GetEKSCluster(ctx context.Context, credential *domai
 		return nil, fmt.Errorf("failed to describe EKS cluster: %w", err)
 	}
 
-	// Convert to response
-	response := &dto.CreateClusterResponse{
-		ClusterID: aws.ToString(output.Cluster.Arn),
-		Name:      aws.ToString(output.Cluster.Name),
-		Version:   aws.ToString(output.Cluster.Version),
-		Region:    region,
-		Status:    string(output.Cluster.Status),
-		Tags:      output.Cluster.Tags,
+	// Convert to ClusterInfo
+	cluster := dto.ClusterInfo{
+		ID:      aws.ToString(output.Cluster.Arn),
+		Name:    aws.ToString(output.Cluster.Name),
+		Version: aws.ToString(output.Cluster.Version),
+		Status:  string(output.Cluster.Status),
+		Region:  region,
+		Tags:    output.Cluster.Tags,
 	}
 
 	if output.Cluster.Endpoint != nil {
-		response.Endpoint = *output.Cluster.Endpoint
+		cluster.Endpoint = *output.Cluster.Endpoint
 	}
 
 	if output.Cluster.CreatedAt != nil {
-		response.CreatedAt = output.Cluster.CreatedAt.String()
+		cluster.CreatedAt = output.Cluster.CreatedAt.String()
 	}
 
-	return response, nil
+	return &cluster, nil
 }
 
 // DeleteEKSCluster deletes an EKS cluster
@@ -517,4 +585,363 @@ func (s *KubernetesService) CreateEKSNodePool(ctx context.Context, credential *d
 		zap.String("region", req.Region))
 
 	return result, nil
+}
+
+// CreateEKSNodeGroup creates an EKS node group
+func (s *KubernetesService) CreateEKSNodeGroup(ctx context.Context, credential *domain.Credential, req dto.CreateNodeGroupRequest) (*dto.CreateNodeGroupResponse, error) {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Extract AWS credentials
+	accessKey, ok := credData["access_key"].(string)
+	if !ok {
+		return nil, fmt.Errorf("access_key not found in credential")
+	}
+
+	secretKey, ok := credData["secret_key"].(string)
+	if !ok {
+		return nil, fmt.Errorf("secret_key not found in credential")
+	}
+
+	// Create AWS config
+	cfg, err := awsconfig.LoadDefaultConfig(ctx,
+		awsconfig.WithRegion(req.Region),
+		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+			accessKey,
+			secretKey,
+			"",
+		)),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	// Create EKS client
+	eksClient := eks.NewFromConfig(cfg)
+
+	// Prepare node group input
+	input := &eks.CreateNodegroupInput{
+		ClusterName:   aws.String(req.ClusterName),
+		NodegroupName: aws.String(req.NodeGroupName),
+		NodeRole:      aws.String(req.NodeRoleARN),
+		Subnets:       req.SubnetIDs,
+		InstanceTypes: req.InstanceTypes,
+		ScalingConfig: &types.NodegroupScalingConfig{
+			MinSize:     aws.Int32(req.ScalingConfig.MinSize),
+			MaxSize:     aws.Int32(req.ScalingConfig.MaxSize),
+			DesiredSize: aws.Int32(req.ScalingConfig.DesiredSize),
+		},
+	}
+
+	// Add optional fields
+	if req.DiskSize > 0 {
+		input.DiskSize = aws.Int32(req.DiskSize)
+	}
+
+	if req.AMI != "" {
+		input.AmiType = types.AMITypes(req.AMI)
+	}
+
+	if req.CapacityType != "" {
+		input.CapacityType = types.CapacityTypes(req.CapacityType)
+	}
+
+	if len(req.Tags) > 0 {
+		input.Tags = req.Tags
+	}
+
+	// Create node group
+	output, err := eksClient.CreateNodegroup(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create node group: %w", err)
+	}
+
+	// Convert to response
+	response := &dto.CreateNodeGroupResponse{
+		NodeGroupName: aws.ToString(output.Nodegroup.NodegroupName),
+		ClusterName:   aws.ToString(output.Nodegroup.ClusterName),
+		Status:        string(output.Nodegroup.Status),
+		InstanceTypes: output.Nodegroup.InstanceTypes,
+		ScalingConfig: dto.NodeGroupScalingConfig{
+			MinSize:     aws.ToInt32(output.Nodegroup.ScalingConfig.MinSize),
+			MaxSize:     aws.ToInt32(output.Nodegroup.ScalingConfig.MaxSize),
+			DesiredSize: aws.ToInt32(output.Nodegroup.ScalingConfig.DesiredSize),
+		},
+		Tags: output.Nodegroup.Tags,
+	}
+
+	if output.Nodegroup.CreatedAt != nil {
+		response.CreatedAt = output.Nodegroup.CreatedAt.String()
+	}
+
+	s.logger.Info("EKS node group creation initiated",
+		zap.String("cluster_name", req.ClusterName),
+		zap.String("nodegroup_name", req.NodeGroupName),
+		zap.String("region", req.Region))
+
+	return response, nil
+}
+
+// ListNodeGroups lists all node groups for a cluster
+func (s *KubernetesService) ListNodeGroups(ctx context.Context, credential *domain.Credential, req dto.ListNodeGroupsRequest) (*dto.ListNodeGroupsResponse, error) {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Extract AWS credentials
+	accessKey, ok := credData["access_key"].(string)
+	if !ok {
+		return nil, fmt.Errorf("access_key not found in credential")
+	}
+
+	secretKey, ok := credData["secret_key"].(string)
+	if !ok {
+		return nil, fmt.Errorf("secret_key not found in credential")
+	}
+
+	// Create AWS config
+	cfg, err := awsconfig.LoadDefaultConfig(ctx,
+		awsconfig.WithRegion(req.Region),
+		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+			accessKey,
+			secretKey,
+			"",
+		)),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	// Create EKS client
+	eksClient := eks.NewFromConfig(cfg)
+
+	// List node groups
+	output, err := eksClient.ListNodegroups(ctx, &eks.ListNodegroupsInput{
+		ClusterName: aws.String(req.ClusterName),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list node groups: %w", err)
+	}
+
+	// Get detailed information for each node group
+	var nodeGroups []dto.NodeGroupInfo
+	for _, nodeGroupName := range output.Nodegroups {
+		describeOutput, err := eksClient.DescribeNodegroup(ctx, &eks.DescribeNodegroupInput{
+			ClusterName:   aws.String(req.ClusterName),
+			NodegroupName: aws.String(nodeGroupName),
+		})
+		if err != nil {
+			s.logger.Warn("Failed to describe node group",
+				zap.String("cluster_name", req.ClusterName),
+				zap.String("nodegroup_name", nodeGroupName),
+				zap.Error(err))
+			continue
+		}
+
+		nodeGroup := dto.NodeGroupInfo{
+			ID:          aws.ToString(describeOutput.Nodegroup.NodegroupArn),
+			Name:        aws.ToString(describeOutput.Nodegroup.NodegroupName),
+			Status:      string(describeOutput.Nodegroup.Status),
+			ClusterName: aws.ToString(describeOutput.Nodegroup.ClusterName),
+			Region:      req.Region,
+			Tags:        describeOutput.Nodegroup.Tags,
+		}
+
+		// Add version if available
+		if describeOutput.Nodegroup.Version != nil {
+			nodeGroup.Version = aws.ToString(describeOutput.Nodegroup.Version)
+		}
+
+		// Add instance types
+		if describeOutput.Nodegroup.InstanceTypes != nil {
+			nodeGroup.InstanceTypes = describeOutput.Nodegroup.InstanceTypes
+		}
+
+		// Add scaling config
+		if describeOutput.Nodegroup.ScalingConfig != nil {
+			nodeGroup.ScalingConfig = dto.NodeGroupScalingConfig{
+				MinSize:     aws.ToInt32(describeOutput.Nodegroup.ScalingConfig.MinSize),
+				MaxSize:     aws.ToInt32(describeOutput.Nodegroup.ScalingConfig.MaxSize),
+				DesiredSize: aws.ToInt32(describeOutput.Nodegroup.ScalingConfig.DesiredSize),
+			}
+		}
+
+		// Add capacity type
+		if describeOutput.Nodegroup.CapacityType != "" {
+			nodeGroup.CapacityType = string(describeOutput.Nodegroup.CapacityType)
+		}
+
+		// Add disk size
+		if describeOutput.Nodegroup.DiskSize != nil {
+			nodeGroup.DiskSize = aws.ToInt32(describeOutput.Nodegroup.DiskSize)
+		}
+
+		// Add timestamps
+		if describeOutput.Nodegroup.CreatedAt != nil {
+			nodeGroup.CreatedAt = describeOutput.Nodegroup.CreatedAt.String()
+		}
+
+		if describeOutput.Nodegroup.ModifiedAt != nil {
+			nodeGroup.UpdatedAt = describeOutput.Nodegroup.ModifiedAt.String()
+		}
+
+		nodeGroups = append(nodeGroups, nodeGroup)
+	}
+
+	return &dto.ListNodeGroupsResponse{
+		NodeGroups: nodeGroups,
+		Total:      len(nodeGroups),
+	}, nil
+}
+
+// GetNodeGroup gets details of a node group
+func (s *KubernetesService) GetNodeGroup(ctx context.Context, credential *domain.Credential, req dto.GetNodeGroupRequest) (*dto.NodeGroupInfo, error) {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Extract AWS credentials
+	accessKey, ok := credData["access_key"].(string)
+	if !ok {
+		return nil, fmt.Errorf("access_key not found in credential")
+	}
+
+	secretKey, ok := credData["secret_key"].(string)
+	if !ok {
+		return nil, fmt.Errorf("secret_key not found in credential")
+	}
+
+	// Create AWS config
+	cfg, err := awsconfig.LoadDefaultConfig(ctx,
+		awsconfig.WithRegion(req.Region),
+		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+			accessKey,
+			secretKey,
+			"",
+		)),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	// Create EKS client
+	eksClient := eks.NewFromConfig(cfg)
+
+	// Describe node group
+	output, err := eksClient.DescribeNodegroup(ctx, &eks.DescribeNodegroupInput{
+		ClusterName:   aws.String(req.ClusterName),
+		NodegroupName: aws.String(req.NodeGroupName),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe node group: %w", err)
+	}
+
+	// Convert to NodeGroupInfo
+	nodeGroup := dto.NodeGroupInfo{
+		ID:          aws.ToString(output.Nodegroup.NodegroupArn),
+		Name:        aws.ToString(output.Nodegroup.NodegroupName),
+		Status:      string(output.Nodegroup.Status),
+		ClusterName: aws.ToString(output.Nodegroup.ClusterName),
+		Region:      req.Region,
+		Tags:        output.Nodegroup.Tags,
+	}
+
+	// Add version if available
+	if output.Nodegroup.Version != nil {
+		nodeGroup.Version = aws.ToString(output.Nodegroup.Version)
+	}
+
+	// Add instance types
+	if output.Nodegroup.InstanceTypes != nil {
+		nodeGroup.InstanceTypes = output.Nodegroup.InstanceTypes
+	}
+
+	// Add scaling config
+	if output.Nodegroup.ScalingConfig != nil {
+		nodeGroup.ScalingConfig = dto.NodeGroupScalingConfig{
+			MinSize:     aws.ToInt32(output.Nodegroup.ScalingConfig.MinSize),
+			MaxSize:     aws.ToInt32(output.Nodegroup.ScalingConfig.MaxSize),
+			DesiredSize: aws.ToInt32(output.Nodegroup.ScalingConfig.DesiredSize),
+		}
+	}
+
+	// Add capacity type
+	if output.Nodegroup.CapacityType != "" {
+		nodeGroup.CapacityType = string(output.Nodegroup.CapacityType)
+	}
+
+	// Add disk size
+	if output.Nodegroup.DiskSize != nil {
+		nodeGroup.DiskSize = aws.ToInt32(output.Nodegroup.DiskSize)
+	}
+
+	// Add timestamps
+	if output.Nodegroup.CreatedAt != nil {
+		nodeGroup.CreatedAt = output.Nodegroup.CreatedAt.String()
+	}
+
+	if output.Nodegroup.ModifiedAt != nil {
+		nodeGroup.UpdatedAt = output.Nodegroup.ModifiedAt.String()
+	}
+
+	return &nodeGroup, nil
+}
+
+// DeleteNodeGroup deletes a node group
+func (s *KubernetesService) DeleteNodeGroup(ctx context.Context, credential *domain.Credential, req dto.DeleteNodeGroupRequest) error {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Extract AWS credentials
+	accessKey, ok := credData["access_key"].(string)
+	if !ok {
+		return fmt.Errorf("access_key not found in credential")
+	}
+
+	secretKey, ok := credData["secret_key"].(string)
+	if !ok {
+		return fmt.Errorf("secret_key not found in credential")
+	}
+
+	// Create AWS config
+	cfg, err := awsconfig.LoadDefaultConfig(ctx,
+		awsconfig.WithRegion(req.Region),
+		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+			accessKey,
+			secretKey,
+			"",
+		)),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	// Create EKS client
+	eksClient := eks.NewFromConfig(cfg)
+
+	// Delete node group
+	_, err = eksClient.DeleteNodegroup(ctx, &eks.DeleteNodegroupInput{
+		ClusterName:   aws.String(req.ClusterName),
+		NodegroupName: aws.String(req.NodeGroupName),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete node group: %w", err)
+	}
+
+	s.logger.Info("EKS node group deletion initiated",
+		zap.String("cluster_name", req.ClusterName),
+		zap.String("nodegroup_name", req.NodeGroupName),
+		zap.String("region", req.Region))
+
+	return nil
 }

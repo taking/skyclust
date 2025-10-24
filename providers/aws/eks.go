@@ -6,8 +6,11 @@ import (
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
-	"github.com/aws/aws-sdk-go-v2/service/eks/types"
+	eksTypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -21,6 +24,8 @@ type AWSKubernetesServer struct {
 	// providerv1.UnimplementedKubernetesServiceServer
 
 	eksClient *eks.Client
+	ec2Client *ec2.Client
+	iamClient *iam.Client
 	config    aws.Config
 	region    string
 }
@@ -29,6 +34,8 @@ type AWSKubernetesServer struct {
 func NewAWSKubernetesServer(cfg aws.Config, region string) *AWSKubernetesServer {
 	return &AWSKubernetesServer{
 		eksClient: eks.NewFromConfig(cfg),
+		ec2Client: ec2.NewFromConfig(cfg),
+		iamClient: iam.NewFromConfig(cfg),
 		config:    cfg,
 		region:    region,
 	}
@@ -44,15 +51,20 @@ func (s *AWSKubernetesServer) CreateCluster(ctx context.Context, req *CreateClus
 	input := &eks.CreateClusterInput{
 		Name:    aws.String(req.Name),
 		Version: aws.String(req.Version),
-		ResourcesVpcConfig: &types.VpcConfigRequest{
+		ResourcesVpcConfig: &eksTypes.VpcConfigRequest{
 			SubnetIds: req.SubnetIds,
 		},
 		Tags: req.Tags,
 	}
 
+	// Add IAM role if provided
+	if req.RoleArn != "" {
+		input.RoleArn = aws.String(req.RoleArn)
+	}
+
 	// Add networking configuration
 	if req.Networking != nil {
-		input.KubernetesNetworkConfig = &types.KubernetesNetworkConfigRequest{
+		input.KubernetesNetworkConfig = &eksTypes.KubernetesNetworkConfigRequest{
 			ServiceIpv4Cidr: aws.String(req.Networking.ServiceCidr),
 		}
 
@@ -245,7 +257,7 @@ func (s *AWSKubernetesServer) CreateNodePool(ctx context.Context, req *CreateNod
 	input := &eks.CreateNodegroupInput{
 		ClusterName:   aws.String(req.ClusterId),
 		NodegroupName: aws.String(req.Name),
-		ScalingConfig: &types.NodegroupScalingConfig{
+		ScalingConfig: &eksTypes.NodegroupScalingConfig{
 			DesiredSize: aws.Int32(req.DesiredSize),
 			MinSize:     aws.Int32(req.MinSize),
 			MaxSize:     aws.Int32(req.MaxSize),
@@ -254,6 +266,11 @@ func (s *AWSKubernetesServer) CreateNodePool(ctx context.Context, req *CreateNod
 		InstanceTypes: []string{req.InstanceType},
 		Labels:        req.Labels,
 		Tags:          req.Tags,
+	}
+
+	// Add IAM role if provided
+	if req.NodeRoleArn != "" {
+		input.NodeRole = aws.String(req.NodeRoleArn)
 	}
 
 	result, err := s.eksClient.CreateNodegroup(ctx, input)
@@ -327,7 +344,7 @@ func (s *AWSKubernetesServer) ScaleNodePool(ctx context.Context, req *ScaleNodeP
 	updateInput := &eks.UpdateNodegroupConfigInput{
 		ClusterName:   aws.String(req.ClusterId),
 		NodegroupName: aws.String(req.NodePoolId),
-		ScalingConfig: &types.NodegroupScalingConfig{
+		ScalingConfig: &eksTypes.NodegroupScalingConfig{
 			DesiredSize: aws.Int32(req.DesiredSize),
 			MinSize:     describeResult.Nodegroup.ScalingConfig.MinSize,
 			MaxSize:     describeResult.Nodegroup.ScalingConfig.MaxSize,
@@ -343,6 +360,268 @@ func (s *AWSKubernetesServer) ScaleNodePool(ctx context.Context, req *ScaleNodeP
 		Success: true,
 		Message: fmt.Sprintf("Node group %s scaled to %d nodes", req.NodePoolId, req.DesiredSize),
 	}, nil
+}
+
+// ListVPCs lists all VPCs in the region
+func (s *AWSKubernetesServer) ListVPCs(ctx context.Context, req *ListVPCsRequest) (*ListVPCsResponse, error) {
+	input := &ec2.DescribeVpcsInput{}
+
+	result, err := s.ec2Client.DescribeVpcs(ctx, input)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to list VPCs: %v", err)
+	}
+
+	var vpcs []*VPC
+	for _, vpc := range result.Vpcs {
+		vpcInfo := &VPC{
+			Id:        aws.ToString(vpc.VpcId),
+			CidrBlock: aws.ToString(vpc.CidrBlock),
+			State:     string(vpc.State),
+			IsDefault: aws.ToBool(vpc.IsDefault),
+			Region:    s.region,
+		}
+
+		// Get VPC name from tags
+		if vpc.Tags != nil {
+			for _, tag := range vpc.Tags {
+				if aws.ToString(tag.Key) == "Name" {
+					vpcInfo.Name = aws.ToString(tag.Value)
+					break
+				}
+			}
+		}
+
+		// Get availability zones for this VPC
+		subnets, err := s.getSubnetsByVPC(ctx, aws.ToString(vpc.VpcId))
+		if err == nil {
+			azs := make(map[string]bool)
+			for _, subnet := range subnets {
+				azs[subnet.AvailabilityZone] = true
+			}
+			for az := range azs {
+				vpcInfo.AvailabilityZones = append(vpcInfo.AvailabilityZones, az)
+			}
+		}
+
+		vpcs = append(vpcs, vpcInfo)
+	}
+
+	return &ListVPCsResponse{
+		VPCs: vpcs,
+	}, nil
+}
+
+// ListSubnets lists subnets for a specific VPC
+func (s *AWSKubernetesServer) ListSubnets(ctx context.Context, req *ListSubnetsRequest) (*ListSubnetsResponse, error) {
+	if req.VpcId == "" {
+		return nil, status.Error(codes.InvalidArgument, "vpc_id is required")
+	}
+
+	subnets, err := s.getSubnetsByVPC(ctx, req.VpcId)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to list subnets: %v", err)
+	}
+
+	return &ListSubnetsResponse{
+		Subnets: subnets,
+	}, nil
+}
+
+// getSubnetsByVPC is a helper function to get subnets for a VPC
+func (s *AWSKubernetesServer) getSubnetsByVPC(ctx context.Context, vpcId string) ([]*Subnet, error) {
+	input := &ec2.DescribeSubnetsInput{
+		Filters: []types.Filter{
+			{
+				Name:   aws.String("vpc-id"),
+				Values: []string{vpcId},
+			},
+		},
+	}
+
+	result, err := s.ec2Client.DescribeSubnets(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	var subnets []*Subnet
+	for _, subnet := range result.Subnets {
+		subnetInfo := &Subnet{
+			Id:               aws.ToString(subnet.SubnetId),
+			VpcId:            aws.ToString(subnet.VpcId),
+			CidrBlock:        aws.ToString(subnet.CidrBlock),
+			AvailabilityZone: aws.ToString(subnet.AvailabilityZone),
+			State:            string(subnet.State),
+			Region:           s.region,
+		}
+
+		// Get subnet name from tags
+		if subnet.Tags != nil {
+			for _, tag := range subnet.Tags {
+				if aws.ToString(tag.Key) == "Name" {
+					subnetInfo.Name = aws.ToString(tag.Value)
+					break
+				}
+			}
+		}
+
+		// Check if subnet is public (has route to internet gateway)
+		isPublic, err := s.isSubnetPublic(ctx, aws.ToString(subnet.SubnetId))
+		if err == nil {
+			subnetInfo.IsPublic = isPublic
+		}
+
+		subnets = append(subnets, subnetInfo)
+	}
+
+	return subnets, nil
+}
+
+// isSubnetPublic checks if a subnet is public by looking at its route table
+func (s *AWSKubernetesServer) isSubnetPublic(ctx context.Context, subnetId string) (bool, error) {
+	input := &ec2.DescribeRouteTablesInput{
+		Filters: []types.Filter{
+			{
+				Name:   aws.String("association.subnet-id"),
+				Values: []string{subnetId},
+			},
+		},
+	}
+
+	result, err := s.ec2Client.DescribeRouteTables(ctx, input)
+	if err != nil {
+		return false, err
+	}
+
+	for _, routeTable := range result.RouteTables {
+		for _, route := range routeTable.Routes {
+			if route.GatewayId != nil && aws.ToString(route.GatewayId) != "local" {
+				// Check if this is an internet gateway
+				igwInput := &ec2.DescribeInternetGatewaysInput{
+					InternetGatewayIds: []string{aws.ToString(route.GatewayId)},
+				}
+				igwResult, err := s.ec2Client.DescribeInternetGateways(ctx, igwInput)
+				if err == nil && len(igwResult.InternetGateways) > 0 {
+					return true, nil
+				}
+			}
+		}
+	}
+
+	return false, nil
+}
+
+// ListSecurityGroups lists security groups for a specific VPC
+func (s *AWSKubernetesServer) ListSecurityGroups(ctx context.Context, req *ListSecurityGroupsRequest) (*ListSecurityGroupsResponse, error) {
+	if req.VpcId == "" {
+		return nil, status.Error(codes.InvalidArgument, "vpc_id is required")
+	}
+
+	input := &ec2.DescribeSecurityGroupsInput{
+		Filters: []types.Filter{
+			{
+				Name:   aws.String("vpc-id"),
+				Values: []string{req.VpcId},
+			},
+		},
+	}
+
+	result, err := s.ec2Client.DescribeSecurityGroups(ctx, input)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to list security groups: %v", err)
+	}
+
+	var securityGroups []*SecurityGroup
+	for _, sg := range result.SecurityGroups {
+		sgInfo := &SecurityGroup{
+			Id:          aws.ToString(sg.GroupId),
+			Name:        aws.ToString(sg.GroupName),
+			Description: aws.ToString(sg.Description),
+			VpcId:       aws.ToString(sg.VpcId),
+			Region:      s.region,
+		}
+
+		// Convert inbound rules
+		for _, rule := range sg.IpPermissions {
+			ingressRule := &SecurityGroupRule{
+				Protocol: aws.ToString(rule.IpProtocol),
+				FromPort: aws.ToInt32(rule.FromPort),
+				ToPort:   aws.ToInt32(rule.ToPort),
+			}
+			if len(rule.UserIdGroupPairs) > 0 {
+				ingressRule.Source = aws.ToString(rule.UserIdGroupPairs[0].GroupId)
+			}
+			sgInfo.IngressRules = append(sgInfo.IngressRules, ingressRule)
+		}
+
+		// Convert outbound rules
+		for _, rule := range sg.IpPermissionsEgress {
+			egressRule := &SecurityGroupRule{
+				Protocol: aws.ToString(rule.IpProtocol),
+				FromPort: aws.ToInt32(rule.FromPort),
+				ToPort:   aws.ToInt32(rule.ToPort),
+			}
+			if len(rule.UserIdGroupPairs) > 0 {
+				egressRule.Source = aws.ToString(rule.UserIdGroupPairs[0].GroupId)
+			}
+			sgInfo.EgressRules = append(sgInfo.EgressRules, egressRule)
+		}
+
+		securityGroups = append(securityGroups, sgInfo)
+	}
+
+	return &ListSecurityGroupsResponse{
+		SecurityGroups: securityGroups,
+	}, nil
+}
+
+// ListIAMRoles lists IAM roles for EKS
+func (s *AWSKubernetesServer) ListIAMRoles(ctx context.Context, req *ListIAMRolesRequest) (*ListIAMRolesResponse, error) {
+	input := &iam.ListRolesInput{
+		PathPrefix: aws.String("/aws-service-role/"),
+	}
+
+	result, err := s.iamClient.ListRoles(ctx, input)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to list IAM roles: %v", err)
+	}
+
+	var roles []*IAMRole
+	for _, role := range result.Roles {
+		roleInfo := &IAMRole{
+			Id:     aws.ToString(role.RoleId),
+			Name:   aws.ToString(role.RoleName),
+			Arn:    aws.ToString(role.Arn),
+			Path:   aws.ToString(role.Path),
+			Region: s.region,
+		}
+
+		// Get role description
+		if role.Description != nil {
+			roleInfo.Description = aws.ToString(role.Description)
+		}
+
+		// Check if this is an EKS-related role
+		roleName := aws.ToString(role.RoleName)
+		if contains(roleName, "eks") || contains(roleName, "EKS") {
+			roleInfo.IsEKSRelated = true
+		}
+
+		// Get role creation date
+		if role.CreateDate != nil {
+			roleInfo.CreatedAt = timestamppb.New(*role.CreateDate)
+		}
+
+		roles = append(roles, roleInfo)
+	}
+
+	return &ListIAMRolesResponse{
+		Roles: roles,
+	}, nil
+}
+
+// Helper function to check if a string contains a substring
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || (len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || contains(s[1:], substr))))
 }
 
 // Helper function to generate EKS kubeconfig
@@ -387,6 +666,7 @@ type (
 		Version    string
 		VpcId      string
 		SubnetIds  []string
+		RoleArn    string
 		Networking *ClusterNetworking
 		Tags       map[string]string
 	}
@@ -430,6 +710,7 @@ type (
 		MinSize      int32
 		MaxSize      int32
 		SubnetIds    []string
+		NodeRoleArn  string
 		Labels       map[string]string
 		Taints       []string
 		Tags         map[string]string
@@ -489,5 +770,84 @@ type (
 		Taints       []string
 		Tags         map[string]string
 		CreatedAt    *timestamppb.Timestamp
+	}
+
+	// VPC related types
+	ListVPCsRequest struct {
+		Region string
+	}
+	ListVPCsResponse struct {
+		VPCs []*VPC
+	}
+	VPC struct {
+		Id                string
+		Name              string
+		CidrBlock         string
+		State             string
+		IsDefault         bool
+		AvailabilityZones []string
+		Region            string
+	}
+
+	// Subnet related types
+	ListSubnetsRequest struct {
+		VpcId  string
+		Region string
+	}
+	ListSubnetsResponse struct {
+		Subnets []*Subnet
+	}
+	Subnet struct {
+		Id               string
+		Name             string
+		VpcId            string
+		CidrBlock        string
+		AvailabilityZone string
+		State            string
+		IsPublic         bool
+		Region           string
+	}
+
+	// Security Group related types
+	ListSecurityGroupsRequest struct {
+		VpcId  string
+		Region string
+	}
+	ListSecurityGroupsResponse struct {
+		SecurityGroups []*SecurityGroup
+	}
+	SecurityGroup struct {
+		Id           string
+		Name         string
+		Description  string
+		VpcId        string
+		IngressRules []*SecurityGroupRule
+		EgressRules  []*SecurityGroupRule
+		Region       string
+	}
+	SecurityGroupRule struct {
+		Protocol    string
+		FromPort    int32
+		ToPort      int32
+		Source      string
+		Description string
+	}
+
+	// IAM Role related types
+	ListIAMRolesRequest struct {
+		Region string
+	}
+	ListIAMRolesResponse struct {
+		Roles []*IAMRole
+	}
+	IAMRole struct {
+		Id           string
+		Name         string
+		Arn          string
+		Path         string
+		Description  string
+		IsEKSRelated bool
+		CreatedAt    *timestamppb.Timestamp
+		Region       string
 	}
 )

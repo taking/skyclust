@@ -158,6 +158,14 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 	)
 	logger.Info("Kubernetes service created")
 
+	// Create Network service
+	logger.Info("Creating Network service...")
+	networkService := service.NewNetworkService(
+		credentialService,
+		logger.DefaultLogger.GetLogger(),
+	)
+	logger.Info("Network service created")
+
 	return &ServiceModule{
 		services: &ServiceContainer{
 			AuthService:          authService,
@@ -166,6 +174,7 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 			RBACService:          rbacService,
 			AuditLogService:      auditLogService,
 			KubernetesService:    k8sService,
+			NetworkService:       networkService,
 			OIDCService:          oidcService,
 			LogoutService:        logoutService,
 			WorkspaceService:     workspaceService,

@@ -1,0 +1,151 @@
+meta {
+  name: 클러스터 생성
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/kubernetes/clusters
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "credential_id": "{{credentialsId}}",
+    "name": "skyclust-test-cluster-2",
+    "version": "1.34",
+    "region": "ap-northeast-3",
+    "subnet_ids": [
+      "subnet-00dd2a2fcfbed393e",
+      "subnet-00d0f9c6824d5335d"
+    ],
+    "role_arn": "{{aws_eks_role_arn}}",
+    "tags": {
+      "Environment": "development",
+      "ManagedBy": "skyclust",
+      "Team": "platform"
+    },
+    "access_config": {
+      "authentication_mode": "API",
+      "bootstrap_cluster_creator_admin_permissions": true
+    }
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 30000
+}
+
+docs {
+  # EKS 클러스터 생성
+  
+  AWS EKS 클러스터를 생성합니다.
+  
+  ## 필수 정보
+  
+  ### IAM Role ARN
+  EKS 클러스터를 위한 IAM Role을 미리 생성해야 합니다.
+  
+  ```bash
+  # 신뢰 정책 파일 생성
+  cat > eks-trust-policy.json <<EOF
+  {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Principal": {
+          "Service": "eks.amazonaws.com"
+        },
+        "Action": "sts:AssumeRole"
+      }
+    ]
+  }
+  EOF
+  
+  # IAM Role 생성
+  aws iam create-role \
+    --role-name eks-cluster-role \
+    --assume-role-policy-document file://eks-trust-policy.json
+  
+  # 필수 정책 연결
+  aws iam attach-role-policy \
+    --role-name eks-cluster-role \
+    --policy-arn arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+  ```
+  
+  ### VPC 및 Subnet
+  EKS 클러스터를 위한 VPC와 최소 2개의 Subnet(다른 가용 영역)이 필요합니다.
+  
+  ```bash
+  # VPC 생성
+  aws ec2 create-vpc --cidr-block 10.0.0.0/16
+  
+  # Subnet 생성 (ap-northeast-3a)
+  aws ec2 create-subnet \
+    --vpc-id vpc-xxxxxxxxx \
+    --cidr-block 10.0.1.0/24 \
+    --availability-zone ap-northeast-3a
+  
+  # Subnet 생성 (ap-northeast-3b)
+  aws ec2 create-subnet \
+    --vpc-id vpc-xxxxxxxxx \
+    --cidr-block 10.0.2.0/24 \
+    --availability-zone ap-northeast-3b
+  ```
+  
+  ## Request Body
+  
+  - `credential_id`: AWS credential ID (필수)
+  - `name`: 클러스터 이름 (필수, 고유해야 함)
+  - `version`: Kubernetes 버전 (예: "1.28", "1.27", "1.26")
+  - `region`: AWS 리전 (예: "ap-northeast-3")
+  - `subnet_ids`: 서브넷 ID 목록 (최소 2개, 다른 가용 영역)
+  - `role_arn`: EKS 클러스터 IAM Role ARN (필수)
+  - `tags`: 리소스 태그 (선택)
+  - `access_config`: Access Entry 설정 (선택)
+    - `authentication_mode`: 인증 모드 ("API", "CONFIG_MAP", "API_AND_CONFIG_MAP")
+    - `bootstrap_cluster_creator_admin_permissions`: 클러스터 생성자 자동 관리자 권한 (기본: true)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "cluster_id": "arn:aws:eks:ap-northeast-3:123456789012:cluster/skyclust-test-cluster",
+      "name": "skyclust-test-cluster",
+      "version": "1.28",
+      "region": "ap-northeast-3",
+      "status": "CREATING",
+      "endpoint": "",
+      "tags": {
+        "Environment": "development",
+        "ManagedBy": "skyclust"
+      },
+      "created_at": "2025-10-21T17:00:00Z"
+    },
+    "message": "Cluster creation initiated"
+  }
+  ```
+  
+  ## 주의사항
+  
+  1. **클러스터 생성 시간**: 약 10-15분 소요
+  2. **Status 확인**: `CREATING` → `ACTIVE`로 변경되면 사용 가능
+  3. **비용**: EKS 클러스터는 시간당 $0.10 (약 140원/시간) 비용 발생
+  4. **Node Group**: 클러스터 생성 후 별도로 Node Group을 생성해야 Pod 실행 가능
+  
+  ## 다음 단계
+  
+  클러스터 생성 후:
+  1. 상태 확인: `GET /api/v1/aws/kubernetes/clusters/{name}`
+  2. Node Group 생성: `POST /api/v1/aws/kubernetes/clusters/{name}/nodepools`
+  3. Kubeconfig 다운로드: `GET /api/v1/aws/kubernetes/clusters/{name}/kubeconfig`
+}

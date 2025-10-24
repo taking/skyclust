@@ -1,0 +1,38 @@
+meta {
+  name: VPC 삭제
+  type: http
+  seq: 1
+}
+
+delete {
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/network/vpcs/{{vpcId}}?credential_id={{credentialsId}}&region=ap-northeast-3
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{credentialsId}}
+  region: ap-northeast-3
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.be.true;
+  });
+  
+  test("Response has success message", function() {
+    expect(res.getBody().message).to.equal("VPC deleted successfully");
+  });
+}

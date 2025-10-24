@@ -66,7 +66,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	var cfg *config.Config
 	var err error
 
-	// Load configuration using viper (supports both file and environment variables)
+	// Load configuration from YAML file with environment variable override
 	cfg, err = config.LoadConfig(configFile)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
@@ -74,10 +74,14 @@ func runServer(cmd *cobra.Command, args []string) {
 	log.Printf("Loaded configuration from %s", configFile)
 
 	// Override with command line flags (only if not set via environment)
+	// CLI flags have lower priority than environment variables
 	if port != "" && port != "8081" {
 		// Only override if port flag is explicitly set and different from default
-		if portInt, err := strconv.Atoi(port); err == nil {
-			cfg.Server.Port = portInt
+		// and no environment variable was set
+		if os.Getenv("SERVER_PORT") == "" {
+			if portInt, err := strconv.Atoi(port); err == nil {
+				cfg.Server.Port = portInt
+			}
 		}
 	}
 

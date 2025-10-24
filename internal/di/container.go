@@ -334,6 +334,13 @@ func (c *Container) GetKubernetesService() interface{} {
 	return c.serviceModule.GetContainer().KubernetesService
 }
 
+// GetNetworkService returns the network service
+func (c *Container) GetNetworkService() interface{} {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.serviceModule.GetContainer().NetworkService
+}
+
 // GetExportService returns the export service
 func (c *Container) GetExportService() interface{} {
 	c.mu.RLock()

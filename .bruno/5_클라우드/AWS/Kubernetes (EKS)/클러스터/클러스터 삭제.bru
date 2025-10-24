@@ -1,0 +1,125 @@
+meta {
+  name: 클러스터 삭제
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/kubernetes/clusters/{{clusterName}}?credential_id={{credentialsId}}&region=ap-northeast-3
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{credentialsId}}
+  region: ap-northeast-3
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 30000
+}
+
+docs {
+  # EKS 클러스터 삭제
+  
+  EKS 클러스터를 삭제합니다.
+  
+  ## Path Parameters
+  
+  - `name`: 클러스터 이름
+  
+  ## Query Parameters
+  
+  - `credential_id`: AWS credential ID
+  - `region`: AWS 리전
+  
+  ## ⚠️ 주의사항
+  
+  1. **Node Group 먼저 삭제**: 클러스터를 삭제하기 전에 모든 Node Group을 먼저 삭제해야 합니다.
+  
+  ```bash
+  # Node Group 삭제
+  aws eks delete-nodegroup \
+    --cluster-name skyclust-test-cluster \
+    --nodegroup-name default-nodegroup \
+    --region ap-northeast-3
+  
+  # Node Group 삭제 완료 대기
+  aws eks wait nodegroup-deleted \
+    --cluster-name skyclust-test-cluster \
+    --nodegroup-name default-nodegroup \
+    --region ap-northeast-3
+  ```
+  
+  2. **삭제 시간**: 약 10-15분 소요
+  3. **복구 불가**: 삭제된 클러스터는 복구할 수 없습니다
+  4. **리소스 정리**: 연관된 Load Balancer, PVC 등은 수동으로 정리해야 할 수 있습니다
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "message": "Cluster deletion initiated"
+  }
+  ```
+  
+  ## 삭제 순서
+  
+  1. **애플리케이션 정리**
+     ```bash
+     # 모든 서비스 삭제
+     kubectl delete svc --all
+     
+     # 모든 디플로이먼트 삭제
+     kubectl delete deployment --all
+     
+     # PVC 삭제
+     kubectl delete pvc --all
+     ```
+  
+  2. **Node Group 삭제**
+     - API: `DELETE /api/v1/aws/kubernetes/clusters/{name}/nodepools/{nodepool}`
+  
+  3. **클러스터 삭제**
+     - API: `DELETE /api/v1/aws/kubernetes/clusters/{name}`
+  
+  4. **연관 리소스 확인**
+     ```bash
+     # Load Balancer 확인
+     aws elb describe-load-balancers --region ap-northeast-3
+     aws elbv2 describe-load-balancers --region ap-northeast-3
+     
+     # Security Group 확인
+     aws ec2 describe-security-groups \
+       --filters "Name=tag:kubernetes.io/cluster/skyclust-test-cluster,Values=owned" \
+       --region ap-northeast-3
+     ```
+  
+  ## 에러 처리
+  
+  ### 에러: "Cannot delete cluster with existing node groups"
+  - **원인**: Node Group이 남아있음
+  - **해결**: 모든 Node Group 먼저 삭제
+  
+  ### 에러: "Cluster has dependencies"
+  - **원인**: Fargate Profile이나 Add-on이 남아있음
+  - **해결**: 의존성 리소스 먼저 삭제
+  
+  ```bash
+  # Fargate Profile 확인
+  aws eks list-fargate-profiles \
+    --cluster-name skyclust-test-cluster \
+    --region ap-northeast-3
+  
+  # Add-on 확인
+  aws eks list-addons \
+    --cluster-name skyclust-test-cluster \
+    --region ap-northeast-3
+  ```
+}

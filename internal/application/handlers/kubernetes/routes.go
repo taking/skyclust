@@ -28,6 +28,13 @@ func SetupRoutes(router *gin.RouterGroup, k8sService *service.KubernetesService,
 	router.DELETE("/clusters/:name/nodepools/:nodepool", handler.DeleteNodePool)
 	router.PUT("/clusters/:name/nodepools/:nodepool/scale", handler.ScaleNodePool)
 
+	// Node group management (EKS specific)
+	// Path: /api/v1/{provider}/kubernetes/clusters/:name/nodegroups
+	router.POST("/clusters/:name/nodegroups", handler.CreateNodeGroup)
+	router.GET("/clusters/:name/nodegroups", handler.ListNodeGroups)
+	router.GET("/clusters/:name/nodegroups/:nodegroup", handler.GetNodeGroup)
+	router.DELETE("/clusters/:name/nodegroups/:nodegroup", handler.DeleteNodeGroup)
+
 	// Cluster operations
 	// Path: /api/v1/{provider}/kubernetes/clusters/:name/upgrade
 	router.POST("/clusters/:name/upgrade", handler.UpgradeCluster)
@@ -45,4 +52,5 @@ func SetupRoutes(router *gin.RouterGroup, k8sService *service.KubernetesService,
 	// Path: /api/v1/{provider}/kubernetes/clusters/:name/nodes/:node/ssh
 	router.GET("/clusters/:name/nodes/:node/ssh", handler.GetNodeSSHConfig)
 	router.POST("/clusters/:name/nodes/:node/ssh/execute", handler.ExecuteNodeCommand)
+
 }

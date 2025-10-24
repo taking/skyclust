@@ -11,6 +11,7 @@ import (
 	"skyclust/internal/application/handlers/credential"
 	"skyclust/internal/application/handlers/export"
 	"skyclust/internal/application/handlers/kubernetes"
+	"skyclust/internal/application/handlers/network"
 	"skyclust/internal/application/handlers/notification"
 	"skyclust/internal/application/handlers/oidc"
 	"skyclust/internal/application/handlers/provider"
@@ -288,6 +289,11 @@ func (rm *RouteManager) setupAWSRoutes(router *gin.RouterGroup) {
 	k8sGroup := router.Group("/kubernetes")
 	k8sService := rm.container.GetKubernetesService().(*service.KubernetesService)
 	kubernetes.SetupRoutes(k8sGroup, k8sService, rm.container.GetCredentialService(), "aws")
+
+	// Network resources (VPC, Subnet, Security Group)
+	networkGroup := router.Group("/network")
+	networkService := rm.container.GetNetworkService().(*service.NetworkService)
+	network.SetupRoutes(networkGroup, networkService, rm.container.GetCredentialService(), rm.logger, "aws")
 
 	// TODO: Add more AWS-specific services
 	// - EC2

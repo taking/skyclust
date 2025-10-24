@@ -1,0 +1,50 @@
+meta {
+  name: 서브넷 상세 조회
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/network/subnets/{{subnetId}}?credential_id={{credentialsId}}&vpc_id={{vpcId}}&region=ap-northeast-3
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{credentialsId}}
+  vpc_id: {{vpcId}}
+  region: ap-northeast-3
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.be.true;
+  });
+  
+  test("Response has subnet data", function() {
+    expect(res.getBody().data).to.have.property('id');
+    expect(res.getBody().data).to.have.property('name');
+    expect(res.getBody().data).to.have.property('vpc_id');
+    expect(res.getBody().data).to.have.property('cidr_block');
+    expect(res.getBody().data).to.have.property('availability_zone');
+    expect(res.getBody().data).to.have.property('state');
+    expect(res.getBody().data).to.have.property('is_public');
+    expect(res.getBody().data).to.have.property('region');
+  });
+  
+  test("Subnet ID matches request", function() {
+    expect(res.getBody().data.id).to.equal(req.getPathParam('subnet_id'));
+  });
+}

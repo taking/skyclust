@@ -1,0 +1,47 @@
+meta {
+  name: 보안 그룹 상세 조회
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/network/security-groups/{{sgId}}?credential_id={{credentialsId}}&vpc_id={{vpcId}}&region=ap-northeast-3
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{credentialsId}}
+  vpc_id: {{vpcId}}
+  region: ap-northeast-3
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.be.true;
+  });
+  
+  test("Response has security group data", function() {
+    expect(res.getBody().data).to.have.property('id');
+    expect(res.getBody().data).to.have.property('name');
+    expect(res.getBody().data).to.have.property('description');
+    expect(res.getBody().data).to.have.property('vpc_id');
+    expect(res.getBody().data).to.have.property('region');
+  });
+  
+  test("Security group ID matches request", function() {
+    expect(res.getBody().data.id).to.equal(req.getPathParam('security_group_id'));
+  });
+}
