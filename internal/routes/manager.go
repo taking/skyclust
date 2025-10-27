@@ -307,7 +307,12 @@ func (rm *RouteManager) setupGCPRoutes(router *gin.RouterGroup) {
 	// Kubernetes (GKE)
 	k8sGroup := router.Group("/kubernetes")
 	k8sService := rm.container.GetKubernetesService().(*service.KubernetesService)
-	kubernetes.SetupRoutes(k8sGroup, k8sService, rm.container.GetCredentialService(), "gcp")
+	kubernetes.SetupGCPRoutes(k8sGroup, k8sService, rm.container.GetCredentialService())
+
+	// Network resources (VPC, Subnet, Security Group)
+	networkGroup := router.Group("/network")
+	networkService := rm.container.GetNetworkService().(*service.NetworkService)
+	network.SetupGCPRoutes(networkGroup, networkService, rm.container.GetCredentialService(), rm.logger)
 
 	// TODO: Add more GCP-specific services
 	// - Compute Engine

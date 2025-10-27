@@ -11,6 +11,7 @@ func SetupRoutes(router *gin.RouterGroup, credentialService domain.CredentialSer
 	credentialHandler := NewHandler(credentialService)
 
 	router.POST("", credentialHandler.CreateCredential)
+	router.POST("/upload", credentialHandler.CreateCredentialFromFile)
 	router.GET("", credentialHandler.GetCredentials)
 	router.GET("/:id", credentialHandler.GetCredential)
 	router.PUT("/:id", credentialHandler.UpdateCredential)

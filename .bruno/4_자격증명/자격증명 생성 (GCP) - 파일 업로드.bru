@@ -1,0 +1,125 @@
+meta {
+  name: 자격증명 생성 (GCP) - 파일 업로드
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/credentials/upload
+  body: multipartForm
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:multipart-form {
+  name: GCP Production
+  provider: gcp
+  file: @/path/to/service-account-key.json
+}
+
+script:post-response {
+  bru.setEnvVar("credentialsId", res.body.data.id);
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has credential data", function() {
+    expect(res.getBody().data).to.be.an('object');
+    expect(res.getBody().data.id).to.be.a('string');
+    expect(res.getBody().data.name).to.be.a('string');
+    expect(res.getBody().data.provider).to.be.a('string');
+  });
+  
+  test("Credential has correct provider", function() {
+    expect(res.getBody().data.provider).to.equal('gcp');
+    expect(res.getBody().data.name).to.equal('GCP Production');
+  });
+}
+
+docs {
+  # GCP 자격증명 생성 (파일 업로드)
+  
+  GCP 서비스 계정 JSON 파일을 업로드하여 자격증명을 생성합니다.
+  
+  ## Request Body (multipart/form-data)
+  
+  - `name`: 자격증명 이름 (예: "GCP Production")
+  - `provider`: 클라우드 제공자 (예: "gcp")
+  - `file`: GCP 서비스 계정 JSON 파일
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "name": "GCP Production",
+      "provider": "gcp",
+      "created_at": "2025-10-23T10:00:00Z",
+      "updated_at": "2025-10-23T10:00:00Z"
+    },
+    "message": "Credential created successfully from file"
+  }
+  ```
+  
+  ## 사용 방법
+  
+  ### 1. GCP 콘솔에서 서비스 계정 키 생성
+  1. [Google Cloud Console](https://console.cloud.google.com/) 접속
+  2. **IAM 및 관리자** > **서비스 계정** 이동
+  3. 서비스 계정 선택 > **키** 탭
+  4. **키 추가** > **새 키 만들기** > **JSON** 선택
+  5. JSON 파일 다운로드
+  
+  ### 2. Bruno에서 파일 업로드
+  1. Bruno에서 이 요청 선택
+  2. `name`과 `provider` 입력
+  3. `file` 필드에 다운로드한 JSON 파일 선택
+  4. API 호출
+  
+  ### 3. 프론트엔드 구현 예시
+  
+  ```javascript
+  // React/Next.js 예시
+  const handleFileUpload = async (file) => {
+    const formData = new FormData();
+    formData.append('name', 'GCP Production');
+    formData.append('provider', 'gcp');
+    formData.append('file', file);
+    
+    const response = await fetch('/api/v1/credentials/upload', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+    
+    return response.json();
+  };
+  ```
+  
+  ## 장점
+  
+  - **사용자 편의성**: 파일 선택만 하면 됨
+  - **자동 파싱**: JSON 파일 자동 파싱
+  - **검증**: 서버에서 자동 권한 검증
+  - **보안**: 서버에서 암호화하여 저장
+  
+  ## 주의사항
+  
+  - JSON 파일은 유효한 GCP 서비스 계정 키여야 합니다
+  - 파일 크기는 10MB 이하여야 합니다
+  - 민감한 정보가 포함된 파일이므로 안전하게 처리하세요
+}

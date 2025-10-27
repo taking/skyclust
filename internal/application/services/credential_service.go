@@ -10,6 +10,9 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"google.golang.org/api/container/v1"
+	"google.golang.org/api/iam/v1"
+	"google.golang.org/api/option"
 )
 
 // credentialService implements the credential business logic
@@ -42,6 +45,13 @@ func (s *credentialService) CreateCredential(ctx context.Context, userID uuid.UU
 	// Validate credential data based on provider
 	if err := s.validateCredentialData(req.Provider, req.Data); err != nil {
 		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "invalid credential data: "+err.Error(), 400)
+	}
+
+	// Additional validation for GCP credentials
+	if req.Provider == "gcp" {
+		if err := s.validateGCPCredentialAccess(ctx, req.Data); err != nil {
+			return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "GCP credential validation failed: "+err.Error(), 400)
+		}
 	}
 
 	// Encrypt credential data
@@ -291,12 +301,19 @@ func (s *credentialService) validateAWSCredentials(data map[string]interface{}) 
 
 // validateGCPCredentials validates GCP credential data
 func (s *credentialService) validateGCPCredentials(data map[string]interface{}) error {
-	if _, ok := data["project_id"]; !ok {
-		return domain.NewDomainError(domain.ErrCodeValidationFailed, "project_id is required for GCP", 400)
+	// 필수 필드 검증
+	requiredFields := []string{"type", "project_id", "private_key", "client_email", "client_id"}
+	for _, field := range requiredFields {
+		if _, ok := data[field]; !ok {
+			return domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("%s is required for GCP service account", field), 400)
+		}
 	}
-	if _, ok := data["credentials_json"]; !ok {
-		return domain.NewDomainError(domain.ErrCodeValidationFailed, "credentials_json is required for GCP", 400)
+
+	// service_account 타입 확인
+	if data["type"] != "service_account" {
+		return domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("invalid service account type: %s", data["type"]), 400)
 	}
+
 	return nil
 }
 
@@ -311,6 +328,61 @@ func (s *credentialService) validateOpenStackCredentials(data map[string]interfa
 	if _, ok := data["password"]; !ok {
 		return domain.NewDomainError(domain.ErrCodeValidationFailed, "password is required for OpenStack", 400)
 	}
+	return nil
+}
+
+// validateGCPCredentialAccess validates GCP service account access and permissions
+func (s *credentialService) validateGCPCredentialAccess(ctx context.Context, data map[string]interface{}) error {
+	projectID := data["project_id"].(string)
+	clientEmail := data["client_email"].(string)
+
+	// JSON을 직접 사용하여 GCP 클라이언트 생성
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal service account data: %w", err)
+	}
+
+	// Create GCP clients using JSON credentials
+	containerService, err := container.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create GCP container service: %w", err)
+	}
+
+	iamService, err := iam.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create GCP IAM service: %w", err)
+	}
+
+	// Validate service account exists
+	serviceAccountName := fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, clientEmail)
+	_, err = iamService.Projects.ServiceAccounts.Get(serviceAccountName).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("service account %s not found in project %s", clientEmail, projectID)
+	}
+
+	// Validate required permissions by testing API access
+	region := "asia-northeast3" // 기본값 또는 요청에서 가져오기
+	if err := s.validateGCPPermissions(ctx, containerService, iamService, projectID, region); err != nil {
+		return fmt.Errorf("insufficient permissions: %w", err)
+	}
+
+	return nil
+}
+
+// validateGCPPermissions validates that the service account has required permissions
+func (s *credentialService) validateGCPPermissions(ctx context.Context, containerService *container.Service, iamService *iam.Service, projectID, region string) error {
+	// Test GKE API access
+	_, err := containerService.Projects.Locations.Clusters.List(fmt.Sprintf("projects/%s/locations/%s", projectID, region)).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("GKE API access failed: %w", err)
+	}
+
+	// Test IAM API access
+	_, err = iamService.Projects.ServiceAccounts.List(fmt.Sprintf("projects/%s", projectID)).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("IAM API access failed: %w", err)
+	}
+
 	return nil
 }
 

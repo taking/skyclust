@@ -19,7 +19,7 @@ auth:bearer {
 }
 
 script:post-response {
-  bru.setEnvVar("credentialsId", res.body.data.credentials[0].id);
+  bru.setEnvVar("credentialsId", res.body.data.credentials[1].id);
   
   const rowData = res.body.data;
   
@@ -35,6 +35,23 @@ script:post-response {
     name: 'table',
     provider: 'ag-grid',
     props: { rowData, columnDefinitions }
+  });
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains credential data", function() {
+    expect(res.getBody()).to.have.property('id');
+    expect(res.getBody()).to.have.property('name');
+    expect(res.getBody()).to.have.property('provider');
+  });
+  
+  test("Credential has correct provider", function() {
+    expect(res.getBody().provider).to.equal('aws');
+    expect(res.getBody().name).to.equal('AWS Production');
   });
 }
 
@@ -88,21 +105,4 @@ docs {
   - `secret_key`는 보안상 응답에서 제외됩니다
   - 자격증명은 사용자별로 격리됩니다
   - 암호화된 상태로 저장됩니다
-}
-
-tests {
-  test("Status code is 200", function() {
-    expect(res.getStatus()).to.equal(200);
-  });
-  
-  test("Response contains credential data", function() {
-    expect(res.getBody()).to.have.property('id');
-    expect(res.getBody()).to.have.property('name');
-    expect(res.getBody()).to.have.property('provider');
-  });
-  
-  test("Credential has correct provider", function() {
-    expect(res.getBody().provider).to.equal('aws');
-    expect(res.getBody().name).to.equal('AWS Production');
-  });
 }

@@ -1,0 +1,140 @@
+meta {
+  name: 노드 풀 상세 조회
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/kubernetes/clusters/{{clusterName}}/nodepools/{{nodePoolName}}?credential_id={{credentialsId}}&region=asia-northeast3
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+docs {
+  # GKE 노드 풀 상세 조회
+  
+  특정 GKE 노드 풀의 상세 정보를 조회합니다.
+  
+  ## Path Parameters
+  
+  - `clusterName`: 클러스터 이름 (예: `skyclust-gke-1234567890`)
+  - `nodePoolName`: 노드 풀 이름 (예: `skyclust-nodepool-1234567890`)
+  
+  ## Query Parameters
+  
+  - `credential_id`: GCP credential ID (필수)
+  - `region`: GCP 리전 (필수)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "projects/my-project/locations/us-central1/clusters/skyclust-gke-1234567890/nodePools/skyclust-nodepool-1234567890",
+      "name": "skyclust-nodepool-1234567890",
+      "version": "1.28",
+      "status": "RUNNING",
+      "cluster_name": "skyclust-gke-1234567890",
+      "region": "us-central1",
+      "machine_type": "e2-medium",
+      "disk_size_gb": 20,
+      "disk_type": "pd-standard",
+      "node_count": 1,
+      "auto_scaling": {
+        "enabled": true,
+        "min_node_count": 1,
+        "max_node_count": 5
+      },
+      "labels": {
+        "environment": "development",
+        "workload": "general"
+      },
+      "taints": [],
+      "preemptible": false,
+      "spot": false,
+      "network_config": {
+        "network": "projects/my-project/global/networks/default",
+        "subnetwork": "projects/my-project/regions/us-central1/subnetworks/default"
+      },
+      "security_config": {
+        "service_account": "my-project@my-project.iam.gserviceaccount.com",
+        "oauth_scopes": [
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      },
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T01:00:00Z",
+      "tags": {
+        "Environment": "development",
+        "Project": "skyclust"
+      }
+    },
+    "message": "GKE node pool retrieved successfully"
+  }
+  ```
+  
+  ## 사용 예시
+  
+  ```bash
+  GET /api/v1/gcp/kubernetes/clusters/skyclust-gke-1234567890/nodepools/skyclust-nodepool-1234567890?credential_id=123&region=us-central1
+  Authorization: Bearer your-jwt-token
+  ```
+  
+  ## 응답 필드
+  
+  - `id`: 노드 풀 전체 경로
+  - `name`: 노드 풀 이름
+  - `version`: Kubernetes 버전
+  - `status`: 노드 풀 상태
+  - `cluster_name`: 소속 클러스터 이름
+  - `region`: GCP 리전
+  - `machine_type`: 머신 타입
+  - `disk_size_gb`: 디스크 크기 (GB)
+  - `disk_type`: 디스크 타입
+  - `node_count`: 노드 수
+  - `auto_scaling`: 자동 스케일링 설정
+  - `labels`: 노드 레이블
+  - `taints`: 노드 테인트
+  - `preemptible`: Preemptible 노드 여부
+  - `spot`: Spot 노드 여부
+  - `network_config`: 네트워크 설정
+  - `security_config`: 보안 설정
+  - `created_at`: 생성일
+  - `updated_at`: 수정일
+  - `tags`: 태그 정보
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has node pool data", function() {
+    expect(res.getBody().data).to.be.an('object');
+    expect(res.getBody().data.id).to.be.a('string');
+    expect(res.getBody().data.name).to.be.a('string');
+    expect(res.getBody().data.version).to.be.a('string');
+    expect(res.getBody().data.status).to.be.a('string');
+  });
+  
+  test("Node pool has network config", function() {
+    expect(res.getBody().data.network_config).to.be.an('object');
+    expect(res.getBody().data.network_config.network).to.be.a('string');
+    expect(res.getBody().data.network_config.subnetwork).to.be.a('string');
+  });
+  
+  test("Node pool has security config", function() {
+    expect(res.getBody().data.security_config).to.be.an('object');
+    expect(res.getBody().data.security_config.service_account).to.be.a('string');
+    expect(res.getBody().data.security_config.oauth_scopes).to.be.an('array');
+  });
+}

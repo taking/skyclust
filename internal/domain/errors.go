@@ -22,6 +22,7 @@ const (
 	ErrCodeValidationFailed ErrorCode = "VALIDATION_FAILED"
 	ErrCodeInvalidInput     ErrorCode = "INVALID_INPUT"
 	ErrCodeMissingField     ErrorCode = "MISSING_FIELD"
+	ErrCodeBadRequest       ErrorCode = "BAD_REQUEST"
 
 	// Resource errors
 	ErrCodeNotFound          ErrorCode = "NOT_FOUND"
@@ -46,6 +47,10 @@ const (
 	ErrCodePluginError      ErrorCode = "PLUGIN_ERROR"
 	ErrCodePluginNotFound   ErrorCode = "PLUGIN_NOT_FOUND"
 	ErrCodePluginLoadFailed ErrorCode = "PLUGIN_LOAD_FAILED"
+
+	// Feature support errors
+	ErrCodeNotSupported   ErrorCode = "NOT_SUPPORTED"
+	ErrCodeNotImplemented ErrorCode = "NOT_IMPLEMENTED"
 )
 
 // DomainError represents a structured domain error

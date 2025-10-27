@@ -235,12 +235,9 @@ func (h *Handler) GetVPC(c *gin.Context) {
 		return
 	}
 
-	// Get region from query parameter
+	// Get region from query parameter (optional for VPC - Global resource)
 	region := c.Query("region")
-	if region == "" {
-		responses.BadRequest(c, "region is required")
-		return
-	}
+	// Note: VPC is a Global resource, so region is optional
 
 	// Parse credential ID to UUID
 	credentialUUID, err := uuid.Parse(credentialID)
@@ -345,12 +342,9 @@ func (h *Handler) UpdateVPC(c *gin.Context) {
 		return
 	}
 
-	// Get region from query parameter
+	// Get region from query parameter (optional for VPC - Global resource)
 	region := c.Query("region")
-	if region == "" {
-		responses.BadRequest(c, "region is required")
-		return
-	}
+	// Note: VPC is a Global resource, so region is optional
 
 	// Parse credential ID to UUID
 	credentialUUID, err := uuid.Parse(credentialID)
@@ -400,12 +394,9 @@ func (h *Handler) DeleteVPC(c *gin.Context) {
 		return
 	}
 
-	// Get region from query parameter
+	// Get region from query parameter (optional for VPC - Global resource)
 	region := c.Query("region")
-	if region == "" {
-		responses.BadRequest(c, "region is required")
-		return
-	}
+	// Note: VPC is a Global resource, so region is optional
 
 	// Parse credential ID to UUID
 	credentialUUID, err := uuid.Parse(credentialID)

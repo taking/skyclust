@@ -1,0 +1,137 @@
+meta {
+  name: 서브넷 수정
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/network/subnets/{{subnetName}}?credential_id={{credentialsId}}&region=asia-northeast3
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "description": "Updated subnet description for skyclust application",
+    "private_ip_google_access": false,
+    "flow_logs": true,
+    "tags": {
+      "Environment": "production",
+      "Project": "skyclust",
+      "UpdatedBy": "bruno-api-test",
+      "UpdatedAt": "{{$timestamp}}"
+    }
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has updated subnet data", function() {
+    expect(res.getBody().data).to.be.an('object');
+    expect(res.getBody().data.id).to.be.a('string');
+    expect(res.getBody().data.name).to.be.a('string');
+    expect(res.getBody().data.tags).to.be.an('object');
+  });
+  
+  test("Subnet tags are updated", function() {
+    const subnet = res.getBody().data;
+    expect(subnet.tags.Environment).to.equal("production");
+    expect(subnet.tags.UpdatedBy).to.equal("bruno-api-test");
+  });
+}
+
+docs {
+  # GCP 서브넷 수정
+  
+  서브넷의 설정을 수정합니다.
+  
+  ## Path Parameters
+  
+  - `subnetName`: 서브넷 이름
+  
+  ## Query Parameters
+  
+  - `credential_id`: GCP credential ID (필수)
+  - `region`: GCP 리전 (필수)
+  
+  ## Request Body
+  
+  ```json
+  {
+    "description": "Updated subnet description",
+    "private_ip_google_access": false,
+    "flow_logs": true,
+    "tags": {
+      "Environment": "production",
+      "Project": "skyclust",
+      "UpdatedBy": "bruno-api-test"
+    }
+  }
+  ```
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "projects/my-project/regions/asia-northeast3/subnetworks/skyclust-subnet-1234567890",
+      "name": "skyclust-subnet-1234567890",
+      "vpc_id": "projects/my-project/global/networks/my-vpc",
+      "cidr_block": "10.0.1.0/24",
+      "region": "asia-northeast3",
+      "state": "READY",
+      "private_ip_google_access": false,
+      "flow_logs": true,
+      "description": "Updated subnet description",
+      "tags": {
+        "Environment": "production",
+        "Project": "skyclust",
+        "UpdatedBy": "bruno-api-test"
+      }
+    },
+    "message": "GCP subnet updated successfully"
+  }
+  ```
+  
+  ## 수정 가능한 필드
+  
+  - `description`: 서브넷 설명
+  - `private_ip_google_access`: Private Google Access 설정
+  - `flow_logs`: Flow Logs 설정
+  - `tags`: 태그 정보
+  
+  ## 수정 불가능한 필드
+  
+  - `name`: 서브넷 이름 (생성 후 변경 불가)
+  - `vpc_id`: 소속 VPC (생성 후 변경 불가)
+  - `cidr_block`: IP 주소 범위 (생성 후 변경 불가)
+  - `region`: 리전 (생성 후 변경 불가)
+  
+  ## 사용 예시
+  
+  ```bash
+  PUT /api/v1/gcp/network/subnets/my-subnet?credential_id=123&region=us-central1
+  Authorization: Bearer your-jwt-token
+  Content-Type: application/json
+  
+  {
+    "description": "Updated description",
+    "private_ip_google_access": true,
+    "tags": {
+      "Environment": "production"
+    }
+  }
+  ```
+}

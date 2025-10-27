@@ -1,0 +1,47 @@
+meta {
+  name: 방화벽 규칙 개별 삭제
+  type: http
+  seq: 6
+}
+
+delete {
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/network/firewall-rules/{{firewallId}}/ports?credential_id={{credentialsId}}&region=asia-northeast3
+  body: json
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{credentialsId}}
+  region: asia-northeast3
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "protocol": "tcp",
+    "ports": ["3306"],
+    "source_ranges": ["0.0.0.0/0"],
+    "target_tags": ["database"]
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.be.true;
+  });
+  
+  test("Response has data field", function() {
+    expect(res.getBody().data).to.be.an('object');
+  });
+  
+  test("Firewall rule updated successfully", function() {
+    expect(res.getBody().message).to.include("firewall rule removed successfully");
+  });
+}

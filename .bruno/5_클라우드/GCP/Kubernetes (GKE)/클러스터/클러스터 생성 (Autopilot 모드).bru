@@ -1,0 +1,57 @@
+meta {
+  name: 클러스터 생성 (Autopilot 모드)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/kubernetes/clusters
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+     "cluster_mode": {
+        "remove_default_node_pool": false,
+        "type": "autopilot"
+     },
+     "credential_id": "{{credentialsId}}",
+     "name": "skyclust-gke-autopilot-{{$timestamp}}",
+     "network": {
+        "master_authorized_networks": [
+           "0.0.0.0/0"
+        ],
+        "pod_cidr": "10.0.0.0/16",
+        "private_endpoint": false,
+        "private_nodes": false,
+        "service_cidr": "10.1.0.0/16",
+        "subnet_id": "projects/{{gcp_project_id}}/regions/asia-northeast3/subnetworks/default",
+        "vpc_id": "projects/{{gcp_project_id}}/global/networks/default"
+     },
+     "project_id": "{{gcp_project_id}}",
+     "region": "asia-northeast3",
+     "security": {
+        "binary_authorization": false,
+        "network_policy": true,
+        "pod_security_policy": false,
+        "workload_identity": true
+     },
+     "tags": {
+        "ClusterType": "autopilot",
+        "CreatedBy": "bruno-api-test",
+        "Environment": "development",
+        "Project": "skyclust"
+     },
+     "version": "1.28",
+     "zone": "asia-northeast3-a"
+  }
+}
+
+vars:pre-request {
+  timestamp: {{$timestamp}}
+}

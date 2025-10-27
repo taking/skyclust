@@ -11,7 +11,7 @@
       "id": "env-1",
       "name": "Development",
       "data": {
-        "baseUrl": "http://localhost:8081",
+        "baseUrl": "http://localhost:8080",
         "apiVersion": "v1"
       }
     },

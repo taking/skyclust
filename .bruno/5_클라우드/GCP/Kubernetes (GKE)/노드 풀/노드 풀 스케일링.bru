@@ -1,0 +1,118 @@
+meta {
+  name: 노드 풀 스케일링
+  type: http
+  seq: 5
+}
+
+put {
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/kubernetes/clusters/{{clusterName}}/nodepools/{{nodePoolName}}/scale
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "credential_id": "{{credentialsId}}",
+    "region": "asia-northeast3",
+    "desired_size": 3
+  }
+}
+
+docs {
+  # GKE 노드 풀 스케일링
+  
+  GKE 노드 풀의 노드 수를 조정합니다.
+  
+  ## Path Parameters
+  
+  - `clusterName`: 클러스터 이름 (예: `skyclust-gke-1234567890`)
+  - `nodePoolName`: 노드 풀 이름 (예: `skyclust-nodepool-1234567890`)
+  
+  ## Request Body
+  
+  ```json
+  {
+    "credential_id": "your-credential-id",
+    "region": "us-central1",
+    "desired_size": 3
+  }
+  ```
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "desired_size": 3
+    },
+    "message": "GKE node pool scaling initiated"
+  }
+  ```
+  
+  ## 스케일링 제한사항
+  
+  - **최소 노드 수**: 0 (노드 풀을 비울 수 있음)
+  - **최대 노드 수**: 자동 스케일링 설정에 따라 제한
+  - **스케일링 시간**: 노드 생성/삭제에 몇 분 소요
+  
+  ## 자동 스케일링과의 관계
+  
+  - 수동 스케일링은 자동 스케일링 설정을 일시적으로 무시
+  - 자동 스케일링이 활성화된 경우, 워크로드에 따라 다시 조정될 수 있음
+  - 자동 스케일링 범위 내에서만 수동 스케일링 가능
+  
+  ## 사용 예시
+  
+  ```bash
+  PUT /api/v1/gcp/kubernetes/clusters/skyclust-gke-1234567890/nodepools/skyclust-nodepool-1234567890/scale
+  Authorization: Bearer your-jwt-token
+  Content-Type: application/json
+  
+  {
+    "credential_id": "123",
+    "region": "us-central1",
+    "desired_size": 3
+  }
+  ```
+  
+  ## 스케일링 시나리오
+  
+  ### 스케일 아웃 (노드 추가)
+  - 워크로드 증가 시 노드 수 증가
+  - 새 노드 프로비저닝 및 워크로드 배치
+  - 자동 스케일링 범위 내에서 조정
+  
+  ### 스케일 인 (노드 제거)
+  - 워크로드 감소 시 노드 수 감소
+  - 기존 노드의 워크로드 드레이닝
+  - 안전한 노드 제거
+  
+  ### 제로 스케일링
+  - 노드 풀을 완전히 비움
+  - 비용 절약 효과
+  - 워크로드가 없을 때 유용
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has scaling data", function() {
+    expect(res.getBody().data).to.be.an('object');
+    expect(res.getBody().data.desired_size).to.be.a('number');
+  });
+  
+  test("Response has scaling message", function() {
+    expect(res.getBody().message).to.include("scaling initiated");
+  });
+}

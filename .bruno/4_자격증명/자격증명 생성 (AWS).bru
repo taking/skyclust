@@ -1,5 +1,5 @@
 meta {
-  name: 자격증명 생성
+  name: 자격증명 생성 (AWS)
   type: http
   seq: 2
 }
@@ -25,13 +25,30 @@ body:json {
     "data": {
       "access_key": "{{aws_access_key}}",
       "secret_key": "{{aws_secret_key}}",
-      "region": "us-east-1"
+      "region": "ap-northeast-3"
     }
   }
 }
 
 script:post-response {
   bru.setEnvVar("credentialsId", res.body.data.id);
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response contains credential data", function() {
+    expect(res.getBody()).to.have.property('id');
+    expect(res.getBody()).to.have.property('name');
+    expect(res.getBody()).to.have.property('provider');
+  });
+  
+  test("Credential has correct provider", function() {
+    expect(res.getBody().provider).to.equal('aws');
+    expect(res.getBody().name).to.equal('AWS Production');
+  });
 }
 
 docs {
@@ -101,21 +118,4 @@ docs {
     }
   }
   ```
-}
-
-tests {
-  test("Status code is 201", function() {
-    expect(res.getStatus()).to.equal(201);
-  });
-  
-  test("Response contains credential data", function() {
-    expect(res.getBody()).to.have.property('id');
-    expect(res.getBody()).to.have.property('name');
-    expect(res.getBody()).to.have.property('provider');
-  });
-  
-  test("Credential has correct provider", function() {
-    expect(res.getBody().provider).to.equal('aws');
-    expect(res.getBody().name).to.equal('AWS Production');
-  });
 }

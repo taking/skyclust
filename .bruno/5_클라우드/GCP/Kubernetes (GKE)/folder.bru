@@ -3,6 +3,32 @@ meta {
   seq: 1
 }
 
-auth {
-  mode: inherit
+docs {
+  # GKE (Google Kubernetes Engine)
+  
+  Google Kubernetes Engine 클러스터 및 노드 풀 관리 API입니다.
+  
+  ## 지원 기능
+  
+  - **클러스터 관리**: 생성, 조회, 삭제, 업그레이드
+  - **노드 풀 관리**: 생성, 조회, 삭제, 스케일링
+  - **Kubeconfig**: 클러스터 접속 설정 다운로드
+  
+  ## GCP 특화 기능
+  
+  - **Autopilot 모드**: 관리형 GKE 클러스터
+  - **Standard 모드**: 일반 GKE 클러스터
+  - **Workload Identity**: GCP 서비스와의 통합 인증
+  - **Private 클러스터**: 프라이빗 엔드포인트 지원
+  
+  ## 필수 권한
+  
+  - `container.clusters.create`
+  - `container.clusters.get`
+  - `container.clusters.update`
+  - `container.clusters.delete`
+  - `container.nodePools.create`
+  - `container.nodePools.get`
+  - `container.nodePools.update`
+  - `container.nodePools.delete`
 }

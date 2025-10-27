@@ -51,6 +51,45 @@ func (h *BaseHandler) GetBearerTokenFromHeader(c *gin.Context) (string, error) {
 	return h.tokenExtractor.GetBearerTokenFromHeader(c)
 }
 
+// GetCredentialFromRequest extracts and validates credential from request
+// This is a common pattern across all cloud provider handlers
+func (h *BaseHandler) GetCredentialFromRequest(c *gin.Context, credentialService domain.CredentialService, expectedProvider string) (*domain.Credential, error) {
+	// 1. Get user ID from token
+	userID, err := h.GetUserIDFromToken(c)
+	if err != nil {
+		return nil, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid token", 401)
+	}
+
+	// 2. Get credential ID from query parameter
+	credentialID := c.Query("credential_id")
+	if credentialID == "" {
+		return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "credential_id is required", 400)
+	}
+
+	// 3. Parse credential UUID
+	credentialUUID, err := uuid.Parse(credentialID)
+	if err != nil {
+		return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "invalid credential ID format", 400)
+	}
+
+	// 4. Get credential from service
+	credential, err := credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 5. Verify credential matches expected provider
+	if expectedProvider != "" && credential.Provider != expectedProvider {
+		return nil, domain.NewDomainError(
+			domain.ErrCodeBadRequest,
+			"Credential provider does not match "+expectedProvider,
+			400,
+		)
+	}
+
+	return credential, nil
+}
+
 // ValidateRequest validates the request body against the provided struct
 func (h *BaseHandler) ValidateRequest(c *gin.Context, req interface{}) error {
 	if err := c.ShouldBindJSON(req); err != nil {

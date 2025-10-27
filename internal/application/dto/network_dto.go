@@ -4,26 +4,45 @@ package dto
 
 // VPCInfo represents VPC information
 type VPCInfo struct {
-	ID        string            `json:"id"`
-	Name      string            `json:"name"`
-	CIDRBlock string            `json:"cidr_block"`
-	State     string            `json:"state"`
-	IsDefault bool              `json:"is_default"`
-	Region    string            `json:"region"`
-	Tags      map[string]string `json:"tags,omitempty"`
+	ID                string            `json:"id"`   // Clean format: projects/{project}/global/networks/{name}
+	Name              string            `json:"name"` // Network name
+	State             string            `json:"state"`
+	IsDefault         bool              `json:"is_default"`
+	Region            string            `json:"-"`                      // Internal field, not exposed in JSON
+	NetworkMode       string            `json:"network_mode,omitempty"` // subnet or legacy
+	RoutingMode       string            `json:"routing_mode,omitempty"` // REGIONAL or GLOBAL
+	MTU               int64             `json:"mtu,omitempty"`
+	AutoSubnets       bool              `json:"auto_subnets,omitempty"`
+	Description       string            `json:"description,omitempty"`
+	FirewallRuleCount int               `json:"firewall_rule_count,omitempty"`
+	Gateway           *GatewayInfo      `json:"gateway,omitempty"`
+	CreationTimestamp string            `json:"creation_timestamp,omitempty"`
+	Tags              map[string]string `json:"tags,omitempty"`
+}
+
+// GatewayInfo represents gateway information
+type GatewayInfo struct {
+	Type      string `json:"type,omitempty"` // NAT, Internet Gateway, etc.
+	IPAddress string `json:"ip_address,omitempty"`
+	Name      string `json:"name,omitempty"`
 }
 
 // SubnetInfo represents subnet information
 type SubnetInfo struct {
-	ID               string            `json:"id"`
-	Name             string            `json:"name"`
-	VPCID            string            `json:"vpc_id"`
-	CIDRBlock        string            `json:"cidr_block"`
-	AvailabilityZone string            `json:"availability_zone"`
-	State            string            `json:"state"`
-	IsPublic         bool              `json:"is_public"`
-	Region           string            `json:"region"`
-	Tags             map[string]string `json:"tags,omitempty"`
+	ID                    string            `json:"id"`     // Clean format: projects/{project}/regions/{region}/subnetworks/{name}
+	Name                  string            `json:"name"`   // Subnet name
+	VPCID                 string            `json:"vpc_id"` // Clean format: projects/{project}/global/networks/{name}
+	CIDRBlock             string            `json:"cidr_block"`
+	AvailabilityZone      string            `json:"availability_zone"` // Clean format: projects/{project}/regions/{region}
+	State                 string            `json:"state"`
+	IsPublic              bool              `json:"is_public"`
+	Region                string            `json:"region"` // Region name only (e.g., asia-northeast3)
+	Description           string            `json:"description,omitempty"`
+	GatewayAddress        string            `json:"gateway_address,omitempty"`
+	PrivateIPGoogleAccess bool              `json:"private_ip_google_access,omitempty"`
+	FlowLogs              bool              `json:"flow_logs,omitempty"`
+	CreationTimestamp     string            `json:"creation_timestamp,omitempty"`
+	Tags                  map[string]string `json:"tags,omitempty"`
 }
 
 // SecurityGroupInfo represents security group information
@@ -93,11 +112,16 @@ type ListSecurityGroupsResponse struct {
 
 // CreateVPCRequest represents a request to create a VPC
 type CreateVPCRequest struct {
-	CredentialID string            `json:"credential_id" validate:"required,uuid"`
-	Name         string            `json:"name" validate:"required,min=1,max=255"`
-	CIDRBlock    string            `json:"cidr_block" validate:"required,cidr"`
-	Region       string            `json:"region" validate:"required"`
-	Tags         map[string]string `json:"tags,omitempty"`
+	CredentialID      string            `json:"credential_id" validate:"required,uuid"`
+	Name              string            `json:"name" validate:"required,min=1,max=255"`
+	Description       string            `json:"description,omitempty"`
+	CIDRBlock         string            `json:"cidr_block,omitempty"`          // Optional for GCP subnet mode
+	Region            string            `json:"region,omitempty"`              // Optional for GCP (Global resource)
+	ProjectID         string            `json:"project_id,omitempty"`          // GCP specific
+	AutoCreateSubnets *bool             `json:"auto_create_subnets,omitempty"` // GCP specific
+	RoutingMode       string            `json:"routing_mode,omitempty"`        // GCP specific
+	MTU               int64             `json:"mtu,omitempty"`                 // GCP specific
+	Tags              map[string]string `json:"tags,omitempty"`
 }
 
 // UpdateVPCRequest represents a request to update a VPC
@@ -108,19 +132,25 @@ type UpdateVPCRequest struct {
 
 // CreateSubnetRequest represents a request to create a subnet
 type CreateSubnetRequest struct {
-	CredentialID     string            `json:"credential_id" validate:"required,uuid"`
-	Name             string            `json:"name" validate:"required,min=1,max=255"`
-	VPCID            string            `json:"vpc_id" validate:"required"`
-	CIDRBlock        string            `json:"cidr_block" validate:"required,cidr"`
-	AvailabilityZone string            `json:"availability_zone" validate:"required"`
-	Region           string            `json:"region" validate:"required"`
-	Tags             map[string]string `json:"tags,omitempty"`
+	CredentialID          string            `json:"credential_id" validate:"required,uuid"`
+	Name                  string            `json:"name" validate:"required,min=1,max=255"`
+	VPCID                 string            `json:"vpc_id" validate:"required"`
+	CIDRBlock             string            `json:"cidr_block" validate:"required,cidr"`
+	AvailabilityZone      string            `json:"availability_zone" validate:"required"`
+	Region                string            `json:"region" validate:"required"`
+	Description           string            `json:"description,omitempty"`
+	PrivateIPGoogleAccess bool              `json:"private_ip_google_access,omitempty"`
+	FlowLogs              bool              `json:"flow_logs,omitempty"`
+	Tags                  map[string]string `json:"tags,omitempty"`
 }
 
 // UpdateSubnetRequest represents a request to update a subnet
 type UpdateSubnetRequest struct {
-	Name string            `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
-	Tags map[string]string `json:"tags,omitempty"`
+	Name                  string            `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
+	Description           string            `json:"description,omitempty"`
+	PrivateIPGoogleAccess *bool             `json:"private_ip_google_access,omitempty"`
+	FlowLogs              *bool             `json:"flow_logs,omitempty"`
+	Tags                  map[string]string `json:"tags,omitempty"`
 }
 
 // CreateSecurityGroupRequest represents a request to create a security group
@@ -130,7 +160,29 @@ type CreateSecurityGroupRequest struct {
 	Description  string            `json:"description" validate:"required,min=1,max=255"`
 	VPCID        string            `json:"vpc_id" validate:"required"`
 	Region       string            `json:"region" validate:"required"`
+	ProjectID    string            `json:"project_id,omitempty"` // GCP specific
+	Direction    string            `json:"direction,omitempty"`  // INGRESS/EGRESS
+	Priority     int64             `json:"priority,omitempty"`   // GCP specific
+	Action       string            `json:"action,omitempty"`     // ALLOW/DENY
+	Protocol     string            `json:"protocol,omitempty"`   // tcp/udp/icmp
+	Ports        []string          `json:"ports,omitempty"`      // Port numbers
+	SourceRanges []string          `json:"source_ranges,omitempty"`
+	TargetTags   []string          `json:"target_tags,omitempty"`
+	Allowed      []FirewallAllowed `json:"allowed,omitempty"` // GCP specific allowed rules
+	Denied       []FirewallDenied  `json:"denied,omitempty"`  // GCP specific denied rules
 	Tags         map[string]string `json:"tags,omitempty"`
+}
+
+// FirewallAllowed represents GCP firewall allowed rule
+type FirewallAllowed struct {
+	Protocol string   `json:"protocol"` // tcp/udp/icmp
+	Ports    []string `json:"ports,omitempty"`
+}
+
+// FirewallDenied represents GCP firewall denied rule
+type FirewallDenied struct {
+	Protocol string   `json:"protocol"` // tcp/udp/icmp
+	Ports    []string `json:"ports,omitempty"`
 }
 
 // UpdateSecurityGroupRequest represents a request to update a security group
@@ -209,6 +261,29 @@ type RemoveSecurityGroupRuleRequest struct {
 	ToPort          int32    `json:"to_port"`
 	CIDRBlocks      []string `json:"cidr_blocks,omitempty"`
 	SourceGroups    []string `json:"source_groups,omitempty"`
+}
+
+// AddFirewallRuleRequest represents a request to add a specific firewall rule (GCP specific)
+type AddFirewallRuleRequest struct {
+	CredentialID    string   `json:"credential_id" validate:"required,uuid"`
+	SecurityGroupID string   `json:"security_group_id" validate:"required"`
+	Region          string   `json:"region" validate:"required"`
+	Protocol        string   `json:"protocol" validate:"required"`
+	Ports           []string `json:"ports,omitempty"`
+	SourceRanges    []string `json:"source_ranges,omitempty"`
+	TargetTags      []string `json:"target_tags,omitempty"`
+	Action          string   `json:"action,omitempty"` // ALLOW/DENY
+}
+
+// RemoveFirewallRuleRequest represents a request to remove a specific firewall rule (GCP specific)
+type RemoveFirewallRuleRequest struct {
+	CredentialID    string   `json:"credential_id" validate:"required,uuid"`
+	SecurityGroupID string   `json:"security_group_id" validate:"required"`
+	Region          string   `json:"region" validate:"required"`
+	Protocol        string   `json:"protocol" validate:"required"`
+	Ports           []string `json:"ports,omitempty"`
+	SourceRanges    []string `json:"source_ranges,omitempty"`
+	TargetTags      []string `json:"target_tags,omitempty"`
 }
 
 // UpdateSecurityGroupRulesRequest represents a request to update security group rules

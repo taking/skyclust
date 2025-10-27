@@ -109,9 +109,7 @@ func (pm *ProviderManager) dialWithRetry(ctx context.Context, config *ProviderCo
 	}
 
 	for attempt := 0; attempt < pm.maxRetries; attempt++ {
-		dialCtx, cancel := context.WithTimeout(ctx, pm.dialTimeout)
-		conn, err = grpc.DialContext(dialCtx, config.Address, dialOpts...)
-		cancel()
+		conn, err = grpc.NewClient(config.Address, dialOpts...)
 
 		if err == nil {
 			return conn, nil

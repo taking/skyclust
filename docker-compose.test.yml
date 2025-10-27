@@ -55,60 +55,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # Backend API Server
-  cmp-backend:
-    build: .
-    container_name: cmp-backend-test
-    environment:
-      - CMP_ENV=development
-      - CMP_DB_HOST=postgres
-      - CMP_DB_PORT=5432
-      - CMP_DB_USER=cmp_user
-      - CMP_DB_PASSWORD=cmp_password
-      - CMP_DB_NAME=cmp
-      - CMP_DB_SSLMODE=disable
-      - CMP_REDIS_HOST=redis
-      - CMP_REDIS_PORT=6379
-      - CMP_REDIS_PASSWORD=redis_password
-      - CMP_REDIS_DB=0
-      - CMP_REDIS_POOL_SIZE=10
-      - CMP_NATS_URL=nats://nats:4222
-      - CMP_PLUGINS_DIR=/app/plugins
-      - CMP_JWT_SECRET=A3/TRVASQZkXqqt27ZnT7m/UboTfizF26/CaUSlZHLOlfQ2h8Gd1xzdIeuQnSeQX
-      - CMP_ENCRYPTION_KEY=99ek1nyT4IJ4W2tUvks9TvHqIdNn7rKZd2kcgQ9gSuf2xoKAaW3BnDl73iMpTwsc
-    ports:
-      - "8080:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      nats:
-        condition: service_healthy
-    networks:
-      - cmp-network
-    volumes:
-      - ./plugins:/app/plugins:ro
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # Frontend
-  cmp-frontend:
-    build: ./frontend
-    container_name: cmp-frontend-test
-    environment:
-      - NODE_ENV=development
-      - NEXT_PUBLIC_API_URL=http://cmp-backend:8080
-    ports:
-      - "3000:3000"
-    depends_on:
-      - cmp-backend
-    networks:
-      - cmp-network
-
 volumes:
   postgres_test_data:
   redis_test_data:

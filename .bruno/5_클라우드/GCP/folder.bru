@@ -1,8 +1,29 @@
 meta {
   name: GCP
-  seq: 2
+  type: folder
 }
 
-auth {
-  mode: inherit
+docs {
+  # GCP (Google Cloud Platform)
+  
+  Google Cloud Platform 관련 API 테스트 모음입니다.
+  
+  ## 지원 서비스
+  
+  - **Kubernetes (GKE)**: Google Kubernetes Engine 클러스터 관리
+  - **Network**: VPC, 서브넷, 방화벽 규칙 관리
+  
+  ## 인증
+  
+  GCP API를 사용하기 위해서는 다음이 필요합니다:
+  
+  1. **Credential ID**: GCP 서비스 계정 키가 등록된 credential ID
+  2. **Project ID**: GCP 프로젝트 ID
+  3. **Region**: GCP 리전 (예: us-central1, asia-northeast3)
+  
+  ## 환경 변수
+  
+  - `gcp_project_id`: GCP 프로젝트 ID
+  - `gcpRegion`: GCP 리전
+  - `gcpZone`: GCP 존 (선택사항)
 }

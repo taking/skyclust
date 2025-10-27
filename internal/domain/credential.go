@@ -114,6 +114,12 @@ func MaskCredentialData(data map[string]interface{}) map[string]interface{} {
 		case "secret_key", "password", "client_secret":
 			// Secrets: Show first 4 and last 4
 			masked[key] = MaskString(strValue, 4, 4)
+		case "private_key":
+			// GCP Private Key: Show first 4 and last 4
+			masked[key] = MaskString(strValue, 4, 4)
+		case "private_key_id":
+			// GCP Private Key ID: Show first 4 and last 4
+			masked[key] = MaskString(strValue, 4, 4)
 		case "credentials_json":
 			// JSON: Don't show at all
 			masked[key] = "****"

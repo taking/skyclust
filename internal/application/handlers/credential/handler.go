@@ -1,6 +1,8 @@
 package credential
 
 import (
+	"encoding/json"
+	"io"
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
 	"skyclust/internal/shared/responses"
@@ -189,6 +191,66 @@ func (h *Handler) DeleteCredential(c *gin.Context) {
 	}
 
 	responses.OK(c, gin.H{"message": "Credential deleted successfully"}, "Credential deleted successfully")
+}
+
+// CreateCredentialFromFile handles credential creation from uploaded file
+func (h *Handler) CreateCredentialFromFile(c *gin.Context) {
+	// Get user ID from token
+	userID, err := h.GetUserIDFromToken(c)
+	if err != nil {
+		if domainErr, ok := err.(*domain.DomainError); ok {
+			responses.DomainError(c, domainErr)
+		} else {
+			responses.InternalServerError(c, "Failed to get user ID from token")
+		}
+		return
+	}
+
+	// Parse form data
+	name := c.PostForm("name")
+	provider := c.PostForm("provider")
+
+	if name == "" || provider == "" {
+		responses.BadRequest(c, "name and provider are required")
+		return
+	}
+
+	// Get uploaded file
+	file, _, err := c.Request.FormFile("file")
+	if err != nil {
+		responses.BadRequest(c, "Failed to get uploaded file")
+		return
+	}
+	defer file.Close()
+
+	// Read file content
+	fileContent, err := io.ReadAll(file)
+	if err != nil {
+		responses.BadRequest(c, "Failed to read file content")
+		return
+	}
+
+	// Parse JSON content
+	var credentialData map[string]interface{}
+	if err := json.Unmarshal(fileContent, &credentialData); err != nil {
+		responses.BadRequest(c, "Invalid JSON file format")
+		return
+	}
+
+	// Create credential request
+	req := domain.CreateCredentialRequest{
+		Name:     name,
+		Provider: provider,
+		Data:     credentialData,
+	}
+
+	credential, err := h.credentialService.CreateCredential(c.Request.Context(), userID, req)
+	if err != nil {
+		responses.InternalServerError(c, "Failed to create credential")
+		return
+	}
+
+	responses.Created(c, credential, "Credential created successfully from file")
 }
 
 // GetCredentialsByProvider handles getting credentials by provider

@@ -6,12 +6,15 @@ type CreateClusterRequest struct {
 	Name         string            `json:"name" validate:"required,min=1,max=100"`
 	Version      string            `json:"version" validate:"required"`
 	Region       string            `json:"region" validate:"required"`
+	Zone         string            `json:"zone,omitempty"` // GCP zone (optional)
 	SubnetIDs    []string          `json:"subnet_ids" validate:"required,min=1"`
 	VPCID        string            `json:"vpc_id,omitempty"`
 	RoleARN      string            `json:"role_arn,omitempty"`
 	Tags         map[string]string `json:"tags,omitempty"`
 	// Access Entry configuration
 	AccessConfig *AccessConfigRequest `json:"access_config,omitempty"`
+	// GCP-specific configuration (for backward compatibility)
+	GKEConfig *GKEClusterConfigRequest `json:"gke_config,omitempty"`
 }
 
 // AccessConfigRequest represents access configuration for EKS cluster
@@ -29,8 +32,10 @@ type CreateClusterResponse struct {
 	Name      string            `json:"name"`
 	Version   string            `json:"version"`
 	Region    string            `json:"region"`
+	Zone      string            `json:"zone,omitempty"` // GCP zone
 	Status    string            `json:"status"`
 	Endpoint  string            `json:"endpoint,omitempty"`
+	ProjectID string            `json:"project_id,omitempty"` // GCP project ID
 	Tags      map[string]string `json:"tags,omitempty"`
 	CreatedAt string            `json:"created_at"`
 }

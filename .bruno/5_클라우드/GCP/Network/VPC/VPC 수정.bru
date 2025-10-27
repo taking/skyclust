@@ -1,0 +1,128 @@
+meta {
+  name: VPC 수정
+  type: http
+  seq: 5
+}
+
+put {
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/network/vpcs/{{vpcName}}?credential_id={{credentialsId}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "name": "skyclust-vpc-updated-{{$timestamp}}",
+    "tags": {
+      "Environment": "production",
+      "Project": "skyclust",
+      "UpdatedBy": "bruno-api-test",
+      "UpdatedAt": "{{$timestamp}}"
+    }
+  }
+}
+
+docs {
+  # GCP VPC 수정
+  
+  VPC의 이름과 태그를 수정합니다.
+  
+  ## Path Parameters
+  
+  - `vpcId`: VPC ID (예: `projects/my-project/global/networks/skyclust-vpc-1234567890`)
+  
+  ## Query Parameters
+  
+  - `credential_id`: GCP credential ID (필수)
+  - `region`: GCP 리전 (필수)
+  
+  ## Request Body
+  
+  ```json
+  {
+    "name": "skyclust-vpc-updated-1234567890",
+    "tags": {
+      "Environment": "production",
+      "Project": "skyclust",
+      "UpdatedBy": "bruno-api-test"
+    }
+  }
+  ```
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "projects/my-project/global/networks/skyclust-vpc-1234567890",
+      "name": "skyclust-vpc-updated-1234567890",
+      "cidr_block": "10.0.0.0/16",
+      "state": "READY",
+      "is_default": false,
+      "region": "us-central1",
+      "project_id": "my-project",
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T02:00:00Z",
+      "tags": {
+        "Environment": "production",
+        "Project": "skyclust",
+        "UpdatedBy": "bruno-api-test"
+      }
+    },
+    "message": "GCP VPC updated successfully"
+  }
+  ```
+  
+  ## 수정 가능한 필드
+  
+  - `name`: VPC 이름
+  - `tags`: 태그 정보
+  
+  ## 수정 불가능한 필드
+  
+  - `cidr_block`: IP 주소 범위 (VPC 생성 후 변경 불가)
+  - `region`: 리전 (VPC 생성 후 변경 불가)
+  - `project_id`: 프로젝트 ID (VPC 생성 후 변경 불가)
+  
+  ## 사용 예시
+  
+  ```bash
+  PUT /api/v1/gcp/network/vpcs/projects/my-project/global/networks/skyclust-vpc-1234567890?credential_id=123&region=us-central1
+  Authorization: Bearer your-jwt-token
+  Content-Type: application/json
+  
+  {
+    "name": "skyclust-vpc-updated-1234567890",
+    "tags": {
+      "Environment": "production",
+      "Project": "skyclust"
+    }
+  }
+  ```
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has updated VPC data", function() {
+    expect(res.getBody().data).to.be.an('object');
+    expect(res.getBody().data.id).to.be.a('string');
+    expect(res.getBody().data.name).to.be.a('string');
+    expect(res.getBody().data.tags).to.be.an('object');
+  });
+  
+  test("VPC name is updated", function() {
+    expect(res.getBody().data.name).to.include("updated");
+  });
+}

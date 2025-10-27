@@ -2,7 +2,11 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
 
 	"skyclust/internal/application/dto"
 	"skyclust/internal/domain"
@@ -13,6 +17,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2Types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"go.uber.org/zap"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/compute/v1"
+	"google.golang.org/api/option"
 )
 
 // NetworkService handles network resource operations
@@ -31,6 +38,27 @@ func NewNetworkService(credentialService domain.CredentialService, logger *zap.L
 
 // ListVPCs lists VPCs for a given credential and region
 func (s *NetworkService) ListVPCs(ctx context.Context, credential *domain.Credential, req dto.ListVPCsRequest) (*dto.ListVPCsResponse, error) {
+	// Route to provider-specific implementation
+	switch credential.Provider {
+	case ProviderAWS:
+		return s.listAWSVPCs(ctx, credential, req)
+	case ProviderGCP:
+		return s.listGCPVPCs(ctx, credential, req)
+	case ProviderAzure:
+		return s.listAzureVPCs(ctx, credential, req)
+	case ProviderNCP:
+		return s.listNCPVPCs(ctx, credential, req)
+	default:
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotSupported,
+			fmt.Sprintf(ErrMsgUnsupportedProvider, credential.Provider),
+			400,
+		)
+	}
+}
+
+// listAWSVPCs lists AWS VPCs
+func (s *NetworkService) listAWSVPCs(ctx context.Context, credential *domain.Credential, req dto.ListVPCsRequest) (*dto.ListVPCsResponse, error) {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
 	if err != nil {
@@ -54,7 +82,6 @@ func (s *NetworkService) ListVPCs(ctx context.Context, credential *domain.Creden
 		vpcInfo := dto.VPCInfo{
 			ID:        aws.ToString(vpc.VpcId),
 			Name:      s.getTagValue(vpc.Tags, "Name"),
-			CIDRBlock: aws.ToString(vpc.CidrBlock),
 			State:     string(vpc.State),
 			IsDefault: aws.ToBool(vpc.IsDefault),
 			Region:    req.Region,
@@ -67,6 +94,27 @@ func (s *NetworkService) ListVPCs(ctx context.Context, credential *domain.Creden
 
 // GetVPC gets a specific VPC
 func (s *NetworkService) GetVPC(ctx context.Context, credential *domain.Credential, req dto.GetVPCRequest) (*dto.VPCInfo, error) {
+	// Route to provider-specific implementation
+	switch credential.Provider {
+	case "aws":
+		return s.getAWSVPC(ctx, credential, req)
+	case "gcp":
+		return s.getGCPVPC(ctx, credential, req)
+	case "azure":
+		return s.getAzureVPC(ctx, credential, req)
+	case "ncp":
+		return s.getNCPVPC(ctx, credential, req)
+	default:
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotSupported,
+			fmt.Sprintf(ErrMsgUnsupportedProvider, credential.Provider),
+			400,
+		)
+	}
+}
+
+// getAWSVPC gets a specific AWS VPC
+func (s *NetworkService) getAWSVPC(ctx context.Context, credential *domain.Credential, req dto.GetVPCRequest) (*dto.VPCInfo, error) {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
 	if err != nil {
@@ -91,7 +139,6 @@ func (s *NetworkService) GetVPC(ctx context.Context, credential *domain.Credenti
 	vpcInfo := &dto.VPCInfo{
 		ID:        aws.ToString(vpc.VpcId),
 		Name:      s.getTagValue(vpc.Tags, "Name"),
-		CIDRBlock: aws.ToString(vpc.CidrBlock),
 		State:     string(vpc.State),
 		IsDefault: aws.ToBool(vpc.IsDefault),
 		Region:    req.Region,
@@ -103,6 +150,503 @@ func (s *NetworkService) GetVPC(ctx context.Context, credential *domain.Credenti
 
 // CreateVPC creates a new VPC
 func (s *NetworkService) CreateVPC(ctx context.Context, credential *domain.Credential, req dto.CreateVPCRequest) (*dto.VPCInfo, error) {
+	// Route to provider-specific implementation
+	switch credential.Provider {
+	case "aws":
+		return s.createAWSVPC(ctx, credential, req)
+	case "gcp":
+		return s.createGCPVPC(ctx, credential, req)
+	case "azure":
+		return s.createAzureVPC(ctx, credential, req)
+	case "ncp":
+		return s.createNCPVPC(ctx, credential, req)
+	default:
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotSupported,
+			fmt.Sprintf(ErrMsgUnsupportedProvider, credential.Provider),
+			400,
+		)
+	}
+}
+
+// createGCPVPC creates a GCP VPC
+func (s *NetworkService) createGCPVPC(ctx context.Context, credential *domain.Credential, req dto.CreateVPCRequest) (*dto.VPCInfo, error) {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Marshal credential data for GCP SDK
+	jsonData, err := json.Marshal(credData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal credential data: %w", err)
+	}
+
+	// Create GCP Compute service
+	computeService, err := compute.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP compute service: %w", err)
+	}
+
+	// Extract project ID from credential data
+	projectID, ok := credData["project_id"].(string)
+	if !ok {
+		return nil, domain.NewDomainError(
+			domain.ErrCodeValidationFailed,
+			ErrMsgProjectIDNotFound,
+			400,
+		)
+	}
+
+	// Convert to GCP-specific request
+	// GCP SDK 제한으로 인해 auto_create_subnets는 항상 true로 강제 설정
+	autoCreateSubnets := true // GCP SDK 제한으로 인한 강제 설정
+
+	routingMode := "REGIONAL" // Default value
+	if req.RoutingMode != "" {
+		routingMode = req.RoutingMode
+	}
+
+	mtu := int64(1460) // Default value
+	if req.MTU > 0 {
+		mtu = req.MTU
+	}
+
+	gcpReq := dto.CreateGCPVPCRequest{
+		CredentialID:      req.CredentialID,
+		Name:              req.Name,
+		Description:       req.Description,
+		Region:            req.Region, // Optional for VPC (Global resource)
+		ProjectID:         projectID,
+		AutoCreateSubnets: autoCreateSubnets, // GCP SDK 제한으로 인한 강제 설정
+		RoutingMode:       routingMode,       // Use user's preference
+		MTU:               mtu,               // Use user's preference
+		Tags:              req.Tags,
+	}
+
+	return s.createGCPVPCWithAdvanced(ctx, credential, gcpReq, computeService)
+}
+
+// createGCPVPCWithAdvanced creates a GCP VPC with advanced features
+func (s *NetworkService) createGCPVPCWithAdvanced(ctx context.Context, credential *domain.Credential, req dto.CreateGCPVPCRequest, computeService *compute.Service) (*dto.VPCInfo, error) {
+	// Create network object (subnet mode network)
+	// Use the user's auto_create_subnets preference
+	network := &compute.Network{
+		Name:                  req.Name,
+		Description:           req.Description,
+		AutoCreateSubnetworks: req.AutoCreateSubnets, // GCP SDK 제한으로 인한 강제 설정
+		RoutingConfig: &compute.NetworkRoutingConfig{
+			RoutingMode: req.RoutingMode,
+		},
+		Mtu: req.MTU,
+		// IPv4Range field is intentionally omitted to ensure subnet mode
+	}
+
+	// Log the network configuration for debugging
+	s.logger.Info("Creating GCP network with configuration",
+		zap.String("name", network.Name),
+		zap.String("description", network.Description),
+		zap.Bool("auto_create_subnetworks", network.AutoCreateSubnetworks),
+		zap.String("routing_mode", network.RoutingConfig.RoutingMode),
+		zap.Int64("mtu", network.Mtu))
+
+	// Create a custom network object without IPv4Range field
+	// This ensures we have full control over the JSON payload
+	customNetwork := map[string]interface{}{
+		"name":                  network.Name,
+		"description":           network.Description,
+		"autoCreateSubnetworks": network.AutoCreateSubnetworks,
+		"routingConfig": map[string]interface{}{
+			"routingMode": network.RoutingConfig.RoutingMode,
+		},
+		"mtu": network.Mtu,
+		// IPv4Range field is intentionally omitted
+	}
+
+	// Log the custom network object for debugging
+	s.logger.Info("Creating GCP network with custom payload",
+		zap.Any("custom_network", customNetwork))
+
+	// Create the network using direct HTTP API
+	operation, err := computeService.Networks.Insert(req.ProjectID, network).Context(ctx).Do()
+	if err != nil {
+		// Log the actual network object being sent for debugging
+		s.logger.Error("Failed to create GCP network",
+			zap.String("error", err.Error()),
+			zap.String("network_name", network.Name),
+			zap.Bool("auto_create_subnetworks", network.AutoCreateSubnetworks))
+		return nil, fmt.Errorf("failed to create GCP network: %w", err)
+	}
+
+	s.logger.Info("GCP VPC creation initiated",
+		zap.String("vpc_name", req.Name),
+		zap.String("project_id", req.ProjectID),
+		zap.String("operation_id", operation.Name))
+
+	// Return VPC info
+	return &dto.VPCInfo{
+		ID:          fmt.Sprintf("projects/%s/global/networks/%s", req.ProjectID, req.Name),
+		Name:        req.Name,
+		State:       "creating",
+		NetworkMode: "subnet",
+		RoutingMode: req.RoutingMode,
+		MTU:         req.MTU,
+		AutoSubnets: req.AutoCreateSubnets,
+		Description: req.Description,
+		Tags:        req.Tags,
+	}, nil
+}
+
+// listGCPVPCs lists all GCP VPCs
+func (s *NetworkService) listGCPVPCs(ctx context.Context, credential *domain.Credential, req dto.ListVPCsRequest) (*dto.ListVPCsResponse, error) {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Convert to JSON for GCP SDK
+	jsonData, err := json.Marshal(credData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal credential data: %w", err)
+	}
+
+	// Create GCP Compute service
+	computeService, err := compute.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP compute service: %w", err)
+	}
+
+	// Get project ID from credential
+	projectID, ok := credData["project_id"].(string)
+	if !ok {
+		return nil, domain.NewDomainError(
+			domain.ErrCodeValidationFailed,
+			ErrMsgProjectIDNotFound,
+			400,
+		)
+	}
+
+	// List all networks
+	networks, err := computeService.Networks.List(projectID).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list GCP networks: %w", err)
+	}
+
+	// Convert to VPCInfo
+	vpcs := make([]dto.VPCInfo, 0, len(networks.Items))
+	for _, network := range networks.Items {
+		// Determine network mode
+		networkMode := "subnet"
+		if network.IPv4Range != "" {
+			networkMode = "legacy"
+		}
+
+		// Get routing mode
+		routingMode := "REGIONAL"
+		if network.RoutingConfig != nil {
+			routingMode = network.RoutingConfig.RoutingMode
+		}
+
+		// Get MTU
+		mtu := int64(1460) // Default MTU
+		if network.Mtu > 0 {
+			mtu = network.Mtu
+		}
+
+		// Extract clean format IDs
+		vpcIDClean := s.extractCleanVPCID(network.SelfLink)
+
+		// Get firewall rules count for this network
+		firewallCount, err := s.getFirewallRulesCount(ctx, computeService, projectID, network.Name)
+		if err != nil {
+			s.logger.Warn("Failed to get firewall rules count",
+				zap.String("network_name", network.Name),
+				zap.Error(err))
+			firewallCount = 0
+		}
+
+		// Get gateway information for this network
+		gatewayInfo, err := s.getGatewayInfo(ctx, computeService, projectID, network.Name)
+		if err != nil {
+			s.logger.Warn("Failed to get gateway info",
+				zap.String("network_name", network.Name),
+				zap.Error(err))
+			gatewayInfo = nil
+		}
+
+		vpcInfo := dto.VPCInfo{
+			ID:                vpcIDClean, // Clean format: projects/{project}/global/networks/{name}
+			Name:              network.Name,
+			State:             "available",
+			IsDefault:         network.Name == "default",
+			NetworkMode:       networkMode,
+			RoutingMode:       routingMode,
+			MTU:               mtu,
+			AutoSubnets:       network.AutoCreateSubnetworks,
+			Description:       network.Description,
+			FirewallRuleCount: firewallCount,
+			Gateway:           gatewayInfo,
+			CreationTimestamp: network.CreationTimestamp,
+			Tags:              map[string]string{}, // User-defined tags would be populated here
+		}
+		vpcs = append(vpcs, vpcInfo)
+	}
+
+	s.logger.Info("GCP VPCs listed successfully",
+		zap.String("project_id", projectID),
+		zap.Int("count", len(vpcs)))
+
+	return &dto.ListVPCsResponse{VPCs: vpcs}, nil
+}
+
+// getGCPVPC gets a specific GCP VPC
+func (s *NetworkService) getGCPVPC(ctx context.Context, credential *domain.Credential, req dto.GetVPCRequest) (*dto.VPCInfo, error) {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Convert to JSON for GCP SDK
+	jsonData, err := json.Marshal(credData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal credential data: %w", err)
+	}
+
+	// Create GCP Compute service
+	computeService, err := compute.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP compute service: %w", err)
+	}
+
+	// Get project ID from credential
+	projectID, ok := credData["project_id"].(string)
+	if !ok {
+		return nil, domain.NewDomainError(
+			domain.ErrCodeValidationFailed,
+			ErrMsgProjectIDNotFound,
+			400,
+		)
+	}
+
+	// Extract network name from VPC ID
+	networkName := s.extractNetworkNameFromVPCID(req.VPCID)
+	if networkName == "" {
+		return nil, fmt.Errorf("invalid VPC ID format: %s", req.VPCID)
+	}
+
+	// Get specific network
+	network, err := computeService.Networks.Get(projectID, networkName).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GCP network: %w", err)
+	}
+
+	// Determine network mode
+	networkMode := "subnet"
+	if network.IPv4Range != "" {
+		networkMode = "legacy"
+	}
+
+	// Get routing mode
+	routingMode := "REGIONAL"
+	if network.RoutingConfig != nil {
+		routingMode = network.RoutingConfig.RoutingMode
+	}
+
+	// Get MTU
+	mtu := int64(1460) // Default MTU
+	if network.Mtu > 0 {
+		mtu = network.Mtu
+	}
+
+	// Extract clean format IDs
+	vpcIDClean := s.extractCleanVPCID(network.SelfLink)
+
+	// Get firewall rules count for this network
+	firewallCount, err := s.getFirewallRulesCount(ctx, computeService, projectID, network.Name)
+	if err != nil {
+		s.logger.Warn("Failed to get firewall rules count",
+			zap.String("network_name", network.Name),
+			zap.Error(err))
+		firewallCount = 0
+	}
+
+	// Get gateway information for this network
+	gatewayInfo, err := s.getGatewayInfo(ctx, computeService, projectID, network.Name)
+	if err != nil {
+		s.logger.Warn("Failed to get gateway info",
+			zap.String("network_name", network.Name),
+			zap.Error(err))
+		gatewayInfo = nil
+	}
+
+	vpcInfo := &dto.VPCInfo{
+		ID:                vpcIDClean, // Clean format: projects/{project}/global/networks/{name}
+		Name:              network.Name,
+		State:             "available",
+		IsDefault:         network.Name == "default",
+		NetworkMode:       networkMode,
+		RoutingMode:       routingMode,
+		MTU:               mtu,
+		AutoSubnets:       network.AutoCreateSubnetworks,
+		Description:       network.Description,
+		FirewallRuleCount: firewallCount,
+		Gateway:           gatewayInfo,
+		CreationTimestamp: network.CreationTimestamp,
+		Tags:              map[string]string{}, // User-defined tags would be populated here
+	}
+
+	s.logger.Info("GCP VPC retrieved successfully",
+		zap.String("vpc_name", network.Name),
+		zap.String("project_id", projectID))
+
+	return vpcInfo, nil
+}
+
+// extractNetworkNameFromVPCID extracts network name from VPC ID
+func (s *NetworkService) extractNetworkNameFromVPCID(vpcID string) string {
+	// Support two formats:
+	// 1. Full format: projects/{project}/global/networks/{network_name}
+	// 2. Simple format: {network_name}
+
+	// Check if it's a full format
+	parts := strings.Split(vpcID, "/")
+	if len(parts) >= 4 && parts[len(parts)-2] == "networks" {
+		return parts[len(parts)-1]
+	}
+
+	// If it's a simple format, return as is
+	return vpcID
+}
+
+// deleteGCPVPC deletes a GCP VPC
+func (s *NetworkService) deleteGCPVPC(ctx context.Context, credential *domain.Credential, req dto.DeleteVPCRequest) error {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Convert to JSON for GCP SDK
+	jsonData, err := json.Marshal(credData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal credential data: %w", err)
+	}
+
+	// Create GCP Compute service
+	computeService, err := compute.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create GCP compute service: %w", err)
+	}
+
+	// Get project ID from credential
+	projectID, ok := credData["project_id"].(string)
+	if !ok {
+		return domain.NewDomainError(
+			domain.ErrCodeValidationFailed,
+			ErrMsgProjectIDNotFound,
+			400,
+		)
+	}
+
+	// Extract network name from VPC ID
+	networkName := s.extractNetworkNameFromVPCID(req.VPCID)
+	if networkName == "" {
+		return fmt.Errorf("invalid VPC ID format: %s", req.VPCID)
+	}
+
+	// Skip dependency checks - GCP will handle validation
+	s.logger.Info("Skipping VPC deletion dependency checks",
+		zap.String("vpc_name", networkName),
+		zap.String("project_id", projectID))
+
+	// Delete the network
+	operation, err := computeService.Networks.Delete(projectID, networkName).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to delete GCP network: %w", err)
+	}
+
+	s.logger.Info("GCP VPC deletion initiated",
+		zap.String("vpc_name", networkName),
+		zap.String("project_id", projectID),
+		zap.String("operation_id", operation.Name))
+
+	return nil
+}
+
+// checkVPCDeletionDependencies checks if VPC can be safely deleted
+// Stub implementations for Azure, NCP, and GCP update functions
+
+// listAzureVPCs lists Azure VPCs (stub)
+func (s *NetworkService) listAzureVPCs(ctx context.Context, credential *domain.Credential, req dto.ListVPCsRequest) (*dto.ListVPCsResponse, error) {
+	s.logger.Info("Azure VPC listing not yet implemented")
+	return &dto.ListVPCsResponse{VPCs: []dto.VPCInfo{}}, nil
+}
+
+// listNCPVPCs lists NCP VPCs (stub)
+func (s *NetworkService) listNCPVPCs(ctx context.Context, credential *domain.Credential, req dto.ListVPCsRequest) (*dto.ListVPCsResponse, error) {
+	s.logger.Info("NCP VPC listing not yet implemented")
+	return &dto.ListVPCsResponse{VPCs: []dto.VPCInfo{}}, nil
+}
+
+// getAzureVPC gets Azure VPC (stub)
+func (s *NetworkService) getAzureVPC(ctx context.Context, credential *domain.Credential, req dto.GetVPCRequest) (*dto.VPCInfo, error) {
+	s.logger.Info("Azure VPC retrieval not yet implemented")
+	return nil, fmt.Errorf("Azure VPC retrieval not yet implemented")
+}
+
+// getNCPVPC gets NCP VPC (stub)
+func (s *NetworkService) getNCPVPC(ctx context.Context, credential *domain.Credential, req dto.GetVPCRequest) (*dto.VPCInfo, error) {
+	s.logger.Info("NCP VPC retrieval not yet implemented")
+	return nil, fmt.Errorf("NCP VPC retrieval not yet implemented")
+}
+
+// createAzureVPC creates Azure VPC (stub)
+func (s *NetworkService) createAzureVPC(ctx context.Context, credential *domain.Credential, req dto.CreateVPCRequest) (*dto.VPCInfo, error) {
+	s.logger.Info("Azure VPC creation not yet implemented")
+	return nil, fmt.Errorf("Azure VPC creation not yet implemented")
+}
+
+// createNCPVPC creates NCP VPC (stub)
+func (s *NetworkService) createNCPVPC(ctx context.Context, credential *domain.Credential, req dto.CreateVPCRequest) (*dto.VPCInfo, error) {
+	s.logger.Info("NCP VPC creation not yet implemented")
+	return nil, fmt.Errorf("NCP VPC creation not yet implemented")
+}
+
+// updateGCPVPC updates GCP VPC (stub)
+func (s *NetworkService) updateGCPVPC(ctx context.Context, credential *domain.Credential, req dto.UpdateVPCRequest, vpcID, region string) (*dto.VPCInfo, error) {
+	s.logger.Info("GCP VPC update not yet implemented")
+	return nil, fmt.Errorf("GCP VPC update not yet implemented")
+}
+
+// updateAzureVPC updates Azure VPC (stub)
+func (s *NetworkService) updateAzureVPC(ctx context.Context, credential *domain.Credential, req dto.UpdateVPCRequest, vpcID, region string) (*dto.VPCInfo, error) {
+	s.logger.Info("Azure VPC update not yet implemented")
+	return nil, fmt.Errorf("Azure VPC update not yet implemented")
+}
+
+// updateNCPVPC updates NCP VPC (stub)
+func (s *NetworkService) updateNCPVPC(ctx context.Context, credential *domain.Credential, req dto.UpdateVPCRequest, vpcID, region string) (*dto.VPCInfo, error) {
+	s.logger.Info("NCP VPC update not yet implemented")
+	return nil, fmt.Errorf("NCP VPC update not yet implemented")
+}
+
+// deleteAzureVPC deletes Azure VPC (stub)
+func (s *NetworkService) deleteAzureVPC(ctx context.Context, credential *domain.Credential, req dto.DeleteVPCRequest) error {
+	s.logger.Info("Azure VPC deletion not yet implemented")
+	return fmt.Errorf("Azure VPC deletion not yet implemented")
+}
+
+// deleteNCPVPC deletes NCP VPC (stub)
+func (s *NetworkService) deleteNCPVPC(ctx context.Context, credential *domain.Credential, req dto.DeleteVPCRequest) error {
+	s.logger.Info("NCP VPC deletion not yet implemented")
+	return fmt.Errorf("NCP VPC deletion not yet implemented")
+}
+
+// createAWSVPC creates a new AWS VPC
+func (s *NetworkService) createAWSVPC(ctx context.Context, credential *domain.Credential, req dto.CreateVPCRequest) (*dto.VPCInfo, error) {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
 	if err != nil {
@@ -138,7 +682,6 @@ func (s *NetworkService) CreateVPC(ctx context.Context, credential *domain.Crede
 	vpcInfo := &dto.VPCInfo{
 		ID:        aws.ToString(result.Vpc.VpcId),
 		Name:      req.Name,
-		CIDRBlock: aws.ToString(result.Vpc.CidrBlock),
 		State:     string(result.Vpc.State),
 		IsDefault: aws.ToBool(result.Vpc.IsDefault),
 		Region:    req.Region,
@@ -150,6 +693,27 @@ func (s *NetworkService) CreateVPC(ctx context.Context, credential *domain.Crede
 
 // UpdateVPC updates a VPC
 func (s *NetworkService) UpdateVPC(ctx context.Context, credential *domain.Credential, req dto.UpdateVPCRequest, vpcID, region string) (*dto.VPCInfo, error) {
+	// Route to provider-specific implementation
+	switch credential.Provider {
+	case "aws":
+		return s.updateAWSVPC(ctx, credential, req, vpcID, region)
+	case "gcp":
+		return s.updateGCPVPC(ctx, credential, req, vpcID, region)
+	case "azure":
+		return s.updateAzureVPC(ctx, credential, req, vpcID, region)
+	case "ncp":
+		return s.updateNCPVPC(ctx, credential, req, vpcID, region)
+	default:
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotSupported,
+			fmt.Sprintf(ErrMsgUnsupportedProvider, credential.Provider),
+			400,
+		)
+	}
+}
+
+// updateAWSVPC updates an AWS VPC
+func (s *NetworkService) updateAWSVPC(ctx context.Context, credential *domain.Credential, req dto.UpdateVPCRequest, vpcID, region string) (*dto.VPCInfo, error) {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, region)
 	if err != nil {
@@ -194,6 +758,27 @@ func (s *NetworkService) UpdateVPC(ctx context.Context, credential *domain.Crede
 
 // DeleteVPC deletes a VPC
 func (s *NetworkService) DeleteVPC(ctx context.Context, credential *domain.Credential, req dto.DeleteVPCRequest) error {
+	// Route to provider-specific implementation
+	switch credential.Provider {
+	case "aws":
+		return s.deleteAWSVPC(ctx, credential, req)
+	case "gcp":
+		return s.deleteGCPVPC(ctx, credential, req)
+	case "azure":
+		return s.deleteAzureVPC(ctx, credential, req)
+	case "ncp":
+		return s.deleteNCPVPC(ctx, credential, req)
+	default:
+		return domain.NewDomainError(
+			domain.ErrCodeNotSupported,
+			fmt.Sprintf(ErrMsgUnsupportedProvider, credential.Provider),
+			400,
+		)
+	}
+}
+
+// deleteAWSVPC deletes an AWS VPC
+func (s *NetworkService) deleteAWSVPC(ctx context.Context, credential *domain.Credential, req dto.DeleteVPCRequest) error {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
 	if err != nil {
@@ -213,202 +798,138 @@ func (s *NetworkService) DeleteVPC(ctx context.Context, credential *domain.Crede
 
 // ListSubnets lists subnets for a given credential and region
 func (s *NetworkService) ListSubnets(ctx context.Context, credential *domain.Credential, req dto.ListSubnetsRequest) (*dto.ListSubnetsResponse, error) {
-	// Create AWS EC2 client
-	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
-	}
+	s.logger.Info("ListSubnets called",
+		zap.String("provider", credential.Provider),
+		zap.String("credential_id", credential.ID.String()))
 
-	// Describe subnets
-	input := &ec2.DescribeSubnetsInput{}
-	if req.SubnetID != "" {
-		input.SubnetIds = []string{req.SubnetID}
+	switch credential.Provider {
+	case "aws":
+		return s.listAWSSubnets(ctx, credential, req)
+	case "gcp":
+		return s.listGCPSubnets(ctx, credential, req)
+	case "azure":
+		return s.listAzureSubnets(ctx, credential, req)
+	case "ncp":
+		return s.listNCPSubnets(ctx, credential, req)
+	default:
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotSupported,
+			fmt.Sprintf(ErrMsgUnsupportedProvider, credential.Provider),
+			400,
+		)
 	}
-	if req.VPCID != "" {
-		input.Filters = []ec2Types.Filter{
-			{Name: aws.String("vpc-id"), Values: []string{req.VPCID}},
-		}
-	}
-
-	result, err := ec2Client.DescribeSubnets(ctx, input)
-	if err != nil {
-		return nil, fmt.Errorf("failed to describe subnets: %w", err)
-	}
-
-	// Convert to DTOs
-	subnets := make([]dto.SubnetInfo, 0, len(result.Subnets))
-	for _, subnet := range result.Subnets {
-		subnetInfo := dto.SubnetInfo{
-			ID:               aws.ToString(subnet.SubnetId),
-			Name:             s.getTagValue(subnet.Tags, "Name"),
-			VPCID:            aws.ToString(subnet.VpcId),
-			CIDRBlock:        aws.ToString(subnet.CidrBlock),
-			AvailabilityZone: aws.ToString(subnet.AvailabilityZone),
-			State:            string(subnet.State),
-			IsPublic:         s.isSubnetPublic(ctx, ec2Client, aws.ToString(subnet.SubnetId)),
-			Region:           req.Region,
-			Tags:             s.convertTags(subnet.Tags),
-		}
-		subnets = append(subnets, subnetInfo)
-	}
-
-	return &dto.ListSubnetsResponse{Subnets: subnets}, nil
 }
 
 // GetSubnet gets a specific subnet
 func (s *NetworkService) GetSubnet(ctx context.Context, credential *domain.Credential, req dto.GetSubnetRequest) (*dto.SubnetInfo, error) {
-	// Create AWS EC2 client
-	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
+	switch credential.Provider {
+	case "aws":
+		return s.getAWSSubnet(ctx, credential, req)
+	case "gcp":
+		return s.getGCPSubnet(ctx, credential, req)
+	case "azure":
+		return s.getAzureSubnet(ctx, credential, req)
+	case "ncp":
+		return s.getNCPSubnet(ctx, credential, req)
+	default:
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotSupported,
+			fmt.Sprintf(ErrMsgUnsupportedProvider, credential.Provider),
+			400,
+		)
 	}
-
-	// Describe specific subnet
-	input := &ec2.DescribeSubnetsInput{
-		SubnetIds: []string{req.SubnetID},
-	}
-
-	result, err := ec2Client.DescribeSubnets(ctx, input)
-	if err != nil {
-		return nil, fmt.Errorf("failed to describe subnet: %w", err)
-	}
-
-	if len(result.Subnets) == 0 {
-		return nil, fmt.Errorf("subnet not found: %s", req.SubnetID)
-	}
-
-	subnet := result.Subnets[0]
-	subnetInfo := &dto.SubnetInfo{
-		ID:               aws.ToString(subnet.SubnetId),
-		Name:             s.getTagValue(subnet.Tags, "Name"),
-		VPCID:            aws.ToString(subnet.VpcId),
-		CIDRBlock:        aws.ToString(subnet.CidrBlock),
-		AvailabilityZone: aws.ToString(subnet.AvailabilityZone),
-		State:            string(subnet.State),
-		IsPublic:         s.isSubnetPublic(ctx, ec2Client, aws.ToString(subnet.SubnetId)),
-		Region:           req.Region,
-		Tags:             s.convertTags(subnet.Tags),
-	}
-
-	return subnetInfo, nil
 }
 
 // CreateSubnet creates a new subnet
 func (s *NetworkService) CreateSubnet(ctx context.Context, credential *domain.Credential, req dto.CreateSubnetRequest) (*dto.SubnetInfo, error) {
-	// Create AWS EC2 client
-	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
+	switch credential.Provider {
+	case "aws":
+		return s.createAWSSubnet(ctx, credential, req)
+	case "gcp":
+		return s.createGCPSubnet(ctx, credential, req)
+	case "azure":
+		return s.createAzureSubnet(ctx, credential, req)
+	case "ncp":
+		return s.createNCPSubnet(ctx, credential, req)
+	default:
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotSupported,
+			fmt.Sprintf(ErrMsgUnsupportedProvider, credential.Provider),
+			400,
+		)
 	}
-
-	// Create subnet
-	input := &ec2.CreateSubnetInput{
-		VpcId:            aws.String(req.VPCID),
-		CidrBlock:        aws.String(req.CIDRBlock),
-		AvailabilityZone: aws.String(req.AvailabilityZone),
-		TagSpecifications: []ec2Types.TagSpecification{
-			{
-				ResourceType: ec2Types.ResourceTypeSubnet,
-				Tags: []ec2Types.Tag{
-					{Key: aws.String("Name"), Value: aws.String(req.Name)},
-				},
-			},
-		},
-	}
-
-	// Add custom tags
-	for key, value := range req.Tags {
-		input.TagSpecifications[0].Tags = append(input.TagSpecifications[0].Tags, ec2Types.Tag{
-			Key:   aws.String(key),
-			Value: aws.String(value),
-		})
-	}
-
-	result, err := ec2Client.CreateSubnet(ctx, input)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create subnet: %w", err)
-	}
-
-	subnetInfo := &dto.SubnetInfo{
-		ID:               aws.ToString(result.Subnet.SubnetId),
-		Name:             req.Name,
-		VPCID:            aws.ToString(result.Subnet.VpcId),
-		CIDRBlock:        aws.ToString(result.Subnet.CidrBlock),
-		AvailabilityZone: aws.ToString(result.Subnet.AvailabilityZone),
-		State:            string(result.Subnet.State),
-		IsPublic:         false, // Will be determined later
-		Region:           req.Region,
-		Tags:             req.Tags,
-	}
-
-	return subnetInfo, nil
 }
 
 // UpdateSubnet updates a subnet
 func (s *NetworkService) UpdateSubnet(ctx context.Context, credential *domain.Credential, req dto.UpdateSubnetRequest, subnetID, region string) (*dto.SubnetInfo, error) {
-	// Create AWS EC2 client
-	ec2Client, err := s.createEC2Client(ctx, credential, region)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
+	switch credential.Provider {
+	case "aws":
+		return s.updateAWSSubnet(ctx, credential, req, subnetID, region)
+	case "gcp":
+		return s.updateGCPSubnet(ctx, credential, req, subnetID, region)
+	case "azure":
+		return s.updateAzureSubnet(ctx, credential, req, subnetID, region)
+	case "ncp":
+		return s.updateNCPSubnet(ctx, credential, req, subnetID, region)
+	default:
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotSupported,
+			fmt.Sprintf(ErrMsgUnsupportedProvider, credential.Provider),
+			400,
+		)
 	}
-
-	// Update subnet tags if provided
-	if req.Name != "" || len(req.Tags) > 0 {
-		tags := []ec2Types.Tag{}
-
-		if req.Name != "" {
-			tags = append(tags, ec2Types.Tag{
-				Key:   aws.String("Name"),
-				Value: aws.String(req.Name),
-			})
-		}
-
-		for key, value := range req.Tags {
-			tags = append(tags, ec2Types.Tag{
-				Key:   aws.String(key),
-				Value: aws.String(value),
-			})
-		}
-
-		_, err = ec2Client.CreateTags(ctx, &ec2.CreateTagsInput{
-			Resources: []string{subnetID},
-			Tags:      tags,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to update subnet tags: %w", err)
-		}
-	}
-
-	// Get updated subnet info
-	getReq := dto.GetSubnetRequest{
-		CredentialID: credential.ID.String(),
-		SubnetID:     subnetID,
-		Region:       region,
-	}
-	return s.GetSubnet(ctx, credential, getReq)
 }
 
 // DeleteSubnet deletes a subnet
 func (s *NetworkService) DeleteSubnet(ctx context.Context, credential *domain.Credential, req dto.DeleteSubnetRequest) error {
-	// Create AWS EC2 client
-	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
-	if err != nil {
-		return fmt.Errorf("failed to create EC2 client: %w", err)
+	switch credential.Provider {
+	case "aws":
+		return s.deleteAWSSubnet(ctx, credential, req)
+	case "gcp":
+		return s.deleteGCPSubnet(ctx, credential, req)
+	case "azure":
+		return s.deleteAzureSubnet(ctx, credential, req)
+	case "ncp":
+		return s.deleteNCPSubnet(ctx, credential, req)
+	default:
+		return domain.NewDomainError(
+			domain.ErrCodeNotSupported,
+			fmt.Sprintf(ErrMsgUnsupportedProvider, credential.Provider),
+			400,
+		)
 	}
-
-	// Delete subnet
-	_, err = ec2Client.DeleteSubnet(ctx, &ec2.DeleteSubnetInput{
-		SubnetId: aws.String(req.SubnetID),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to delete subnet: %w", err)
-	}
-
-	return nil
 }
 
 // ListSecurityGroups lists security groups for a given credential and region
 func (s *NetworkService) ListSecurityGroups(ctx context.Context, credential *domain.Credential, req dto.ListSecurityGroupsRequest) (*dto.ListSecurityGroupsResponse, error) {
+	switch credential.Provider {
+	case "aws":
+		return s.listAWSSecurityGroups(ctx, credential, req)
+	case "gcp":
+		return s.listGCPSecurityGroups(ctx, credential, req)
+	case "azure":
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotImplemented,
+			fmt.Sprintf(ErrMsgProviderNotImplemented, ProviderAzure),
+			501,
+		)
+	case "ncp":
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotImplemented,
+			fmt.Sprintf(ErrMsgProviderNotImplemented, ProviderNCP),
+			501,
+		)
+	default:
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotSupported,
+			fmt.Sprintf(ErrMsgUnsupportedProvider, credential.Provider),
+			400,
+		)
+	}
+}
+
+// listAWSSecurityGroups lists AWS security groups
+func (s *NetworkService) listAWSSecurityGroups(ctx context.Context, credential *domain.Credential, req dto.ListSecurityGroupsRequest) (*dto.ListSecurityGroupsResponse, error) {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
 	if err != nil {
@@ -449,8 +970,178 @@ func (s *NetworkService) ListSecurityGroups(ctx context.Context, credential *dom
 	return &dto.ListSecurityGroupsResponse{SecurityGroups: securityGroups}, nil
 }
 
+// listGCPSecurityGroups lists GCP firewall rules (security groups)
+func (s *NetworkService) listGCPSecurityGroups(ctx context.Context, credential *domain.Credential, req dto.ListSecurityGroupsRequest) (*dto.ListSecurityGroupsResponse, error) {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Convert to JSON for GCP SDK
+	jsonData, err := json.Marshal(credData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal credential data: %w", err)
+	}
+
+	// Create GCP Compute service
+	computeService, err := compute.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP compute service: %w", err)
+	}
+
+	// Get project ID from credential
+	projectID, ok := credData["project_id"].(string)
+	if !ok {
+		return nil, domain.NewDomainError(
+			domain.ErrCodeValidationFailed,
+			ErrMsgProjectIDNotFound,
+			400,
+		)
+	}
+
+	// List firewall rules
+	firewalls, err := computeService.Firewalls.List(projectID).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list GCP firewall rules: %w", err)
+	}
+
+	// Convert to DTOs
+	securityGroups := make([]dto.SecurityGroupInfo, 0, len(firewalls.Items))
+	for _, firewall := range firewalls.Items {
+		// Filter by VPC if specified
+		if req.VPCID != "" {
+			networkName := s.extractNetworkNameFromVPCID(req.VPCID)
+			if firewall.Network != "" {
+				firewallNetworkURL := firewall.Network
+				if strings.Contains(firewallNetworkURL, "/networks/") {
+					parts := strings.Split(firewallNetworkURL, "/networks/")
+					if len(parts) == 2 {
+						firewallNetworkName := parts[1]
+						if firewallNetworkName != networkName {
+							continue
+						}
+					}
+				}
+			}
+		}
+
+		// Convert GCP firewall rule to SecurityGroupInfo
+		sgInfo := dto.SecurityGroupInfo{
+			ID:          firewall.Name,
+			Name:        firewall.Name,
+			Description: firewall.Description,
+			VPCID:       s.extractCleanVPCID(firewall.Network),
+			Region:      req.Region,
+			Rules:       s.convertGCPFirewallRules(firewall),
+			Tags:        make(map[string]string),
+		}
+
+		// Add GCP-specific fields to tags
+		if firewall.Priority != 0 {
+			sgInfo.Tags["priority"] = fmt.Sprintf("%d", firewall.Priority)
+		}
+		if firewall.Direction != "" {
+			sgInfo.Tags["direction"] = firewall.Direction
+		}
+		// GCP firewall doesn't have Action field, it's determined by Allowed/Denied
+
+		securityGroups = append(securityGroups, sgInfo)
+	}
+
+	s.logger.Info("GCP firewall rules listed successfully",
+		zap.String("project_id", projectID),
+		zap.Int("count", len(securityGroups)))
+
+	return &dto.ListSecurityGroupsResponse{SecurityGroups: securityGroups}, nil
+}
+
+// convertGCPFirewallRules converts GCP firewall rules to SecurityGroupRuleInfo format
+func (s *NetworkService) convertGCPFirewallRules(firewall *compute.Firewall) []dto.SecurityGroupRuleInfo {
+	var rules []dto.SecurityGroupRuleInfo
+
+	// Convert allowed rules
+	for _, allowed := range firewall.Allowed {
+		for _, portRange := range allowed.Ports {
+			rule := dto.SecurityGroupRuleInfo{
+				Type:        "ingress",
+				Protocol:    allowed.IPProtocol,
+				FromPort:    int32(s.parsePort(portRange)),
+				ToPort:      int32(s.parsePort(portRange)),
+				CIDRBlocks:  firewall.SourceRanges,
+				Description: firewall.Description,
+			}
+			rules = append(rules, rule)
+		}
+	}
+
+	// Convert denied rules
+	for _, denied := range firewall.Denied {
+		for _, portRange := range denied.Ports {
+			rule := dto.SecurityGroupRuleInfo{
+				Type:        "egress",
+				Protocol:    denied.IPProtocol,
+				FromPort:    int32(s.parsePort(portRange)),
+				ToPort:      int32(s.parsePort(portRange)),
+				CIDRBlocks:  firewall.DestinationRanges,
+				Description: firewall.Description,
+			}
+			rules = append(rules, rule)
+		}
+	}
+
+	return rules
+}
+
+// parsePort parses port range string to int
+func (s *NetworkService) parsePort(portRange string) int {
+	if portRange == "" {
+		return 0
+	}
+	if strings.Contains(portRange, "-") {
+		parts := strings.Split(portRange, "-")
+		if len(parts) == 2 {
+			if port, err := strconv.Atoi(parts[0]); err == nil {
+				return port
+			}
+		}
+	}
+	if port, err := strconv.Atoi(portRange); err == nil {
+		return port
+	}
+	return 0
+}
+
 // GetSecurityGroup gets a specific security group
 func (s *NetworkService) GetSecurityGroup(ctx context.Context, credential *domain.Credential, req dto.GetSecurityGroupRequest) (*dto.SecurityGroupInfo, error) {
+	switch credential.Provider {
+	case "aws":
+		return s.getAWSSecurityGroup(ctx, credential, req)
+	case "gcp":
+		return s.getGCPSecurityGroup(ctx, credential, req)
+	case "azure":
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotImplemented,
+			fmt.Sprintf(ErrMsgProviderNotImplemented, ProviderAzure),
+			501,
+		)
+	case "ncp":
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotImplemented,
+			fmt.Sprintf(ErrMsgProviderNotImplemented, ProviderNCP),
+			501,
+		)
+	default:
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotSupported,
+			fmt.Sprintf(ErrMsgUnsupportedProvider, credential.Provider),
+			400,
+		)
+	}
+}
+
+// getAWSSecurityGroup gets an AWS security group
+func (s *NetworkService) getAWSSecurityGroup(ctx context.Context, credential *domain.Credential, req dto.GetSecurityGroupRequest) (*dto.SecurityGroupInfo, error) {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
 	if err != nil {
@@ -485,8 +1176,94 @@ func (s *NetworkService) GetSecurityGroup(ctx context.Context, credential *domai
 	return sgInfo, nil
 }
 
+// getGCPSecurityGroup gets a GCP firewall rule (security group)
+func (s *NetworkService) getGCPSecurityGroup(ctx context.Context, credential *domain.Credential, req dto.GetSecurityGroupRequest) (*dto.SecurityGroupInfo, error) {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Convert to JSON for GCP SDK
+	jsonData, err := json.Marshal(credData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal credential data: %w", err)
+	}
+
+	// Create GCP Compute service
+	computeService, err := compute.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP compute service: %w", err)
+	}
+
+	// Get project ID from credential
+	projectID, ok := credData["project_id"].(string)
+	if !ok {
+		return nil, domain.NewDomainError(
+			domain.ErrCodeValidationFailed,
+			ErrMsgProjectIDNotFound,
+			400,
+		)
+	}
+
+	// Get firewall rule
+	firewall, err := computeService.Firewalls.Get(projectID, req.SecurityGroupID).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GCP firewall rule: %w", err)
+	}
+
+	// Convert to SecurityGroupInfo
+	sgInfo := &dto.SecurityGroupInfo{
+		ID:          firewall.Name,
+		Name:        firewall.Name,
+		Description: firewall.Description,
+		VPCID:       s.extractCleanVPCID(firewall.Network),
+		Region:      req.Region,
+		Rules:       s.convertGCPFirewallRules(firewall),
+		Tags:        make(map[string]string),
+	}
+
+	// Add GCP-specific fields to tags
+	if firewall.Priority != 0 {
+		sgInfo.Tags["priority"] = fmt.Sprintf("%d", firewall.Priority)
+	}
+	if firewall.Direction != "" {
+		sgInfo.Tags["direction"] = firewall.Direction
+	}
+
+	return sgInfo, nil
+}
+
 // CreateSecurityGroup creates a new security group
 func (s *NetworkService) CreateSecurityGroup(ctx context.Context, credential *domain.Credential, req dto.CreateSecurityGroupRequest) (*dto.SecurityGroupInfo, error) {
+	switch credential.Provider {
+	case "aws":
+		return s.createAWSSecurityGroup(ctx, credential, req)
+	case "gcp":
+		return s.createGCPSecurityGroup(ctx, credential, req)
+	case "azure":
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotImplemented,
+			fmt.Sprintf(ErrMsgProviderNotImplemented, ProviderAzure),
+			501,
+		)
+	case "ncp":
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotImplemented,
+			fmt.Sprintf(ErrMsgProviderNotImplemented, ProviderNCP),
+			501,
+		)
+	default:
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotSupported,
+			fmt.Sprintf(ErrMsgUnsupportedProvider, credential.Provider),
+			400,
+		)
+	}
+}
+
+// createAWSSecurityGroup creates an AWS security group
+func (s *NetworkService) createAWSSecurityGroup(ctx context.Context, credential *domain.Credential, req dto.CreateSecurityGroupRequest) (*dto.SecurityGroupInfo, error) {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
 	if err != nil {
@@ -534,8 +1311,82 @@ func (s *NetworkService) CreateSecurityGroup(ctx context.Context, credential *do
 	return sgInfo, nil
 }
 
+// createGCPSecurityGroup creates a GCP firewall rule (security group)
+func (s *NetworkService) createGCPSecurityGroup(ctx context.Context, credential *domain.Credential, req dto.CreateSecurityGroupRequest) (*dto.SecurityGroupInfo, error) {
+	computeService, projectID, err := s.setupGCPComputeService(ctx, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	firewall := s.buildGCPFirewall(req)
+
+	operation, err := computeService.Firewalls.Insert(projectID, firewall).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP firewall rule: %w", err)
+	}
+
+	if err := s.waitForGCPOperation(ctx, computeService, projectID, operation.Name, "firewall creation"); err != nil {
+		return nil, err
+	}
+
+	sgInfo := s.buildSecurityGroupInfo(req, projectID)
+
+	s.logger.Info("GCP firewall rule created successfully",
+		zap.String("firewall_name", req.Name),
+		zap.String("project_id", projectID))
+
+	return sgInfo, nil
+}
+
+// convertGCPFirewallRulesFromRequest converts request parameters to SecurityGroupRuleInfo
+func (s *NetworkService) convertGCPFirewallRulesFromRequest(req dto.CreateSecurityGroupRequest) []dto.SecurityGroupRuleInfo {
+	var rules []dto.SecurityGroupRuleInfo
+
+	for _, port := range req.Ports {
+		rule := dto.SecurityGroupRuleInfo{
+			Type:        strings.ToLower(req.Direction),
+			Protocol:    req.Protocol,
+			FromPort:    int32(s.parsePort(port)),
+			ToPort:      int32(s.parsePort(port)),
+			CIDRBlocks:  req.SourceRanges,
+			Description: req.Description,
+		}
+		rules = append(rules, rule)
+	}
+
+	return rules
+}
+
 // UpdateSecurityGroup updates a security group
 func (s *NetworkService) UpdateSecurityGroup(ctx context.Context, credential *domain.Credential, req dto.UpdateSecurityGroupRequest, securityGroupID, region string) (*dto.SecurityGroupInfo, error) {
+	switch credential.Provider {
+	case "aws":
+		return s.updateAWSSecurityGroup(ctx, credential, req, securityGroupID, region)
+	case "gcp":
+		return s.updateGCPSecurityGroup(ctx, credential, req, securityGroupID, region)
+	case "azure":
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotImplemented,
+			fmt.Sprintf(ErrMsgProviderNotImplemented, ProviderAzure),
+			501,
+		)
+	case "ncp":
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotImplemented,
+			fmt.Sprintf(ErrMsgProviderNotImplemented, ProviderNCP),
+			501,
+		)
+	default:
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotSupported,
+			fmt.Sprintf(ErrMsgUnsupportedProvider, credential.Provider),
+			400,
+		)
+	}
+}
+
+// updateAWSSecurityGroup updates an AWS security group
+func (s *NetworkService) updateAWSSecurityGroup(ctx context.Context, credential *domain.Credential, req dto.UpdateSecurityGroupRequest, securityGroupID, region string) (*dto.SecurityGroupInfo, error) {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, region)
 	if err != nil {
@@ -578,8 +1429,110 @@ func (s *NetworkService) UpdateSecurityGroup(ctx context.Context, credential *do
 	return s.GetSecurityGroup(ctx, credential, getReq)
 }
 
+// updateGCPSecurityGroup updates a GCP firewall rule (security group)
+func (s *NetworkService) updateGCPSecurityGroup(ctx context.Context, credential *domain.Credential, req dto.UpdateSecurityGroupRequest, firewallName, region string) (*dto.SecurityGroupInfo, error) {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Convert to JSON for GCP SDK
+	jsonData, err := json.Marshal(credData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal credential data: %w", err)
+	}
+
+	// Create GCP Compute service
+	computeService, err := compute.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP compute service: %w", err)
+	}
+
+	// Get project ID from credential
+	projectID, ok := credData["project_id"].(string)
+	if !ok {
+		return nil, domain.NewDomainError(
+			domain.ErrCodeValidationFailed,
+			ErrMsgProjectIDNotFound,
+			400,
+		)
+	}
+
+	// Get current firewall rule
+	currentFirewall, err := computeService.Firewalls.Get(projectID, firewallName).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current firewall rule: %w", err)
+	}
+
+	// Update firewall rule fields
+	updatedFirewall := &compute.Firewall{
+		Name:         currentFirewall.Name,
+		Description:  currentFirewall.Description,
+		Network:      currentFirewall.Network,
+		Direction:    currentFirewall.Direction,
+		Priority:     currentFirewall.Priority,
+		Allowed:      currentFirewall.Allowed,
+		Denied:       currentFirewall.Denied,
+		SourceRanges: currentFirewall.SourceRanges,
+		TargetTags:   currentFirewall.TargetTags,
+	}
+
+	// Update description if provided
+	if req.Description != "" {
+		updatedFirewall.Description = req.Description
+	}
+
+	// Update firewall rule
+	operation, err := computeService.Firewalls.Update(projectID, firewallName, updatedFirewall).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to update GCP firewall rule: %w", err)
+	}
+
+	// Wait for operation to complete
+	if err := s.waitForGCPOperation(ctx, computeService, projectID, operation.Name, "firewall update"); err != nil {
+		return nil, err
+	}
+
+	// Get updated firewall rule info
+	getReq := dto.GetSecurityGroupRequest{
+		CredentialID:    credential.ID.String(),
+		SecurityGroupID: firewallName,
+		Region:          region,
+	}
+	return s.GetSecurityGroup(ctx, credential, getReq)
+}
+
 // DeleteSecurityGroup deletes a security group
 func (s *NetworkService) DeleteSecurityGroup(ctx context.Context, credential *domain.Credential, req dto.DeleteSecurityGroupRequest) error {
+	switch credential.Provider {
+	case "aws":
+		return s.deleteAWSSecurityGroup(ctx, credential, req)
+	case "gcp":
+		return s.deleteGCPSecurityGroup(ctx, credential, req)
+	case "azure":
+		return domain.NewDomainError(
+			domain.ErrCodeNotImplemented,
+			fmt.Sprintf(ErrMsgProviderNotImplemented, ProviderAzure),
+			501,
+		)
+	case "ncp":
+		return domain.NewDomainError(
+			domain.ErrCodeNotImplemented,
+			fmt.Sprintf(ErrMsgProviderNotImplemented, ProviderNCP),
+			501,
+		)
+	default:
+		return domain.NewDomainError(
+			domain.ErrCodeNotSupported,
+			fmt.Sprintf(ErrMsgUnsupportedProvider, credential.Provider),
+			400,
+		)
+	}
+}
+
+// deleteAWSSecurityGroup deletes an AWS security group
+func (s *NetworkService) deleteAWSSecurityGroup(ctx context.Context, credential *domain.Credential, req dto.DeleteSecurityGroupRequest) error {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
 	if err != nil {
@@ -597,7 +1550,582 @@ func (s *NetworkService) DeleteSecurityGroup(ctx context.Context, credential *do
 	return nil
 }
 
+// deleteGCPSecurityGroup deletes a GCP firewall rule (security group)
+func (s *NetworkService) deleteGCPSecurityGroup(ctx context.Context, credential *domain.Credential, req dto.DeleteSecurityGroupRequest) error {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Convert to JSON for GCP SDK
+	jsonData, err := json.Marshal(credData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal credential data: %w", err)
+	}
+
+	// Create GCP Compute service
+	computeService, err := compute.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create GCP compute service: %w", err)
+	}
+
+	// Get project ID from credential
+	projectID, ok := credData["project_id"].(string)
+	if !ok {
+		return domain.NewDomainError(
+			domain.ErrCodeValidationFailed,
+			ErrMsgProjectIDNotFound,
+			400,
+		)
+	}
+
+	// Delete firewall rule
+	operation, err := computeService.Firewalls.Delete(projectID, req.SecurityGroupID).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to delete GCP firewall rule: %w", err)
+	}
+
+	// Wait for operation to complete
+	if err := s.waitForGCPOperation(ctx, computeService, projectID, operation.Name, "firewall deletion"); err != nil {
+		return err
+	}
+
+	s.logger.Info("GCP firewall rule deleted successfully",
+		zap.String("firewall_name", req.SecurityGroupID),
+		zap.String("project_id", projectID))
+
+	return nil
+}
+
+// RemoveFirewallRule removes a specific firewall rule from a GCP firewall (security group)
+func (s *NetworkService) RemoveFirewallRule(ctx context.Context, credential *domain.Credential, req dto.RemoveFirewallRuleRequest) (*dto.SecurityGroupInfo, error) {
+	switch credential.Provider {
+	case "aws":
+		return nil, fmt.Errorf("AWS does not support individual rule removal - use RemoveSecurityGroupRule instead")
+	case "gcp":
+		return s.removeGCPFirewallRule(ctx, credential, req)
+	case "azure":
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotImplemented,
+			fmt.Sprintf(ErrMsgProviderNotImplemented, ProviderAzure),
+			501,
+		)
+	case "ncp":
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotImplemented,
+			fmt.Sprintf(ErrMsgProviderNotImplemented, ProviderNCP),
+			501,
+		)
+	default:
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotSupported,
+			fmt.Sprintf(ErrMsgUnsupportedProvider, credential.Provider),
+			400,
+		)
+	}
+}
+
+// removeGCPFirewallRule removes a specific rule from a GCP firewall
+func (s *NetworkService) removeGCPFirewallRule(ctx context.Context, credential *domain.Credential, req dto.RemoveFirewallRuleRequest) (*dto.SecurityGroupInfo, error) {
+	computeService, projectID, err := s.setupGCPComputeService(ctx, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	currentFirewall, err := computeService.Firewalls.Get(projectID, req.SecurityGroupID).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current firewall rule: %w", err)
+	}
+
+	updatedFirewall := s.cloneFirewall(currentFirewall)
+	updatedFirewall.Allowed = s.removePortsFromAllowed(currentFirewall.Allowed, req.Protocol, req.Ports)
+	updatedFirewall.Denied = s.removePortsFromDenied(currentFirewall.Denied, req.Protocol, req.Ports)
+
+	operation, err := computeService.Firewalls.Update(projectID, req.SecurityGroupID, updatedFirewall).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to update GCP firewall rule: %w", err)
+	}
+
+	if err := s.waitForGCPOperation(ctx, computeService, projectID, operation.Name, "firewall rule removal"); err != nil {
+		return nil, err
+	}
+
+	getReq := dto.GetSecurityGroupRequest{
+		CredentialID:    req.CredentialID,
+		SecurityGroupID: req.SecurityGroupID,
+		Region:          req.Region,
+	}
+	return s.GetSecurityGroup(ctx, credential, getReq)
+}
+
+// AddFirewallRule adds a specific firewall rule to a GCP firewall (security group)
+func (s *NetworkService) AddFirewallRule(ctx context.Context, credential *domain.Credential, req dto.AddFirewallRuleRequest) (*dto.SecurityGroupInfo, error) {
+	switch credential.Provider {
+	case "aws":
+		return nil, fmt.Errorf("AWS does not support individual rule addition - use AddSecurityGroupRule instead")
+	case "gcp":
+		return s.addGCPFirewallRule(ctx, credential, req)
+	case "azure":
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotImplemented,
+			fmt.Sprintf(ErrMsgProviderNotImplemented, ProviderAzure),
+			501,
+		)
+	case "ncp":
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotImplemented,
+			fmt.Sprintf(ErrMsgProviderNotImplemented, ProviderNCP),
+			501,
+		)
+	default:
+		return nil, domain.NewDomainError(
+			domain.ErrCodeNotSupported,
+			fmt.Sprintf(ErrMsgUnsupportedProvider, credential.Provider),
+			400,
+		)
+	}
+}
+
+// addGCPFirewallRule adds a specific rule to a GCP firewall
+func (s *NetworkService) addGCPFirewallRule(ctx context.Context, credential *domain.Credential, req dto.AddFirewallRuleRequest) (*dto.SecurityGroupInfo, error) {
+	computeService, projectID, err := s.setupGCPComputeService(ctx, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	currentFirewall, err := computeService.Firewalls.Get(projectID, req.SecurityGroupID).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current firewall rule: %w", err)
+	}
+
+	updatedFirewall := s.cloneFirewall(currentFirewall)
+	updatedFirewall.Allowed = s.addPortsToAllowed(currentFirewall.Allowed, req.Protocol, req.Ports, req.Action)
+	updatedFirewall.Denied = s.addPortsToDenied(currentFirewall.Denied, req.Protocol, req.Ports, req.Action)
+
+	operation, err := computeService.Firewalls.Update(projectID, req.SecurityGroupID, updatedFirewall).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to update GCP firewall rule: %w", err)
+	}
+
+	if err := s.waitForGCPOperation(ctx, computeService, projectID, operation.Name, "firewall rule addition"); err != nil {
+		return nil, err
+	}
+
+	getReq := dto.GetSecurityGroupRequest{
+		CredentialID:    req.CredentialID,
+		SecurityGroupID: req.SecurityGroupID,
+		Region:          req.Region,
+	}
+	return s.GetSecurityGroup(ctx, credential, getReq)
+}
+
 // Helper methods
+
+// setupGCPComputeService creates a GCP Compute service and extracts project ID
+func (s *NetworkService) setupGCPComputeService(ctx context.Context, credential *domain.Credential) (*compute.Service, string, error) {
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	jsonData, err := json.Marshal(credData)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to marshal credential data: %w", err)
+	}
+
+	computeService, err := compute.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create GCP compute service: %w", err)
+	}
+
+	projectID, ok := credData["project_id"].(string)
+	if !ok {
+		return nil, "", domain.NewDomainError(
+			domain.ErrCodeValidationFailed,
+			ErrMsgProjectIDNotFound,
+			400,
+		)
+	}
+
+	return computeService, projectID, nil
+}
+
+// buildGCPFirewall builds a GCP Firewall object from request
+func (s *NetworkService) buildGCPFirewall(req dto.CreateSecurityGroupRequest) *compute.Firewall {
+	firewall := &compute.Firewall{
+		Name:        req.Name,
+		Description: req.Description,
+		Network:     req.VPCID,
+		Direction:   req.Direction,
+		Priority:    req.Priority,
+	}
+
+	if req.Action == ActionAllow {
+		firewall.Allowed = s.buildAllowedRules(req)
+		firewall.SourceRanges = req.SourceRanges
+	} else if req.Action == ActionDeny {
+		firewall.Denied = s.buildDeniedRules(req)
+		firewall.SourceRanges = req.SourceRanges
+	}
+
+	if len(req.TargetTags) > 0 {
+		firewall.TargetTags = req.TargetTags
+	}
+
+	return firewall
+}
+
+// buildAllowedRules builds allowed rules for GCP firewall
+func (s *NetworkService) buildAllowedRules(req dto.CreateSecurityGroupRequest) []*compute.FirewallAllowed {
+	if len(req.Allowed) > 0 {
+		var allowedRules []*compute.FirewallAllowed
+		for _, allowed := range req.Allowed {
+			allowedRule := &compute.FirewallAllowed{
+				IPProtocol: allowed.Protocol,
+			}
+			if len(allowed.Ports) > 0 && allowed.Protocol != ProtocolICMP {
+				allowedRule.Ports = allowed.Ports
+			}
+			allowedRules = append(allowedRules, allowedRule)
+		}
+		return allowedRules
+	}
+
+	// Fallback to old method for backward compatibility
+	if req.Protocol != "" && len(req.Ports) > 0 {
+		var allowedRules []*compute.FirewallAllowed
+		for _, port := range req.Ports {
+			allowedRule := &compute.FirewallAllowed{
+				IPProtocol: req.Protocol,
+				Ports:      []string{port},
+			}
+			allowedRules = append(allowedRules, allowedRule)
+		}
+		return allowedRules
+	}
+
+	return nil
+}
+
+// buildDeniedRules builds denied rules for GCP firewall
+func (s *NetworkService) buildDeniedRules(req dto.CreateSecurityGroupRequest) []*compute.FirewallDenied {
+	if len(req.Denied) > 0 {
+		var deniedRules []*compute.FirewallDenied
+		for _, denied := range req.Denied {
+			deniedRule := &compute.FirewallDenied{
+				IPProtocol: denied.Protocol,
+			}
+			if len(denied.Ports) > 0 && denied.Protocol != ProtocolICMP {
+				deniedRule.Ports = denied.Ports
+			}
+			deniedRules = append(deniedRules, deniedRule)
+		}
+		return deniedRules
+	}
+
+	// Fallback to old method for backward compatibility
+	if req.Protocol != "" && len(req.Ports) > 0 {
+		var deniedRules []*compute.FirewallDenied
+		for _, port := range req.Ports {
+			deniedRule := &compute.FirewallDenied{
+				IPProtocol: req.Protocol,
+				Ports:      []string{port},
+			}
+			deniedRules = append(deniedRules, deniedRule)
+		}
+		return deniedRules
+	}
+
+	return nil
+}
+
+// buildSecurityGroupInfo builds SecurityGroupInfo from request
+func (s *NetworkService) buildSecurityGroupInfo(req dto.CreateSecurityGroupRequest, projectID string) *dto.SecurityGroupInfo {
+	sgInfo := &dto.SecurityGroupInfo{
+		ID:          req.Name,
+		Name:        req.Name,
+		Description: req.Description,
+		VPCID:       req.VPCID,
+		Region:      req.Region,
+		Rules:       s.convertGCPFirewallRulesFromRequest(req),
+		Tags:        req.Tags,
+	}
+
+	if sgInfo.Tags == nil {
+		sgInfo.Tags = make(map[string]string)
+	}
+
+	sgInfo.Tags["direction"] = req.Direction
+	sgInfo.Tags["priority"] = fmt.Sprintf("%d", req.Priority)
+	sgInfo.Tags["action"] = req.Action
+
+	return sgInfo
+}
+
+// cloneFirewall creates a copy of a firewall for updates
+func (s *NetworkService) cloneFirewall(firewall *compute.Firewall) *compute.Firewall {
+	return &compute.Firewall{
+		Name:         firewall.Name,
+		Description:  firewall.Description,
+		Network:      firewall.Network,
+		Direction:    firewall.Direction,
+		Priority:     firewall.Priority,
+		SourceRanges: firewall.SourceRanges,
+		TargetTags:   firewall.TargetTags,
+	}
+}
+
+// removePortsFromAllowed removes specified ports from allowed rules
+func (s *NetworkService) removePortsFromAllowed(allowed []*compute.FirewallAllowed, protocol string, portsToRemove []string) []*compute.FirewallAllowed {
+	if len(allowed) == 0 {
+		return allowed
+	}
+
+	var updatedAllowed []*compute.FirewallAllowed
+	for _, rule := range allowed {
+		if rule.IPProtocol == protocol {
+			remainingPorts := s.filterPorts(rule.Ports, portsToRemove)
+			if len(remainingPorts) > 0 {
+				updatedAllowed = append(updatedAllowed, &compute.FirewallAllowed{
+					IPProtocol: rule.IPProtocol,
+					Ports:      remainingPorts,
+				})
+			}
+		} else {
+			updatedAllowed = append(updatedAllowed, rule)
+		}
+	}
+	return updatedAllowed
+}
+
+// removePortsFromDenied removes specified ports from denied rules
+func (s *NetworkService) removePortsFromDenied(denied []*compute.FirewallDenied, protocol string, portsToRemove []string) []*compute.FirewallDenied {
+	if len(denied) == 0 {
+		return denied
+	}
+
+	var updatedDenied []*compute.FirewallDenied
+	for _, rule := range denied {
+		if rule.IPProtocol == protocol {
+			remainingPorts := s.filterPorts(rule.Ports, portsToRemove)
+			if len(remainingPorts) > 0 {
+				updatedDenied = append(updatedDenied, &compute.FirewallDenied{
+					IPProtocol: rule.IPProtocol,
+					Ports:      remainingPorts,
+				})
+			}
+		} else {
+			updatedDenied = append(updatedDenied, rule)
+		}
+	}
+	return updatedDenied
+}
+
+// addPortsToAllowed adds specified ports to allowed rules
+func (s *NetworkService) addPortsToAllowed(allowed []*compute.FirewallAllowed, protocol string, portsToAdd []string, action string) []*compute.FirewallAllowed {
+	if action == ActionDeny {
+		return allowed
+	}
+
+	if len(allowed) == 0 {
+		return []*compute.FirewallAllowed{
+			{
+				IPProtocol: protocol,
+				Ports:      portsToAdd,
+			},
+		}
+	}
+
+	var updatedAllowed []*compute.FirewallAllowed
+	foundProtocol := false
+
+	for _, rule := range allowed {
+		if rule.IPProtocol == protocol {
+			mergedPorts := s.mergePorts(rule.Ports, portsToAdd)
+			updatedAllowed = append(updatedAllowed, &compute.FirewallAllowed{
+				IPProtocol: rule.IPProtocol,
+				Ports:      mergedPorts,
+			})
+			foundProtocol = true
+		} else {
+			updatedAllowed = append(updatedAllowed, rule)
+		}
+	}
+
+	if !foundProtocol {
+		updatedAllowed = append(updatedAllowed, &compute.FirewallAllowed{
+			IPProtocol: protocol,
+			Ports:      portsToAdd,
+		})
+	}
+
+	return updatedAllowed
+}
+
+// addPortsToDenied adds specified ports to denied rules
+func (s *NetworkService) addPortsToDenied(denied []*compute.FirewallDenied, protocol string, portsToAdd []string, action string) []*compute.FirewallDenied {
+	if action != ActionDeny {
+		return denied
+	}
+
+	if len(denied) == 0 {
+		return []*compute.FirewallDenied{
+			{
+				IPProtocol: protocol,
+				Ports:      portsToAdd,
+			},
+		}
+	}
+
+	var updatedDenied []*compute.FirewallDenied
+	foundProtocol := false
+
+	for _, rule := range denied {
+		if rule.IPProtocol == protocol {
+			mergedPorts := s.mergePorts(rule.Ports, portsToAdd)
+			updatedDenied = append(updatedDenied, &compute.FirewallDenied{
+				IPProtocol: rule.IPProtocol,
+				Ports:      mergedPorts,
+			})
+			foundProtocol = true
+		} else {
+			updatedDenied = append(updatedDenied, rule)
+		}
+	}
+
+	if !foundProtocol {
+		updatedDenied = append(updatedDenied, &compute.FirewallDenied{
+			IPProtocol: protocol,
+			Ports:      portsToAdd,
+		})
+	}
+
+	return updatedDenied
+}
+
+// filterPorts removes specified ports from a port list
+func (s *NetworkService) filterPorts(ports []string, portsToRemove []string) []string {
+	removeSet := make(map[string]bool)
+	for _, port := range portsToRemove {
+		removeSet[port] = true
+	}
+
+	var remaining []string
+	for _, port := range ports {
+		if !removeSet[port] {
+			remaining = append(remaining, port)
+		}
+	}
+	return remaining
+}
+
+// mergePorts merges two port lists, avoiding duplicates
+func (s *NetworkService) mergePorts(existingPorts, newPorts []string) []string {
+	portSet := make(map[string]bool)
+	for _, port := range existingPorts {
+		portSet[port] = true
+	}
+
+	var merged []string
+	merged = append(merged, existingPorts...)
+
+	for _, port := range newPorts {
+		if !portSet[port] {
+			merged = append(merged, port)
+		}
+	}
+	return merged
+}
+
+// waitForGCPOperation waits for a GCP operation to complete
+func (s *NetworkService) waitForGCPOperation(ctx context.Context, computeService *compute.Service, projectID, operationName, operationType string) error {
+	if operationName == "" {
+		return nil
+	}
+
+	ticker := time.NewTicker(OperationPollInterval)
+	defer ticker.Stop()
+
+	timeout := time.After(OperationTimeout)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timeout:
+			return domain.NewDomainError(
+				domain.ErrCodeTimeout,
+				fmt.Sprintf("GCP %s operation timed out after %v", operationType, OperationTimeout),
+				408,
+			)
+		case <-ticker.C:
+			op, err := computeService.GlobalOperations.Get(projectID, operationName).Context(ctx).Do()
+			if err != nil {
+				return domain.NewDomainError(
+					domain.ErrCodeInternalError,
+					fmt.Sprintf("failed to check operation status: %v", err),
+					500,
+				)
+			}
+
+			if op.Status == OperationStatusDone {
+				if op.Error != nil {
+					return domain.NewDomainError(
+						domain.ErrCodeInternalError,
+						fmt.Sprintf("GCP %s operation failed: %v", operationType, op.Error),
+						500,
+					)
+				}
+				return nil
+			}
+		}
+	}
+}
+
+// createGCPComputeClient creates a GCP Compute client
+func (s *NetworkService) createGCPComputeClient(ctx context.Context, credential *domain.Credential) (*compute.Service, error) {
+	// Decrypt credential
+	decryptedData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Create GCP service account key from decrypted data
+	serviceAccountKey := map[string]interface{}{
+		"type":                        decryptedData["type"],
+		"project_id":                  decryptedData["project_id"],
+		"private_key_id":              decryptedData["private_key_id"],
+		"private_key":                 decryptedData["private_key"],
+		"client_email":                decryptedData["client_email"],
+		"client_id":                   decryptedData["client_id"],
+		"auth_uri":                    decryptedData["auth_uri"],
+		"token_uri":                   decryptedData["token_uri"],
+		"auth_provider_x509_cert_url": decryptedData["auth_provider_x509_cert_url"],
+		"client_x509_cert_url":        decryptedData["client_x509_cert_url"],
+		"universe_domain":             decryptedData["universe_domain"],
+	}
+
+	// Convert to JSON
+	keyBytes, err := json.Marshal(serviceAccountKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal service account key: %w", err)
+	}
+
+	// Create credentials from service account key
+	creds, err := google.CredentialsFromJSON(ctx, keyBytes, compute.CloudPlatformScope)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create credentials: %w", err)
+	}
+
+	// Create compute service
+	computeService, err := compute.NewService(ctx, option.WithCredentials(creds))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create compute service: %w", err)
+	}
+
+	return computeService, nil
+}
 
 // createEC2Client creates an AWS EC2 client
 func (s *NetworkService) createEC2Client(ctx context.Context, credential *domain.Credential, region string) (*ec2.Client, error) {
@@ -948,4 +2476,769 @@ func (s *NetworkService) UpdateSecurityGroupRules(ctx context.Context, credentia
 
 	// Get updated security group info
 	return s.GetSecurityGroup(ctx, credential, getReq)
+}
+
+// GCP Subnet Functions
+
+// listGCPSubnets lists GCP subnets
+func (s *NetworkService) listGCPSubnets(ctx context.Context, credential *domain.Credential, req dto.ListSubnetsRequest) (*dto.ListSubnetsResponse, error) {
+	// Create GCP Compute client
+	computeService, err := s.createGCPComputeClient(ctx, credential)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP compute client: %w", err)
+	}
+
+	// Decrypt credential to get project ID
+	decryptedData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Get project ID from decrypted data
+	projectID, ok := decryptedData["project_id"].(string)
+	if !ok {
+		return nil, domain.NewDomainError(
+			domain.ErrCodeValidationFailed,
+			ErrMsgProjectIDNotFound,
+			400,
+		)
+	}
+
+	// List subnets
+	subnets, err := computeService.Subnetworks.List(projectID, req.Region).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list GCP subnets: %w", err)
+	}
+
+	// Convert to DTOs
+	subnetInfos := make([]dto.SubnetInfo, 0, len(subnets.Items))
+	for _, subnet := range subnets.Items {
+		// Extract clean format IDs
+		subnetIDClean := s.extractCleanSubnetID(subnet.SelfLink)
+		vpcIDClean := s.extractCleanVPCID(subnet.Network)
+		regionClean := s.extractCleanRegionID(subnet.Region)
+		regionName := s.extractRegionName(subnet.Region)
+
+		subnetInfo := dto.SubnetInfo{
+			ID:                    subnetIDClean, // Clean format: projects/{project}/regions/{region}/subnetworks/{name}
+			Name:                  subnet.Name,
+			VPCID:                 vpcIDClean, // Clean format: projects/{project}/global/networks/{name}
+			CIDRBlock:             subnet.IpCidrRange,
+			AvailabilityZone:      regionClean, // Clean format: projects/{project}/regions/{region}
+			State:                 "READY",     // GCP subnets are always ready when listed
+			IsPublic:              false,       // GCP doesn't have public/private concept like AWS
+			Region:                regionName,  // Region name only (e.g., asia-northeast3)
+			Description:           subnet.Description,
+			GatewayAddress:        subnet.GatewayAddress,
+			PrivateIPGoogleAccess: subnet.PrivateIpGoogleAccess,
+			FlowLogs:              subnet.EnableFlowLogs,
+			CreationTimestamp:     subnet.CreationTimestamp,
+			Tags:                  make(map[string]string), // GCP subnets don't have labels in the same way
+		}
+
+		// Add GCP-specific fields to tags for backward compatibility
+		if subnet.PrivateIpGoogleAccess {
+			subnetInfo.Tags["private_ip_google_access"] = "true"
+		}
+		if subnet.EnableFlowLogs {
+			subnetInfo.Tags["flow_logs"] = "true"
+		}
+
+		subnetInfos = append(subnetInfos, subnetInfo)
+	}
+
+	return &dto.ListSubnetsResponse{Subnets: subnetInfos}, nil
+}
+
+// getGCPSubnet gets a specific GCP subnet
+func (s *NetworkService) getGCPSubnet(ctx context.Context, credential *domain.Credential, req dto.GetSubnetRequest) (*dto.SubnetInfo, error) {
+	// Create GCP Compute client
+	computeService, err := s.createGCPComputeClient(ctx, credential)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP compute client: %w", err)
+	}
+
+	// Decrypt credential to get project ID
+	decryptedData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Get project ID from decrypted data
+	projectID, ok := decryptedData["project_id"].(string)
+	if !ok {
+		return nil, domain.NewDomainError(
+			domain.ErrCodeValidationFailed,
+			ErrMsgProjectIDNotFound,
+			400,
+		)
+	}
+
+	// Extract subnet name from subnet ID
+	subnetName := s.extractSubnetNameFromSubnetID(req.SubnetID)
+	if subnetName == "" {
+		return nil, fmt.Errorf("invalid subnet ID format: %s", req.SubnetID)
+	}
+
+	// Get subnet
+	subnet, err := computeService.Subnetworks.Get(projectID, req.Region, subnetName).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GCP subnet: %w", err)
+	}
+
+	// Extract clean format IDs
+	subnetIDClean := s.extractCleanSubnetID(subnet.SelfLink)
+	vpcIDClean := s.extractCleanVPCID(subnet.Network)
+	regionClean := s.extractCleanRegionID(subnet.Region)
+	regionName := s.extractRegionName(subnet.Region)
+
+	// Convert to DTO
+	subnetInfo := &dto.SubnetInfo{
+		ID:                    subnetIDClean, // Clean format: projects/{project}/regions/{region}/subnetworks/{name}
+		Name:                  subnet.Name,
+		VPCID:                 vpcIDClean, // Clean format: projects/{project}/global/networks/{name}
+		CIDRBlock:             subnet.IpCidrRange,
+		AvailabilityZone:      regionClean, // Clean format: projects/{project}/regions/{region}
+		State:                 "READY",
+		IsPublic:              false,
+		Region:                regionName, // Region name only (e.g., asia-northeast3)
+		Description:           subnet.Description,
+		GatewayAddress:        subnet.GatewayAddress,
+		PrivateIPGoogleAccess: subnet.PrivateIpGoogleAccess,
+		FlowLogs:              subnet.EnableFlowLogs,
+		CreationTimestamp:     subnet.CreationTimestamp,
+		Tags:                  make(map[string]string), // GCP subnets don't have labels in the same way
+	}
+
+	// Add GCP-specific fields to tags for backward compatibility
+	if subnet.PrivateIpGoogleAccess {
+		subnetInfo.Tags["private_ip_google_access"] = "true"
+	}
+	if subnet.EnableFlowLogs {
+		subnetInfo.Tags["flow_logs"] = "true"
+	}
+
+	return subnetInfo, nil
+}
+
+// createGCPSubnet creates a new GCP subnet
+func (s *NetworkService) createGCPSubnet(ctx context.Context, credential *domain.Credential, req dto.CreateSubnetRequest) (*dto.SubnetInfo, error) {
+	// Create GCP Compute client
+	computeService, err := s.createGCPComputeClient(ctx, credential)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP compute client: %w", err)
+	}
+
+	// Decrypt credential to get project ID
+	decryptedData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Get project ID from decrypted data
+	projectID, ok := decryptedData["project_id"].(string)
+	if !ok {
+		return nil, domain.NewDomainError(
+			domain.ErrCodeValidationFailed,
+			ErrMsgProjectIDNotFound,
+			400,
+		)
+	}
+
+	// Extract network name from VPC ID
+	networkName := s.extractNetworkNameFromVPCID(req.VPCID)
+	if networkName == "" {
+		return nil, fmt.Errorf("invalid VPC ID format: %s", req.VPCID)
+	}
+
+	// Create subnet
+	subnet := &compute.Subnetwork{
+		Name:                  req.Name,
+		IpCidrRange:           req.CIDRBlock,
+		Network:               req.VPCID,
+		Region:                req.Region,
+		PrivateIpGoogleAccess: req.PrivateIPGoogleAccess,
+		EnableFlowLogs:        req.FlowLogs,
+		Description:           req.Description,
+		// Labels not supported in GCP subnets
+	}
+
+	operation, err := computeService.Subnetworks.Insert(projectID, req.Region, subnet).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP subnet: %w", err)
+	}
+
+	s.logger.Info("GCP subnet creation initiated",
+		zap.String("subnet_name", req.Name),
+		zap.String("project_id", projectID),
+		zap.String("region", req.Region),
+		zap.String("operation_id", operation.Name))
+
+	// Wait for operation to complete (optional)
+	// For now, return a mock response
+	subnetInfo := &dto.SubnetInfo{
+		ID:               fmt.Sprintf("projects/%s/regions/%s/subnetworks/%s", projectID, req.Region, req.Name),
+		Name:             req.Name,
+		VPCID:            req.VPCID,
+		CIDRBlock:        req.CIDRBlock,
+		AvailabilityZone: req.Region,
+		State:            "CREATING",
+		IsPublic:         false,
+		Region:           req.Region,
+		Tags:             req.Tags,
+	}
+
+	return subnetInfo, nil
+}
+
+// updateGCPSubnet updates a GCP subnet
+func (s *NetworkService) updateGCPSubnet(ctx context.Context, credential *domain.Credential, req dto.UpdateSubnetRequest, subnetID, region string) (*dto.SubnetInfo, error) {
+	// Create GCP Compute client
+	computeService, err := s.createGCPComputeClient(ctx, credential)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP compute client: %w", err)
+	}
+
+	// Decrypt credential to get project ID
+	decryptedData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Get project ID from decrypted data
+	projectID, ok := decryptedData["project_id"].(string)
+	if !ok {
+		return nil, domain.NewDomainError(
+			domain.ErrCodeValidationFailed,
+			ErrMsgProjectIDNotFound,
+			400,
+		)
+	}
+
+	// Extract subnet name from subnet ID
+	subnetName := s.extractSubnetNameFromSubnetID(subnetID)
+	if subnetName == "" {
+		return nil, fmt.Errorf("invalid subnet ID format: %s", subnetID)
+	}
+
+	// Get current subnet
+	currentSubnet, err := computeService.Subnetworks.Get(projectID, region, subnetName).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current subnet: %w", err)
+	}
+
+	// Update subnet
+	subnet := &compute.Subnetwork{
+		Name:                  currentSubnet.Name,
+		IpCidrRange:           currentSubnet.IpCidrRange,
+		Network:               currentSubnet.Network,
+		Region:                currentSubnet.Region,
+		PrivateIpGoogleAccess: currentSubnet.PrivateIpGoogleAccess,
+		EnableFlowLogs:        currentSubnet.EnableFlowLogs,
+		Description:           currentSubnet.Description,
+		// Labels not supported in GCP subnets
+	}
+
+	// Update fields if provided
+	if req.Description != "" {
+		subnet.Description = req.Description
+	}
+	if req.PrivateIPGoogleAccess != nil {
+		subnet.PrivateIpGoogleAccess = *req.PrivateIPGoogleAccess
+	}
+	if req.FlowLogs != nil {
+		subnet.EnableFlowLogs = *req.FlowLogs
+	}
+	// Labels not supported in GCP subnets
+	// Tags are ignored for GCP subnets
+
+	operation, err := computeService.Subnetworks.Patch(projectID, region, subnetName, subnet).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to update GCP subnet: %w", err)
+	}
+
+	s.logger.Info("GCP subnet update initiated",
+		zap.String("subnet_name", subnetName),
+		zap.String("project_id", projectID),
+		zap.String("region", region),
+		zap.String("operation_id", operation.Name))
+
+	// Get updated subnet info
+	getReq := dto.GetSubnetRequest{
+		CredentialID: credential.ID.String(),
+		SubnetID:     subnetID,
+		Region:       region,
+	}
+	return s.getGCPSubnet(ctx, credential, getReq)
+}
+
+// deleteGCPSubnet deletes a GCP subnet
+func (s *NetworkService) deleteGCPSubnet(ctx context.Context, credential *domain.Credential, req dto.DeleteSubnetRequest) error {
+	// Create GCP Compute client
+	computeService, err := s.createGCPComputeClient(ctx, credential)
+	if err != nil {
+		return fmt.Errorf("failed to create GCP compute client: %w", err)
+	}
+
+	// Decrypt credential to get project ID
+	decryptedData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Get project ID from decrypted data
+	projectID, ok := decryptedData["project_id"].(string)
+	if !ok {
+		return domain.NewDomainError(
+			domain.ErrCodeValidationFailed,
+			ErrMsgProjectIDNotFound,
+			400,
+		)
+	}
+
+	// Extract subnet name from subnet ID
+	subnetName := s.extractSubnetNameFromSubnetID(req.SubnetID)
+	if subnetName == "" {
+		return fmt.Errorf("invalid subnet ID format: %s", req.SubnetID)
+	}
+
+	// Delete subnet
+	operation, err := computeService.Subnetworks.Delete(projectID, req.Region, subnetName).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to delete GCP subnet: %w", err)
+	}
+
+	s.logger.Info("GCP subnet deletion initiated",
+		zap.String("subnet_name", subnetName),
+		zap.String("project_id", projectID),
+		zap.String("region", req.Region),
+		zap.String("operation_id", operation.Name))
+
+	return nil
+}
+
+// extractSubnetNameFromSubnetID extracts subnet name from full GCP subnet ID
+func (s *NetworkService) extractSubnetNameFromSubnetID(subnetID string) string {
+	// Handle full GCP subnet path: projects/{project}/regions/{region}/subnetworks/{subnet_name}
+	if strings.Contains(subnetID, "/subnetworks/") {
+		parts := strings.Split(subnetID, "/subnetworks/")
+		if len(parts) == 2 {
+			return parts[1]
+		}
+	}
+
+	// Handle simple subnet name
+	return subnetID
+}
+
+// extractCleanSubnetID extracts clean subnet ID from full GCP URL
+func (s *NetworkService) extractCleanSubnetID(selfLink string) string {
+	// From: https://www.googleapis.com/compute/v1/projects/leafy-environs-445206-d2/regions/asia-northeast3/subnetworks/default
+	// To:   projects/leafy-environs-445206-d2/regions/asia-northeast3/subnetworks/default
+	if strings.Contains(selfLink, "/projects/") {
+		parts := strings.Split(selfLink, "/projects/")
+		if len(parts) == 2 {
+			return "projects/" + parts[1]
+		}
+	}
+	return selfLink
+}
+
+// extractCleanVPCID extracts clean VPC ID from full GCP URL
+func (s *NetworkService) extractCleanVPCID(networkURL string) string {
+	// From: https://www.googleapis.com/compute/v1/projects/leafy-environs-445206-d2/global/networks/default
+	// To:   projects/leafy-environs-445206-d2/global/networks/default
+	if strings.Contains(networkURL, "/projects/") {
+		parts := strings.Split(networkURL, "/projects/")
+		if len(parts) == 2 {
+			return "projects/" + parts[1]
+		}
+	}
+	return networkURL
+}
+
+// extractCleanRegionID extracts clean region ID from full GCP URL
+func (s *NetworkService) extractCleanRegionID(regionURL string) string {
+	// From: https://www.googleapis.com/compute/v1/projects/leafy-environs-445206-d2/regions/asia-northeast3
+	// To:   projects/leafy-environs-445206-d2/regions/asia-northeast3
+	if strings.Contains(regionURL, "/projects/") {
+		parts := strings.Split(regionURL, "/projects/")
+		if len(parts) == 2 {
+			return "projects/" + parts[1]
+		}
+	}
+	return regionURL
+}
+
+// extractProjectID extracts project ID from GCP URL
+
+// extractRegionName extracts region name from GCP URL
+func (s *NetworkService) extractRegionName(regionURL string) string {
+	// From: https://www.googleapis.com/compute/v1/projects/leafy-environs-445206-d2/regions/asia-northeast3
+	// To:   asia-northeast3
+	if strings.Contains(regionURL, "/regions/") {
+		parts := strings.Split(regionURL, "/regions/")
+		if len(parts) == 2 {
+			return parts[1]
+		}
+	}
+	return ""
+}
+
+// getFirewallRulesCount gets the count of firewall rules for a specific network
+func (s *NetworkService) getFirewallRulesCount(ctx context.Context, computeService *compute.Service, projectID, networkName string) (int, error) {
+	// List firewall rules for the specific network
+	firewalls, err := computeService.Firewalls.List(projectID).Context(ctx).Do()
+	if err != nil {
+		return 0, fmt.Errorf("failed to list firewall rules: %w", err)
+	}
+
+	count := 0
+	for _, firewall := range firewalls.Items {
+		// Check if firewall rule applies to this network
+		if firewall.Network != "" {
+			// Extract network name from network URL
+			networkURL := firewall.Network
+			if strings.Contains(networkURL, "/networks/") {
+				parts := strings.Split(networkURL, "/networks/")
+				if len(parts) == 2 {
+					firewallNetworkName := parts[1]
+					if firewallNetworkName == networkName {
+						count++
+					}
+				}
+			}
+		}
+	}
+
+	return count, nil
+}
+
+// getGatewayInfo gets gateway information for a specific network
+func (s *NetworkService) getGatewayInfo(ctx context.Context, computeService *compute.Service, projectID, networkName string) (*dto.GatewayInfo, error) {
+	// List routers for the project (need to specify region, using global for now)
+	routers, err := computeService.Routers.List(projectID, "global").Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list routers: %w", err)
+	}
+
+	// Find routers associated with this network
+	for _, router := range routers.Items {
+		if router.Network != "" {
+			// Extract network name from network URL
+			networkURL := router.Network
+			if strings.Contains(networkURL, "/networks/") {
+				parts := strings.Split(networkURL, "/networks/")
+				if len(parts) == 2 {
+					routerNetworkName := parts[1]
+					if routerNetworkName == networkName {
+						// Check for NAT gateway
+						if len(router.Nats) > 0 {
+							for _, nat := range router.Nats {
+								if nat.NatIpAllocateOption == "AUTO_ONLY" || nat.NatIpAllocateOption == "MANUAL_ONLY" {
+									return &dto.GatewayInfo{
+										Type: "NAT",
+										Name: router.Name,
+									}, nil
+								}
+							}
+						}
+
+						// Check for Internet Gateway (default route)
+						if router.Bgp != nil && router.Bgp.Asn > 0 {
+							return &dto.GatewayInfo{
+								Type: "Internet Gateway",
+								Name: router.Name,
+							}, nil
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Check for Cloud NAT instances
+	nats, err := computeService.Routers.List(projectID, "global").Context(ctx).Do()
+	if err == nil {
+		for _, router := range nats.Items {
+			if router.Network != "" {
+				networkURL := router.Network
+				if strings.Contains(networkURL, "/networks/") {
+					parts := strings.Split(networkURL, "/networks/")
+					if len(parts) == 2 {
+						routerNetworkName := parts[1]
+						if routerNetworkName == networkName && len(router.Nats) > 0 {
+							return &dto.GatewayInfo{
+								Type: "Cloud NAT",
+								Name: router.Name,
+							}, nil
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// No specific gateway found, return nil
+	return nil, nil
+}
+
+// AWS Subnet Functions (existing implementations)
+
+// listAWSSubnets lists AWS subnets
+func (s *NetworkService) listAWSSubnets(ctx context.Context, credential *domain.Credential, req dto.ListSubnetsRequest) (*dto.ListSubnetsResponse, error) {
+	// Create AWS EC2 client
+	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	// Describe subnets
+	input := &ec2.DescribeSubnetsInput{}
+	if req.SubnetID != "" {
+		input.SubnetIds = []string{req.SubnetID}
+	}
+	if req.VPCID != "" {
+		input.Filters = []ec2Types.Filter{
+			{Name: aws.String("vpc-id"), Values: []string{req.VPCID}},
+		}
+	}
+
+	result, err := ec2Client.DescribeSubnets(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe subnets: %w", err)
+	}
+
+	// Convert to DTOs
+	subnets := make([]dto.SubnetInfo, 0, len(result.Subnets))
+	for _, subnet := range result.Subnets {
+		subnetInfo := dto.SubnetInfo{
+			ID:               aws.ToString(subnet.SubnetId),
+			Name:             s.getTagValue(subnet.Tags, "Name"),
+			VPCID:            aws.ToString(subnet.VpcId),
+			CIDRBlock:        aws.ToString(subnet.CidrBlock),
+			AvailabilityZone: aws.ToString(subnet.AvailabilityZone),
+			State:            string(subnet.State),
+			IsPublic:         s.isSubnetPublic(ctx, ec2Client, aws.ToString(subnet.SubnetId)),
+			Region:           req.Region,
+			Tags:             s.convertTags(subnet.Tags),
+		}
+		subnets = append(subnets, subnetInfo)
+	}
+
+	return &dto.ListSubnetsResponse{Subnets: subnets}, nil
+}
+
+// getAWSSubnet gets a specific AWS subnet
+func (s *NetworkService) getAWSSubnet(ctx context.Context, credential *domain.Credential, req dto.GetSubnetRequest) (*dto.SubnetInfo, error) {
+	// Create AWS EC2 client
+	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	// Describe specific subnet
+	input := &ec2.DescribeSubnetsInput{
+		SubnetIds: []string{req.SubnetID},
+	}
+
+	result, err := ec2Client.DescribeSubnets(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe subnet: %w", err)
+	}
+
+	if len(result.Subnets) == 0 {
+		return nil, fmt.Errorf("subnet not found: %s", req.SubnetID)
+	}
+
+	subnet := result.Subnets[0]
+	subnetInfo := &dto.SubnetInfo{
+		ID:               aws.ToString(subnet.SubnetId),
+		Name:             s.getTagValue(subnet.Tags, "Name"),
+		VPCID:            aws.ToString(subnet.VpcId),
+		CIDRBlock:        aws.ToString(subnet.CidrBlock),
+		AvailabilityZone: aws.ToString(subnet.AvailabilityZone),
+		State:            string(subnet.State),
+		IsPublic:         s.isSubnetPublic(ctx, ec2Client, aws.ToString(subnet.SubnetId)),
+		Region:           req.Region,
+		Tags:             s.convertTags(subnet.Tags),
+	}
+
+	return subnetInfo, nil
+}
+
+// createAWSSubnet creates a new AWS subnet
+func (s *NetworkService) createAWSSubnet(ctx context.Context, credential *domain.Credential, req dto.CreateSubnetRequest) (*dto.SubnetInfo, error) {
+	// Create AWS EC2 client
+	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	// Create subnet
+	input := &ec2.CreateSubnetInput{
+		VpcId:            aws.String(req.VPCID),
+		CidrBlock:        aws.String(req.CIDRBlock),
+		AvailabilityZone: aws.String(req.AvailabilityZone),
+		TagSpecifications: []ec2Types.TagSpecification{
+			{
+				ResourceType: ec2Types.ResourceTypeSubnet,
+				Tags: []ec2Types.Tag{
+					{Key: aws.String("Name"), Value: aws.String(req.Name)},
+				},
+			},
+		},
+	}
+
+	// Add custom tags
+	for key, value := range req.Tags {
+		input.TagSpecifications[0].Tags = append(input.TagSpecifications[0].Tags, ec2Types.Tag{
+			Key:   aws.String(key),
+			Value: aws.String(value),
+		})
+	}
+
+	result, err := ec2Client.CreateSubnet(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create subnet: %w", err)
+	}
+
+	subnetInfo := &dto.SubnetInfo{
+		ID:               aws.ToString(result.Subnet.SubnetId),
+		Name:             req.Name,
+		VPCID:            aws.ToString(result.Subnet.VpcId),
+		CIDRBlock:        aws.ToString(result.Subnet.CidrBlock),
+		AvailabilityZone: aws.ToString(result.Subnet.AvailabilityZone),
+		State:            string(result.Subnet.State),
+		IsPublic:         false, // Will be determined later
+		Region:           req.Region,
+		Tags:             req.Tags,
+	}
+
+	return subnetInfo, nil
+}
+
+// updateAWSSubnet updates an AWS subnet
+func (s *NetworkService) updateAWSSubnet(ctx context.Context, credential *domain.Credential, req dto.UpdateSubnetRequest, subnetID, region string) (*dto.SubnetInfo, error) {
+	// Create AWS EC2 client
+	ec2Client, err := s.createEC2Client(ctx, credential, region)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	// Update subnet tags if provided
+	if req.Name != "" || len(req.Tags) > 0 {
+		tags := []ec2Types.Tag{}
+
+		if req.Name != "" {
+			tags = append(tags, ec2Types.Tag{
+				Key:   aws.String("Name"),
+				Value: aws.String(req.Name),
+			})
+		}
+
+		for key, value := range req.Tags {
+			tags = append(tags, ec2Types.Tag{
+				Key:   aws.String(key),
+				Value: aws.String(value),
+			})
+		}
+
+		_, err = ec2Client.CreateTags(ctx, &ec2.CreateTagsInput{
+			Resources: []string{subnetID},
+			Tags:      tags,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to update subnet tags: %w", err)
+		}
+	}
+
+	// Get updated subnet info
+	getReq := dto.GetSubnetRequest{
+		CredentialID: credential.ID.String(),
+		SubnetID:     subnetID,
+		Region:       region,
+	}
+	return s.getAWSSubnet(ctx, credential, getReq)
+}
+
+// deleteAWSSubnet deletes an AWS subnet
+func (s *NetworkService) deleteAWSSubnet(ctx context.Context, credential *domain.Credential, req dto.DeleteSubnetRequest) error {
+	// Create AWS EC2 client
+	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
+	if err != nil {
+		return fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	// Delete subnet
+	_, err = ec2Client.DeleteSubnet(ctx, &ec2.DeleteSubnetInput{
+		SubnetId: aws.String(req.SubnetID),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete subnet: %w", err)
+	}
+
+	return nil
+}
+
+// Stub implementations for Azure and NCP
+
+// listAzureSubnets lists Azure subnets (stub)
+func (s *NetworkService) listAzureSubnets(ctx context.Context, credential *domain.Credential, req dto.ListSubnetsRequest) (*dto.ListSubnetsResponse, error) {
+	s.logger.Info("Azure subnet listing not yet implemented")
+	return &dto.ListSubnetsResponse{Subnets: []dto.SubnetInfo{}}, nil
+}
+
+// getAzureSubnet gets Azure subnet (stub)
+func (s *NetworkService) getAzureSubnet(ctx context.Context, credential *domain.Credential, req dto.GetSubnetRequest) (*dto.SubnetInfo, error) {
+	s.logger.Info("Azure subnet retrieval not yet implemented")
+	return nil, fmt.Errorf("Azure subnet retrieval not yet implemented")
+}
+
+// createAzureSubnet creates Azure subnet (stub)
+func (s *NetworkService) createAzureSubnet(ctx context.Context, credential *domain.Credential, req dto.CreateSubnetRequest) (*dto.SubnetInfo, error) {
+	s.logger.Info("Azure subnet creation not yet implemented")
+	return nil, fmt.Errorf("Azure subnet creation not yet implemented")
+}
+
+// updateAzureSubnet updates Azure subnet (stub)
+func (s *NetworkService) updateAzureSubnet(ctx context.Context, credential *domain.Credential, req dto.UpdateSubnetRequest, subnetID, region string) (*dto.SubnetInfo, error) {
+	s.logger.Info("Azure subnet update not yet implemented")
+	return nil, fmt.Errorf("Azure subnet update not yet implemented")
+}
+
+// deleteAzureSubnet deletes Azure subnet (stub)
+func (s *NetworkService) deleteAzureSubnet(ctx context.Context, credential *domain.Credential, req dto.DeleteSubnetRequest) error {
+	s.logger.Info("Azure subnet deletion not yet implemented")
+	return fmt.Errorf("Azure subnet deletion not yet implemented")
+}
+
+// listNCPSubnets lists NCP subnets (stub)
+func (s *NetworkService) listNCPSubnets(ctx context.Context, credential *domain.Credential, req dto.ListSubnetsRequest) (*dto.ListSubnetsResponse, error) {
+	s.logger.Info("NCP subnet listing not yet implemented")
+	return &dto.ListSubnetsResponse{Subnets: []dto.SubnetInfo{}}, nil
+}
+
+// getNCPSubnet gets NCP subnet (stub)
+func (s *NetworkService) getNCPSubnet(ctx context.Context, credential *domain.Credential, req dto.GetSubnetRequest) (*dto.SubnetInfo, error) {
+	s.logger.Info("NCP subnet retrieval not yet implemented")
+	return nil, fmt.Errorf("NCP subnet retrieval not yet implemented")
+}
+
+// createNCPSubnet creates NCP subnet (stub)
+func (s *NetworkService) createNCPSubnet(ctx context.Context, credential *domain.Credential, req dto.CreateSubnetRequest) (*dto.SubnetInfo, error) {
+	s.logger.Info("NCP subnet creation not yet implemented")
+	return nil, fmt.Errorf("NCP subnet creation not yet implemented")
+}
+
+// updateNCPSubnet updates NCP subnet (stub)
+func (s *NetworkService) updateNCPSubnet(ctx context.Context, credential *domain.Credential, req dto.UpdateSubnetRequest, subnetID, region string) (*dto.SubnetInfo, error) {
+	s.logger.Info("NCP subnet update not yet implemented")
+	return nil, fmt.Errorf("NCP subnet update not yet implemented")
+}
+
+// deleteNCPSubnet deletes NCP subnet (stub)
+func (s *NetworkService) deleteNCPSubnet(ctx context.Context, credential *domain.Credential, req dto.DeleteSubnetRequest) error {
+	s.logger.Info("NCP subnet deletion not yet implemented")
+	return fmt.Errorf("NCP subnet deletion not yet implemented")
 }

@@ -1,0 +1,205 @@
+meta {
+  name: 자격증명 생성 (GCP)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/credentials
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "name": "GCP Production",
+    "provider": "gcp",
+    "data": {
+      "type": "",
+      "project_id": "",
+      "private_key_id": "",
+      "private_key": "",
+      "client_email": "",
+      "client_id": "",
+      "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+      "token_uri": "https://oauth2.googleapis.com/token",
+      "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+      "client_x509_cert_url": "",
+      "universe_domain": "googleapis.com"
+    }
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("credentialsId", res.body.data.id);
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response contains credential data", function() {
+    expect(res.getBody()).to.have.property('id');
+    expect(res.getBody()).to.have.property('name');
+    expect(res.getBody()).to.have.property('provider');
+  });
+  
+  test("Credential has correct provider", function() {
+    expect(res.getBody().provider).to.equal('gcp');
+    expect(res.getBody().name).to.equal('GCP Production');
+  });
+}
+
+docs {
+  # GCP 자격증명 생성
+  
+  Google Cloud Platform 자격증명을 생성합니다.
+  
+  ## Request Body
+  
+  ```json
+  {
+    "name": "GCP Production",
+    "provider": "gcp",
+    "data": {
+      "project_id": "my-project",
+      "client_email": "skyclust-service-account@my-project.iam.gserviceaccount.com",
+      "region": "us-central1"
+    }
+  }
+  ```
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "name": "GCP Production",
+      "provider": "gcp",
+      "created_at": "2025-10-23T10:00:00Z",
+      "updated_at": "2025-10-23T10:00:00Z"
+    },
+    "message": "Credential created successfully",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
+  }
+  ```
+  
+  ## GCP 서비스 계정 설정 방법
+  
+  ### 1. GCP 콘솔에서 서비스 계정 생성
+  
+  1. [Google Cloud Console](https://console.cloud.google.com/) 접속
+  2. 프로젝트 선택
+  3. **IAM 및 관리자** > **서비스 계정** 이동
+  4. **서비스 계정 만들기** 클릭
+  5. 서비스 계정 정보 입력:
+     - **이름**: `skyclust-service-account`
+     - **ID**: `skyclust-service-account`
+     - **설명**: `Skyclust application service account`
+  6. **만들기 및 계속하기** 클릭
+  
+  ### 2. 서비스 계정 권한 부여
+  
+  다음 IAM 역할을 부여합니다:
+  
+  - **Kubernetes Engine 관리자** (`roles/container.admin`)
+  - **Compute 네트워크 관리자** (`roles/compute.networkAdmin`)
+  - **Compute 인스턴스 관리자** (`roles/compute.instanceAdmin`)
+  - **서비스 계정 사용자** (`roles/iam.serviceAccountUser`)
+  - **프로젝트 뷰어** (`roles/viewer`)
+  
+  ### 3. 서비스 계정 키 생성
+  
+  1. 생성된 서비스 계정 클릭
+  2. **키** 탭 이동
+  3. **키 추가** > **새 키 만들기** 클릭
+  4. **JSON** 선택 후 **만들기** 클릭
+  5. JSON 키 파일 다운로드 (서버에 안전하게 보관)
+  
+  ### 4. 서버에 서비스 계정 키 설정
+  
+  서버 환경에 서비스 계정 키를 설정합니다:
+  
+  ```bash
+  # 환경 변수로 설정
+  export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
+  
+  # 또는 서버 설정 파일에 추가
+  echo '{"type":"service_account",...}' > /etc/skyclust/gcp-service-account.json
+  ```
+  
+  ## 필수 IAM 권한
+  
+  ### Kubernetes Engine (GKE)
+  - `container.clusters.create`
+  - `container.clusters.get`
+  - `container.clusters.update`
+  - `container.clusters.delete`
+  - `container.nodePools.create`
+  - `container.nodePools.get`
+  - `container.nodePools.update`
+  - `container.nodePools.delete`
+  
+  ### Compute Engine (네트워크)
+  - `compute.networks.create`
+  - `compute.networks.get`
+  - `compute.networks.update`
+  - `compute.networks.delete`
+  - `compute.subnetworks.create`
+  - `compute.subnetworks.get`
+  - `compute.subnetworks.update`
+  - `compute.subnetworks.delete`
+  - `compute.firewalls.create`
+  - `compute.firewalls.get`
+  - `compute.firewalls.update`
+  - `compute.firewalls.delete`
+  
+  ### 기타 권한
+  - `iam.serviceAccounts.actAs`
+  - `serviceusage.services.enable`
+  - `resourcemanager.projects.get`
+  
+  ## 보안 주의사항
+  
+  - **서비스 계정 키는 민감한 정보입니다**
+  - 키 파일을 안전하게 보관하세요
+  - 필요시 키를 로테이션하세요
+  - 최소 권한 원칙을 따르세요
+  
+  ## 사용 예시
+  
+  ```bash
+  POST /api/v1/credentials
+  Authorization: Bearer your-jwt-token
+  Content-Type: application/json
+  
+  {
+    "name": "GCP Production",
+    "provider": "gcp",
+    "data": {
+      "project_id": "my-project",
+      "client_email": "skyclust-service-account@my-project.iam.gserviceaccount.com",
+      "region": "us-central1"
+    }
+  }
+  ```
+  
+  ## 보안 주의사항
+  
+  - **서비스 계정 키는 서버에만 보관**하세요
+  - API 요청에는 민감한 키 정보를 포함하지 마세요
+  - 서버에서 서비스 계정 키를 사용하여 GCP API 호출
+  - 정기적인 키 로테이션을 권장합니다
+}
