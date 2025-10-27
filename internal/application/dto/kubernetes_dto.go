@@ -177,19 +177,30 @@ type ListNodeGroupsRequest struct {
 
 // NodeGroupInfo represents basic node group information for listing
 type NodeGroupInfo struct {
-	ID            string                 `json:"id"`
-	Name          string                 `json:"name"`
-	Version       string                 `json:"version"`
-	Status        string                 `json:"status"`
-	ClusterName   string                 `json:"cluster_name"`
-	Region        string                 `json:"region"`
-	InstanceTypes []string               `json:"instance_types"`
-	ScalingConfig NodeGroupScalingConfig `json:"scaling_config"`
-	CapacityType  string                 `json:"capacity_type"`
-	DiskSize      int32                  `json:"disk_size"`
-	CreatedAt     string                 `json:"created_at,omitempty"`
-	UpdatedAt     string                 `json:"updated_at,omitempty"`
-	Tags          map[string]string      `json:"tags,omitempty"`
+	ID              string                 `json:"id"`
+	Name            string                 `json:"name"`
+	Version         string                 `json:"version"`
+	Status          string                 `json:"status"`
+	ClusterName     string                 `json:"cluster_name"`
+	Region          string                 `json:"region"`
+	InstanceTypes   []string               `json:"instance_types"`
+	ScalingConfig   NodeGroupScalingConfig `json:"scaling_config"`
+	CapacityType    string                 `json:"capacity_type"`
+	DiskSize        int32                  `json:"disk_size"`
+	DiskType        string                 `json:"disk_type,omitempty"`
+	ImageType       string                 `json:"image_type,omitempty"`
+	Preemptible     bool                   `json:"preemptible,omitempty"`
+	Spot            bool                   `json:"spot,omitempty"`
+	ServiceAccount  string                 `json:"service_account,omitempty"`
+	OAuthScopes     []string               `json:"oauth_scopes,omitempty"`
+	Tags            map[string]string      `json:"tags,omitempty"`
+	Taints          []NodeTaint            `json:"taints,omitempty"`
+	Labels          map[string]string      `json:"labels,omitempty"`
+	NetworkConfig   *NodeNetworkConfig     `json:"network_config,omitempty"`
+	Management      *NodeManagement        `json:"management,omitempty"`
+	UpgradeSettings *UpgradeSettings       `json:"upgrade_settings,omitempty"`
+	CreatedAt       string                 `json:"created_at,omitempty"`
+	UpdatedAt       string                 `json:"updated_at,omitempty"`
 }
 
 // ListNodeGroupsResponse represents the response after listing node groups
@@ -237,4 +248,32 @@ type ListIAMRolesRequest struct {
 // ListIAMRolesResponse represents the response after listing IAM roles
 type ListIAMRolesResponse struct {
 	Roles []IAMRoleInfo `json:"roles"`
+}
+
+// NodeTaint represents a node taint
+type NodeTaint struct {
+	Key    string `json:"key"`
+	Value  string `json:"value,omitempty"`
+	Effect string `json:"effect"` // NoSchedule, PreferNoSchedule, NoExecute
+}
+
+// NodeNetworkConfig represents node network configuration
+type NodeNetworkConfig struct {
+	CreatePodRange     bool   `json:"create_pod_range,omitempty"`
+	PodRange           string `json:"pod_range,omitempty"`
+	PodRangeName       string `json:"pod_range_name,omitempty"`
+	EnablePrivateNodes bool   `json:"enable_private_nodes,omitempty"`
+}
+
+// NodeManagement represents node management configuration
+type NodeManagement struct {
+	AutoRepair  bool `json:"auto_repair,omitempty"`
+	AutoUpgrade bool `json:"auto_upgrade,omitempty"`
+}
+
+// UpgradeSettings represents upgrade settings for node pool
+type UpgradeSettings struct {
+	MaxSurge       int32  `json:"max_surge,omitempty"`
+	MaxUnavailable int32  `json:"max_unavailable,omitempty"`
+	Strategy       string `json:"strategy,omitempty"` // SURGE, BLUE_GREEN
 }

@@ -305,6 +305,12 @@ func (h *GCPHandler) CreateGKENodePool(c *gin.Context) {
 		return
 	}
 
+	// Verify credential matches GCP provider
+	if credential.Provider != "gcp" {
+		responses.BadRequest(c, "Credential provider does not match GCP")
+		return
+	}
+
 	// Create node pool
 	nodePool, err := h.k8sService.CreateEKSNodePool(c.Request.Context(), credential, req)
 	if err != nil {
@@ -350,6 +356,12 @@ func (h *GCPHandler) ListGKENodePools(c *gin.Context) {
 	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
 	if err != nil {
 		responses.NotFound(c, "Credential not found")
+		return
+	}
+
+	// Verify credential matches GCP provider
+	if credential.Provider != "gcp" {
+		responses.BadRequest(c, "Credential provider does not match GCP")
 		return
 	}
 
@@ -406,6 +418,12 @@ func (h *GCPHandler) GetGKENodePool(c *gin.Context) {
 	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
 	if err != nil {
 		responses.NotFound(c, "Credential not found")
+		return
+	}
+
+	// Verify credential matches GCP provider
+	if credential.Provider != "gcp" {
+		responses.BadRequest(c, "Credential provider does not match GCP")
 		return
 	}
 

@@ -10,8 +10,47 @@ get {
   auth: bearer
 }
 
+params:query {
+  credential_id: {{credentialsId}}
+  region: asia-northeast3
+}
+
 auth:bearer {
   token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has cluster data", function() {
+    expect(res.getBody().data).to.be.an('object');
+    expect(res.getBody().data.id).to.be.a('string');
+    expect(res.getBody().data.name).to.be.a('string');
+    expect(res.getBody().data.version).to.be.a('string');
+    expect(res.getBody().data.status).to.be.a('string');
+  });
+  
+  test("Cluster has network config", function() {
+    expect(res.getBody().data.network_config).to.be.an('object');
+    expect(res.getBody().data.network_config.network).to.be.a('string');
+    expect(res.getBody().data.network_config.subnetwork).to.be.a('string');
+  });
+  
+  test("Cluster has node pools", function() {
+    expect(res.getBody().data.node_pools).to.be.an('array');
+    if (res.getBody().data.node_pools.length > 0) {
+      const nodePool = res.getBody().data.node_pools[0];
+      expect(nodePool).to.have.property('name');
+      expect(nodePool).to.have.property('status');
+      expect(nodePool).to.have.property('machine_type');
+    }
+  });
 }
 
 docs {
@@ -112,38 +151,4 @@ docs {
   - `created_at`: 생성일
   - `updated_at`: 수정일
   - `tags`: 태그 정보
-}
-
-tests {
-  test("Status code is 200", function() {
-    expect(res.getStatus()).to.equal(200);
-  });
-  
-  test("Response has success field", function() {
-    expect(res.getBody().success).to.equal(true);
-  });
-  
-  test("Response has cluster data", function() {
-    expect(res.getBody().data).to.be.an('object');
-    expect(res.getBody().data.id).to.be.a('string');
-    expect(res.getBody().data.name).to.be.a('string');
-    expect(res.getBody().data.version).to.be.a('string');
-    expect(res.getBody().data.status).to.be.a('string');
-  });
-  
-  test("Cluster has network config", function() {
-    expect(res.getBody().data.network_config).to.be.an('object');
-    expect(res.getBody().data.network_config.network).to.be.a('string');
-    expect(res.getBody().data.network_config.subnetwork).to.be.a('string');
-  });
-  
-  test("Cluster has node pools", function() {
-    expect(res.getBody().data.node_pools).to.be.an('array');
-    if (res.getBody().data.node_pools.length > 0) {
-      const nodePool = res.getBody().data.node_pools[0];
-      expect(nodePool).to.have.property('name');
-      expect(nodePool).to.have.property('status');
-      expect(nodePool).to.have.property('machine_type');
-    }
-  });
 }

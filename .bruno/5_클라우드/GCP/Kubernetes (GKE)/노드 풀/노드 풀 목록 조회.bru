@@ -15,9 +15,9 @@ auth:bearer {
 }
 
 script:post-response {
-  bru.setEnvVar("nodePoolName", res.body.data.node_pools[0].name);
+  bru.setEnvVar("nodePoolName", res.body.data.node_groups[0].name);
   
-  const rowData = res.body.data.node_pools;
+  const rowData = res.body.data.node_groups;
   
   const columnDefinitions = [
     { field: "id", filter: true, floatingFilter: true },
@@ -39,6 +39,32 @@ script:post-response {
     name: 'table',
     provider: 'ag-grid',
     props: { rowData, columnDefinitions }
+  });
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has node pools data", function() {
+    expect(res.getBody().data).to.be.an('object');
+    expect(res.getBody().data.node_pools).to.be.an('array');
+    expect(res.getBody().data.total).to.be.a('number');
+  });
+  
+  test("Node pool has required fields", function() {
+    const nodePool = res.getBody().data.node_pools[0];
+    expect(nodePool).to.have.property('id');
+    expect(nodePool).to.have.property('name');
+    expect(nodePool).to.have.property('version');
+    expect(nodePool).to.have.property('status');
+    expect(nodePool).to.have.property('cluster_name');
+    expect(nodePool).to.have.property('region');
   });
 }
 
@@ -135,30 +161,4 @@ docs {
   - `created_at`: 생성일
   - `updated_at`: 수정일
   - `tags`: 태그 정보
-}
-
-tests {
-  test("Status code is 200", function() {
-    expect(res.getStatus()).to.equal(200);
-  });
-  
-  test("Response has success field", function() {
-    expect(res.getBody().success).to.equal(true);
-  });
-  
-  test("Response has node pools data", function() {
-    expect(res.getBody().data).to.be.an('object');
-    expect(res.getBody().data.node_pools).to.be.an('array');
-    expect(res.getBody().data.total).to.be.a('number');
-  });
-  
-  test("Node pool has required fields", function() {
-    const nodePool = res.getBody().data.node_pools[0];
-    expect(nodePool).to.have.property('id');
-    expect(nodePool).to.have.property('name');
-    expect(nodePool).to.have.property('version');
-    expect(nodePool).to.have.property('status');
-    expect(nodePool).to.have.property('cluster_name');
-    expect(nodePool).to.have.property('region');
-  });
 }

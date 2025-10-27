@@ -20,7 +20,7 @@ auth:bearer {
 }
 
 script:post-response {
-  bru.setEnvVar("clusterName", res.body.data.clusters[1].name);
+  bru.setEnvVar("clusterName", res.body.data.clusters[0].name);
   
   const rowData = res.body.data.clusters;
   

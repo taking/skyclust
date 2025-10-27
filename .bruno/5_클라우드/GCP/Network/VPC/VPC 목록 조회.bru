@@ -20,7 +20,7 @@ auth:bearer {
 
 script:post-response {
   bru.setEnvVar("vpcId", res.body.data.vpcs[2].id);
-  bru.setEnvVar("vpcName", res.body.data.vpcs[0].name);
+  bru.setEnvVar("vpcName", res.body.data.vpcs[2].name);
   
   const rowData = res.body.data.vpcs;
   

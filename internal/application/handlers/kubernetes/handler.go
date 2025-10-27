@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // Handler handles Kubernetes-related HTTP requests
@@ -354,6 +355,12 @@ func (h *Handler) CreateNodeGroup(c *gin.Context) {
 		return
 	}
 
+	// Verify credential matches the provider
+	if credential.Provider != h.provider {
+		responses.BadRequest(c, "Credential provider does not match the requested provider")
+		return
+	}
+
 	// Create node group
 	nodeGroup, err := h.k8sService.CreateEKSNodeGroup(c.Request.Context(), credential, req)
 	if err != nil {
@@ -399,6 +406,16 @@ func (h *Handler) ListNodeGroups(c *gin.Context) {
 	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
 	if err != nil {
 		responses.NotFound(c, "Credential not found")
+		return
+	}
+
+	// Verify credential matches the provider
+	h.LogInfo(c, "Checking credential provider",
+		zap.String("credential_provider", credential.Provider),
+		zap.String("expected_provider", h.provider))
+
+	if credential.Provider != h.provider {
+		responses.BadRequest(c, "Credential provider does not match the requested provider")
 		return
 	}
 

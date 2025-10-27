@@ -16,7 +16,7 @@ auth:bearer {
 
 script:post-response {
   bru.setEnvVar("subnetId", res.body.data.subnets[2].id);
-  bru.setEnvVar("subnetName", res.body.data.subnets[0].name);
+  bru.setEnvVar("subnetName", res.body.data.subnets[2].name);
   
   const rowData = res.body.data.subnets;
   

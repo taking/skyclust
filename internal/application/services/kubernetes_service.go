@@ -984,6 +984,27 @@ func (s *KubernetesService) CreateEKSNodeGroup(ctx context.Context, credential *
 
 // ListNodeGroups lists all node groups for a cluster
 func (s *KubernetesService) ListNodeGroups(ctx context.Context, credential *domain.Credential, req dto.ListNodeGroupsRequest) (*dto.ListNodeGroupsResponse, error) {
+	s.logger.Info("ListNodeGroups called",
+		zap.String("provider", credential.Provider),
+		zap.String("cluster_name", req.ClusterName),
+		zap.String("region", req.Region))
+
+	switch credential.Provider {
+	case "aws":
+		return s.listAWSEKSNodeGroups(ctx, credential, req)
+	case "gcp":
+		return s.listGCPGKENodePools(ctx, credential, req)
+	case "azure":
+		return nil, fmt.Errorf("Azure node groups not implemented yet")
+	case "ncp":
+		return nil, fmt.Errorf("NCP node groups not implemented yet")
+	default:
+		return nil, fmt.Errorf("unsupported provider: %s", credential.Provider)
+	}
+}
+
+// listAWSEKSNodeGroups lists all EKS node groups for a cluster
+func (s *KubernetesService) listAWSEKSNodeGroups(ctx context.Context, credential *domain.Credential, req dto.ListNodeGroupsRequest) (*dto.ListNodeGroupsResponse, error) {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
 	if err != nil {
@@ -1096,8 +1117,242 @@ func (s *KubernetesService) ListNodeGroups(ctx context.Context, credential *doma
 	}, nil
 }
 
+// listGCPGKENodePools lists all GKE node pools for a cluster
+func (s *KubernetesService) listGCPGKENodePools(ctx context.Context, credential *domain.Credential, req dto.ListNodeGroupsRequest) (*dto.ListNodeGroupsResponse, error) {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Extract GCP credentials
+	jsonData, err := json.Marshal(credData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal credential data: %w", err)
+	}
+
+	// Create GCP Container service client
+	containerService, err := container.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP container service: %w", err)
+	}
+
+	// Extract project ID from credential
+	projectID, ok := credData["project_id"].(string)
+	if !ok {
+		return nil, fmt.Errorf("project_id not found in credential")
+	}
+
+	// Find the cluster first to determine its actual location
+	// GCP clusters can be at region level or zone level
+	locations := []string{
+		req.Region,                      // Region level (e.g., asia-northeast3)
+		fmt.Sprintf("%s-a", req.Region), // Zone level (e.g., asia-northeast3-a)
+		fmt.Sprintf("%s-b", req.Region), // Zone level (e.g., asia-northeast3-b)
+		fmt.Sprintf("%s-c", req.Region), // Zone level (e.g., asia-northeast3-c)
+	}
+
+	var nodePools *container.ListNodePoolsResponse
+	var clusterLocation string
+
+	// Search for the cluster in all possible locations
+	for _, location := range locations {
+		clusterPath := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", projectID, location, req.ClusterName)
+		_, err := containerService.Projects.Locations.Clusters.Get(clusterPath).Context(ctx).Do()
+		if err != nil {
+			// Log debug but continue with other locations
+			s.logger.Debug("Failed to find cluster in location",
+				zap.String("location", location),
+				zap.String("cluster_name", req.ClusterName),
+				zap.Error(err))
+			continue
+		}
+
+		// Found the cluster, now get its node pools
+		clusterLocation = location
+		nodePools, err = containerService.Projects.Locations.Clusters.NodePools.List(clusterPath).Context(ctx).Do()
+		if err != nil {
+			return nil, fmt.Errorf("failed to list GKE node pools for cluster %s in location %s: %w", req.ClusterName, location, err)
+		}
+		break
+	}
+
+	if nodePools == nil {
+		return nil, fmt.Errorf("failed to find GKE cluster %s in region %s or any of its zones", req.ClusterName, req.Region)
+	}
+
+	// Convert to NodeGroupInfo format
+	var nodeGroups []dto.NodeGroupInfo
+	for _, nodePool := range nodePools.NodePools {
+		// Log available fields for debugging
+		s.logger.Debug("Processing GCP NodePool",
+			zap.String("name", nodePool.Name),
+			zap.String("status", nodePool.Status),
+			zap.String("version", nodePool.Version),
+			zap.Bool("has_config", nodePool.Config != nil),
+			zap.Bool("has_autoscaling", nodePool.Autoscaling != nil),
+			zap.Bool("has_management", nodePool.Management != nil),
+			zap.Bool("has_upgrade_settings", nodePool.UpgradeSettings != nil))
+
+		nodeGroup := dto.NodeGroupInfo{
+			ID:          nodePool.Name,
+			Name:        nodePool.Name,
+			Status:      nodePool.Status,
+			ClusterName: req.ClusterName,
+			Region:      req.Region,
+		}
+
+		// Add version if available
+		if nodePool.Version != "" {
+			nodeGroup.Version = nodePool.Version
+		}
+
+		// Add instance types from config
+		if nodePool.Config != nil {
+			// Log config details for debugging
+			s.logger.Info("NodePool Config details",
+				zap.String("name", nodePool.Name),
+				zap.String("machine_type", nodePool.Config.MachineType),
+				zap.Int64("disk_size_gb", nodePool.Config.DiskSizeGb),
+				zap.String("disk_type", nodePool.Config.DiskType),
+				zap.String("image_type", nodePool.Config.ImageType),
+				zap.Bool("preemptible", nodePool.Config.Preemptible),
+				zap.Bool("spot", nodePool.Config.Spot),
+				zap.String("service_account", nodePool.Config.ServiceAccount),
+				zap.Int("oauth_scopes_count", len(nodePool.Config.OauthScopes)),
+				zap.Int("tags_count", len(nodePool.Config.Tags)),
+				zap.Int("labels_count", len(nodePool.Config.Labels)),
+				zap.Int("taints_count", len(nodePool.Config.Taints)))
+
+			if nodePool.Config.MachineType != "" {
+				nodeGroup.InstanceTypes = []string{nodePool.Config.MachineType}
+			}
+			if nodePool.Config.DiskSizeGb > 0 {
+				nodeGroup.DiskSize = int32(nodePool.Config.DiskSizeGb)
+			}
+			if nodePool.Config.DiskType != "" {
+				nodeGroup.DiskType = nodePool.Config.DiskType
+			}
+			if nodePool.Config.ImageType != "" {
+				nodeGroup.ImageType = nodePool.Config.ImageType
+			}
+			if nodePool.Config.Preemptible {
+				nodeGroup.Preemptible = true
+			}
+			if nodePool.Config.Spot {
+				nodeGroup.Spot = true
+			}
+			if nodePool.Config.ServiceAccount != "" {
+				nodeGroup.ServiceAccount = nodePool.Config.ServiceAccount
+			}
+			if len(nodePool.Config.OauthScopes) > 0 {
+				nodeGroup.OAuthScopes = nodePool.Config.OauthScopes
+			}
+			if len(nodePool.Config.Tags) > 0 {
+				// Convert []string to map[string]string
+				tags := make(map[string]string)
+				for _, tag := range nodePool.Config.Tags {
+					tags[tag] = "" // GCP tags don't have values, only keys
+				}
+				nodeGroup.Tags = tags
+			}
+			if len(nodePool.Config.Labels) > 0 {
+				nodeGroup.Labels = nodePool.Config.Labels
+			}
+			if len(nodePool.Config.Taints) > 0 {
+				var taints []dto.NodeTaint
+				for _, taint := range nodePool.Config.Taints {
+					taints = append(taints, dto.NodeTaint{
+						Key:    taint.Key,
+						Value:  taint.Value,
+						Effect: taint.Effect,
+					})
+				}
+				nodeGroup.Taints = taints
+			}
+		}
+
+		// Add scaling config
+		if nodePool.Autoscaling != nil {
+			nodeGroup.ScalingConfig = dto.NodeGroupScalingConfig{
+				MinSize:     int32(nodePool.Autoscaling.MinNodeCount),
+				MaxSize:     int32(nodePool.Autoscaling.MaxNodeCount),
+				DesiredSize: int32(nodePool.InitialNodeCount),
+			}
+		} else {
+			nodeGroup.ScalingConfig = dto.NodeGroupScalingConfig{
+				DesiredSize: int32(nodePool.InitialNodeCount),
+			}
+		}
+
+		// Add network configuration
+		if nodePool.Config != nil && nodePool.Config.WorkloadMetadataConfig != nil {
+			nodeGroup.NetworkConfig = &dto.NodeNetworkConfig{
+				EnablePrivateNodes: nodePool.Config.WorkloadMetadataConfig.Mode == "GKE_METADATA",
+			}
+		}
+
+		// Add management configuration
+		if nodePool.Management != nil {
+			nodeGroup.Management = &dto.NodeManagement{
+				AutoRepair:  nodePool.Management.AutoRepair,
+				AutoUpgrade: nodePool.Management.AutoUpgrade,
+			}
+		}
+
+		// Add upgrade settings
+		if nodePool.UpgradeSettings != nil {
+			nodeGroup.UpgradeSettings = &dto.UpgradeSettings{
+				MaxSurge:       int32(nodePool.UpgradeSettings.MaxSurge),
+				MaxUnavailable: int32(nodePool.UpgradeSettings.MaxUnavailable),
+				Strategy:       nodePool.UpgradeSettings.Strategy,
+			}
+		}
+
+		// Add timestamps (GCP NodePool doesn't have CreateTime/UpdateTime fields)
+		// We'll use empty strings for now, these can be populated from other sources if needed
+		nodeGroup.CreatedAt = ""
+		nodeGroup.UpdatedAt = ""
+
+		nodeGroups = append(nodeGroups, nodeGroup)
+	}
+
+	s.logger.Info("GKE node pools listed successfully",
+		zap.String("cluster_name", req.ClusterName),
+		zap.String("region", req.Region),
+		zap.String("cluster_location", clusterLocation),
+		zap.Int("node_pool_count", len(nodeGroups)))
+
+	return &dto.ListNodeGroupsResponse{
+		NodeGroups: nodeGroups,
+		Total:      len(nodeGroups),
+	}, nil
+}
+
 // GetNodeGroup gets details of a node group
 func (s *KubernetesService) GetNodeGroup(ctx context.Context, credential *domain.Credential, req dto.GetNodeGroupRequest) (*dto.NodeGroupInfo, error) {
+	s.logger.Info("GetNodeGroup called",
+		zap.String("provider", credential.Provider),
+		zap.String("cluster_name", req.ClusterName),
+		zap.String("node_group_name", req.NodeGroupName),
+		zap.String("region", req.Region))
+
+	switch credential.Provider {
+	case "aws":
+		return s.getAWSEKSNodeGroup(ctx, credential, req)
+	case "gcp":
+		return s.getGCPGKENodePool(ctx, credential, req)
+	case "azure":
+		return nil, fmt.Errorf("Azure node groups not implemented yet")
+	case "ncp":
+		return nil, fmt.Errorf("NCP node groups not implemented yet")
+	default:
+		return nil, fmt.Errorf("unsupported provider: %s", credential.Provider)
+	}
+}
+
+// getAWSEKSNodeGroup gets details of an AWS EKS node group
+func (s *KubernetesService) getAWSEKSNodeGroup(ctx context.Context, credential *domain.Credential, req dto.GetNodeGroupRequest) (*dto.NodeGroupInfo, error) {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
 	if err != nil {
@@ -1187,6 +1442,204 @@ func (s *KubernetesService) GetNodeGroup(ctx context.Context, credential *domain
 	if output.Nodegroup.ModifiedAt != nil {
 		nodeGroup.UpdatedAt = output.Nodegroup.ModifiedAt.String()
 	}
+
+	s.logger.Info("EKS node group retrieved successfully",
+		zap.String("cluster_name", req.ClusterName),
+		zap.String("node_group_name", req.NodeGroupName),
+		zap.String("region", req.Region))
+
+	return &nodeGroup, nil
+}
+
+// getGCPGKENodePool gets details of a GCP GKE node pool
+func (s *KubernetesService) getGCPGKENodePool(ctx context.Context, credential *domain.Credential, req dto.GetNodeGroupRequest) (*dto.NodeGroupInfo, error) {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Extract GCP credentials
+	jsonData, err := json.Marshal(credData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal credential data: %w", err)
+	}
+
+	// Create GCP Container service client
+	containerService, err := container.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP container service: %w", err)
+	}
+
+	// Extract project ID from credential
+	projectID, ok := credData["project_id"].(string)
+	if !ok {
+		return nil, fmt.Errorf("project_id not found in credential")
+	}
+
+	// Find the cluster first to determine its actual location
+	// GCP clusters can be at region level or zone level
+	locations := []string{
+		req.Region,                      // Region level (e.g., asia-northeast3)
+		fmt.Sprintf("%s-a", req.Region), // Zone level (e.g., asia-northeast3-a)
+		fmt.Sprintf("%s-b", req.Region), // Zone level (e.g., asia-northeast3-b)
+		fmt.Sprintf("%s-c", req.Region), // Zone level (e.g., asia-northeast3-c)
+	}
+
+	var nodePool *container.NodePool
+	var clusterLocation string
+
+	// Search for the cluster and specific node pool in all possible locations
+	for _, location := range locations {
+		nodePoolPath := fmt.Sprintf("projects/%s/locations/%s/clusters/%s/nodePools/%s", projectID, location, req.ClusterName, req.NodeGroupName)
+
+		// Try to get the specific node pool
+		nodePoolResp, err := containerService.Projects.Locations.Clusters.NodePools.Get(nodePoolPath).Context(ctx).Do()
+		if err != nil {
+			// Log debug but continue with other locations
+			s.logger.Debug("Failed to find node pool in location",
+				zap.String("location", location),
+				zap.String("cluster_name", req.ClusterName),
+				zap.String("node_pool_name", req.NodeGroupName),
+				zap.Error(err))
+			continue
+		}
+
+		nodePool = nodePoolResp
+		clusterLocation = location
+		break
+	}
+
+	if nodePool == nil {
+		return nil, fmt.Errorf("failed to find GKE node pool %s in cluster %s in region %s or any of its zones", req.NodeGroupName, req.ClusterName, req.Region)
+	}
+
+	// Convert to NodeGroupInfo format (same as listGCPGKENodePools)
+	nodeGroup := dto.NodeGroupInfo{
+		ID:          nodePool.Name,
+		Name:        nodePool.Name,
+		Status:      nodePool.Status,
+		ClusterName: req.ClusterName,
+		Region:      req.Region,
+	}
+
+	// Add version if available
+	if nodePool.Version != "" {
+		nodeGroup.Version = nodePool.Version
+	}
+
+	// Add instance types from config
+	if nodePool.Config != nil {
+		// Log config details for debugging
+		s.logger.Info("NodePool Config details",
+			zap.String("name", nodePool.Name),
+			zap.String("machine_type", nodePool.Config.MachineType),
+			zap.Int64("disk_size_gb", nodePool.Config.DiskSizeGb),
+			zap.String("disk_type", nodePool.Config.DiskType),
+			zap.String("image_type", nodePool.Config.ImageType),
+			zap.Bool("preemptible", nodePool.Config.Preemptible),
+			zap.Bool("spot", nodePool.Config.Spot),
+			zap.String("service_account", nodePool.Config.ServiceAccount),
+			zap.Int("oauth_scopes_count", len(nodePool.Config.OauthScopes)),
+			zap.Int("tags_count", len(nodePool.Config.Tags)),
+			zap.Int("labels_count", len(nodePool.Config.Labels)),
+			zap.Int("taints_count", len(nodePool.Config.Taints)))
+
+		if nodePool.Config.MachineType != "" {
+			nodeGroup.InstanceTypes = []string{nodePool.Config.MachineType}
+		}
+		if nodePool.Config.DiskSizeGb > 0 {
+			nodeGroup.DiskSize = int32(nodePool.Config.DiskSizeGb)
+		}
+		if nodePool.Config.DiskType != "" {
+			nodeGroup.DiskType = nodePool.Config.DiskType
+		}
+		if nodePool.Config.ImageType != "" {
+			nodeGroup.ImageType = nodePool.Config.ImageType
+		}
+		if nodePool.Config.Preemptible {
+			nodeGroup.Preemptible = true
+		}
+		if nodePool.Config.Spot {
+			nodeGroup.Spot = true
+		}
+		if nodePool.Config.ServiceAccount != "" {
+			nodeGroup.ServiceAccount = nodePool.Config.ServiceAccount
+		}
+		if len(nodePool.Config.OauthScopes) > 0 {
+			nodeGroup.OAuthScopes = nodePool.Config.OauthScopes
+		}
+		if len(nodePool.Config.Tags) > 0 {
+			// Convert []string to map[string]string
+			tags := make(map[string]string)
+			for _, tag := range nodePool.Config.Tags {
+				tags[tag] = "" // GCP tags don't have values, only keys
+			}
+			nodeGroup.Tags = tags
+		}
+		if len(nodePool.Config.Labels) > 0 {
+			nodeGroup.Labels = nodePool.Config.Labels
+		}
+		if len(nodePool.Config.Taints) > 0 {
+			var taints []dto.NodeTaint
+			for _, taint := range nodePool.Config.Taints {
+				taints = append(taints, dto.NodeTaint{
+					Key:    taint.Key,
+					Value:  taint.Value,
+					Effect: taint.Effect,
+				})
+			}
+			nodeGroup.Taints = taints
+		}
+	}
+
+	// Add scaling config
+	if nodePool.Autoscaling != nil {
+		nodeGroup.ScalingConfig = dto.NodeGroupScalingConfig{
+			MinSize:     int32(nodePool.Autoscaling.MinNodeCount),
+			MaxSize:     int32(nodePool.Autoscaling.MaxNodeCount),
+			DesiredSize: int32(nodePool.InitialNodeCount),
+		}
+	} else {
+		nodeGroup.ScalingConfig = dto.NodeGroupScalingConfig{
+			DesiredSize: int32(nodePool.InitialNodeCount),
+		}
+	}
+
+	// Add network configuration
+	if nodePool.Config != nil && nodePool.Config.WorkloadMetadataConfig != nil {
+		nodeGroup.NetworkConfig = &dto.NodeNetworkConfig{
+			EnablePrivateNodes: nodePool.Config.WorkloadMetadataConfig.Mode == "GKE_METADATA",
+		}
+	}
+
+	// Add management configuration
+	if nodePool.Management != nil {
+		nodeGroup.Management = &dto.NodeManagement{
+			AutoRepair:  nodePool.Management.AutoRepair,
+			AutoUpgrade: nodePool.Management.AutoUpgrade,
+		}
+	}
+
+	// Add upgrade settings
+	if nodePool.UpgradeSettings != nil {
+		nodeGroup.UpgradeSettings = &dto.UpgradeSettings{
+			MaxSurge:       int32(nodePool.UpgradeSettings.MaxSurge),
+			MaxUnavailable: int32(nodePool.UpgradeSettings.MaxUnavailable),
+			Strategy:       nodePool.UpgradeSettings.Strategy,
+		}
+	}
+
+	// Add timestamps (GCP NodePool doesn't have CreateTime/UpdateTime fields)
+	// We'll use empty strings for now, these can be populated from other sources if needed
+	nodeGroup.CreatedAt = ""
+	nodeGroup.UpdatedAt = ""
+
+	s.logger.Info("GKE node pool retrieved successfully",
+		zap.String("cluster_name", req.ClusterName),
+		zap.String("node_pool_name", req.NodeGroupName),
+		zap.String("region", req.Region),
+		zap.String("cluster_location", clusterLocation))
 
 	return &nodeGroup, nil
 }

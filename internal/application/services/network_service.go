@@ -557,21 +557,196 @@ func (s *NetworkService) deleteGCPVPC(ctx context.Context, credential *domain.Cr
 		return fmt.Errorf("invalid VPC ID format: %s", req.VPCID)
 	}
 
-	// Skip dependency checks - GCP will handle validation
-	s.logger.Info("Skipping VPC deletion dependency checks",
+	// Check if VPC exists
+	_, err = computeService.Networks.Get(projectID, networkName).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to get VPC: %w", err)
+	}
+
+	// Check and clean up dependencies
+	s.logger.Info("Starting VPC dependency cleanup",
 		zap.String("vpc_name", networkName),
 		zap.String("project_id", projectID))
 
+	err = s.cleanupVPCResources(ctx, computeService, projectID, networkName)
+	if err != nil {
+		s.logger.Warn("Failed to clean up VPC resources, proceeding with deletion",
+			zap.String("vpc_name", networkName),
+			zap.Error(err))
+		// Continue with deletion - GCP will handle validation
+	} else {
+		s.logger.Info("VPC dependency cleanup completed successfully",
+			zap.String("vpc_name", networkName))
+	}
+
 	// Delete the network
+	s.logger.Info("Initiating VPC deletion",
+		zap.String("vpc_name", networkName),
+		zap.String("project_id", projectID))
+
 	operation, err := computeService.Networks.Delete(projectID, networkName).Context(ctx).Do()
 	if err != nil {
+		s.logger.Error("Failed to delete GCP network",
+			zap.String("vpc_name", networkName),
+			zap.String("project_id", projectID),
+			zap.Error(err))
 		return fmt.Errorf("failed to delete GCP network: %w", err)
 	}
 
-	s.logger.Info("GCP VPC deletion initiated",
+	s.logger.Info("GCP VPC deletion initiated successfully",
 		zap.String("vpc_name", networkName),
 		zap.String("project_id", projectID),
-		zap.String("operation_id", operation.Name))
+		zap.String("operation_id", operation.Name),
+		zap.String("operation_status", operation.Status))
+
+	return nil
+}
+
+// cleanupVPCResources cleans up resources that depend on the VPC
+func (s *NetworkService) cleanupVPCResources(ctx context.Context, computeService *compute.Service, projectID, networkName string) error {
+	s.logger.Info("Starting VPC resource cleanup",
+		zap.String("vpc_name", networkName),
+		zap.String("project_id", projectID))
+
+	// 1. Delete firewall rules associated with this network
+	err := s.deleteNetworkFirewallRules(ctx, computeService, projectID, networkName)
+	if err != nil {
+		s.logger.Warn("Failed to delete firewall rules",
+			zap.String("vpc_name", networkName),
+			zap.Error(err))
+	}
+
+	// 2. Delete subnets in this network
+	err = s.deleteNetworkSubnets(ctx, computeService, projectID, networkName)
+	if err != nil {
+		s.logger.Warn("Failed to delete subnets",
+			zap.String("vpc_name", networkName),
+			zap.Error(err))
+	}
+
+	// 3. Check for instances using this network
+	err = s.checkNetworkInstances(ctx, computeService, projectID, networkName)
+	if err != nil {
+		s.logger.Warn("Found instances using this network",
+			zap.String("vpc_name", networkName),
+			zap.Error(err))
+		return fmt.Errorf("cannot delete VPC: instances are still using this network")
+	}
+
+	s.logger.Info("VPC resource cleanup completed",
+		zap.String("vpc_name", networkName))
+
+	return nil
+}
+
+// deleteNetworkFirewallRules deletes all firewall rules for a network
+func (s *NetworkService) deleteNetworkFirewallRules(ctx context.Context, computeService *compute.Service, projectID, networkName string) error {
+	s.logger.Info("Listing firewall rules for cleanup",
+		zap.String("network", networkName),
+		zap.String("project_id", projectID))
+
+	// List all firewall rules
+	firewalls, err := computeService.Firewalls.List(projectID).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to list firewall rules: %w", err)
+	}
+
+	networkURL := fmt.Sprintf("projects/%s/global/networks/%s", projectID, networkName)
+	deletedCount := 0
+
+	for _, firewall := range firewalls.Items {
+		if firewall.Network == networkURL {
+			s.logger.Info("Deleting firewall rule",
+				zap.String("firewall_name", firewall.Name),
+				zap.String("network", networkName))
+
+			_, err := computeService.Firewalls.Delete(projectID, firewall.Name).Context(ctx).Do()
+			if err != nil {
+				s.logger.Warn("Failed to delete firewall rule",
+					zap.String("firewall_name", firewall.Name),
+					zap.Error(err))
+				// Continue with other firewall rules
+			} else {
+				deletedCount++
+				s.logger.Info("Firewall rule deleted successfully",
+					zap.String("firewall_name", firewall.Name))
+			}
+		}
+	}
+
+	s.logger.Info("Firewall rules cleanup completed",
+		zap.String("network", networkName),
+		zap.Int("deleted_count", deletedCount))
+
+	return nil
+}
+
+// deleteNetworkSubnets deletes all subnets in a network
+func (s *NetworkService) deleteNetworkSubnets(ctx context.Context, computeService *compute.Service, projectID, networkName string) error {
+	s.logger.Info("Listing subnets for cleanup",
+		zap.String("network", networkName),
+		zap.String("project_id", projectID))
+
+	// List all subnets
+	subnets, err := computeService.Subnetworks.AggregatedList(projectID).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to list subnets: %w", err)
+	}
+
+	networkURL := fmt.Sprintf("projects/%s/global/networks/%s", projectID, networkName)
+	deletedCount := 0
+
+	for _, subnetList := range subnets.Items {
+		for _, subnet := range subnetList.Subnetworks {
+			if subnet.Network == networkURL {
+				s.logger.Info("Deleting subnet",
+					zap.String("subnet_name", subnet.Name),
+					zap.String("region", subnet.Region),
+					zap.String("network", networkName))
+
+				_, err := computeService.Subnetworks.Delete(projectID, subnet.Region, subnet.Name).Context(ctx).Do()
+				if err != nil {
+					s.logger.Warn("Failed to delete subnet",
+						zap.String("subnet_name", subnet.Name),
+						zap.String("region", subnet.Region),
+						zap.Error(err))
+					// Continue with other subnets
+				} else {
+					deletedCount++
+					s.logger.Info("Subnet deleted successfully",
+						zap.String("subnet_name", subnet.Name),
+						zap.String("region", subnet.Region))
+				}
+			}
+		}
+	}
+
+	s.logger.Info("Subnets cleanup completed",
+		zap.String("network", networkName),
+		zap.Int("deleted_count", deletedCount))
+
+	return nil
+}
+
+// checkNetworkInstances checks if any instances are using the network
+func (s *NetworkService) checkNetworkInstances(ctx context.Context, computeService *compute.Service, projectID, networkName string) error {
+	// List all instances
+	instances, err := computeService.Instances.AggregatedList(projectID).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to list instances: %w", err)
+	}
+
+	networkURL := fmt.Sprintf("projects/%s/global/networks/%s", projectID, networkName)
+
+	for _, instanceList := range instances.Items {
+		for _, instance := range instanceList.Instances {
+			for _, networkInterface := range instance.NetworkInterfaces {
+				if networkInterface.Network == networkURL {
+					return fmt.Errorf("instance %s is using this network", instance.Name)
+				}
+			}
+		}
+	}
 
 	return nil
 }
@@ -2916,62 +3091,42 @@ func (s *NetworkService) getFirewallRulesCount(ctx context.Context, computeServi
 
 // getGatewayInfo gets gateway information for a specific network
 func (s *NetworkService) getGatewayInfo(ctx context.Context, computeService *compute.Service, projectID, networkName string) (*dto.GatewayInfo, error) {
-	// List routers for the project (need to specify region, using global for now)
-	routers, err := computeService.Routers.List(projectID, "global").Context(ctx).Do()
+	// List routers aggregated across all regions
+	routers, err := computeService.Routers.AggregatedList(projectID).Context(ctx).Do()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list routers: %w", err)
 	}
 
 	// Find routers associated with this network
-	for _, router := range routers.Items {
-		if router.Network != "" {
-			// Extract network name from network URL
-			networkURL := router.Network
-			if strings.Contains(networkURL, "/networks/") {
-				parts := strings.Split(networkURL, "/networks/")
-				if len(parts) == 2 {
-					routerNetworkName := parts[1]
-					if routerNetworkName == networkName {
-						// Check for NAT gateway
-						if len(router.Nats) > 0 {
-							for _, nat := range router.Nats {
-								if nat.NatIpAllocateOption == "AUTO_ONLY" || nat.NatIpAllocateOption == "MANUAL_ONLY" {
-									return &dto.GatewayInfo{
-										Type: "NAT",
-										Name: router.Name,
-									}, nil
-								}
-							}
-						}
-
-						// Check for Internet Gateway (default route)
-						if router.Bgp != nil && router.Bgp.Asn > 0 {
-							return &dto.GatewayInfo{
-								Type: "Internet Gateway",
-								Name: router.Name,
-							}, nil
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Check for Cloud NAT instances
-	nats, err := computeService.Routers.List(projectID, "global").Context(ctx).Do()
-	if err == nil {
-		for _, router := range nats.Items {
+	for _, routerList := range routers.Items {
+		for _, router := range routerList.Routers {
 			if router.Network != "" {
+				// Extract network name from network URL
 				networkURL := router.Network
 				if strings.Contains(networkURL, "/networks/") {
 					parts := strings.Split(networkURL, "/networks/")
 					if len(parts) == 2 {
 						routerNetworkName := parts[1]
-						if routerNetworkName == networkName && len(router.Nats) > 0 {
-							return &dto.GatewayInfo{
-								Type: "Cloud NAT",
-								Name: router.Name,
-							}, nil
+						if routerNetworkName == networkName {
+							// Check for NAT gateway
+							if len(router.Nats) > 0 {
+								for _, nat := range router.Nats {
+									if nat.NatIpAllocateOption == "AUTO_ONLY" || nat.NatIpAllocateOption == "MANUAL_ONLY" {
+										return &dto.GatewayInfo{
+											Type: "NAT",
+											Name: router.Name,
+										}, nil
+									}
+								}
+							}
+
+							// Check for Internet Gateway (default route)
+							if router.Bgp != nil && router.Bgp.Asn > 0 {
+								return &dto.GatewayInfo{
+									Type: "Internet Gateway",
+									Name: router.Name,
+								}, nil
+							}
 						}
 					}
 				}

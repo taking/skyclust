@@ -10,6 +10,11 @@ get {
   auth: bearer
 }
 
+params:query {
+  credential_id: {{credentialsId}}
+  region: ap-northeast-3
+}
+
 auth:bearer {
   token: {{token}}
 }
@@ -36,6 +41,32 @@ script:post-response {
     name: 'table',
     provider: 'ag-grid',
     props: { rowData, columnDefinitions }
+  });
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has node groups data", function() {
+    expect(res.getBody().data).to.be.an('object');
+    expect(res.getBody().data.node_groups).to.be.an('array');
+    expect(res.getBody().data.total).to.be.a('number');
+  });
+  
+  test("Node group has required fields", function() {
+    const nodeGroup = res.getBody().data.node_groups[0];
+    expect(nodeGroup).to.have.property('id');
+    expect(nodeGroup).to.have.property('name');
+    expect(nodeGroup).to.have.property('version');
+    expect(nodeGroup).to.have.property('status');
+    expect(nodeGroup).to.have.property('cluster_name');
+    expect(nodeGroup).to.have.property('region');
   });
 }
 
@@ -121,30 +152,4 @@ docs {
   - `created_at`: 생성일
   - `updated_at`: 수정일
   - `tags`: 태그 정보
-}
-
-tests {
-  test("Status code is 200", function() {
-    expect(res.getStatus()).to.equal(200);
-  });
-  
-  test("Response has success field", function() {
-    expect(res.getBody().success).to.equal(true);
-  });
-  
-  test("Response has node groups data", function() {
-    expect(res.getBody().data).to.be.an('object');
-    expect(res.getBody().data.node_groups).to.be.an('array');
-    expect(res.getBody().data.total).to.be.a('number');
-  });
-  
-  test("Node group has required fields", function() {
-    const nodeGroup = res.getBody().data.node_groups[0];
-    expect(nodeGroup).to.have.property('id');
-    expect(nodeGroup).to.have.property('name');
-    expect(nodeGroup).to.have.property('version');
-    expect(nodeGroup).to.have.property('status');
-    expect(nodeGroup).to.have.property('cluster_name');
-    expect(nodeGroup).to.have.property('region');
-  });
 }
