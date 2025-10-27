@@ -10,8 +10,27 @@ delete {
   auth: bearer
 }
 
+params:query {
+  credential_id: {{credentialsId}}
+  region: asia-northeast3
+}
+
 auth:bearer {
   token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has deletion message", function() {
+    expect(res.getBody().message).to.include("deletion initiated");
+  });
 }
 
 docs {
@@ -58,18 +77,4 @@ docs {
   2. 클러스터 엔드포인트 삭제
   3. 클러스터 리소스 정리
   4. 네트워크 리소스 정리 (해당하는 경우)
-}
-
-tests {
-  test("Status code is 200", function() {
-    expect(res.getStatus()).to.equal(200);
-  });
-  
-  test("Response has success field", function() {
-    expect(res.getBody().success).to.equal(true);
-  });
-  
-  test("Response has deletion message", function() {
-    expect(res.getBody().message).to.include("deletion initiated");
-  });
 }

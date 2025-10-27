@@ -19,7 +19,7 @@ auth:bearer {
 }
 
 script:post-response {
-  bru.setEnvVar("credentialsId", res.body.data.credentials[0].id);
+  bru.setEnvVar("credentialsId", res.body.data.credentials[1].id);
   
   const rowData = res.body.data;
   

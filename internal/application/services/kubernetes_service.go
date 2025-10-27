@@ -619,8 +619,27 @@ func (s *KubernetesService) getAWSEKSCluster(ctx context.Context, credential *do
 	return &cluster, nil
 }
 
-// DeleteEKSCluster deletes an EKS cluster
+// DeleteEKSCluster deletes a Kubernetes cluster
 func (s *KubernetesService) DeleteEKSCluster(ctx context.Context, credential *domain.Credential, clusterName, region string) error {
+	// Route to provider-specific implementation
+	switch credential.Provider {
+	case "aws":
+		return s.deleteAWSEKSCluster(ctx, credential, clusterName, region)
+	case "gcp":
+		return s.deleteGCPGKECluster(ctx, credential, clusterName, region)
+	case "azure":
+		// TODO: Implement Azure AKS cluster deletion
+		return fmt.Errorf("Azure AKS cluster deletion not implemented yet")
+	case "ncp":
+		// TODO: Implement NCP NKS cluster deletion
+		return fmt.Errorf("NCP NKS cluster deletion not implemented yet")
+	default:
+		return fmt.Errorf("unsupported provider: %s", credential.Provider)
+	}
+}
+
+// deleteAWSEKSCluster deletes an AWS EKS cluster
+func (s *KubernetesService) deleteAWSEKSCluster(ctx context.Context, credential *domain.Credential, clusterName, region string) error {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
 	if err != nil {
@@ -1585,4 +1604,76 @@ users:
 		zap.String("region", region))
 
 	return kubeconfig, nil
+}
+
+// deleteGCPGKECluster deletes a GCP GKE cluster
+func (s *KubernetesService) deleteGCPGKECluster(ctx context.Context, credential *domain.Credential, clusterName, region string) error {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Convert credential data to JSON
+	jsonData, err := json.Marshal(credData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal credential data: %w", err)
+	}
+
+	// Extract project ID
+	projectID, ok := credData["project_id"].(string)
+	if !ok {
+		return fmt.Errorf("project_id not found in credential")
+	}
+
+	// Create Container service client
+	containerService, err := container.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create GCP container service: %w", err)
+	}
+
+	// Find cluster location - search in region and all zones
+	locations := []string{
+		region,                      // Region level (e.g., asia-northeast3)
+		fmt.Sprintf("%s-a", region), // Zone level (e.g., asia-northeast3-a)
+		fmt.Sprintf("%s-b", region), // Zone level (e.g., asia-northeast3-b)
+		fmt.Sprintf("%s-c", region), // Zone level (e.g., asia-northeast3-c)
+	}
+
+	var clusterLocation string
+
+	for _, location := range locations {
+		clusterPath := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", projectID, location, clusterName)
+		_, err := containerService.Projects.Locations.Clusters.Get(clusterPath).Context(ctx).Do()
+		if err != nil {
+			// Log warning but continue with other locations
+			s.logger.Debug("Failed to find cluster in location",
+				zap.String("location", location),
+				zap.Error(err))
+			continue
+		}
+
+		// Found the cluster
+		clusterLocation = location
+		break
+	}
+
+	if clusterLocation == "" {
+		return fmt.Errorf("failed to find GKE cluster %s in region %s or any of its zones", clusterName, region)
+	}
+
+	// Delete cluster
+	clusterPath := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", projectID, clusterLocation, clusterName)
+	operation, err := containerService.Projects.Locations.Clusters.Delete(clusterPath).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to delete GKE cluster: %w", err)
+	}
+
+	s.logger.Info("GCP GKE cluster deletion initiated",
+		zap.String("project_id", projectID),
+		zap.String("cluster_name", clusterName),
+		zap.String("location", clusterLocation),
+		zap.String("operation_name", operation.Name))
+
+	return nil
 }
