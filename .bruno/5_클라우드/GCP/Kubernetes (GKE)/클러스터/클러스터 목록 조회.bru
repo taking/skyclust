@@ -10,12 +10,17 @@ get {
   auth: bearer
 }
 
+params:query {
+  credential_id: {{credentialsId}}
+  region: asia-northeast3
+}
+
 auth:bearer {
   token: {{token}}
 }
 
 script:post-response {
-  bru.setEnvVar("clusterName", res.body.data.clusters[0].name);
+  bru.setEnvVar("clusterName", res.body.data.clusters[1].name);
   
   const rowData = res.body.data.clusters;
   
@@ -38,6 +43,30 @@ script:post-response {
   });
 }
 
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has clusters data", function() {
+    expect(res.getBody().data).to.be.an('object');
+    expect(res.getBody().data.clusters).to.be.an('array');
+  });
+  
+  test("Cluster has required fields", function() {
+    const cluster = res.getBody().data.clusters[0];
+    expect(cluster).to.have.property('id');
+    expect(cluster).to.have.property('name');
+    expect(cluster).to.have.property('version');
+    expect(cluster).to.have.property('status');
+    expect(cluster).to.have.property('region');
+  });
+}
+
 docs {
   # GKE 클러스터 목록 조회
   
@@ -46,7 +75,7 @@ docs {
   ## Query Parameters
   
   - `credential_id`: GCP credential ID (필수)
-  - `region`: GCP 리전 (선택사항)
+  - `region`: GCP 리전 (선택사항) - 지정된 리전의 모든 존에서 클러스터 조회
   
   ## Response
   
@@ -56,14 +85,13 @@ docs {
     "data": {
       "clusters": [
         {
-          "id": "projects/my-project/locations/us-central1/clusters/skyclust-gke-1234567890",
+          "id": "projects/my-project/locations/us-central1-a/clusters/skyclust-gke-1234567890",
           "name": "skyclust-gke-1234567890",
           "version": "1.28",
           "status": "RUNNING",
           "region": "us-central1",
           "zone": "us-central1-a",
           "endpoint": "https://34.102.136.81",
-          "project_id": "my-project",
           "created_at": "2024-01-01T00:00:00Z",
           "tags": {
             "Environment": "development",
@@ -105,28 +133,4 @@ docs {
   - `project_id`: GCP 프로젝트 ID
   - `created_at`: 생성일
   - `tags`: 태그 정보
-}
-
-tests {
-  test("Status code is 200", function() {
-    expect(res.getStatus()).to.equal(200);
-  });
-  
-  test("Response has success field", function() {
-    expect(res.getBody().success).to.equal(true);
-  });
-  
-  test("Response has clusters data", function() {
-    expect(res.getBody().data).to.be.an('object');
-    expect(res.getBody().data.clusters).to.be.an('array');
-  });
-  
-  test("Cluster has required fields", function() {
-    const cluster = res.getBody().data.clusters[0];
-    expect(cluster).to.have.property('id');
-    expect(cluster).to.have.property('name');
-    expect(cluster).to.have.property('version');
-    expect(cluster).to.have.property('status');
-    expect(cluster).to.have.property('region');
-  });
 }

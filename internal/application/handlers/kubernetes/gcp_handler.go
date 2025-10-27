@@ -38,8 +38,8 @@ func (h *GCPHandler) CreateGKECluster(c *gin.Context) {
 		return
 	}
 
-	// Parse request
-	var req dto.CreateClusterRequest
+	// Parse request with new sectioned structure
+	var req dto.CreateGKEClusterRequest
 	if err := h.ValidateRequest(c, &req); err != nil {
 		return
 	}
@@ -64,8 +64,8 @@ func (h *GCPHandler) CreateGKECluster(c *gin.Context) {
 		return
 	}
 
-	// Create GKE cluster
-	cluster, err := h.k8sService.CreateEKSCluster(c.Request.Context(), credential, req)
+	// Create GKE cluster with new structure
+	cluster, err := h.k8sService.CreateGCPGKECluster(c.Request.Context(), credential, req)
 	if err != nil {
 		h.LogError(c, err, "Failed to create GKE cluster")
 		responses.InternalServerError(c, "Failed to create cluster: "+err.Error())

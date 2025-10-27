@@ -2,7 +2,10 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
 
 	"skyclust/internal/application/dto"
 	"skyclust/internal/domain"
@@ -13,6 +16,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/eks/types"
 	"go.uber.org/zap"
+	"google.golang.org/api/container/v1"
+	"google.golang.org/api/option"
 )
 
 // KubernetesService handles Kubernetes cluster operations
@@ -29,22 +34,258 @@ func NewKubernetesService(credentialService domain.CredentialService, logger *za
 	}
 }
 
-// CreateEKSCluster creates a new Kubernetes cluster (supports multiple providers)
-// For AWS: EKS, For GCP: GKE, For Azure: AKS, For NCP: NKS
+// CreateEKSCluster creates an AWS EKS cluster (for backward compatibility)
 func (s *KubernetesService) CreateEKSCluster(ctx context.Context, credential *domain.Credential, req dto.CreateClusterRequest) (*dto.CreateClusterResponse, error) {
-	// Route to provider-specific implementation
-	switch credential.Provider {
-	case "aws":
-		return s.createAWSEKSCluster(ctx, credential, req)
-	case "gcp":
-		return s.createGCPGKECluster(ctx, credential, req)
-	case "azure":
-		return s.createAzureAKSCluster(ctx, credential, req)
-	case "ncp":
-		return s.createNCPNKSCluster(ctx, credential, req)
-	default:
-		return nil, fmt.Errorf("unsupported provider: %s", credential.Provider)
+	return s.createAWSEKSCluster(ctx, credential, req)
+}
+
+// CreateGCPGKECluster creates a GCP GKE cluster with new sectioned structure
+func (s *KubernetesService) CreateGCPGKECluster(ctx context.Context, credential *domain.Credential, req dto.CreateGKEClusterRequest) (*dto.CreateClusterResponse, error) {
+	return s.createGCPGKEClusterWithAdvanced(ctx, credential, req)
+}
+
+// createGCPGKEClusterWithAdvanced creates a GCP GKE cluster with advanced configuration
+func (s *KubernetesService) createGCPGKEClusterWithAdvanced(ctx context.Context, credential *domain.Credential, req dto.CreateGKEClusterRequest) (*dto.CreateClusterResponse, error) {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
 	}
+
+	// Convert credential data to JSON
+	jsonData, err := json.Marshal(credData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal credential data: %w", err)
+	}
+
+	// Create GCP Container service
+	containerService, err := container.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP container service: %w", err)
+	}
+
+	// Determine cluster type
+	clusterType := "standard" // Default to standard
+	if req.ClusterMode != nil && req.ClusterMode.Type == "autopilot" {
+		clusterType = "autopilot"
+	}
+
+	// Build cluster configuration
+	clusterConfig := &container.Cluster{
+		Name:                  req.Name,
+		InitialClusterVersion: req.Version,
+	}
+
+	// Network configuration
+	if req.Network != nil {
+		clusterConfig.Network = req.Network.VPCID
+		clusterConfig.Subnetwork = req.Network.SubnetID
+		// Note: Network configuration details will be set through IP allocation policy
+		if req.Network.PodCIDR != "" || req.Network.ServiceCIDR != "" {
+			clusterConfig.IpAllocationPolicy = &container.IPAllocationPolicy{
+				ClusterIpv4CidrBlock:  req.Network.PodCIDR,
+				ServicesIpv4CidrBlock: req.Network.ServiceCIDR,
+				UseIpAliases:          true,
+			}
+		}
+		if req.Network.PrivateNodes || req.Network.PrivateEndpoint {
+			clusterConfig.PrivateClusterConfig = &container.PrivateClusterConfig{
+				EnablePrivateNodes:    req.Network.PrivateNodes,
+				EnablePrivateEndpoint: req.Network.PrivateEndpoint,
+			}
+		}
+		if len(req.Network.MasterAuthorizedNetworks) > 0 {
+			var cidrBlocks []*container.CidrBlock
+			for _, network := range req.Network.MasterAuthorizedNetworks {
+				cidrBlocks = append(cidrBlocks, &container.CidrBlock{
+					CidrBlock: network,
+				})
+			}
+			clusterConfig.MasterAuthorizedNetworksConfig = &container.MasterAuthorizedNetworksConfig{
+				Enabled:    true,
+				CidrBlocks: cidrBlocks,
+			}
+		}
+	} else {
+		return nil, fmt.Errorf("network configuration is required")
+	}
+
+	// Node pool configuration for standard clusters
+	if clusterType == "standard" {
+		if req.NodePool == nil {
+			return nil, fmt.Errorf("node pool configuration is required for standard clusters")
+		}
+		clusterConfig.NodePools = []*container.NodePool{
+			s.buildNodePoolConfig(req.NodePool),
+		}
+	}
+
+	// Security configuration
+	if req.Security != nil {
+		clusterConfig.WorkloadIdentityConfig = &container.WorkloadIdentityConfig{
+			WorkloadPool: fmt.Sprintf("%s.svc.id.goog", req.ProjectID),
+		}
+		clusterConfig.NetworkPolicy = &container.NetworkPolicy{
+			Enabled: req.Security.NetworkPolicy,
+		}
+		clusterConfig.BinaryAuthorization = &container.BinaryAuthorization{
+			Enabled: req.Security.BinaryAuthorization,
+		}
+	}
+
+	// Add tags (convert to GCP format)
+	if len(req.Tags) > 0 {
+		gcpTags := make(map[string]string)
+		for key, value := range req.Tags {
+			gcpKey := convertToGCPTagKey(key)
+			gcpTags[gcpKey] = value
+		}
+		clusterConfig.ResourceLabels = gcpTags
+	}
+
+	// Create cluster request
+	createRequest := &container.CreateClusterRequest{
+		Cluster: clusterConfig,
+	}
+
+	// Determine location (zone or region)
+	location := req.Region
+	if req.Zone != "" {
+		location = req.Zone
+	}
+
+	// Create cluster
+	_, err = containerService.Projects.Locations.Clusters.Create(
+		fmt.Sprintf("projects/%s/locations/%s", req.ProjectID, location),
+		createRequest,
+	).Context(ctx).Do()
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP GKE cluster: %w", err)
+	}
+
+	s.logger.Info("GCP GKE cluster creation initiated",
+		zap.String("cluster_name", req.Name),
+		zap.String("project_id", req.ProjectID),
+		zap.String("location", location),
+		zap.String("cluster_type", clusterType))
+
+	// Build response
+	response := &dto.CreateClusterResponse{
+		ClusterID: fmt.Sprintf("projects/%s/locations/%s/clusters/%s", req.ProjectID, location, req.Name),
+		Name:      req.Name,
+		Version:   req.Version,
+		Region:    req.Region,
+		Zone:      req.Zone,
+		Status:    "creating",
+		ProjectID: req.ProjectID,
+		Tags:      req.Tags,
+		CreatedAt: time.Now().Format(time.RFC3339),
+	}
+
+	return response, nil
+}
+
+// buildNodePoolConfig builds a GCP node pool configuration
+func (s *KubernetesService) buildNodePoolConfig(nodePool *dto.GKENodePoolConfig) *container.NodePool {
+	if nodePool == nil {
+		return nil
+	}
+
+	config := &container.NodePool{
+		Name: nodePool.Name,
+		Config: &container.NodeConfig{
+			MachineType: nodePool.MachineType,
+			DiskSizeGb:  int64(nodePool.DiskSizeGB),
+			DiskType:    nodePool.DiskType,
+			Labels:      nodePool.Labels,
+		},
+		InitialNodeCount: int64(nodePool.NodeCount),
+	}
+
+	// Add auto scaling configuration
+	if nodePool.AutoScaling != nil && nodePool.AutoScaling.Enabled {
+		config.Autoscaling = &container.NodePoolAutoscaling{
+			Enabled:      true,
+			MinNodeCount: int64(nodePool.AutoScaling.MinNodeCount),
+			MaxNodeCount: int64(nodePool.AutoScaling.MaxNodeCount),
+		}
+	}
+
+	// Add preemptible/spot configuration
+	if nodePool.Preemptible {
+		config.Config.Preemptible = true
+	}
+	if nodePool.Spot {
+		config.Config.Spot = true
+	}
+
+	return config
+}
+
+// convertToGCPTagKey converts tag keys to GCP-compatible format
+// GCP requires tag keys to start with lowercase letters and contain only
+// lowercase letters, numbers, underscores, and dashes
+func convertToGCPTagKey(key string) string {
+	if key == "" {
+		return key
+	}
+
+	// Convert to lowercase and replace invalid characters
+	result := strings.ToLower(key)
+
+	// Replace spaces and other invalid characters with underscores
+	result = strings.ReplaceAll(result, " ", "_")
+	result = strings.ReplaceAll(result, ".", "_")
+	result = strings.ReplaceAll(result, "/", "_")
+	result = strings.ReplaceAll(result, "\\", "_")
+	result = strings.ReplaceAll(result, ":", "_")
+	result = strings.ReplaceAll(result, ";", "_")
+	result = strings.ReplaceAll(result, "=", "_")
+	result = strings.ReplaceAll(result, "+", "_")
+	result = strings.ReplaceAll(result, "*", "_")
+	result = strings.ReplaceAll(result, "?", "_")
+	result = strings.ReplaceAll(result, "!", "_")
+	result = strings.ReplaceAll(result, "@", "_")
+	result = strings.ReplaceAll(result, "#", "_")
+	result = strings.ReplaceAll(result, "$", "_")
+	result = strings.ReplaceAll(result, "%", "_")
+	result = strings.ReplaceAll(result, "^", "_")
+	result = strings.ReplaceAll(result, "&", "_")
+	result = strings.ReplaceAll(result, "(", "_")
+	result = strings.ReplaceAll(result, ")", "_")
+	result = strings.ReplaceAll(result, "[", "_")
+	result = strings.ReplaceAll(result, "]", "_")
+	result = strings.ReplaceAll(result, "{", "_")
+	result = strings.ReplaceAll(result, "}", "_")
+	result = strings.ReplaceAll(result, "|", "_")
+	result = strings.ReplaceAll(result, "~", "_")
+	result = strings.ReplaceAll(result, "`", "_")
+
+	// Ensure it starts with a letter
+	if len(result) > 0 && !isLetter(result[0]) {
+		result = "tag_" + result
+	}
+
+	// Remove consecutive underscores
+	for strings.Contains(result, "__") {
+		result = strings.ReplaceAll(result, "__", "_")
+	}
+
+	// Remove leading/trailing underscores
+	result = strings.Trim(result, "_")
+
+	// Ensure it's not empty
+	if result == "" {
+		result = "tag"
+	}
+
+	return result
+}
+
+// isLetter checks if a character is a letter
+func isLetter(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
 // createAWSEKSCluster creates an AWS EKS cluster
@@ -168,8 +409,7 @@ func (s *KubernetesService) ListEKSClusters(ctx context.Context, credential *dom
 	case "aws":
 		return s.listAWSEKSClusters(ctx, credential, region)
 	case "gcp":
-		// TODO: Implement GCP GKE cluster listing
-		return &dto.ListClustersResponse{Clusters: []dto.ClusterInfo{}}, nil
+		return s.listGCPGKEClusters(ctx, credential, region)
 	case "azure":
 		// TODO: Implement Azure AKS cluster listing
 		return &dto.ListClustersResponse{Clusters: []dto.ClusterInfo{}}, nil
@@ -298,6 +538,25 @@ func getMapKeys(m map[string]interface{}) []string {
 
 // GetEKSCluster gets details of an EKS cluster by name
 func (s *KubernetesService) GetEKSCluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (*dto.ClusterInfo, error) {
+	// Route to provider-specific implementation
+	switch credential.Provider {
+	case "aws":
+		return s.getAWSEKSCluster(ctx, credential, clusterName, region)
+	case "gcp":
+		return s.getGCPGKECluster(ctx, credential, clusterName, region)
+	case "azure":
+		// TODO: Implement Azure AKS cluster retrieval
+		return nil, fmt.Errorf("Azure AKS cluster retrieval not implemented yet")
+	case "ncp":
+		// TODO: Implement NCP NKS cluster retrieval
+		return nil, fmt.Errorf("NCP NKS cluster retrieval not implemented yet")
+	default:
+		return nil, fmt.Errorf("unsupported provider: %s", credential.Provider)
+	}
+}
+
+// getAWSEKSCluster gets AWS EKS cluster details
+func (s *KubernetesService) getAWSEKSCluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (*dto.ClusterInfo, error) {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
 	if err != nil {
@@ -410,8 +669,27 @@ func (s *KubernetesService) DeleteEKSCluster(ctx context.Context, credential *do
 	return nil
 }
 
-// GetEKSKubeconfig generates kubeconfig for an EKS cluster
+// GetEKSKubeconfig generates kubeconfig for a Kubernetes cluster
 func (s *KubernetesService) GetEKSKubeconfig(ctx context.Context, credential *domain.Credential, clusterName, region string) (string, error) {
+	// Route to provider-specific implementation
+	switch credential.Provider {
+	case "aws":
+		return s.getAWSEKSKubeconfig(ctx, credential, clusterName, region)
+	case "gcp":
+		return s.getGCPGKEKubeconfig(ctx, credential, clusterName, region)
+	case "azure":
+		// TODO: Implement Azure AKS kubeconfig generation
+		return "", fmt.Errorf("Azure AKS kubeconfig generation not implemented yet")
+	case "ncp":
+		// TODO: Implement NCP NKS kubeconfig generation
+		return "", fmt.Errorf("NCP NKS kubeconfig generation not implemented yet")
+	default:
+		return "", fmt.Errorf("unsupported provider: %s", credential.Provider)
+	}
+}
+
+// getAWSEKSKubeconfig generates kubeconfig for an AWS EKS cluster
+func (s *KubernetesService) getAWSEKSKubeconfig(ctx context.Context, credential *domain.Credential, clusterName, region string) (string, error) {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
 	if err != nil {
@@ -944,4 +1222,367 @@ func (s *KubernetesService) DeleteNodeGroup(ctx context.Context, credential *dom
 		zap.String("region", req.Region))
 
 	return nil
+}
+
+// listGCPGKEClusters lists all GCP GKE clusters
+func (s *KubernetesService) listGCPGKEClusters(ctx context.Context, credential *domain.Credential, region string) (*dto.ListClustersResponse, error) {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Convert credential data to JSON
+	jsonData, err := json.Marshal(credData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal credential data: %w", err)
+	}
+
+	// Extract project ID
+	projectID, ok := credData["project_id"].(string)
+	if !ok {
+		return nil, fmt.Errorf("project_id not found in credential")
+	}
+
+	// Create Container service client
+	containerService, err := container.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP container service: %w", err)
+	}
+
+	// List clusters in the region and all zones of the specified region
+	// GCP clusters can be at region level or zone level
+	locations := []string{
+		region,                      // Region level (e.g., asia-northeast3)
+		fmt.Sprintf("%s-a", region), // Zone level (e.g., asia-northeast3-a)
+		fmt.Sprintf("%s-b", region), // Zone level (e.g., asia-northeast3-b)
+		fmt.Sprintf("%s-c", region), // Zone level (e.g., asia-northeast3-c)
+	}
+
+	var allClusters []dto.ClusterInfo
+
+	for _, location := range locations {
+		// List clusters in each location (region or zone)
+		clustersResp, err := containerService.Projects.Locations.Clusters.List(
+			fmt.Sprintf("projects/%s/locations/%s", projectID, location),
+		).Context(ctx).Do()
+		if err != nil {
+			// Log warning but continue with other locations
+			s.logger.Warn("Failed to list clusters in location",
+				zap.String("location", location),
+				zap.Error(err))
+			continue
+		}
+
+		// Convert to ClusterInfo
+		for _, cluster := range clustersResp.Clusters {
+			// Determine if this is a region or zone
+			var clusterZone string
+			if location == region {
+				// Region level cluster - extract zone from cluster location
+				clusterZone = extractZoneFromLocation(cluster.Location)
+			} else {
+				// Zone level cluster - use the location as zone
+				clusterZone = location
+			}
+
+			// Debug logging
+			s.logger.Debug("Processing GKE cluster",
+				zap.String("cluster_name", cluster.Name),
+				zap.String("cluster_location", cluster.Location),
+				zap.String("query_location", location),
+				zap.String("zone", clusterZone))
+
+			// Build detailed cluster information
+			clusterInfo := dto.ClusterInfo{
+				ID:        cluster.Name,
+				Name:      cluster.Name,
+				Version:   cluster.CurrentMasterVersion,
+				Status:    cluster.Status,
+				Region:    region,
+				Zone:      clusterZone,
+				Endpoint:  cluster.Endpoint,
+				CreatedAt: cluster.CreateTime,
+				UpdatedAt: "", // UpdateTime field doesn't exist in GCP SDK
+				Tags:      cluster.ResourceLabels,
+			}
+
+			// Add network configuration (simplified)
+			if cluster.NetworkConfig != nil {
+				clusterInfo.NetworkConfig = &dto.NetworkConfigInfo{
+					VPCID:           cluster.NetworkConfig.Network,
+					SubnetID:        cluster.NetworkConfig.Subnetwork,
+					PodCIDR:         "",    // Will be populated if available
+					ServiceCIDR:     "",    // Will be populated if available
+					PrivateNodes:    false, // Will be populated if available
+					PrivateEndpoint: false, // Will be populated if available
+				}
+			}
+
+			// Add node pool summary
+			if len(cluster.NodePools) > 0 {
+				var totalNodes, minNodes, maxNodes int32
+				for _, nodePool := range cluster.NodePools {
+					totalNodes += int32(nodePool.InitialNodeCount)
+					if nodePool.Autoscaling != nil {
+						minNodes += int32(nodePool.Autoscaling.MinNodeCount)
+						maxNodes += int32(nodePool.Autoscaling.MaxNodeCount)
+					}
+				}
+
+				clusterInfo.NodePoolInfo = &dto.NodePoolSummaryInfo{
+					TotalNodePools: int32(len(cluster.NodePools)),
+					TotalNodes:     totalNodes,
+					MinNodes:       minNodes,
+					MaxNodes:       maxNodes,
+				}
+			}
+
+			// Add security configuration
+			if cluster.WorkloadIdentityConfig != nil || cluster.BinaryAuthorization != nil || cluster.NetworkPolicy != nil {
+				clusterInfo.SecurityConfig = &dto.SecurityConfigInfo{
+					WorkloadIdentity:    cluster.WorkloadIdentityConfig != nil,
+					BinaryAuthorization: cluster.BinaryAuthorization != nil,
+					NetworkPolicy:       cluster.NetworkPolicy != nil,
+					PodSecurityPolicy:   false, // Deprecated in newer versions
+				}
+			}
+
+			allClusters = append(allClusters, clusterInfo)
+		}
+	}
+
+	s.logger.Info("GCP GKE clusters listed successfully",
+		zap.String("project_id", projectID),
+		zap.String("region", region),
+		zap.Int("count", len(allClusters)))
+
+	return &dto.ListClustersResponse{Clusters: allClusters}, nil
+}
+
+// getGCPGKECluster gets GCP GKE cluster details
+func (s *KubernetesService) getGCPGKECluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (*dto.ClusterInfo, error) {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Convert credential data to JSON
+	jsonData, err := json.Marshal(credData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal credential data: %w", err)
+	}
+
+	// Extract project ID
+	projectID, ok := credData["project_id"].(string)
+	if !ok {
+		return nil, fmt.Errorf("project_id not found in credential")
+	}
+
+	// Create Container service client
+	containerService, err := container.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP container service: %w", err)
+	}
+
+	// Get cluster details
+	clusterPath := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", projectID, region, clusterName)
+	cluster, err := containerService.Projects.Locations.Clusters.Get(clusterPath).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GKE cluster: %w", err)
+	}
+
+	// Convert to ClusterInfo
+	clusterZone := extractZoneFromLocation(cluster.Location)
+
+	// Build detailed cluster information
+	clusterInfo := dto.ClusterInfo{
+		ID:        cluster.Name,
+		Name:      cluster.Name,
+		Version:   cluster.CurrentMasterVersion,
+		Status:    cluster.Status,
+		Region:    region,
+		Zone:      clusterZone,
+		Endpoint:  cluster.Endpoint,
+		CreatedAt: cluster.CreateTime,
+		UpdatedAt: "", // UpdateTime field doesn't exist in GCP SDK
+		Tags:      cluster.ResourceLabels,
+	}
+
+	// Add network configuration (simplified)
+	if cluster.NetworkConfig != nil {
+		clusterInfo.NetworkConfig = &dto.NetworkConfigInfo{
+			VPCID:           cluster.NetworkConfig.Network,
+			SubnetID:        cluster.NetworkConfig.Subnetwork,
+			PodCIDR:         "",    // Will be populated if available
+			ServiceCIDR:     "",    // Will be populated if available
+			PrivateNodes:    false, // Will be populated if available
+			PrivateEndpoint: false, // Will be populated if available
+		}
+	}
+
+	// Add node pool summary
+	if len(cluster.NodePools) > 0 {
+		var totalNodes, minNodes, maxNodes int32
+		for _, nodePool := range cluster.NodePools {
+			totalNodes += int32(nodePool.InitialNodeCount)
+			if nodePool.Autoscaling != nil {
+				minNodes += int32(nodePool.Autoscaling.MinNodeCount)
+				maxNodes += int32(nodePool.Autoscaling.MaxNodeCount)
+			}
+		}
+
+		clusterInfo.NodePoolInfo = &dto.NodePoolSummaryInfo{
+			TotalNodePools: int32(len(cluster.NodePools)),
+			TotalNodes:     totalNodes,
+			MinNodes:       minNodes,
+			MaxNodes:       maxNodes,
+		}
+	}
+
+	// Add security configuration
+	if cluster.WorkloadIdentityConfig != nil || cluster.BinaryAuthorization != nil || cluster.NetworkPolicy != nil {
+		clusterInfo.SecurityConfig = &dto.SecurityConfigInfo{
+			WorkloadIdentity:    cluster.WorkloadIdentityConfig != nil,
+			BinaryAuthorization: cluster.BinaryAuthorization != nil,
+			NetworkPolicy:       cluster.NetworkPolicy != nil,
+			PodSecurityPolicy:   false, // Deprecated in newer versions
+		}
+	}
+
+	s.logger.Info("GCP GKE cluster retrieved successfully",
+		zap.String("project_id", projectID),
+		zap.String("cluster_name", clusterName),
+		zap.String("region", region))
+
+	return &clusterInfo, nil
+}
+
+// extractZoneFromLocation extracts zone from GCP cluster location
+// Location format: "projects/PROJECT_ID/locations/ZONE" or "projects/PROJECT_ID/locations/REGION"
+func extractZoneFromLocation(location string) string {
+	if location == "" {
+		return ""
+	}
+
+	// Split by "/" and get the last part
+	parts := strings.Split(location, "/")
+	if len(parts) < 2 {
+		return ""
+	}
+
+	locationPart := parts[len(parts)-1]
+
+	// If it's a zone (contains a letter at the end), return it
+	// If it's a region (no letter at the end), return empty string
+	if len(locationPart) > 0 && isLetter(locationPart[len(locationPart)-1]) {
+		return locationPart
+	}
+
+	// If it's a region, we need to find the actual zone from the cluster
+	// For now, return empty string for regions
+	return ""
+}
+
+// getGCPGKEKubeconfig generates kubeconfig for a GCP GKE cluster
+func (s *KubernetesService) getGCPGKEKubeconfig(ctx context.Context, credential *domain.Credential, clusterName, region string) (string, error) {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return "", fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	// Convert credential data to JSON
+	jsonData, err := json.Marshal(credData)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal credential data: %w", err)
+	}
+
+	// Extract project ID
+	projectID, ok := credData["project_id"].(string)
+	if !ok {
+		return "", fmt.Errorf("project_id not found in credential")
+	}
+
+	// Create Container service client
+	containerService, err := container.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("failed to create GCP container service: %w", err)
+	}
+
+	// Get cluster details - search in region and all zones
+	// GCP clusters can be at region level or zone level
+	locations := []string{
+		region,                      // Region level (e.g., asia-northeast3)
+		fmt.Sprintf("%s-a", region), // Zone level (e.g., asia-northeast3-a)
+		fmt.Sprintf("%s-b", region), // Zone level (e.g., asia-northeast3-b)
+		fmt.Sprintf("%s-c", region), // Zone level (e.g., asia-northeast3-c)
+	}
+
+	var cluster *container.Cluster
+
+	for _, location := range locations {
+		clusterPath := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", projectID, location, clusterName)
+		clusterResp, err := containerService.Projects.Locations.Clusters.Get(clusterPath).Context(ctx).Do()
+		if err != nil {
+			// Log warning but continue with other locations
+			s.logger.Debug("Failed to get cluster in location",
+				zap.String("location", location),
+				zap.Error(err))
+			continue
+		}
+
+		// Found the cluster
+		cluster = clusterResp
+		break
+	}
+
+	if cluster == nil {
+		return "", fmt.Errorf("failed to find GKE cluster %s in region %s or any of its zones", clusterName, region)
+	}
+
+	// Generate kubeconfig for GCP GKE using Google's standard format
+	// Format: gke_PROJECT_ID_LOCATION_CLUSTER_NAME
+	clusterContextName := fmt.Sprintf("gke_%s_%s_%s", projectID, region, clusterName)
+	kubeconfig := fmt.Sprintf(`apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: %s
+    server: https://%s
+  name: %s
+contexts:
+- context:
+    cluster: %s
+    user: %s
+  name: %s
+current-context: %s
+kind: Config
+preferences: {}
+users:
+- name: %s
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      command: gke-gcloud-auth-plugin
+      installHint: Install gke-gcloud-auth-plugin for use with kubectl by following
+        https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl#install_plugin
+      provideClusterInfo: true
+`,
+		cluster.MasterAuth.ClusterCaCertificate,
+		cluster.Endpoint,
+		clusterContextName,
+		clusterContextName,
+		clusterContextName,
+		clusterContextName,
+		clusterContextName,
+		clusterContextName,
+	)
+
+	s.logger.Info("GCP GKE kubeconfig generated successfully",
+		zap.String("project_id", projectID),
+		zap.String("cluster_name", clusterName),
+		zap.String("region", region))
+
+	return kubeconfig, nil
 }

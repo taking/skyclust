@@ -13,8 +13,6 @@ type CreateClusterRequest struct {
 	Tags         map[string]string `json:"tags,omitempty"`
 	// Access Entry configuration
 	AccessConfig *AccessConfigRequest `json:"access_config,omitempty"`
-	// GCP-specific configuration (for backward compatibility)
-	GKEConfig *GKEClusterConfigRequest `json:"gke_config,omitempty"`
 }
 
 // AccessConfigRequest represents access configuration for EKS cluster
@@ -53,9 +51,46 @@ type ClusterInfo struct {
 	Version   string            `json:"version"`
 	Status    string            `json:"status"`
 	Region    string            `json:"region"`
+	Zone      string            `json:"zone,omitempty"`
 	Endpoint  string            `json:"endpoint,omitempty"`
 	CreatedAt string            `json:"created_at,omitempty"`
+	UpdatedAt string            `json:"updated_at,omitempty"`
 	Tags      map[string]string `json:"tags,omitempty"`
+
+	// Network information
+	NetworkConfig *NetworkConfigInfo `json:"network_config,omitempty"`
+
+	// Node pool information
+	NodePoolInfo *NodePoolSummaryInfo `json:"node_pool_info,omitempty"`
+
+	// Security configuration
+	SecurityConfig *SecurityConfigInfo `json:"security_config,omitempty"`
+}
+
+// NetworkConfigInfo represents network configuration for a cluster
+type NetworkConfigInfo struct {
+	VPCID           string `json:"vpc_id,omitempty"`
+	SubnetID        string `json:"subnet_id,omitempty"`
+	PodCIDR         string `json:"pod_cidr,omitempty"`
+	ServiceCIDR     string `json:"service_cidr,omitempty"`
+	PrivateNodes    bool   `json:"private_nodes,omitempty"`
+	PrivateEndpoint bool   `json:"private_endpoint,omitempty"`
+}
+
+// NodePoolSummaryInfo represents summary information about node pools
+type NodePoolSummaryInfo struct {
+	TotalNodePools int32 `json:"total_node_pools"`
+	TotalNodes     int32 `json:"total_nodes"`
+	MinNodes       int32 `json:"min_nodes"`
+	MaxNodes       int32 `json:"max_nodes"`
+}
+
+// SecurityConfigInfo represents security configuration for a cluster
+type SecurityConfigInfo struct {
+	WorkloadIdentity    bool `json:"workload_identity,omitempty"`
+	BinaryAuthorization bool `json:"binary_authorization,omitempty"`
+	NetworkPolicy       bool `json:"network_policy,omitempty"`
+	PodSecurityPolicy   bool `json:"pod_security_policy,omitempty"`
 }
 
 // ListClustersResponse represents the response after listing clusters
