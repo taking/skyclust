@@ -5,7 +5,7 @@ meta {
 }
 
 put {
-  url: {{baseUrl}}/api/{{apiVersion}}/gcp/network/vpcs/{{vpcName}}?credential_id={{credentialsId}}
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/network/vpcs/{{vpcName}}?credential_id={{gcp_credentialsId}}
   body: json
   auth: bearer
 }

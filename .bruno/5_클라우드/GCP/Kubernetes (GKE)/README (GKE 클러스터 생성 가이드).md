@@ -20,7 +20,7 @@
 ### **기본 정보 (필수)**
 ```json
 {
-  "credential_id": "{{credentialsId}}",
+  "credential_id": "{{gcp_credentialsId}}",
   "name": "cluster-name",
   "version": "1.28",
   "region": "asia-northeast3",

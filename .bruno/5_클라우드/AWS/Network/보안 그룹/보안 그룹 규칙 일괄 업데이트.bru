@@ -20,7 +20,7 @@ auth:bearer {
 
 body:json {
   {
-    "credential_id": "{{credentialsId}}",
+    "credential_id": "{{aws_credentialsId}}",
     "security_group_id": "{{sgId}}",
     "region": "ap-northeast-3",
     "ingress_rules": [
@@ -54,4 +54,3 @@ body:json {
 vars:pre-request {
   securityGroupId: sg-12345678
 }
-

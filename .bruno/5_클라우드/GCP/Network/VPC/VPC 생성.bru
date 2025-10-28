@@ -16,7 +16,7 @@ auth:bearer {
 
 body:json {
   {
-    "credential_id": "{{credentialsId}}",
+    "credential_id": "{{gcp_credentialsId}}",
     "name": "skyclust-vpc-{{$timestamp}}",
     "description": "Auto-mode VPC with GCP-managed subnets in all regions",
     "project_id": "{{gcp_project_id}}",

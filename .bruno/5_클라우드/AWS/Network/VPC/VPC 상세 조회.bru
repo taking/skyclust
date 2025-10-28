@@ -5,13 +5,13 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/aws/network/vpcs/{{vpcId}}?credential_id={{credentialsId}}&region=ap-northeast-3
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/network/vpcs/{{vpcId}}?credential_id={{aws_credentialsId}}&region=ap-northeast-3
   body: none
   auth: bearer
 }
 
 params:query {
-  credential_id: {{credentialsId}}
+  credential_id: {{aws_credentialsId}}
   region: ap-northeast-3
 }
 

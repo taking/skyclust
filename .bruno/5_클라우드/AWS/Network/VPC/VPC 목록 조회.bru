@@ -5,13 +5,13 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/aws/network/vpcs?credential_id={{credentialsId}}&region=ap-northeast-3
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/network/vpcs?credential_id={{aws_credentialsId}}&region=ap-northeast-3
   body: none
   auth: bearer
 }
 
 params:query {
-  credential_id: {{credentialsId}}
+  credential_id: {{aws_credentialsId}}
   region: ap-northeast-3
 }
 
@@ -41,6 +41,33 @@ script:post-response {
     name: 'table',
     provider: 'ag-grid',
     props: { rowData, columnDefinitions }
+  });
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.be.true;
+  });
+  
+  test("Response has vpcs array", function() {
+    expect(res.getBody().data.vpcs).to.be.an('array');
+  });
+  
+  test("VPC has required fields", function() {
+    const vpcs = res.getBody().data.vpcs;
+    if (vpcs.length > 0) {
+      const vpc = vpcs[0];
+      expect(vpc).to.have.property('id');
+      expect(vpc).to.have.property('name');
+      expect(vpc).to.have.property('cidr_block');
+      expect(vpc).to.have.property('state');
+      expect(vpc).to.have.property('is_default');
+      expect(vpc).to.have.property('region');
+    }
   });
 }
 
@@ -89,31 +116,4 @@ docs {
   GET /api/v1/aws/network/vpcs?credential_id=your-credential-id&region=ap-northeast-3
   Authorization: Bearer your-jwt-token
   ```
-}
-
-tests {
-  test("Status code is 200", function() {
-    expect(res.getStatus()).to.equal(200);
-  });
-  
-  test("Response has success field", function() {
-    expect(res.getBody().success).to.be.true;
-  });
-  
-  test("Response has vpcs array", function() {
-    expect(res.getBody().data.vpcs).to.be.an('array');
-  });
-  
-  test("VPC has required fields", function() {
-    const vpcs = res.getBody().data.vpcs;
-    if (vpcs.length > 0) {
-      const vpc = vpcs[0];
-      expect(vpc).to.have.property('id');
-      expect(vpc).to.have.property('name');
-      expect(vpc).to.have.property('cidr_block');
-      expect(vpc).to.have.property('state');
-      expect(vpc).to.have.property('is_default');
-      expect(vpc).to.have.property('region');
-    }
-  });
 }

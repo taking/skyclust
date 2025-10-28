@@ -5,94 +5,18 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/aws/kubernetes/clusters/{{clusterName}}?credential_id={{credentialsId}}&region=ap-northeast-3
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/kubernetes/clusters/{{clusterName}}?credential_id={{aws_credentialsId}}&region=ap-northeast-3
   body: none
   auth: bearer
 }
 
 params:query {
-  credential_id: {{credentialsId}}
+  credential_id: {{aws_credentialsId}}
   region: ap-northeast-3
 }
 
 auth:bearer {
   token: {{token}}
-}
-
-settings {
-  encodeUrl: true
-  timeout: 0
-}
-
-docs {
-  ## 클러스터 상세 조회
-
-  특정 EKS 클러스터의 상세 정보를 조회합니다.
-
-  ### 요청 정보
-  - **Method**: `GET`
-  - **URL**: `/api/v1/aws/kubernetes/clusters/{clusterName}`
-  - **인증**: Bearer Token 필요
-
-  ### 쿼리 파라미터
-  | 파라미터 | 타입 | 필수 | 설명 |
-  |---------|------|------|------|
-  | `credential_id` | string | Yes | AWS 자격증명 ID |
-  | `region` | string | Yes | AWS 리전 (예: ap-northeast-3) |
-
-  ### Path 파라미터
-  | 파라미터 | 타입 | 필수 | 설명 |
-  |---------|------|------|------|
-  | `clusterName` | string | Yes | EKS 클러스터 이름 |
-
-  ### Response
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "arn:aws:eks:ap-northeast-3:123456789012:cluster/skyclust-test-cluster",
-      "name": "skyclust-test-cluster",
-      "version": "1.33",
-      "status": "ACTIVE",
-      "region": "ap-northeast-3",
-      "endpoint": "https://XXXXXXXXXXXX.gr7.ap-northeast-3.eks.amazonaws.com",
-      "created_at": "2025-10-23T10:37:12.000Z",
-      "tags": {
-        "Environment": "development",
-        "ManagedBy": "skyclust",
-        "Team": "platform"
-      }
-    },
-    "message": "Cluster retrieved successfully",
-    "request_id": "a7395210-80f3-4bfc-ac4b-3377e2ee6db1",
-    "timestamp": "2025-10-23T11:03:55.742758+09:00"
-  }
-  ```
-
-  ### Response 필드 설명
-  | 필드 | 타입 | 설명 |
-  |------|------|------|
-  | `id` | string | 클러스터 ARN |
-  | `name` | string | 클러스터 이름 |
-  | `version` | string | Kubernetes 버전 |
-  | `status` | string | 클러스터 상태 (ACTIVE, CREATING, DELETING, FAILED, UPDATING) |
-  | `region` | string | AWS 리전 |
-  | `endpoint` | string | 클러스터 API 서버 엔드포인트 |
-  | `created_at` | string | 생성 시간 |
-  | `tags` | object | 태그 정보 |
-
-  ### 클러스터 상태 값
-  - **CREATING**: 생성 중
-  - **ACTIVE**: 활성화됨 (사용 가능)
-  - **DELETING**: 삭제 중
-  - **FAILED**: 실패
-  - **UPDATING**: 업데이트 중
-
-  ### 에러 응답
-  - **401 Unauthorized**: 유효하지 않은 토큰
-  - **400 Bad Request**: 필수 파라미터 누락
-  - **404 Not Found**: 클러스터를 찾을 수 없음
-  - **500 Internal Server Error**: 서버 내부 오류
 }
 
 tests {
@@ -119,4 +43,80 @@ tests {
     expect(data).to.have.property('status');
     expect(data).to.have.property('region');
   });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  ## 클러스터 상세 조회
+  
+  특정 EKS 클러스터의 상세 정보를 조회합니다.
+  
+  ### 요청 정보
+  - **Method**: `GET`
+  - **URL**: `/api/v1/aws/kubernetes/clusters/{clusterName}`
+  - **인증**: Bearer Token 필요
+  
+  ### 쿼리 파라미터
+  | 파라미터 | 타입 | 필수 | 설명 |
+  |---------|------|------|------|
+  | `credential_id` | string | Yes | AWS 자격증명 ID |
+  | `region` | string | Yes | AWS 리전 (예: ap-northeast-3) |
+  
+  ### Path 파라미터
+  | 파라미터 | 타입 | 필수 | 설명 |
+  |---------|------|------|------|
+  | `clusterName` | string | Yes | EKS 클러스터 이름 |
+  
+  ### Response
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "arn:aws:eks:ap-northeast-3:123456789012:cluster/skyclust-test-cluster",
+      "name": "skyclust-test-cluster",
+      "version": "1.33",
+      "status": "ACTIVE",
+      "region": "ap-northeast-3",
+      "endpoint": "https://XXXXXXXXXXXX.gr7.ap-northeast-3.eks.amazonaws.com",
+      "created_at": "2025-10-23T10:37:12.000Z",
+      "tags": {
+        "Environment": "development",
+        "ManagedBy": "skyclust",
+        "Team": "platform"
+      }
+    },
+    "message": "Cluster retrieved successfully",
+    "request_id": "a7395210-80f3-4bfc-ac4b-3377e2ee6db1",
+    "timestamp": "2025-10-23T11:03:55.742758+09:00"
+  }
+  ```
+  
+  ### Response 필드 설명
+  | 필드 | 타입 | 설명 |
+  |------|------|------|
+  | `id` | string | 클러스터 ARN |
+  | `name` | string | 클러스터 이름 |
+  | `version` | string | Kubernetes 버전 |
+  | `status` | string | 클러스터 상태 (ACTIVE, CREATING, DELETING, FAILED, UPDATING) |
+  | `region` | string | AWS 리전 |
+  | `endpoint` | string | 클러스터 API 서버 엔드포인트 |
+  | `created_at` | string | 생성 시간 |
+  | `tags` | object | 태그 정보 |
+  
+  ### 클러스터 상태 값
+  - **CREATING**: 생성 중
+  - **ACTIVE**: 활성화됨 (사용 가능)
+  - **DELETING**: 삭제 중
+  - **FAILED**: 실패
+  - **UPDATING**: 업데이트 중
+  
+  ### 에러 응답
+  - **401 Unauthorized**: 유효하지 않은 토큰
+  - **400 Bad Request**: 필수 파라미터 누락
+  - **404 Not Found**: 클러스터를 찾을 수 없음
+  - **500 Internal Server Error**: 서버 내부 오류
 }

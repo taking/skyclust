@@ -5,13 +5,13 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/aws/kubernetes/clusters?credential_id={{credentialsId}}&region=ap-northeast-3
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/kubernetes/clusters?credential_id={{aws_credentialsId}}&region=ap-northeast-3
   body: none
   auth: bearer
 }
 
 params:query {
-  credential_id: {{credentialsId}}
+  credential_id: {{aws_credentialsId}}
   region: ap-northeast-3
 }
 
@@ -39,6 +39,11 @@ script:post-response {
     provider: 'ag-grid',
     props: { rowData, columnDefinitions }
   });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
 }
 
 docs {
@@ -86,9 +91,4 @@ docs {
   - `DELETING`: 삭제 중
   - `FAILED`: 실패
   - `UPDATING`: 업데이트 중
-}
-
-settings {
-  encodeUrl: true
-  timeout: 0
 }

@@ -20,7 +20,7 @@ auth:bearer {
 
 body:json {
   {
-    "credential_id": "{{credentialsId}}",
+    "credential_id": "{{aws_credentialsId}}",
     "name": "skyclust-subnet-{{$timestamp}}",
     "vpc_id": "{{vpcId}}",
     "cidr_block": "10.0.2.0/24",

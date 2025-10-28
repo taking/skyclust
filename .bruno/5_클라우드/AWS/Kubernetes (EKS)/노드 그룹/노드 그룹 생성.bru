@@ -16,7 +16,7 @@ auth:bearer {
 
 body:json {
   {
-    "credential_id": "{{credentialsId}}",
+    "credential_id": "{{aws_credentialsId}}",
     "node_group_name": "skyclust-node-group-{{$timestamp}}",
     "node_role_arn": "{{aws_node_role_arn}}",
     "subnet_ids": [

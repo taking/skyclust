@@ -20,7 +20,7 @@ auth:bearer {
 
 body:json {
   {
-    "credential_id": "{{credentialsId}}",
+    "credential_id": "{{aws_credentialsId}}",
     "name": "skyclust-sg-{{$timestamp}}",
     "description": "Security group for SkyClust testing",
     "vpc_id": "{{vpcId}}",

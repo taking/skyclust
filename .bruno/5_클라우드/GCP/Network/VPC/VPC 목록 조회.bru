@@ -5,13 +5,13 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/gcp/network/vpcs?credential_id={{credentialsId}}
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/network/vpcs?credential_id={{gcp_credentialsId}}
   body: none
   auth: bearer
 }
 
 params:query {
-  credential_id: {{credentialsId}}
+  credential_id: {{gcp_credentialsId}}
 }
 
 auth:bearer {

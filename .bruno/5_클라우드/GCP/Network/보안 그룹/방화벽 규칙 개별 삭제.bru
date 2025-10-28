@@ -5,13 +5,13 @@ meta {
 }
 
 delete {
-  url: {{baseUrl}}/api/{{apiVersion}}/gcp/network/firewall-rules/{{firewallId}}/ports?credential_id={{credentialsId}}&region=asia-northeast3
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/network/firewall-rules/{{firewallId}}/ports?credential_id={{gcp_credentialsId}}&region=asia-northeast3
   body: json
   auth: bearer
 }
 
 params:query {
-  credential_id: {{credentialsId}}
+  credential_id: {{gcp_credentialsId}}
   region: asia-northeast3
 }
 

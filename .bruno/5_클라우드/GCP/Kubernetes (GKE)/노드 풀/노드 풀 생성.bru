@@ -16,7 +16,7 @@ auth:bearer {
 
 body:json {
   {
-    "credential_id": "{{credentialsId}}",
+    "credential_id": "{{gcp_credentialsId}}",
     "node_pool_name": "skyclust-nodepool-{{$timestamp}}",
     "machine_type": "e2-medium",
     "disk_size_gb": 20,

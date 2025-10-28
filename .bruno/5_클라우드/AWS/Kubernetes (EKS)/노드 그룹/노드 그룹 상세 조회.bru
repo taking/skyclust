@@ -5,13 +5,13 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/aws/kubernetes/clusters/{{clusterName}}/nodegroups/{{nodeGroupName}}?credential_id={{credentialsId}}&region=ap-northeast-3
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/kubernetes/clusters/{{clusterName}}/nodegroups/{{nodeGroupName}}?credential_id={{aws_credentialsId}}&region=ap-northeast-3
   body: none
   auth: bearer
 }
 
 params:query {
-  credential_id: {{credentialsId}}
+  credential_id: {{aws_credentialsId}}
   region: ap-northeast-3
 }
 
@@ -19,28 +19,56 @@ auth:bearer {
   token: {{token}}
 }
 
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has node group data", function() {
+    expect(res.getBody().data).to.be.an('object');
+    expect(res.getBody().data.id).to.be.a('string');
+    expect(res.getBody().data.name).to.be.a('string');
+    expect(res.getBody().data.status).to.be.a('string');
+    expect(res.getBody().data.cluster_name).to.be.a('string');
+    expect(res.getBody().data.region).to.be.a('string');
+  });
+  
+  test("Response has required fields", function() {
+    const data = res.getBody().data;
+    expect(data).to.have.property('id');
+    expect(data).to.have.property('name');
+    expect(data).to.have.property('status');
+    expect(data).to.have.property('cluster_name');
+    expect(data).to.have.property('region');
+  });
+}
+
 docs {
   ## 노드 그룹 상세 조회
-
+  
   특정 EKS 클러스터의 노드 그룹 상세 정보를 조회합니다.
-
+  
   ### 요청 정보
   - **Method**: `GET`
   - **URL**: `/api/v1/aws/kubernetes/clusters/{clusterName}/nodegroups/{nodeGroupName}`
   - **인증**: Bearer Token 필요
-
+  
   ### 쿼리 파라미터
   | 파라미터 | 타입 | 필수 | 설명 |
   |---------|------|------|------|
   | `credential_id` | string | Yes | AWS 자격증명 ID |
   | `region` | string | Yes | AWS 리전 (예: ap-northeast-3) |
-
+  
   ### Path 파라미터
   | 파라미터 | 타입 | 필수 | 설명 |
   |---------|------|------|------|
   | `clusterName` | string | Yes | EKS 클러스터 이름 |
   | `nodeGroupName` | string | Yes | 노드 그룹 이름 |
-
+  
   ### Response
   ```json
   {
@@ -73,7 +101,7 @@ docs {
     "timestamp": "2025-10-23T11:03:55.742758+09:00"
   }
   ```
-
+  
   ### Response 필드 설명
   | 필드 | 타입 | 설명 |
   |------|------|------|
@@ -90,38 +118,10 @@ docs {
   | `created_at` | string | 생성 시간 |
   | `updated_at` | string | 수정 시간 |
   | `tags` | object | 태그 정보 |
-
+  
   ### 에러 응답
   - **401 Unauthorized**: 유효하지 않은 토큰
   - **400 Bad Request**: 필수 파라미터 누락
   - **404 Not Found**: 클러스터 또는 노드 그룹을 찾을 수 없음
   - **500 Internal Server Error**: 서버 내부 오류
-}
-
-tests {
-  test("Status code is 200", function() {
-    expect(res.getStatus()).to.equal(200);
-  });
-  
-  test("Response has success field", function() {
-    expect(res.getBody().success).to.equal(true);
-  });
-  
-  test("Response has node group data", function() {
-    expect(res.getBody().data).to.be.an('object');
-    expect(res.getBody().data.id).to.be.a('string');
-    expect(res.getBody().data.name).to.be.a('string');
-    expect(res.getBody().data.status).to.be.a('string');
-    expect(res.getBody().data.cluster_name).to.be.a('string');
-    expect(res.getBody().data.region).to.be.a('string');
-  });
-  
-  test("Response has required fields", function() {
-    const data = res.getBody().data;
-    expect(data).to.have.property('id');
-    expect(data).to.have.property('name');
-    expect(data).to.have.property('status');
-    expect(data).to.have.property('cluster_name');
-    expect(data).to.have.property('region');
-  });
 }
