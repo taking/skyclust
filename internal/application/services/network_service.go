@@ -230,72 +230,78 @@ func (s *NetworkService) createGCPVPC(ctx context.Context, credential *domain.Cr
 
 // createGCPVPCWithAdvanced creates a GCP VPC with advanced features
 func (s *NetworkService) createGCPVPCWithAdvanced(ctx context.Context, credential *domain.Credential, req dto.CreateGCPVPCRequest, computeService *compute.Service) (*dto.VPCInfo, error) {
-	// Create network object (subnet mode network)
-	// Use the user's auto_create_subnets preference
-	network := &compute.Network{
+	network := s.buildGCPNetworkObject(req)
+
+	s.logNetworkConfiguration(network)
+
+	operation, err := s.createGCPNetworkOperation(ctx, computeService, req.ProjectID, network)
+	if err != nil {
+		return nil, err
+	}
+
+	s.logOperationInitiated(req, operation)
+
+	return s.buildVPCInfoFromRequest(req), nil
+}
+
+// buildGCPNetworkObject creates a GCP network object from request
+func (s *NetworkService) buildGCPNetworkObject(req dto.CreateGCPVPCRequest) *compute.Network {
+	return &compute.Network{
 		Name:                  req.Name,
 		Description:           req.Description,
-		AutoCreateSubnetworks: req.AutoCreateSubnets, // GCP SDK 제한으로 인한 강제 설정
+		AutoCreateSubnetworks: req.AutoCreateSubnets,
 		RoutingConfig: &compute.NetworkRoutingConfig{
 			RoutingMode: req.RoutingMode,
 		},
 		Mtu: req.MTU,
 		// IPv4Range field is intentionally omitted to ensure subnet mode
 	}
+}
 
-	// Log the network configuration for debugging
+// logNetworkConfiguration logs the network configuration for debugging
+func (s *NetworkService) logNetworkConfiguration(network *compute.Network) {
 	s.logger.Info("Creating GCP network with configuration",
 		zap.String("name", network.Name),
 		zap.String("description", network.Description),
 		zap.Bool("auto_create_subnetworks", network.AutoCreateSubnetworks),
 		zap.String("routing_mode", network.RoutingConfig.RoutingMode),
 		zap.Int64("mtu", network.Mtu))
+}
 
-	// Create a custom network object without IPv4Range field
-	// This ensures we have full control over the JSON payload
-	customNetwork := map[string]interface{}{
-		"name":                  network.Name,
-		"description":           network.Description,
-		"autoCreateSubnetworks": network.AutoCreateSubnetworks,
-		"routingConfig": map[string]interface{}{
-			"routingMode": network.RoutingConfig.RoutingMode,
-		},
-		"mtu": network.Mtu,
-		// IPv4Range field is intentionally omitted
-	}
-
-	// Log the custom network object for debugging
-	s.logger.Info("Creating GCP network with custom payload",
-		zap.Any("custom_network", customNetwork))
-
-	// Create the network using direct HTTP API
-	operation, err := computeService.Networks.Insert(req.ProjectID, network).Context(ctx).Do()
+// createGCPNetworkOperation creates the network using GCP API
+func (s *NetworkService) createGCPNetworkOperation(ctx context.Context, computeService *compute.Service, projectID string, network *compute.Network) (*compute.Operation, error) {
+	operation, err := computeService.Networks.Insert(projectID, network).Context(ctx).Do()
 	if err != nil {
-		// Log the actual network object being sent for debugging
 		s.logger.Error("Failed to create GCP network",
 			zap.String("error", err.Error()),
 			zap.String("network_name", network.Name),
 			zap.Bool("auto_create_subnetworks", network.AutoCreateSubnetworks))
 		return nil, fmt.Errorf("failed to create GCP network: %w", err)
 	}
+	return operation, nil
+}
 
+// logOperationInitiated logs when VPC creation is initiated
+func (s *NetworkService) logOperationInitiated(req dto.CreateGCPVPCRequest, operation *compute.Operation) {
 	s.logger.Info("GCP VPC creation initiated",
 		zap.String("vpc_name", req.Name),
 		zap.String("project_id", req.ProjectID),
 		zap.String("operation_id", operation.Name))
+}
 
-	// Return VPC info
+// buildVPCInfoFromRequest builds VPCInfo from request data
+func (s *NetworkService) buildVPCInfoFromRequest(req dto.CreateGCPVPCRequest) *dto.VPCInfo {
 	return &dto.VPCInfo{
-		ID:          fmt.Sprintf("projects/%s/global/networks/%s", req.ProjectID, req.Name),
+		ID:          fmt.Sprintf(ResourcePrefixVPC, req.ProjectID, req.Name),
 		Name:        req.Name,
-		State:       "creating",
-		NetworkMode: "subnet",
+		State:       StateCreating,
+		NetworkMode: NetworkModeSubnet,
 		RoutingMode: req.RoutingMode,
 		MTU:         req.MTU,
 		AutoSubnets: req.AutoCreateSubnets,
 		Description: req.Description,
 		Tags:        req.Tags,
-	}, nil
+	}
 }
 
 // listGCPVPCs lists all GCP VPCs
@@ -3091,51 +3097,100 @@ func (s *NetworkService) getFirewallRulesCount(ctx context.Context, computeServi
 
 // getGatewayInfo gets gateway information for a specific network
 func (s *NetworkService) getGatewayInfo(ctx context.Context, computeService *compute.Service, projectID, networkName string) (*dto.GatewayInfo, error) {
-	// List routers aggregated across all regions
+	routers, err := s.listRouters(ctx, computeService, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.findGatewayForNetwork(routers, networkName), nil
+}
+
+// listRouters lists routers aggregated across all regions
+func (s *NetworkService) listRouters(ctx context.Context, computeService *compute.Service, projectID string) (*compute.RouterAggregatedList, error) {
 	routers, err := computeService.Routers.AggregatedList(projectID).Context(ctx).Do()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list routers: %w", err)
 	}
+	return routers, nil
+}
 
-	// Find routers associated with this network
+// findGatewayForNetwork finds gateway information for a specific network
+func (s *NetworkService) findGatewayForNetwork(routers *compute.RouterAggregatedList, networkName string) *dto.GatewayInfo {
 	for _, routerList := range routers.Items {
 		for _, router := range routerList.Routers {
-			if router.Network != "" {
-				// Extract network name from network URL
-				networkURL := router.Network
-				if strings.Contains(networkURL, "/networks/") {
-					parts := strings.Split(networkURL, "/networks/")
-					if len(parts) == 2 {
-						routerNetworkName := parts[1]
-						if routerNetworkName == networkName {
-							// Check for NAT gateway
-							if len(router.Nats) > 0 {
-								for _, nat := range router.Nats {
-									if nat.NatIpAllocateOption == "AUTO_ONLY" || nat.NatIpAllocateOption == "MANUAL_ONLY" {
-										return &dto.GatewayInfo{
-											Type: "NAT",
-											Name: router.Name,
-										}, nil
-									}
-								}
-							}
+			if !s.isRouterConnectedToNetwork(router, networkName) {
+				continue
+			}
 
-							// Check for Internet Gateway (default route)
-							if router.Bgp != nil && router.Bgp.Asn > 0 {
-								return &dto.GatewayInfo{
-									Type: "Internet Gateway",
-									Name: router.Name,
-								}, nil
-							}
-						}
-					}
-				}
+			if gatewayInfo := s.checkRouterForGateway(router); gatewayInfo != nil {
+				return gatewayInfo
 			}
 		}
 	}
+	return nil
+}
 
-	// No specific gateway found, return nil
-	return nil, nil
+// isRouterConnectedToNetwork checks if router is connected to the specified network
+func (s *NetworkService) isRouterConnectedToNetwork(router *compute.Router, networkName string) bool {
+	if router.Network == "" {
+		return false
+	}
+
+	networkURL := router.Network
+	if !strings.Contains(networkURL, "/networks/") {
+		return false
+	}
+
+	parts := strings.Split(networkURL, "/networks/")
+	if len(parts) != 2 {
+		return false
+	}
+
+	return parts[1] == networkName
+}
+
+// checkRouterForGateway checks if router has NAT or Internet Gateway
+func (s *NetworkService) checkRouterForGateway(router *compute.Router) *dto.GatewayInfo {
+	// Check for NAT gateway
+	if natGateway := s.checkForNATGateway(router); natGateway != nil {
+		return natGateway
+	}
+
+	// Check for Internet Gateway
+	if internetGateway := s.checkForInternetGateway(router); internetGateway != nil {
+		return internetGateway
+	}
+
+	return nil
+}
+
+// checkForNATGateway checks if router has NAT gateway
+func (s *NetworkService) checkForNATGateway(router *compute.Router) *dto.GatewayInfo {
+	if len(router.Nats) == 0 {
+		return nil
+	}
+
+	for _, nat := range router.Nats {
+		if nat.NatIpAllocateOption == "AUTO_ONLY" || nat.NatIpAllocateOption == "MANUAL_ONLY" {
+			return &dto.GatewayInfo{
+				Type: "NAT",
+				Name: router.Name,
+			}
+		}
+	}
+	return nil
+}
+
+// checkForInternetGateway checks if router has Internet Gateway
+func (s *NetworkService) checkForInternetGateway(router *compute.Router) *dto.GatewayInfo {
+	if router.Bgp == nil || router.Bgp.Asn <= 0 {
+		return nil
+	}
+
+	return &dto.GatewayInfo{
+		Type: "Internet Gateway",
+		Name: router.Name,
+	}
 }
 
 // AWS Subnet Functions (existing implementations)

@@ -3,11 +3,11 @@ package notification
 import (
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
-	"skyclust/internal/shared/responses"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // Handler handles notification management operations
@@ -26,38 +26,55 @@ func NewHandler(notificationService domain.NotificationService) *Handler {
 
 // GetNotifications retrieves notifications
 func (h *Handler) GetNotifications(c *gin.Context) {
+	// Start performance tracking
+	defer h.TrackRequest(c, "get_notifications", 200)
+
+	// Log operation start
+	h.LogInfo(c, "Getting notifications",
+		zap.String("operation", "get_notifications"))
+
 	// Get user ID from token
 	userID, err := h.GetUserIDFromToken(c)
 	if err != nil {
-		if domainErr, ok := err.(*domain.DomainError); ok {
-			responses.DomainError(c, domainErr)
-		} else {
-			responses.InternalServerError(c, "Failed to get user ID from token")
-		}
+		h.HandleError(c, err, "get_notifications")
 		return
 	}
 
-	// Parse query parameters
+	// Parse and validate query parameters
 	limitStr := c.DefaultQuery("limit", "20")
 	offsetStr := c.DefaultQuery("offset", "0")
 	unreadOnlyStr := c.DefaultQuery("unread_only", "false")
 
 	limit, err := strconv.Atoi(limitStr)
 	if err != nil || limit < 1 {
+		h.LogWarn(c, "Invalid limit parameter, using default",
+			zap.String("limit", limitStr),
+			zap.Int("default_limit", 20))
 		limit = 20
 	}
 
 	offset, err := strconv.Atoi(offsetStr)
 	if err != nil || offset < 0 {
+		h.LogWarn(c, "Invalid offset parameter, using default",
+			zap.String("offset", offsetStr),
+			zap.Int("default_offset", 0))
 		offset = 0
 	}
 
 	unreadOnly := unreadOnlyStr == "true"
 
+	// Log business event
+	h.LogBusinessEvent(c, "notifications_requested", userID.String(), "", map[string]interface{}{
+		"limit":       limit,
+		"offset":      offset,
+		"unread_only": unreadOnly,
+	})
+
 	// Get notifications from service
 	notifications, total, err := h.notificationService.GetNotifications(c.Request.Context(), userID.String(), limit, offset, unreadOnly, "", "")
 	if err != nil {
-		responses.InternalServerError(c, "Failed to retrieve notifications")
+		h.LogError(c, err, "Failed to retrieve notifications")
+		h.HandleError(c, err, "get_notifications")
 		return
 	}
 
@@ -77,7 +94,12 @@ func (h *Handler) GetNotifications(c *gin.Context) {
 		}
 	}
 
-	responses.OK(c, gin.H{
+	// Log successful operation
+	h.LogInfo(c, "Notifications retrieved successfully",
+		zap.Int("notifications_count", len(notifications)),
+		zap.Int("total", total))
+
+	h.OK(c, gin.H{
 		"notifications": notificationResponses,
 		"total":         total,
 		"limit":         limit,
@@ -90,7 +112,10 @@ func (h *Handler) GetNotification(c *gin.Context) {
 	notificationIDStr := c.Param("id")
 	notificationID, err := uuid.Parse(notificationIDStr)
 	if err != nil {
-		responses.BadRequest(c, "Invalid notification ID format")
+		h.LogWarn(c, "Invalid notification ID format",
+			zap.String("notification_id", notificationIDStr),
+			zap.Error(err))
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid notification ID format", 400), "get_notification")
 		return
 	}
 
@@ -104,7 +129,7 @@ func (h *Handler) GetNotification(c *gin.Context) {
 		"created_at": "2024-01-01T00:00:00Z",
 	}
 
-	responses.OK(c, notification, "Notification retrieved successfully")
+	h.OK(c, notification, "Notification retrieved successfully")
 }
 
 // MarkAsRead marks a notification as read
@@ -112,12 +137,15 @@ func (h *Handler) MarkAsRead(c *gin.Context) {
 	notificationIDStr := c.Param("id")
 	notificationID, err := uuid.Parse(notificationIDStr)
 	if err != nil {
-		responses.BadRequest(c, "Invalid notification ID format")
+		h.LogWarn(c, "Invalid notification ID format",
+			zap.String("notification_id", notificationIDStr),
+			zap.Error(err))
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid notification ID format", 400), "get_notification")
 		return
 	}
 
 	// TODO: Implement mark as read functionality
-	responses.OK(c, gin.H{
+	h.OK(c, gin.H{
 		"id":   notificationID.String(),
 		"read": true,
 	}, "Notification marked as read")
@@ -126,7 +154,7 @@ func (h *Handler) MarkAsRead(c *gin.Context) {
 // MarkAllAsRead marks all notifications as read
 func (h *Handler) MarkAllAsRead(c *gin.Context) {
 	// TODO: Implement mark all as read functionality
-	responses.OK(c, gin.H{
+	h.OK(c, gin.H{
 		"message": "All notifications marked as read",
 	}, "All notifications marked as read")
 }
@@ -136,12 +164,15 @@ func (h *Handler) DeleteNotification(c *gin.Context) {
 	notificationIDStr := c.Param("id")
 	notificationID, err := uuid.Parse(notificationIDStr)
 	if err != nil {
-		responses.BadRequest(c, "Invalid notification ID format")
+		h.LogWarn(c, "Invalid notification ID format",
+			zap.String("notification_id", notificationIDStr),
+			zap.Error(err))
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid notification ID format", 400), "get_notification")
 		return
 	}
 
 	// TODO: Implement delete functionality
-	responses.OK(c, gin.H{
+	h.OK(c, gin.H{
 		"id": notificationID.String(),
 	}, "Notification deleted successfully")
 }
@@ -149,7 +180,7 @@ func (h *Handler) DeleteNotification(c *gin.Context) {
 // DeleteNotifications deletes multiple notifications
 func (h *Handler) DeleteNotifications(c *gin.Context) {
 	// TODO: Implement bulk delete functionality
-	responses.OK(c, gin.H{
+	h.OK(c, gin.H{
 		"message": "Notifications deleted successfully",
 	}, "Notifications deleted successfully")
 }
@@ -164,19 +195,19 @@ func (h *Handler) GetNotificationPreferences(c *gin.Context) {
 		"frequency": "immediate",
 	}
 
-	responses.OK(c, preferences, "Notification preferences retrieved successfully")
+	h.OK(c, preferences, "Notification preferences retrieved successfully")
 }
 
 // UpdateNotificationPreferences updates notification preferences
 func (h *Handler) UpdateNotificationPreferences(c *gin.Context) {
 	var req gin.H
 	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "update_notification_preferences")
 		return
 	}
 
 	// TODO: Implement preferences update
-	responses.OK(c, req, "Notification preferences updated successfully")
+	h.OK(c, req, "Notification preferences updated successfully")
 }
 
 // GetNotificationStats retrieves notification statistics
@@ -193,7 +224,7 @@ func (h *Handler) GetNotificationStats(c *gin.Context) {
 		},
 	}
 
-	responses.OK(c, stats, "Notification statistics retrieved successfully")
+	h.OK(c, stats, "Notification statistics retrieved successfully")
 }
 
 // SendTestNotification sends a test notification
@@ -208,7 +239,7 @@ func (h *Handler) SendTestNotification(c *gin.Context) {
 		"created_at": "2024-01-01T00:00:00Z",
 	}
 
-	responses.OK(c, gin.H{
+	h.OK(c, gin.H{
 		"message":      "Test notification sent",
 		"notification": notification,
 	}, "Test notification sent successfully")

@@ -90,7 +90,7 @@ func (h *BaseHandler) GetCredentialFromRequest(c *gin.Context, credentialService
 	return credential, nil
 }
 
-// ValidateRequest validates the request body against the provided struct
+// ValidateRequest validates the request body against the provided struct with enhanced error handling
 func (h *BaseHandler) ValidateRequest(c *gin.Context, req interface{}) error {
 	if err := c.ShouldBindJSON(req); err != nil {
 		// Enhanced validation with validation rules
@@ -104,10 +104,13 @@ func (h *BaseHandler) ValidateRequest(c *gin.Context, req interface{}) error {
 			}
 		}
 
-		// Log validation error
-		h.LogWarn(c, "Request validation failed", zap.Any("errors", validationErrors))
-		responses.ValidationError(c, validationErrors)
-		return err
+		// Log validation error with context
+		h.LogWarn(c, "Request validation failed",
+			zap.Any("errors", validationErrors),
+			zap.String("content_type", c.GetHeader("Content-Type")))
+
+		// Return domain error instead of direct response
+		return domain.NewDomainError(domain.ErrCodeValidationFailed, "Request validation failed", 400)
 	}
 	return nil
 }
@@ -150,10 +153,11 @@ func (h *BaseHandler) ValidatePathParams(c *gin.Context, params map[string]strin
 	return nil
 }
 
-// HandleError handles errors and sends appropriate HTTP responses
+// HandleError handles errors and sends appropriate HTTP responses with enhanced logging
 func (h *BaseHandler) HandleError(c *gin.Context, err error, operation string) {
 	// Log the error with context
-	h.LogError(c, err, "Handler error occurred")
+	h.LogError(c, err, "Handler error occurred",
+		zap.String("operation", operation))
 
 	// Handle domain errors
 	if domain.IsDomainError(err) {
@@ -188,14 +192,15 @@ func (h *BaseHandler) LogAuditEvent(c *gin.Context, action, resource string, use
 }
 
 // LogError logs an error with context
-func (h *BaseHandler) LogError(c *gin.Context, err error, message string) {
-	h.logger.Error(message,
+func (h *BaseHandler) LogError(c *gin.Context, err error, message string, fields ...zap.Field) {
+	allFields := append(fields,
 		zap.Error(err),
 		zap.String("path", c.Request.URL.Path),
 		zap.String("method", c.Request.Method),
 		zap.String("user_agent", c.GetHeader("User-Agent")),
 		zap.String("client_ip", c.ClientIP()),
 	)
+	h.logger.Error(message, allFields...)
 }
 
 // LogInfo logs an info message with context
@@ -231,9 +236,15 @@ func (h *BaseHandler) LogDebug(c *gin.Context, message string, fields ...zap.Fie
 	h.logger.Debug(message, allFields...)
 }
 
-// TrackRequest tracks request performance
-func (h *BaseHandler) TrackRequest(c *gin.Context, operation string, statusCode int) {
-	h.performanceTracker.TrackRequest(c, operation, statusCode)
+// TrackRequest tracks request performance with automatic status code detection
+func (h *BaseHandler) TrackRequest(c *gin.Context, operation string, expectedStatusCode int) {
+	// Track the request with performance metrics
+	h.performanceTracker.TrackRequest(c, operation, expectedStatusCode)
+
+	// Log the operation start
+	h.LogInfo(c, "Operation started",
+		zap.String("operation", operation),
+		zap.Int("expected_status", expectedStatusCode))
 }
 
 // TrackOperation tracks a specific operation with timing

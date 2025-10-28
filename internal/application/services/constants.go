@@ -27,6 +27,7 @@ const (
 
 // Network resource states
 const (
+	StateCreating  = "creating"
 	StateAvailable = "available"
 	StateReady     = "READY"
 	StatePending   = "pending"
@@ -37,6 +38,16 @@ const (
 const (
 	NetworkModeSubnet = "subnet"
 	NetworkModeLegacy = "legacy"
+)
+
+// Default values
+const (
+	DefaultMTU        = 1460
+	MaxVPCNameLength  = 63
+	MinVPCNameLength  = 1
+	DefaultPriority   = 1000
+	MaxRetryAttempts  = 3
+	RetryDelaySeconds = 1
 )
 
 // GCP Routing modes

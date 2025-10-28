@@ -207,44 +207,75 @@ func (h *SSEHandler) broadcastToClients(eventType string, data []byte) {
 
 // 클라이언트에게 메시지를 보낼지 결정하는 스마트 필터링
 func (h *SSEHandler) shouldSendToClient(client *SSEClient, eventType string, data interface{}) bool {
-	// 시스템 이벤트는 항상 전송
-	if eventType == "system-notification" || eventType == "system-alert" {
+	if h.isSystemEvent(eventType) {
 		return true
 	}
 
-	// VM 관련 이벤트
-	if eventType == "vm-status" || eventType == "vm-resource" || eventType == "vm-error" {
-		if vmData, ok := data.(map[string]interface{}); ok {
-			if vmID, exists := vmData["vmId"]; exists {
-				return client.SubscribedVMs[vmID.(string)]
-			}
-		}
-		return false
+	if h.isVMEvent(eventType) {
+		return h.shouldSendVMEvent(client, data)
 	}
 
-	// Provider 관련 이벤트
-	if eventType == "provider-status" || eventType == "provider-instance" {
-		if providerData, ok := data.(map[string]interface{}); ok {
-			if provider, exists := providerData["provider"]; exists {
-				return client.SubscribedProviders[provider.(string)]
-			}
-		}
-		return false
+	if h.isProviderEvent(eventType) {
+		return h.shouldSendProviderEvent(client, data)
 	}
 
-	// 기본적으로 전송
 	return true
 }
 
+// isSystemEvent checks if the event type is a system event
+func (h *SSEHandler) isSystemEvent(eventType string) bool {
+	return eventType == EventTypeSystemNotification || eventType == EventTypeSystemAlert
+}
+
+// isVMEvent checks if the event type is a VM-related event
+func (h *SSEHandler) isVMEvent(eventType string) bool {
+	return eventType == EventTypeVMStatus || eventType == EventTypeVMResource || eventType == EventTypeVMError
+}
+
+// isProviderEvent checks if the event type is a provider-related event
+func (h *SSEHandler) isProviderEvent(eventType string) bool {
+	return eventType == EventTypeProviderStatus || eventType == EventTypeProviderInstance
+}
+
+// shouldSendVMEvent determines if VM event should be sent to client
+func (h *SSEHandler) shouldSendVMEvent(client *SSEClient, data interface{}) bool {
+	vmData, ok := data.(map[string]interface{})
+	if !ok {
+		return false
+	}
+
+	vmID, exists := vmData[FieldVMID]
+	if !exists {
+		return false
+	}
+
+	return client.SubscribedVMs[vmID.(string)]
+}
+
+// shouldSendProviderEvent determines if provider event should be sent to client
+func (h *SSEHandler) shouldSendProviderEvent(client *SSEClient, data interface{}) bool {
+	providerData, ok := data.(map[string]interface{})
+	if !ok {
+		return false
+	}
+
+	provider, exists := providerData[FieldProvider]
+	if !exists {
+		return false
+	}
+
+	return client.SubscribedProviders[provider.(string)]
+}
+
 func (h *SSEHandler) cleanupClients() {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(CleanupInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		h.clientsMux.Lock()
 		now := time.Now()
 		for clientID, client := range h.clients {
-			if now.Sub(client.LastSeen) > 5*time.Minute {
+			if now.Sub(client.LastSeen) > ClientTimeout {
 				client.Cancel()
 				delete(h.clients, clientID)
 				h.logger.Info("Cleaned up inactive SSE client", zap.String("client_id", clientID))
@@ -267,7 +298,7 @@ func (h *SSEHandler) SubscribeToEvent(clientID, eventType string) error {
 
 	client, exists := h.clients[clientID]
 	if !exists {
-		return fmt.Errorf("client not found")
+		return fmt.Errorf(ErrClientNotFound)
 	}
 
 	client.SubscribedEvents[eventType] = true
@@ -280,7 +311,7 @@ func (h *SSEHandler) UnsubscribeFromEvent(clientID, eventType string) error {
 
 	client, exists := h.clients[clientID]
 	if !exists {
-		return fmt.Errorf("client not found")
+		return fmt.Errorf(ErrClientNotFound)
 	}
 
 	delete(client.SubscribedEvents, eventType)
@@ -293,7 +324,7 @@ func (h *SSEHandler) SubscribeToVM(clientID, vmID string) error {
 
 	client, exists := h.clients[clientID]
 	if !exists {
-		return fmt.Errorf("client not found")
+		return fmt.Errorf(ErrClientNotFound)
 	}
 
 	client.SubscribedVMs[vmID] = true
@@ -306,7 +337,7 @@ func (h *SSEHandler) UnsubscribeFromVM(clientID, vmID string) error {
 
 	client, exists := h.clients[clientID]
 	if !exists {
-		return fmt.Errorf("client not found")
+		return fmt.Errorf(ErrClientNotFound)
 	}
 
 	delete(client.SubscribedVMs, vmID)
@@ -319,7 +350,7 @@ func (h *SSEHandler) SubscribeToProvider(clientID, provider string) error {
 
 	client, exists := h.clients[clientID]
 	if !exists {
-		return fmt.Errorf("client not found")
+		return fmt.Errorf(ErrClientNotFound)
 	}
 
 	client.SubscribedProviders[provider] = true
@@ -332,7 +363,7 @@ func (h *SSEHandler) UnsubscribeFromProvider(clientID, provider string) error {
 
 	client, exists := h.clients[clientID]
 	if !exists {
-		return fmt.Errorf("client not found")
+		return fmt.Errorf(ErrClientNotFound)
 	}
 
 	delete(client.SubscribedProviders, provider)

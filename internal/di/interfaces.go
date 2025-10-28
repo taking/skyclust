@@ -24,6 +24,7 @@ type ContainerInterface interface {
 	GetOIDCService() domain.OIDCService
 	GetLogoutService() domain.LogoutService
 	GetNotificationService() domain.NotificationService
+	GetSystemMonitoringService() interface{}
 	GetKubernetesService() interface{}
 	GetNetworkService() interface{}
 	GetExportService() interface{}
@@ -49,31 +50,33 @@ type ContainerInterface interface {
 
 // RepositoryContainer holds repository dependencies
 type RepositoryContainer struct {
-	UserRepository       domain.UserRepository
-	WorkspaceRepository  domain.WorkspaceRepository
-	VMRepository         domain.VMRepository
-	CredentialRepository domain.CredentialRepository
-	AuditLogRepository   domain.AuditLogRepository
+	UserRepository         domain.UserRepository
+	WorkspaceRepository    domain.WorkspaceRepository
+	VMRepository           domain.VMRepository
+	CredentialRepository   domain.CredentialRepository
+	AuditLogRepository     domain.AuditLogRepository
+	NotificationRepository domain.NotificationRepository
 }
 
 // ServiceContainer holds service dependencies
 type ServiceContainer struct {
-	UserService          domain.UserService
-	WorkspaceService     domain.WorkspaceService
-	VMService            domain.VMService
-	AuthService          domain.AuthService
-	CredentialService    domain.CredentialService
-	RBACService          domain.RBACService
-	AuditLogService      domain.AuditLogService
-	OIDCService          domain.OIDCService
-	LogoutService        domain.LogoutService
-	NotificationService  domain.NotificationService
-	KubernetesService    interface{} // KubernetesService for K8s cluster management
-	NetworkService       interface{} // NetworkService for VPC, Subnet, Security Group management
-	ExportService        interface{} // TODO: Define ExportService interface in domain
-	CostAnalysisService  interface{} // TODO: Define CostAnalysisService interface in domain
-	CloudProviderService interface{} // TODO: Define CloudProviderService interface in domain
-	BusinessRuleService  interface{} // TODO: Define BusinessRuleService interface in domain
+	UserService             domain.UserService
+	WorkspaceService        domain.WorkspaceService
+	VMService               domain.VMService
+	AuthService             domain.AuthService
+	CredentialService       domain.CredentialService
+	RBACService             domain.RBACService
+	AuditLogService         domain.AuditLogService
+	OIDCService             domain.OIDCService
+	LogoutService           domain.LogoutService
+	NotificationService     domain.NotificationService
+	SystemMonitoringService interface{} // SystemMonitoringService for system health and metrics
+	KubernetesService       interface{} // KubernetesService for K8s cluster management
+	NetworkService          interface{} // NetworkService for VPC, Subnet, Security Group management
+	ExportService           interface{} // TODO: Define ExportService interface in domain
+	CostAnalysisService     interface{} // TODO: Define CostAnalysisService interface in domain
+	CloudProviderService    interface{} // TODO: Define CloudProviderService interface in domain
+	BusinessRuleService     interface{} // TODO: Define BusinessRuleService interface in domain
 }
 
 // DomainContainer holds domain service dependencies

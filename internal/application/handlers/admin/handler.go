@@ -7,7 +7,6 @@ import (
 
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
-	"skyclust/internal/shared/responses"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -64,7 +63,7 @@ func (h *Handler) GetUsers(c *gin.Context) {
 	users, total, err := h.userService.GetUsersWithFilters(filters)
 	if err != nil {
 		h.LogError(c, err, "Failed to get users")
-		responses.InternalServerError(c, "Failed to get users")
+		h.HandleError(c, err, "get_users")
 		return
 	}
 
@@ -72,7 +71,7 @@ func (h *Handler) GetUsers(c *gin.Context) {
 	totalPages := (total + int64(limit) - 1) / int64(limit)
 	currentPage := (offset / limit) + 1
 
-	responses.OK(c, gin.H{
+	h.OK(c, gin.H{
 		"users": users,
 		"pagination": gin.H{
 			"total":        total,
@@ -93,22 +92,22 @@ func (h *Handler) GetUser(c *gin.Context) {
 	userIDStr := c.Param("id")
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		responses.BadRequest(c, "Invalid user ID format")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid user ID format", 400), "get_user")
 		return
 	}
 
 	user, err := h.userService.GetUserByID(userID)
 	if err != nil {
 		if domain.IsNotFoundError(err) {
-			responses.NotFound(c, "User not found")
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "User not found", 404), "get_user")
 			return
 		}
 		h.LogError(c, err, "Failed to get user")
-		responses.InternalServerError(c, "Failed to get user")
+		h.HandleError(c, err, "get_user")
 		return
 	}
 
-	responses.OK(c, user, "User retrieved successfully")
+	h.OK(c, user, "User retrieved successfully")
 }
 
 // UpdateUser updates a specific user
@@ -120,13 +119,13 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 	userIDStr := c.Param("id")
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		responses.BadRequest(c, "Invalid user ID format")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid user ID format", 400), "get_user")
 		return
 	}
 
 	var req domain.UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "update_user")
 		return
 	}
 
@@ -134,11 +133,11 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 	user, err := h.userService.GetUserByID(userID)
 	if err != nil {
 		if domain.IsNotFoundError(err) {
-			responses.NotFound(c, "User not found")
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "User not found", 404), "get_user")
 			return
 		}
 		h.LogError(c, err, "Failed to get user")
-		responses.InternalServerError(c, "Failed to get user")
+		h.HandleError(c, err, "get_user")
 		return
 	}
 
@@ -154,11 +153,11 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 	updatedUser, err := h.userService.UpdateUserDirect(user)
 	if err != nil {
 		h.LogError(c, err, "Failed to update user")
-		responses.InternalServerError(c, "Failed to update user")
+		h.HandleError(c, err, "update_user")
 		return
 	}
 
-	responses.OK(c, updatedUser, "User updated successfully")
+	h.OK(c, updatedUser, "User updated successfully")
 }
 
 // DeleteUser deletes a specific user
@@ -170,7 +169,7 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 	userIDStr := c.Param("id")
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		responses.BadRequest(c, "Invalid user ID format")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid user ID format", 400), "get_user")
 		return
 	}
 
@@ -178,11 +177,11 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 	_, err = h.userService.GetUserByID(userID)
 	if err != nil {
 		if domain.IsNotFoundError(err) {
-			responses.NotFound(c, "User not found")
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "User not found", 404), "get_user")
 			return
 		}
 		h.LogError(c, err, "Failed to get user")
-		responses.InternalServerError(c, "Failed to get user")
+		h.HandleError(c, err, "get_user")
 		return
 	}
 
@@ -190,11 +189,11 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 	err = h.userService.DeleteUserByID(userID)
 	if err != nil {
 		h.LogError(c, err, "Failed to delete user")
-		responses.InternalServerError(c, "Failed to delete user")
+		h.HandleError(c, err, "delete_user")
 		return
 	}
 
-	responses.OK(c, gin.H{"message": "User deleted successfully"}, "User deleted successfully")
+	h.OK(c, gin.H{"message": "User deleted successfully"}, "User deleted successfully")
 }
 
 // AssignRole assigns a role to a user
@@ -206,7 +205,7 @@ func (h *Handler) AssignRole(c *gin.Context) {
 	userIDStr := c.Param("id")
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		responses.BadRequest(c, "Invalid user ID format")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid user ID format", 400), "get_user")
 		return
 	}
 
@@ -215,7 +214,7 @@ func (h *Handler) AssignRole(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "update_user")
 		return
 	}
 
@@ -229,7 +228,7 @@ func (h *Handler) AssignRole(c *gin.Context) {
 	case "viewer":
 		roleType = domain.ViewerRoleType
 	default:
-		responses.BadRequest(c, "Invalid role")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid role", 400), "assign_role")
 		return
 	}
 
@@ -237,11 +236,11 @@ func (h *Handler) AssignRole(c *gin.Context) {
 	err = h.rbacService.AssignRole(userID, roleType)
 	if err != nil {
 		h.LogError(c, err, "Failed to assign role")
-		responses.InternalServerError(c, "Failed to assign role")
+		h.HandleError(c, err, "assign_role")
 		return
 	}
 
-	responses.OK(c, gin.H{"message": "Role assigned successfully"}, "Role assigned successfully")
+	h.OK(c, gin.H{"message": "Role assigned successfully"}, "Role assigned successfully")
 }
 
 // RemoveRole removes a role from a user
@@ -253,7 +252,7 @@ func (h *Handler) RemoveRole(c *gin.Context) {
 	userIDStr := c.Param("id")
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		responses.BadRequest(c, "Invalid user ID format")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid user ID format", 400), "get_user")
 		return
 	}
 
@@ -262,7 +261,7 @@ func (h *Handler) RemoveRole(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "update_user")
 		return
 	}
 
@@ -276,7 +275,7 @@ func (h *Handler) RemoveRole(c *gin.Context) {
 	case "viewer":
 		roleType = domain.ViewerRoleType
 	default:
-		responses.BadRequest(c, "Invalid role")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid role", 400), "assign_role")
 		return
 	}
 
@@ -284,11 +283,11 @@ func (h *Handler) RemoveRole(c *gin.Context) {
 	err = h.rbacService.RemoveRole(userID, roleType)
 	if err != nil {
 		h.LogError(c, err, "Failed to remove role")
-		responses.InternalServerError(c, "Failed to remove role")
+		h.HandleError(c, err, "remove_role")
 		return
 	}
 
-	responses.OK(c, gin.H{"message": "Role removed successfully"}, "Role removed successfully")
+	h.OK(c, gin.H{"message": "Role removed successfully"}, "Role removed successfully")
 }
 
 // GetUserStats retrieves user statistics
@@ -300,7 +299,7 @@ func (h *Handler) GetUserStats(c *gin.Context) {
 	stats, err := h.userService.GetUserStats()
 	if err != nil {
 		h.LogError(c, err, "Failed to get user stats")
-		responses.InternalServerError(c, "Failed to get user stats")
+		h.HandleError(c, err, "get_user_stats")
 		return
 	}
 
@@ -312,7 +311,7 @@ func (h *Handler) GetUserStats(c *gin.Context) {
 		roleStats = make(map[domain.Role]int)
 	}
 
-	responses.OK(c, gin.H{
+	h.OK(c, gin.H{
 		"total_users":       stats.TotalUsers,
 		"active_users":      stats.ActiveUsers,
 		"inactive_users":    stats.InactiveUsers,
@@ -328,20 +327,20 @@ func (h *Handler) checkAdminPermission(c *gin.Context) bool {
 	userRole, err := h.GetUserRoleFromToken(c)
 	if err != nil {
 		if domainErr, ok := err.(*domain.DomainError); ok {
-			responses.DomainError(c, domainErr)
+			h.HandleError(c, domainErr, "check_admin_permission")
 		} else {
-			responses.InternalServerError(c, "Failed to get user role from token")
+			h.HandleError(c, err, "check_admin_permission")
 		}
 		return false
 	}
 
 	// Check if user has admin role
 	if userRole != domain.AdminRoleType {
-		responses.DomainError(c, domain.NewDomainError(
+		h.HandleError(c, domain.NewDomainError(
 			domain.ErrCodeForbidden,
 			"Insufficient permissions - admin role required",
 			http.StatusForbidden,
-		))
+		), "check_admin_permission")
 		return false
 	}
 

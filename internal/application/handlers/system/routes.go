@@ -1,26 +1,22 @@
 package system
 
 import (
-	"skyclust/pkg/logger"
-
 	"github.com/gin-gonic/gin"
 )
 
-// SetupRoutes sets up system management routes
-func SetupRoutes(router *gin.RouterGroup, logger *logger.Logger) {
-	systemHandler := NewHandler(logger)
+// SetupRoutes sets up system monitoring routes
+func SetupRoutes(router *gin.RouterGroup, monitoringService interface{}) {
+	systemHandler := NewHandler(monitoringService)
 
-	// System status and health
-	router.GET("/status", systemHandler.GetSystemStatus) // GET /api/v1/admin/system/status
-	router.GET("/health", systemHandler.GetSystemHealth) // GET /api/v1/admin/system/health
+	// Health check endpoint
+	router.GET("/health", systemHandler.HealthCheck)
 
-	// Configuration management
-	router.GET("/config", systemHandler.GetSystemConfig)    // GET /api/v1/admin/system/config
-	router.PUT("/config", systemHandler.UpdateSystemConfig) // PUT /api/v1/admin/system/config
+	// System metrics endpoint
+	router.GET("/metrics", systemHandler.GetSystemMetrics)
 
-	// Logs and monitoring
-	router.GET("/logs", systemHandler.GetSystemLogs) // GET /api/v1/admin/system/logs
+	// System alerts endpoint
+	router.GET("/alerts", systemHandler.GetSystemAlerts)
 
-	// System operations
-	router.POST("/restart", systemHandler.RestartSystem) // POST /api/v1/admin/system/restart
+	// Legacy endpoints for backward compatibility
+	router.GET("/status", systemHandler.GetSystemStatus)
 }

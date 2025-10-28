@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"skyclust/internal/domain"
 	"skyclust/internal/infrastructure/database"
 	"skyclust/pkg/cache"
@@ -58,20 +59,18 @@ func (c *Container) Initialize(ctx context.Context, cfg *config.Config) error {
 
 	// Initialize modules
 	logger.Info("Initializing repository module...")
-	c.repositoryModule = NewRepositoryModule(c.db)
-	logger.Info("Repository module initialized")
-
-	// Create service configuration with Redis client
-	logger.Info("Creating service configuration...")
-
-	// Get Redis client directly without lock (we're already in initialization)
-	var redisClient interface{}
+	var redisClient *redis.Client
 	if redisService, ok := c.cache.(*cache.RedisService); ok {
 		redisClient = redisService.GetClient()
 		logger.Info("Redis client available for TokenBlacklist")
 	} else {
 		logger.Warn("Redis client not available, TokenBlacklist will be disabled")
 	}
+	c.repositoryModule = NewRepositoryModule(c.db, redisClient)
+	logger.Info("Repository module initialized")
+
+	// Create service configuration with Redis client
+	logger.Info("Creating service configuration...")
 
 	serviceConfig := ServiceConfig{
 		JWTSecret:     cfg.Security.JWTSecret,
@@ -89,7 +88,7 @@ func (c *Container) Initialize(ctx context.Context, cfg *config.Config) error {
 	logger.Info("Domain module initialized")
 
 	logger.Info("Initializing infrastructure module...")
-	c.infrastructureModule = NewInfrastructureModule()
+	c.infrastructureModule = NewInfrastructureModule(c.db, redisClient)
 	logger.Info("Infrastructure module initialized")
 
 	// Set infrastructure dependencies
@@ -325,6 +324,13 @@ func (c *Container) GetNotificationService() domain.NotificationService {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.serviceModule.GetContainer().NotificationService
+}
+
+// GetSystemMonitoringService returns the system monitoring service
+func (c *Container) GetSystemMonitoringService() interface{} {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.serviceModule.GetContainer().SystemMonitoringService
 }
 
 // GetKubernetesService returns the kubernetes service

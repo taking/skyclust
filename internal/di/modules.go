@@ -19,24 +19,27 @@ type RepositoryModule struct {
 }
 
 // NewRepositoryModule creates a new repository module
-func NewRepositoryModule(db interface{}) *RepositoryModule {
-	// Cast db to *gorm.DB
-	gormDB, ok := db.(*gorm.DB)
-	if !ok {
-		logger.Errorf("Invalid database type, expected *gorm.DB")
-		return &RepositoryModule{
-			repositories: &RepositoryContainer{},
-		}
-	}
+func NewRepositoryModule(db *gorm.DB, redisClient *redis.Client) *RepositoryModule {
+	logger.Info("Initializing repository module...")
 
-	// Create actual repositories using postgres implementations
+	// Create repositories
+	userRepo := postgres.NewUserRepository(db)
+	workspaceRepo := postgres.NewWorkspaceRepository(db)
+	vmRepo := postgres.NewVMRepository(db)
+	credentialRepo := postgres.NewCredentialRepository(db)
+	auditLogRepo := postgres.NewAuditLogRepository(db)
+	notificationRepo := postgres.NewNotificationRepository(db)
+
+	logger.Info("Repository module initialized")
+
 	return &RepositoryModule{
 		repositories: &RepositoryContainer{
-			UserRepository:       postgres.NewUserRepository(gormDB),
-			CredentialRepository: postgres.NewCredentialRepository(gormDB),
-			AuditLogRepository:   postgres.NewAuditLogRepository(gormDB),
-			WorkspaceRepository:  postgres.NewWorkspaceRepository(gormDB),
-			VMRepository:         postgres.NewVMRepository(gormDB),
+			UserRepository:         userRepo,
+			WorkspaceRepository:    workspaceRepo,
+			VMRepository:           vmRepo,
+			CredentialRepository:   credentialRepo,
+			AuditLogRepository:     auditLogRepo,
+			NotificationRepository: notificationRepo,
 		},
 	}
 }
@@ -55,33 +58,87 @@ type ServiceModule struct {
 func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceConfig) *ServiceModule {
 	logger.Info("Starting service module initialization...")
 
-	// Create security dependencies
-	logger.Info("Creating security hasher...")
-	hasher := security.NewBcryptHasher(12) // bcrypt cost 12
-
-	// Create cache dependencies with Redis client
-	logger.Info("Initializing TokenBlacklist...")
+	// Get Redis client from config
 	var redisClient *redis.Client
 	if config.RedisClient != nil {
-		if client, ok := config.RedisClient.(*redis.Client); ok {
-			redisClient = client
-			logger.Info("TokenBlacklist initialized with Redis client")
+		if rc, ok := config.RedisClient.(*redis.Client); ok {
+			redisClient = rc
 		}
 	}
 
+	// Create security hasher
+	logger.Info("Creating security hasher...")
+	// hasher := security.NewHasher() - TODO: Use when implementing services
+	logger.Info("Security hasher created")
+
+	// Initialize TokenBlacklist with Redis client
+	logger.Info("Initializing TokenBlacklist...")
 	if redisClient == nil {
 		logger.Warn("Redis client not available, token blacklisting disabled")
 	}
 
-	blacklist := cache.NewTokenBlacklist(redisClient)
+	// blacklist := cache.NewTokenBlacklist(redisClient) - TODO: Use when implementing services
 	logger.Info("TokenBlacklist created")
 
 	// Create RBAC service (requires database for role/permission management)
 	logger.Info("Creating RBAC service...")
-	rbacService := service.NewRBACService(db)
 	logger.Info("RBAC service created")
 
 	// Create Auth service with all dependencies
+	logger.Info("Creating Auth service...")
+	logger.Info("Auth service created")
+
+	// Create Audit Log service first (needed by other services)
+	logger.Info("Creating Audit Log service...")
+	logger.Info("Audit Log service created")
+
+	// Create User service
+	logger.Info("Creating User service...")
+	logger.Info("User service created")
+
+	// Create Credential service
+	// Note: Requires encryption key from config
+	logger.Info("Credential service created")
+
+	// Create Workspace service
+	// Note: Requires messaging bus
+	logger.Info("Workspace service created")
+
+	// Create VM service
+	// Note: Requires cloud provider service and messaging bus
+	logger.Info("VM service created")
+
+	// Create OIDC service
+	logger.Info("OIDC service created")
+
+	// Create Logout service
+	logger.Info("Logout service created")
+
+	// Create System Monitoring service
+	logger.Info("Creating System Monitoring service...")
+	systemMonitoringService := service.NewSystemMonitoringService(
+		logger.DefaultLogger.GetLogger(),
+		nil,         // Config will be set later or use defaults
+		redisClient, // Redis client for health checks
+	)
+	logger.Info("System Monitoring service created")
+
+	// Create actual services
+	logger.Info("Creating actual services...")
+
+	// Create security components
+	logger.Info("Creating security components...")
+	hasher := security.NewBcryptHasher(12) // Use bcrypt with cost 12
+	encryptor := security.NewAESEncryptor([]byte(config.EncryptionKey))
+	blacklist := cache.NewTokenBlacklist(redisClient)
+	logger.Info("Security components created")
+
+	// Create RBACService first (needed by AuthService)
+	logger.Info("Creating RBAC service...")
+	rbacService := service.NewRBACService(db)
+	logger.Info("RBAC service created")
+
+	// Create AuthService
 	logger.Info("Creating Auth service...")
 	authService := service.NewAuthService(
 		repos.UserRepository,
@@ -94,96 +151,128 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 	)
 	logger.Info("Auth service created")
 
-	// Create Audit Log service first (needed by other services)
+	// Create UserService
+	logger.Info("Creating User service...")
+	userService := service.NewUserService(repos.UserRepository, hasher, repos.AuditLogRepository)
+	logger.Info("User service created")
+
+	// Create CredentialService
+	logger.Info("Creating Credential service...")
+	credentialService := service.NewCredentialService(repos.CredentialRepository, repos.AuditLogRepository, encryptor)
+	logger.Info("Credential service created")
+
+	// Create Kubernetes service
+	logger.Info("Creating Kubernetes service...")
+
+	k8sService := service.NewKubernetesService(credentialService, logger.DefaultLogger.GetLogger())
+
+	logger.Info("Kubernetes service created")
+
+	// Create Network service (after credentialService is created)
+	logger.Info("Creating Network service...")
+	networkService := service.NewNetworkService(credentialService, logger.DefaultLogger.GetLogger())
+	logger.Info("Network service created")
+
+	// Create AuditLogService
 	logger.Info("Creating Audit Log service...")
 	auditLogService := service.NewAuditLogService(repos.AuditLogRepository)
 	logger.Info("Audit Log service created")
 
-	// Create User service
-	logger.Info("Creating User service...")
-	userService := service.NewUserService(
+	// Create OIDCService
+	logger.Info("Creating OIDC service...")
+	oidcService := service.NewOIDCService(repos.UserRepository, repos.AuditLogRepository, authService)
+	logger.Info("OIDC service created")
+
+	// Create WorkspaceService
+	logger.Info("Creating Workspace service...")
+	workspaceService := service.NewWorkspaceService(repos.WorkspaceRepository, repos.UserRepository, nil, repos.AuditLogRepository) // TODO: Add messaging bus
+	logger.Info("Workspace service created")
+
+	// Create NotificationService
+	logger.Info("Creating Notification service...")
+	notificationService := service.NewNotificationService(
+		logger.DefaultLogger.GetLogger(),
+		repos.AuditLogRepository,
 		repos.UserRepository,
-		hasher,
-		repos.AuditLogRepository,
-	)
-	logger.Info("User service created")
-
-	// Create Credential service
-	// Note: Requires encryption key from config
-	encryptor := security.NewAESEncryptor([]byte(config.EncryptionKey))
-	credentialService := service.NewCredentialService(
-		repos.CredentialRepository,
-		repos.AuditLogRepository,
-		encryptor,
-	)
-
-	// Create Workspace service
-	// Note: Requires messaging bus
-	workspaceService := service.NewWorkspaceService(
 		repos.WorkspaceRepository,
-		repos.UserRepository,
-		nil, // TODO: Add messaging bus
-		repos.AuditLogRepository,
+		nil, // TODO: Add EventService
 	)
+	logger.Info("Notification service created")
 
-	// Create VM service
-	// Note: Requires cloud provider service and messaging bus
+	// Create CloudProviderService first (needed by VMService)
+	logger.Info("Creating Cloud Provider service...")
+	cloudProviderService := service.NewCloudProviderService()
+	logger.Info("Cloud Provider service created")
+
+	// Create VMService
+	logger.Info("Creating VM service...")
 	vmService := service.NewVMService(
 		repos.VMRepository,
 		repos.WorkspaceRepository,
-		nil, // TODO: Add cloud provider service
-		nil, // TODO: Add messaging bus
+		cloudProviderService,
+		nil, // TODO: Add messaging.Bus
 		repos.AuditLogRepository,
 	)
+	logger.Info("VM service created")
 
-	// Create OIDC service
-	oidcService := service.NewOIDCService(
-		repos.UserRepository,
+	// Create ExportService
+	logger.Info("Creating Export service...")
+	exportService := service.NewExportService(
+		logger.DefaultLogger.GetLogger(),
+		repos.VMRepository,
+		repos.WorkspaceRepository,
+		repos.CredentialRepository,
 		repos.AuditLogRepository,
-		authService, // Use authService instead of rbacService
 	)
+	logger.Info("Export service created")
 
-	// Create Logout service
+	// Create CostAnalysisService
+	logger.Info("Creating Cost Analysis service...")
+	costAnalysisService := service.NewCostAnalysisService(
+		repos.VMRepository,
+		repos.CredentialRepository,
+		repos.WorkspaceRepository,
+		repos.AuditLogRepository,
+	)
+	logger.Info("Cost Analysis service created")
+
+	// Create LogoutService
+	logger.Info("Creating Logout service...")
 	logoutService := service.NewLogoutService(
 		blacklist,
-		oidcService, // Add oidcService
+		oidcService,
 		repos.AuditLogRepository,
 	)
+	logger.Info("Logout service created")
 
-	// Create Kubernetes service
-	logger.Info("Creating Kubernetes service...")
-	k8sService := service.NewKubernetesService(
-		credentialService,
-		logger.DefaultLogger.GetLogger(),
-	)
-	logger.Info("Kubernetes service created")
+	logger.Info("All services created successfully")
 
-	// Create Network service
-	logger.Info("Creating Network service...")
-	networkService := service.NewNetworkService(
-		credentialService,
-		logger.DefaultLogger.GetLogger(),
-	)
-	logger.Info("Network service created")
+	// Debug: Check if KubernetesService is properly created
+	if k8sService != nil {
+		logger.Info("KubernetesService is not nil, assigning to container")
+	} else {
+		logger.Warn("KubernetesService is nil!")
+	}
 
 	return &ServiceModule{
 		services: &ServiceContainer{
-			AuthService:          authService,
-			UserService:          userService,
-			CredentialService:    credentialService,
-			RBACService:          rbacService,
-			AuditLogService:      auditLogService,
-			KubernetesService:    k8sService,
-			NetworkService:       networkService,
-			OIDCService:          oidcService,
-			LogoutService:        logoutService,
-			WorkspaceService:     workspaceService,
-			VMService:            vmService,
-			NotificationService:  nil, // TODO: Implement NotificationService
-			ExportService:        nil, // TODO: Implement ExportService
-			CostAnalysisService:  nil, // TODO: Implement CostAnalysisService
-			CloudProviderService: nil, // TODO: Implement CloudProviderService
-			BusinessRuleService:  nil, // TODO: Implement BusinessRuleService
+			AuthService:             authService,
+			UserService:             userService,
+			CredentialService:       credentialService,
+			RBACService:             rbacService,
+			AuditLogService:         auditLogService,
+			KubernetesService:       k8sService,
+			NetworkService:          networkService,
+			SystemMonitoringService: systemMonitoringService,
+			OIDCService:             oidcService,
+			LogoutService:           logoutService,
+			WorkspaceService:        workspaceService,
+			VMService:               vmService,
+			NotificationService:     notificationService,
+			ExportService:           exportService,
+			CostAnalysisService:     costAnalysisService,
+			CloudProviderService:    cloudProviderService,
+			BusinessRuleService:     nil, // TODO: Implement BusinessRuleService
 		},
 	}
 }
@@ -242,13 +331,21 @@ type InfrastructureModule struct {
 }
 
 // NewInfrastructureModule creates a new infrastructure module
-func NewInfrastructureModule() *InfrastructureModule {
+func NewInfrastructureModule(db *gorm.DB, redisClient *redis.Client) *InfrastructureModule {
+	logger.Info("Initializing infrastructure module...")
+
+	// Initialize messaging bus
+	// messagingBus := messaging.NewBus() - TODO: Implement messaging bus
+
+	// Initialize notification service
+	// notificationService := notification.NewService() - TODO: Implement notification service
+
+	logger.Info("Infrastructure module initialized")
+
 	return &InfrastructureModule{
 		infrastructure: &InfrastructureContainer{
-			Database:  nil, // Will be injected
-			Cache:     nil, // Will be injected
-			Messaging: nil, // Will be injected
-			Logger:    logger.DefaultLogger,
+			// MessagingBus:      messagingBus, - TODO: Implement messaging bus
+			// NotificationService: notificationService, - TODO: Implement notification service
 		},
 	}
 }

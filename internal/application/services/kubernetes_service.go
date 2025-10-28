@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -15,12 +16,44 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/eks/types"
+	"github.com/aws/smithy-go"
 	"go.uber.org/zap"
 	"google.golang.org/api/container/v1"
 	"google.golang.org/api/option"
 )
 
-// KubernetesService handles Kubernetes cluster operations
+// handleAWSError converts AWS SDK errors to appropriate domain errors
+func (s *KubernetesService) handleAWSError(err error, operation string) error {
+	if err == nil {
+		return nil
+	}
+
+	// Check if it's an AWS API error
+	var apiErr *smithy.OperationError
+	if errors.As(err, &apiErr) {
+		// Check for specific AWS error codes
+		switch {
+		case strings.Contains(err.Error(), "UnrecognizedClientException"):
+			return domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid AWS credentials", 400)
+		case strings.Contains(err.Error(), "InvalidUserID.NotFound"):
+			return domain.NewDomainError(domain.ErrCodeBadRequest, "AWS user not found", 400)
+		case strings.Contains(err.Error(), "AccessDenied"):
+			return domain.NewDomainError(domain.ErrCodeForbidden, "Access denied to AWS resources", 403)
+		case strings.Contains(err.Error(), "NoSuchEntity"):
+			return domain.NewDomainError(domain.ErrCodeNotFound, "AWS resource not found", 404)
+		case strings.Contains(err.Error(), "InvalidParameterValue"):
+			return domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid AWS parameter", 400)
+		case strings.Contains(err.Error(), "ThrottlingException"):
+			return domain.NewDomainError(domain.ErrCodeProviderQuota, "AWS API rate limit exceeded", 429)
+		default:
+			return domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("AWS API error: %s", err.Error()), 400)
+		}
+	}
+
+	// For other errors, return as internal server error
+	return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("Failed to %s: %v", operation, err), 500)
+}
+
 type KubernetesService struct {
 	credentialService domain.CredentialService
 	logger            *zap.Logger
@@ -1043,7 +1076,7 @@ func (s *KubernetesService) listAWSEKSNodeGroups(ctx context.Context, credential
 		ClusterName: aws.String(req.ClusterName),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to list node groups: %w", err)
+		return nil, s.handleAWSError(err, "list node groups")
 	}
 
 	// Get detailed information for each node group

@@ -1,13 +1,18 @@
 meta {
-  name: 헬스 체크
+  name: Health Check
   type: http
-  seq: 14
+  seq: 1
 }
 
 get {
   url: {{baseUrl}}/health
   body: none
   auth: inherit
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
 }
 
 docs {
@@ -100,8 +105,4 @@ docs {
   ```bash
   GET /health
   ```
-}
-
-settings {
-  encodeUrl: true
 }
