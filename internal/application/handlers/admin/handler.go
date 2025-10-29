@@ -7,80 +7,63 @@ import (
 
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
+	"skyclust/internal/shared/readability"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
-// Handler handles admin user management operations
+// Handler handles admin user management operations using improved patterns
 type Handler struct {
 	*handlers.BaseHandler
-	userService domain.UserService
-	rbacService domain.RBACService
+	userService       domain.UserService
+	rbacService       domain.RBACService
+	readabilityHelper *readability.ReadabilityHelper
 }
 
 // NewHandler creates a new admin user handler
 func NewHandler(userService domain.UserService, rbacService domain.RBACService) *Handler {
 	return &Handler{
-		BaseHandler: handlers.NewBaseHandler("admin"),
-		userService: userService,
-		rbacService: rbacService,
+		BaseHandler:       handlers.NewBaseHandler("admin"),
+		userService:       userService,
+		rbacService:       rbacService,
+		readabilityHelper: readability.NewReadabilityHelper(),
 	}
 }
 
-// GetUsers retrieves all users with pagination and filtering
+// GetUsers retrieves all users with pagination and filtering using decorator pattern
 func (h *Handler) GetUsers(c *gin.Context) {
-	// Check admin permission
-	if !h.checkAdminPermission(c) {
-		return
+	handler := h.Compose(
+		h.getUsersHandler(),
+		h.StandardCRUDDecorators("get_users")...,
+	)
+
+	handler(c)
+}
+
+// getUsersHandler is the core business logic for getting users
+func (h *Handler) getUsersHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		if !h.checkAdminPermission(c) {
+			return
+		}
+
+		h.logAdminUsersRequest(c)
+
+		filters := h.parseUserFilters(c)
+
+		users, total, err := h.userService.GetUsersWithFilters(filters)
+		if err != nil {
+			h.HandleError(c, err, "get_users")
+			return
+		}
+
+		pagination := h.calculatePagination(total, filters.Limit, filters.Page)
+		h.OK(c, gin.H{
+			"users":      users,
+			"pagination": pagination,
+		}, "Users retrieved successfully")
 	}
-	// Parse query parameters
-	limitStr := c.DefaultQuery("limit", "10")
-	offsetStr := c.DefaultQuery("offset", "0")
-	search := c.Query("search")
-	role := c.Query("role")
-	status := c.Query("status")
-
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil || limit < 1 {
-		limit = 10
-	}
-
-	offset, err := strconv.Atoi(offsetStr)
-	if err != nil || offset < 0 {
-		offset = 0
-	}
-
-	// Build filters
-	filters := domain.UserFilters{
-		Limit:  limit,
-		Search: search,
-		Role:   role,
-		Status: status,
-	}
-
-	// Get users from service
-	users, total, err := h.userService.GetUsersWithFilters(filters)
-	if err != nil {
-		h.LogError(c, err, "Failed to get users")
-		h.HandleError(c, err, "get_users")
-		return
-	}
-
-	// Calculate pagination info
-	totalPages := (total + int64(limit) - 1) / int64(limit)
-	currentPage := (offset / limit) + 1
-
-	h.OK(c, gin.H{
-		"users": users,
-		"pagination": gin.H{
-			"total":        total,
-			"limit":        limit,
-			"offset":       offset,
-			"current_page": currentPage,
-			"total_pages":  totalPages,
-		},
-	}, "Users retrieved successfully")
 }
 
 // GetUser retrieves a specific user by ID
@@ -345,4 +328,94 @@ func (h *Handler) checkAdminPermission(c *gin.Context) bool {
 	}
 
 	return true
+}
+
+// Helper methods for better readability
+
+func (h *Handler) parseUserFilters(c *gin.Context) domain.UserFilters {
+	limitStr := c.DefaultQuery("limit", "10")
+	pageStr := c.DefaultQuery("page", "1")
+	search := c.Query("search")
+	role := c.Query("role")
+	status := c.Query("status")
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 {
+		limit = 10
+	}
+
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+
+	return domain.UserFilters{
+		Limit:  limit,
+		Page:   page,
+		Search: search,
+		Role:   role,
+		Status: status,
+	}
+}
+
+func (h *Handler) calculatePagination(total int64, limit, page int) gin.H {
+	totalPages := (total + int64(limit) - 1) / int64(limit)
+	offset := (page - 1) * limit
+
+	return gin.H{
+		"total":        total,
+		"limit":        limit,
+		"page":         page,
+		"offset":       offset,
+		"current_page": page,
+		"total_pages":  totalPages,
+	}
+}
+
+func (h *Handler) parseUserID(c *gin.Context) uuid.UUID {
+	userIDStr := c.Param("id")
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid user ID format", 400), "parse_user_id")
+		return uuid.Nil
+	}
+	return userID
+}
+
+// Logging helper methods
+
+func (h *Handler) logAdminUsersRequest(c *gin.Context) {
+	h.LogBusinessEvent(c, "admin_users_requested", "", "", map[string]interface{}{
+		"operation": "get_users",
+	})
+}
+
+func (h *Handler) logAdminUserRequest(c *gin.Context, userID uuid.UUID) {
+	h.LogBusinessEvent(c, "admin_user_requested", "", userID.String(), map[string]interface{}{
+		"user_id": userID.String(),
+	})
+}
+
+func (h *Handler) logAdminUserUpdateAttempt(c *gin.Context, userID uuid.UUID) {
+	h.LogBusinessEvent(c, "admin_user_update_attempted", "", userID.String(), map[string]interface{}{
+		"user_id": userID.String(),
+	})
+}
+
+func (h *Handler) logAdminUserUpdateSuccess(c *gin.Context, userID uuid.UUID) {
+	h.LogBusinessEvent(c, "admin_user_updated", "", userID.String(), map[string]interface{}{
+		"user_id": userID.String(),
+	})
+}
+
+func (h *Handler) logAdminUserDeletionAttempt(c *gin.Context, userID uuid.UUID) {
+	h.LogBusinessEvent(c, "admin_user_deletion_attempted", "", userID.String(), map[string]interface{}{
+		"user_id": userID.String(),
+	})
+}
+
+func (h *Handler) logAdminUserDeletionSuccess(c *gin.Context, userID uuid.UUID) {
+	h.LogBusinessEvent(c, "admin_user_deleted", "", userID.String(), map[string]interface{}{
+		"user_id": userID.String(),
+	})
 }

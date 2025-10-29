@@ -30,7 +30,6 @@ class SSEService {
   private clientId: string | null = null;
   private subscribedEvents = new Set<string>();
   private subscribedVMs = new Set<string>();
-  private subscribedProviders = new Set<string>();
 
   connect(token: string, callbacks: SSECallbacks = {}): void {
     if (this.eventSource?.readyState === EventSource.OPEN) {
@@ -175,16 +174,6 @@ class SSEService {
     this.sendSubscriptionUpdate();
   }
 
-  subscribeToProvider(provider: string): void {
-    this.subscribedProviders.add(provider);
-    this.sendSubscriptionUpdate();
-  }
-
-  unsubscribeFromProvider(provider: string): void {
-    this.subscribedProviders.delete(provider);
-    this.sendSubscriptionUpdate();
-  }
-
   private sendSubscriptionUpdate(): void {
     if (!this.clientId || !this.isConnected()) {
       return;
@@ -195,7 +184,6 @@ class SSEService {
       clientId: this.clientId,
       events: Array.from(this.subscribedEvents),
       vms: Array.from(this.subscribedVMs),
-      providers: Array.from(this.subscribedProviders),
     };
 
     console.log('Subscription update:', subscriptionData);
@@ -206,7 +194,6 @@ class SSEService {
     return {
       events: Array.from(this.subscribedEvents),
       vms: Array.from(this.subscribedVMs),
-      providers: Array.from(this.subscribedProviders),
     };
   }
 }

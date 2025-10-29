@@ -5,13 +5,12 @@ import { useRouter, usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useWorkspaceStore } from '@/store/workspace';
-import { Menu, Home, Server, Key, Cloud, Users, Settings } from 'lucide-react';
+import { Menu, Home, Server, Key, Users, Settings } from 'lucide-react';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: Home },
   { name: 'VMs', href: '/vms', icon: Server },
   { name: 'Credentials', href: '/credentials', icon: Key },
-  { name: 'Providers', href: '/providers', icon: Cloud },
   { name: 'Workspaces', href: '/workspaces', icon: Users },
   { name: 'Profile', href: '/profile', icon: Settings },
 ];

@@ -5,1004 +5,1292 @@ import (
 	service "skyclust/internal/application/services"
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
-	"skyclust/internal/shared/responses"
+	"skyclust/internal/shared/readability"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 )
 
-// Handler handles network resource HTTP requests
+// Handler handles network resource HTTP requests using improved patterns
 type Handler struct {
 	*handlers.BaseHandler
 	networkService    *service.NetworkService
 	credentialService domain.CredentialService
-	logger            *zap.Logger
 	provider          string
+	readabilityHelper *readability.ReadabilityHelper
 }
 
 // NewHandler creates a new network handler
-func NewHandler(networkService *service.NetworkService, credentialService domain.CredentialService, logger *zap.Logger, provider string) *Handler {
+func NewHandler(networkService *service.NetworkService, credentialService domain.CredentialService, provider string) *Handler {
 	return &Handler{
 		BaseHandler:       handlers.NewBaseHandler("network"),
 		networkService:    networkService,
 		credentialService: credentialService,
-		logger:            logger,
 		provider:          provider,
+		readabilityHelper: readability.NewReadabilityHelper(),
 	}
 }
 
 // VPC Handlers
 
-// ListVPCs handles VPC listing requests
+// ListVPCs handles VPC listing requests using decorator pattern
 func (h *Handler) ListVPCs(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
-	}
+	handler := h.Compose(
+		h.listVPCsHandler(),
+		h.StandardCRUDDecorators("list_vpcs")...,
+	)
 
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
-		return
-	}
-
-	// Get region from query parameter
-	region := c.Query("region")
-	if region == "" {
-		responses.BadRequest(c, "region is required")
-		return
-	}
-
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Create request
-	req := dto.ListVPCsRequest{
-		CredentialID: credentialID,
-		Region:       region,
-	}
-
-	// List VPCs
-	vpcs, err := h.networkService.ListVPCs(c.Request.Context(), credential, req)
-	if err != nil {
-		h.LogError(c, err, "Failed to list VPCs")
-		responses.InternalServerError(c, "Failed to list VPCs: "+err.Error())
-		return
-	}
-
-	responses.OK(c, vpcs, "VPCs retrieved successfully")
+	handler(c)
 }
 
-// ListSubnets handles subnet listing requests
+// listVPCsHandler is the core business logic for listing VPCs
+func (h *Handler) listVPCsHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := h.extractUserID(c)
+		credentialID := h.parseCredentialID(c)
+		region := h.parseRegion(c)
+
+		if credentialID == uuid.Nil || region == "" {
+			return
+		}
+
+		h.logVPCsListAttempt(c, userID, credentialID, region)
+
+		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "list_vpcs")
+			return
+		}
+
+		req := dto.ListVPCsRequest{
+			CredentialID: credentialID.String(),
+			Region:       region,
+		}
+
+		vpcs, err := h.networkService.ListVPCs(c.Request.Context(), credential, req)
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
+
+		h.logVPCsListSuccess(c, userID, len(vpcs.VPCs))
+		h.OK(c, vpcs, "VPCs retrieved successfully")
+	}
+}
+
+// ListSubnets handles subnet listing requests using decorator pattern
 func (h *Handler) ListSubnets(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
-	}
+	handler := h.Compose(
+		h.listSubnetsHandler(),
+		h.StandardCRUDDecorators("list_subnets")...,
+	)
 
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
-		return
-	}
-
-	// Get VPC ID from query parameter
-	vpcID := c.Query("vpc_id")
-	if vpcID == "" {
-		responses.BadRequest(c, "vpc_id is required")
-		return
-	}
-
-	// Get region from query parameter
-	region := c.Query("region")
-	if region == "" {
-		responses.BadRequest(c, "region is required")
-		return
-	}
-
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Create request
-	req := dto.ListSubnetsRequest{
-		CredentialID: credentialID,
-		VPCID:        vpcID,
-		Region:       region,
-	}
-
-	// List subnets
-	subnets, err := h.networkService.ListSubnets(c.Request.Context(), credential, req)
-	if err != nil {
-		h.LogError(c, err, "Failed to list subnets")
-		responses.InternalServerError(c, "Failed to list subnets: "+err.Error())
-		return
-	}
-
-	responses.OK(c, subnets, "Subnets retrieved successfully")
+	handler(c)
 }
 
-// ListSecurityGroups handles security group listing requests
+// listSubnetsHandler is the core business logic for listing subnets
+func (h *Handler) listSubnetsHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := h.extractUserID(c)
+		credentialID := h.parseCredentialID(c)
+		vpcID := h.parseVPCID(c)
+		region := h.parseRegion(c)
+
+		if credentialID == uuid.Nil || vpcID == "" || region == "" {
+			return
+		}
+
+		h.logSubnetsListAttempt(c, userID, credentialID, vpcID, region)
+
+		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "list_subnets")
+			return
+		}
+
+		req := dto.ListSubnetsRequest{
+			CredentialID: credentialID.String(),
+			VPCID:        vpcID,
+			Region:       region,
+		}
+
+		subnets, err := h.networkService.ListSubnets(c.Request.Context(), credential, req)
+		if err != nil {
+			h.HandleError(c, err, "list_subnets")
+			return
+		}
+
+		h.logSubnetsListSuccess(c, userID, vpcID, len(subnets.Subnets))
+		h.OK(c, subnets, "Subnets retrieved successfully")
+	}
+}
+
+// ListSecurityGroups handles security group listing requests using decorator pattern
 func (h *Handler) ListSecurityGroups(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
+	handler := h.Compose(
+		h.listSecurityGroupsHandler(),
+		h.StandardCRUDDecorators("list_security_groups")...,
+	)
+
+	handler(c)
+}
+
+// listSecurityGroupsHandler is the core business logic for listing security groups
+func (h *Handler) listSecurityGroupsHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := h.extractUserID(c)
+		credentialID := h.parseCredentialID(c)
+		vpcID := h.parseVPCID(c)
+		region := h.parseRegion(c)
+
+		if credentialID == uuid.Nil || vpcID == "" || region == "" {
+			return
+		}
+
+		h.logSecurityGroupsListAttempt(c, userID, credentialID, vpcID, region)
+
+		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "list_security_groups")
+			return
+		}
+
+		req := dto.ListSecurityGroupsRequest{
+			CredentialID: credentialID.String(),
+			VPCID:        vpcID,
+			Region:       region,
+		}
+
+		securityGroups, err := h.networkService.ListSecurityGroups(c.Request.Context(), credential, req)
+		if err != nil {
+			h.HandleError(c, err, "list_security_groups")
+			return
+		}
+
+		h.logSecurityGroupsListSuccess(c, userID, vpcID, len(securityGroups.SecurityGroups))
+		h.OK(c, securityGroups, "Security groups retrieved successfully")
+	}
+}
+
+// GetVPC handles VPC detail requests using decorator pattern
+func (h *Handler) GetVPC(c *gin.Context) {
+	handler := h.Compose(
+		h.getVPCHandler(),
+		h.StandardCRUDDecorators("get_vpc")...,
+	)
+
+	handler(c)
+}
+
+// getVPCHandler is the core business logic for getting a VPC
+func (h *Handler) getVPCHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := h.extractUserID(c)
+		vpcID := h.parseResourceID(c)
+		credentialID := h.parseCredentialID(c)
+		region := c.Query("region") // Optional for VPC
+
+		if vpcID == "" || credentialID == uuid.Nil {
+			return
+		}
+
+		h.logVPCGetAttempt(c, userID, vpcID, credentialID, region)
+
+		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "get_vpc")
+			return
+		}
+
+		req := dto.GetVPCRequest{
+			CredentialID: credentialID.String(),
+			VPCID:        vpcID,
+			Region:       region,
+		}
+
+		vpc, err := h.networkService.GetVPC(c.Request.Context(), credential, req)
+		if err != nil {
+			h.HandleError(c, err, "get_vpc")
+			return
+		}
+
+		h.logVPCGetSuccess(c, userID, vpcID)
+		h.OK(c, vpc, "VPC retrieved successfully")
+	}
+}
+
+// CreateVPC handles VPC creation requests using decorator pattern
+func (h *Handler) CreateVPC(c *gin.Context) {
+	var req dto.CreateVPCRequest
+
+	handler := h.Compose(
+		h.createVPCHandler(req),
+		h.StandardCRUDDecorators("create_vpc")...,
+	)
+
+	handler(c)
+}
+
+// createVPCHandler is the core business logic for creating a VPC
+func (h *Handler) createVPCHandler(req dto.CreateVPCRequest) handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		req = h.extractValidatedVPCRequest(c)
+		userID := h.extractUserID(c)
+
+		h.logVPCCreationAttempt(c, userID, req)
+
+		credentialID, err := uuid.Parse(req.CredentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "create_vpc")
+			return
+		}
+
+		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "create_vpc")
+			return
+		}
+
+		vpc, err := h.networkService.CreateVPC(c.Request.Context(), credential, req)
+		if err != nil {
+			h.HandleError(c, err, "create_vpc")
+			return
+		}
+
+		h.logVPCCreationSuccess(c, userID, vpc)
+		h.Created(c, vpc, "VPC created successfully")
+	}
+}
+
+// UpdateVPC handles VPC update requests using decorator pattern
+func (h *Handler) UpdateVPC(c *gin.Context) {
+	var req dto.UpdateVPCRequest
+
+	handler := h.Compose(
+		h.updateVPCHandler(req),
+		h.StandardCRUDDecorators("update_vpc")...,
+	)
+
+	handler(c)
+}
+
+// updateVPCHandler is the core business logic for updating a VPC
+func (h *Handler) updateVPCHandler(req dto.UpdateVPCRequest) handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		req = h.extractValidatedVPCUpdateRequest(c)
+		userID := h.extractUserID(c)
+		vpcID := h.parseResourceID(c)
+
+		if vpcID == "" {
+			return
+		}
+
+		h.logVPCUpdateAttempt(c, userID, vpcID, req)
+
+		credentialID := h.parseCredentialID(c)
+		region := c.Query("region") // Optional for VPC
+
+		if credentialID == uuid.Nil {
+			return
+		}
+
+		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "update_vpc")
+			return
+		}
+
+		vpc, err := h.networkService.UpdateVPC(c.Request.Context(), credential, req, vpcID, region)
+		if err != nil {
+			h.HandleError(c, err, "update_vpc")
+			return
+		}
+
+		h.logVPCUpdateSuccess(c, userID, vpcID)
+		h.OK(c, vpc, "VPC updated successfully")
+	}
+}
+
+// DeleteVPC handles VPC deletion requests using decorator pattern
+func (h *Handler) DeleteVPC(c *gin.Context) {
+	handler := h.Compose(
+		h.deleteVPCHandler(),
+		h.StandardCRUDDecorators("delete_vpc")...,
+	)
+
+	handler(c)
+}
+
+// deleteVPCHandler is the core business logic for deleting a VPC
+func (h *Handler) deleteVPCHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := h.extractUserID(c)
+		vpcID := h.parseResourceID(c)
+
+		if vpcID == "" {
+			return
+		}
+
+		h.logVPCDeletionAttempt(c, userID, vpcID)
+
+		credentialID := h.parseCredentialID(c)
+		region := c.Query("region") // Optional for VPC
+
+		if credentialID == uuid.Nil {
+			return
+		}
+
+		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "delete_vpc")
+			return
+		}
+
+		req := dto.DeleteVPCRequest{
+			CredentialID: credentialID.String(),
+			VPCID:        vpcID,
+			Region:       region,
+		}
+
+		err = h.networkService.DeleteVPC(c.Request.Context(), credential, req)
+		if err != nil {
+			h.HandleError(c, err, "delete_vpc")
+			return
+		}
+
+		h.logVPCDeletionSuccess(c, userID, vpcID)
+		h.OK(c, nil, "VPC deleted successfully")
+	}
+}
+
+// GetSubnet handles subnet detail requests using decorator pattern
+func (h *Handler) GetSubnet(c *gin.Context) {
+	handler := h.Compose(
+		h.getSubnetHandler(),
+		h.StandardCRUDDecorators("get_subnet")...,
+	)
+
+	handler(c)
+}
+
+// getSubnetHandler is the core business logic for getting a subnet
+func (h *Handler) getSubnetHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := h.extractUserID(c)
+		subnetID := h.parseResourceID(c)
+
+		if subnetID == "" {
+			return
+		}
+
+		h.logSubnetGetAttempt(c, userID, subnetID)
+
+		credentialID := h.parseCredentialID(c)
+		region := h.parseRegion(c)
+
+		if credentialID == uuid.Nil || region == "" {
+			return
+		}
+
+		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "get_subnet")
+			return
+		}
+
+		req := dto.GetSubnetRequest{
+			CredentialID: credentialID.String(),
+			SubnetID:     subnetID,
+			Region:       region,
+		}
+
+		subnet, err := h.networkService.GetSubnet(c.Request.Context(), credential, req)
+		if err != nil {
+			h.HandleError(c, err, "get_subnet")
+			return
+		}
+
+		h.logSubnetGetSuccess(c, userID, subnetID)
+		h.OK(c, subnet, "Subnet retrieved successfully")
+	}
+}
+
+// CreateSubnet handles subnet creation requests using decorator pattern
+func (h *Handler) CreateSubnet(c *gin.Context) {
+	var req dto.CreateSubnetRequest
+
+	handler := h.Compose(
+		h.createSubnetHandler(req),
+		h.StandardCRUDDecorators("create_subnet")...,
+	)
+
+	handler(c)
+}
+
+// createSubnetHandler is the core business logic for creating a subnet
+func (h *Handler) createSubnetHandler(req dto.CreateSubnetRequest) handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		req = h.extractValidatedSubnetRequest(c)
+		userID := h.extractUserID(c)
+
+		h.logSubnetCreationAttempt(c, userID, req)
+
+		credentialID, err := uuid.Parse(req.CredentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "create_subnet")
+			return
+		}
+
+		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "create_subnet")
+			return
+		}
+
+		subnet, err := h.networkService.CreateSubnet(c.Request.Context(), credential, req)
+		if err != nil {
+			h.HandleError(c, err, "create_subnet")
+			return
+		}
+
+		h.logSubnetCreationSuccess(c, userID, subnet)
+		h.Created(c, subnet, "Subnet created successfully")
+	}
+}
+
+// UpdateSubnet handles subnet update requests using decorator pattern
+func (h *Handler) UpdateSubnet(c *gin.Context) {
+	var req dto.UpdateSubnetRequest
+
+	handler := h.Compose(
+		h.updateSubnetHandler(req),
+		h.StandardCRUDDecorators("update_subnet")...,
+	)
+
+	handler(c)
+}
+
+// updateSubnetHandler is the core business logic for updating a subnet
+func (h *Handler) updateSubnetHandler(req dto.UpdateSubnetRequest) handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		req = h.extractValidatedSubnetUpdateRequest(c)
+		userID := h.extractUserID(c)
+		subnetID := h.parseResourceID(c)
+
+		if subnetID == "" {
+			return
+		}
+
+		h.logSubnetUpdateAttempt(c, userID, subnetID, req)
+
+		credentialID := h.parseCredentialID(c)
+		region := h.parseRegion(c)
+
+		if credentialID == uuid.Nil || region == "" {
+			return
+		}
+
+		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "update_subnet")
+			return
+		}
+
+		subnet, err := h.networkService.UpdateSubnet(c.Request.Context(), credential, req, subnetID, region)
+		if err != nil {
+			h.HandleError(c, err, "update_subnet")
+			return
+		}
+
+		h.logSubnetUpdateSuccess(c, userID, subnetID)
+		h.OK(c, subnet, "Subnet updated successfully")
+	}
+}
+
+// DeleteSubnet handles subnet deletion requests using decorator pattern
+func (h *Handler) DeleteSubnet(c *gin.Context) {
+	handler := h.Compose(
+		h.deleteSubnetHandler(),
+		h.StandardCRUDDecorators("delete_subnet")...,
+	)
+
+	handler(c)
+}
+
+// deleteSubnetHandler is the core business logic for deleting a subnet
+func (h *Handler) deleteSubnetHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := h.extractUserID(c)
+		subnetID := h.parseResourceID(c)
+
+		if subnetID == "" {
+			return
+		}
+
+		h.logSubnetDeletionAttempt(c, userID, subnetID)
+
+		credentialID := h.parseCredentialID(c)
+		region := h.parseRegion(c)
+
+		if credentialID == uuid.Nil || region == "" {
+			return
+		}
+
+		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "delete_subnet")
+			return
+		}
+
+		req := dto.DeleteSubnetRequest{
+			CredentialID: credentialID.String(),
+			SubnetID:     subnetID,
+			Region:       region,
+		}
+
+		err = h.networkService.DeleteSubnet(c.Request.Context(), credential, req)
+		if err != nil {
+			h.HandleError(c, err, "delete_subnet")
+			return
+		}
+
+		h.logSubnetDeletionSuccess(c, userID, subnetID)
+		h.OK(c, nil, "Subnet deleted successfully")
+	}
+}
+
+// GetSecurityGroup handles security group detail requests using decorator pattern
+func (h *Handler) GetSecurityGroup(c *gin.Context) {
+	handler := h.Compose(
+		h.getSecurityGroupHandler(),
+		h.StandardCRUDDecorators("get_security_group")...,
+	)
+
+	handler(c)
+}
+
+// getSecurityGroupHandler is the core business logic for getting a security group
+func (h *Handler) getSecurityGroupHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := h.extractUserID(c)
+		securityGroupID := h.parseResourceID(c)
+
+		if securityGroupID == "" {
+			return
+		}
+
+		h.logSecurityGroupGetAttempt(c, userID, securityGroupID)
+
+		credentialID := h.parseCredentialID(c)
+		region := h.parseRegion(c)
+
+		if credentialID == uuid.Nil || region == "" {
+			return
+		}
+
+		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "get_security_group")
+			return
+		}
+
+		req := dto.GetSecurityGroupRequest{
+			CredentialID:    credentialID.String(),
+			SecurityGroupID: securityGroupID,
+			Region:          region,
+		}
+
+		securityGroup, err := h.networkService.GetSecurityGroup(c.Request.Context(), credential, req)
+		if err != nil {
+			h.HandleError(c, err, "get_security_group")
+			return
+		}
+
+		h.logSecurityGroupGetSuccess(c, userID, securityGroupID)
+		h.OK(c, securityGroup, "Security group retrieved successfully")
+	}
+}
+
+// CreateSecurityGroup handles security group creation requests using decorator pattern
+func (h *Handler) CreateSecurityGroup(c *gin.Context) {
+	var req dto.CreateSecurityGroupRequest
+
+	handler := h.Compose(
+		h.createSecurityGroupHandler(req),
+		h.StandardCRUDDecorators("create_security_group")...,
+	)
+
+	handler(c)
+}
+
+// createSecurityGroupHandler is the core business logic for creating a security group
+func (h *Handler) createSecurityGroupHandler(req dto.CreateSecurityGroupRequest) handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		req = h.extractValidatedSecurityGroupRequest(c)
+		userID := h.extractUserID(c)
+
+		h.logSecurityGroupCreationAttempt(c, userID, req)
+
+		credentialID, err := uuid.Parse(req.CredentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "create_security_group")
+			return
+		}
+
+		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "create_security_group")
+			return
+		}
+
+		securityGroup, err := h.networkService.CreateSecurityGroup(c.Request.Context(), credential, req)
+		if err != nil {
+			h.HandleError(c, err, "create_security_group")
+			return
+		}
+
+		h.logSecurityGroupCreationSuccess(c, userID, securityGroup)
+		h.Created(c, securityGroup, "Security group created successfully")
+	}
+}
+
+// UpdateSecurityGroup handles security group update requests using decorator pattern
+func (h *Handler) UpdateSecurityGroup(c *gin.Context) {
+	var req dto.UpdateSecurityGroupRequest
+
+	handler := h.Compose(
+		h.updateSecurityGroupHandler(req),
+		h.StandardCRUDDecorators("update_security_group")...,
+	)
+
+	handler(c)
+}
+
+// updateSecurityGroupHandler is the core business logic for updating a security group
+func (h *Handler) updateSecurityGroupHandler(req dto.UpdateSecurityGroupRequest) handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		req = h.extractValidatedSecurityGroupUpdateRequest(c)
+		userID := h.extractUserID(c)
+		securityGroupID := h.parseResourceID(c)
+
+		if securityGroupID == "" {
+			return
+		}
+
+		h.logSecurityGroupUpdateAttempt(c, userID, securityGroupID, req)
+
+		credentialID := h.parseCredentialID(c)
+		region := h.parseRegion(c)
+
+		if credentialID == uuid.Nil || region == "" {
+			return
+		}
+
+		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "update_security_group")
+			return
+		}
+
+		securityGroup, err := h.networkService.UpdateSecurityGroup(c.Request.Context(), credential, req, securityGroupID, region)
+		if err != nil {
+			h.HandleError(c, err, "update_security_group")
+			return
+		}
+
+		h.logSecurityGroupUpdateSuccess(c, userID, securityGroupID)
+		h.OK(c, securityGroup, "Security group updated successfully")
+	}
+}
+
+// DeleteSecurityGroup handles security group deletion requests using decorator pattern
+func (h *Handler) DeleteSecurityGroup(c *gin.Context) {
+	handler := h.Compose(
+		h.deleteSecurityGroupHandler(),
+		h.StandardCRUDDecorators("delete_security_group")...,
+	)
+
+	handler(c)
+}
+
+// deleteSecurityGroupHandler is the core business logic for deleting a security group
+func (h *Handler) deleteSecurityGroupHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := h.extractUserID(c)
+		securityGroupID := h.parseResourceID(c)
+
+		if securityGroupID == "" {
+			return
+		}
+
+		h.logSecurityGroupDeletionAttempt(c, userID, securityGroupID)
+
+		credentialID := h.parseCredentialID(c)
+		region := h.parseRegion(c)
+
+		if credentialID == uuid.Nil || region == "" {
+			return
+		}
+
+		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "delete_security_group")
+			return
+		}
+
+		req := dto.DeleteSecurityGroupRequest{
+			CredentialID:    credentialID.String(),
+			SecurityGroupID: securityGroupID,
+			Region:          region,
+		}
+
+		err = h.networkService.DeleteSecurityGroup(c.Request.Context(), credential, req)
+		if err != nil {
+			h.HandleError(c, err, "delete_security_group")
+			return
+		}
+
+		h.logSecurityGroupDeletionSuccess(c, userID, securityGroupID)
+		h.OK(c, nil, "Security group deleted successfully")
+	}
+}
+
+// AddSecurityGroupRule adds a rule to a security group using decorator pattern
+func (h *Handler) AddSecurityGroupRule(c *gin.Context) {
+	var req dto.AddSecurityGroupRuleRequest
+
+	handler := h.Compose(
+		h.addSecurityGroupRuleHandler(req),
+		h.StandardCRUDDecorators("add_security_group_rule")...,
+	)
+
+	handler(c)
+}
+
+// addSecurityGroupRuleHandler is the core business logic for adding a security group rule
+func (h *Handler) addSecurityGroupRuleHandler(req dto.AddSecurityGroupRuleRequest) handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		req = h.extractValidatedSecurityGroupRuleRequest(c)
+		userID := h.extractUserID(c)
+
+		h.logSecurityGroupRuleAdditionAttempt(c, userID, req)
+
+		credentialID, err := uuid.Parse(req.CredentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "add_security_group_rule")
+			return
+		}
+
+		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "add_security_group_rule")
+			return
+		}
+
+		result, err := h.networkService.AddSecurityGroupRule(c.Request.Context(), credential, req)
+		if err != nil {
+			h.HandleError(c, err, "add_security_group_rule")
+			return
+		}
+
+		h.logSecurityGroupRuleAdditionSuccess(c, userID, req)
+		h.OK(c, result, "Security group rule added successfully")
+	}
+}
+
+// RemoveSecurityGroupRule removes a rule from a security group using decorator pattern
+func (h *Handler) RemoveSecurityGroupRule(c *gin.Context) {
+	var req dto.RemoveSecurityGroupRuleRequest
+
+	handler := h.Compose(
+		h.removeSecurityGroupRuleHandler(req),
+		h.StandardCRUDDecorators("remove_security_group_rule")...,
+	)
+
+	handler(c)
+}
+
+// removeSecurityGroupRuleHandler is the core business logic for removing a security group rule
+func (h *Handler) removeSecurityGroupRuleHandler(req dto.RemoveSecurityGroupRuleRequest) handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		req = h.extractValidatedSecurityGroupRuleRemovalRequest(c)
+		userID := h.extractUserID(c)
+
+		h.logSecurityGroupRuleRemovalAttempt(c, userID, req)
+
+		credentialID, err := uuid.Parse(req.CredentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "remove_security_group_rule")
+			return
+		}
+
+		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "remove_security_group_rule")
+			return
+		}
+
+		result, err := h.networkService.RemoveSecurityGroupRule(c.Request.Context(), credential, req)
+		if err != nil {
+			h.HandleError(c, err, "remove_security_group_rule")
+			return
+		}
+
+		h.logSecurityGroupRuleRemovalSuccess(c, userID, req)
+		h.OK(c, result, "Security group rule removed successfully")
+	}
+}
+
+// UpdateSecurityGroupRules updates all rules for a security group using decorator pattern
+func (h *Handler) UpdateSecurityGroupRules(c *gin.Context) {
+	var req dto.UpdateSecurityGroupRulesRequest
+
+	handler := h.Compose(
+		h.updateSecurityGroupRulesHandler(req),
+		h.StandardCRUDDecorators("update_security_group_rules")...,
+	)
+
+	handler(c)
+}
+
+// updateSecurityGroupRulesHandler is the core business logic for updating security group rules
+func (h *Handler) updateSecurityGroupRulesHandler(req dto.UpdateSecurityGroupRulesRequest) handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		req = h.extractValidatedSecurityGroupRulesUpdateRequest(c)
+		userID := h.extractUserID(c)
+
+		h.logSecurityGroupRulesUpdateAttempt(c, userID, req)
+
+		credentialID, err := uuid.Parse(req.CredentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "update_security_group_rules")
+			return
+		}
+
+		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "update_security_group_rules")
+			return
+		}
+
+		result, err := h.networkService.UpdateSecurityGroupRules(c.Request.Context(), credential, req)
+		if err != nil {
+			h.HandleError(c, err, "update_security_group_rules")
+			return
+		}
+
+		h.logSecurityGroupRulesUpdateSuccess(c, userID, req)
+		h.OK(c, result, "Security group rules updated successfully")
+	}
+}
+
+// Helper methods for better readability
+
+func (h *Handler) extractUserID(c *gin.Context) uuid.UUID {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "User not authenticated", 401), "extract_user_id")
+		return uuid.Nil
+	}
+	return userID.(uuid.UUID)
+}
+
+func (h *Handler) parseCredentialID(c *gin.Context) uuid.UUID {
+	credentialIDStr := c.Query("credential_id")
+	if credentialIDStr == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "credential_id is required", 400), "parse_credential_id")
+		return uuid.Nil
+	}
+
+	credentialID, err := uuid.Parse(credentialIDStr)
 	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "parse_credential_id")
+		return uuid.Nil
 	}
+	return credentialID
+}
 
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
-		return
-	}
-
-	// Get VPC ID from query parameter
-	vpcID := c.Query("vpc_id")
-	if vpcID == "" {
-		responses.BadRequest(c, "vpc_id is required")
-		return
-	}
-
-	// Get region from query parameter
+func (h *Handler) parseRegion(c *gin.Context) string {
 	region := c.Query("region")
 	if region == "" {
-		responses.BadRequest(c, "region is required")
-		return
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region is required", 400), "parse_region")
+		return ""
 	}
-
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Create request
-	req := dto.ListSecurityGroupsRequest{
-		CredentialID: credentialID,
-		VPCID:        vpcID,
-		Region:       region,
-	}
-
-	// List security groups
-	securityGroups, err := h.networkService.ListSecurityGroups(c.Request.Context(), credential, req)
-	if err != nil {
-		h.LogError(c, err, "Failed to list security groups")
-		responses.InternalServerError(c, "Failed to list security groups: "+err.Error())
-		return
-	}
-
-	responses.OK(c, securityGroups, "Security groups retrieved successfully")
+	return region
 }
 
-// GetVPC handles VPC detail requests
-func (h *Handler) GetVPC(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
-	}
-
-	// Get VPC ID from path parameter
-	vpcID := c.Param("id")
+func (h *Handler) parseVPCID(c *gin.Context) string {
+	vpcID := c.Query("vpc_id")
 	if vpcID == "" {
-		responses.BadRequest(c, "VPC ID is required")
-		return
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "vpc_id is required", 400), "parse_vpc_id")
+		return ""
 	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
-		return
-	}
-
-	// Get region from query parameter (optional for VPC - Global resource)
-	region := c.Query("region")
-	// Note: VPC is a Global resource, so region is optional
-
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Create request
-	req := dto.GetVPCRequest{
-		CredentialID: credentialID,
-		VPCID:        vpcID,
-		Region:       region,
-	}
-
-	// Get VPC
-	vpc, err := h.networkService.GetVPC(c.Request.Context(), credential, req)
-	if err != nil {
-		h.LogError(c, err, "Failed to get VPC")
-		responses.InternalServerError(c, "Failed to get VPC: "+err.Error())
-		return
-	}
-
-	responses.OK(c, vpc, "VPC retrieved successfully")
+	return vpcID
 }
 
-// CreateVPC handles VPC creation requests
-func (h *Handler) CreateVPC(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
+func (h *Handler) parseResourceID(c *gin.Context) string {
+	resourceID := c.Param("id")
+	if resourceID == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "resource ID is required", 400), "parse_resource_id")
+		return ""
 	}
+	return resourceID
+}
 
-	// Parse request body
+// Logging helper methods
+
+func (h *Handler) logVPCsListAttempt(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID, region string) {
+	h.LogBusinessEvent(c, "vpcs_list_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "list_vpcs",
+		"provider":      h.provider,
+		"credential_id": credentialID.String(),
+		"region":        region,
+	})
+}
+
+func (h *Handler) logVPCsListSuccess(c *gin.Context, userID uuid.UUID, count int) {
+	h.LogBusinessEvent(c, "vpcs_listed", userID.String(), "", map[string]interface{}{
+		"operation": "list_vpcs",
+		"provider":  h.provider,
+		"count":     count,
+	})
+}
+
+func (h *Handler) logSubnetsListAttempt(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID, vpcID, region string) {
+	h.LogBusinessEvent(c, "subnets_list_attempted", userID.String(), vpcID, map[string]interface{}{
+		"operation":     "list_subnets",
+		"provider":      h.provider,
+		"credential_id": credentialID.String(),
+		"region":        region,
+	})
+}
+
+func (h *Handler) logSubnetsListSuccess(c *gin.Context, userID uuid.UUID, vpcID string, count int) {
+	h.LogBusinessEvent(c, "subnets_listed", userID.String(), vpcID, map[string]interface{}{
+		"operation": "list_subnets",
+		"provider":  h.provider,
+		"count":     count,
+	})
+}
+
+func (h *Handler) logSecurityGroupsListAttempt(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID, vpcID, region string) {
+	h.LogBusinessEvent(c, "security_groups_list_attempted", userID.String(), vpcID, map[string]interface{}{
+		"operation":     "list_security_groups",
+		"provider":      h.provider,
+		"credential_id": credentialID.String(),
+		"region":        region,
+	})
+}
+
+func (h *Handler) logSecurityGroupsListSuccess(c *gin.Context, userID uuid.UUID, vpcID string, count int) {
+	h.LogBusinessEvent(c, "security_groups_listed", userID.String(), vpcID, map[string]interface{}{
+		"operation": "list_security_groups",
+		"provider":  h.provider,
+		"count":     count,
+	})
+}
+
+func (h *Handler) logVPCGetAttempt(c *gin.Context, userID uuid.UUID, vpcID string, credentialID uuid.UUID, region string) {
+	h.LogBusinessEvent(c, "vpc_get_attempted", userID.String(), vpcID, map[string]interface{}{
+		"operation":     "get_vpc",
+		"provider":      h.provider,
+		"credential_id": credentialID.String(),
+		"region":        region,
+	})
+}
+
+func (h *Handler) logVPCGetSuccess(c *gin.Context, userID uuid.UUID, vpcID string) {
+	h.LogBusinessEvent(c, "vpc_retrieved", userID.String(), vpcID, map[string]interface{}{
+		"operation": "get_vpc",
+		"provider":  h.provider,
+	})
+}
+
+// Additional helper methods for VPC operations
+
+func (h *Handler) extractValidatedVPCRequest(c *gin.Context) dto.CreateVPCRequest {
 	var req dto.CreateVPCRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body: "+err.Error())
-		return
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_vpc_request")
+		return dto.CreateVPCRequest{}
 	}
-
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(req.CredentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Create VPC
-	vpc, err := h.networkService.CreateVPC(c.Request.Context(), credential, req)
-	if err != nil {
-		h.LogError(c, err, "Failed to create VPC")
-		responses.InternalServerError(c, "Failed to create VPC: "+err.Error())
-		return
-	}
-
-	responses.Created(c, vpc, "VPC created successfully")
+	return req
 }
 
-// UpdateVPC handles VPC update requests
-func (h *Handler) UpdateVPC(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
-	}
-
-	// Get VPC ID from path parameter
-	vpcID := c.Param("id")
-	if vpcID == "" {
-		responses.BadRequest(c, "VPC ID is required")
-		return
-	}
-
-	// Parse request body
+func (h *Handler) extractValidatedVPCUpdateRequest(c *gin.Context) dto.UpdateVPCRequest {
 	var req dto.UpdateVPCRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body: "+err.Error())
-		return
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_vpc_update_request")
+		return dto.UpdateVPCRequest{}
 	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
-		return
-	}
-
-	// Get region from query parameter (optional for VPC - Global resource)
-	region := c.Query("region")
-	// Note: VPC is a Global resource, so region is optional
-
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Update VPC
-	vpc, err := h.networkService.UpdateVPC(c.Request.Context(), credential, req, vpcID, region)
-	if err != nil {
-		h.LogError(c, err, "Failed to update VPC")
-		responses.InternalServerError(c, "Failed to update VPC: "+err.Error())
-		return
-	}
-
-	responses.OK(c, vpc, "VPC updated successfully")
+	return req
 }
 
-// DeleteVPC handles VPC deletion requests
-func (h *Handler) DeleteVPC(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
-	}
-
-	// Get VPC ID from path parameter
-	vpcID := c.Param("id")
-	if vpcID == "" {
-		responses.BadRequest(c, "VPC ID is required")
-		return
-	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
-		return
-	}
-
-	// Get region from query parameter (optional for VPC - Global resource)
-	region := c.Query("region")
-	// Note: VPC is a Global resource, so region is optional
-
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Create delete request
-	req := dto.DeleteVPCRequest{
-		CredentialID: credentialID,
-		VPCID:        vpcID,
-		Region:       region,
-	}
-
-	// Delete VPC
-	err = h.networkService.DeleteVPC(c.Request.Context(), credential, req)
-	if err != nil {
-		h.LogError(c, err, "Failed to delete VPC")
-		responses.InternalServerError(c, "Failed to delete VPC: "+err.Error())
-		return
-	}
-
-	responses.OK(c, nil, "VPC deleted successfully")
+func (h *Handler) logVPCCreationAttempt(c *gin.Context, userID uuid.UUID, req dto.CreateVPCRequest) {
+	h.LogBusinessEvent(c, "vpc_creation_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "create_vpc",
+		"provider":      h.provider,
+		"credential_id": req.CredentialID,
+	})
 }
 
-// GetSubnet handles subnet detail requests
-func (h *Handler) GetSubnet(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
-	}
-
-	// Get subnet ID from path parameter
-	subnetID := c.Param("id")
-	if subnetID == "" {
-		responses.BadRequest(c, "Subnet ID is required")
-		return
-	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
-		return
-	}
-
-	// Get region from query parameter
-	region := c.Query("region")
-	if region == "" {
-		responses.BadRequest(c, "region is required")
-		return
-	}
-
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Create request
-	req := dto.GetSubnetRequest{
-		CredentialID: credentialID,
-		SubnetID:     subnetID,
-		Region:       region,
-	}
-
-	// Get subnet
-	subnet, err := h.networkService.GetSubnet(c.Request.Context(), credential, req)
-	if err != nil {
-		h.LogError(c, err, "Failed to get subnet")
-		responses.InternalServerError(c, "Failed to get subnet: "+err.Error())
-		return
-	}
-
-	responses.OK(c, subnet, "Subnet retrieved successfully")
+func (h *Handler) logVPCCreationSuccess(c *gin.Context, userID uuid.UUID, vpc interface{}) {
+	h.LogBusinessEvent(c, "vpc_created", userID.String(), "", map[string]interface{}{
+		"operation": "create_vpc",
+		"provider":  h.provider,
+	})
 }
 
-// CreateSubnet handles subnet creation requests
-func (h *Handler) CreateSubnet(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
-	}
+func (h *Handler) logVPCUpdateAttempt(c *gin.Context, userID uuid.UUID, vpcID string, req dto.UpdateVPCRequest) {
+	h.LogBusinessEvent(c, "vpc_update_attempted", userID.String(), vpcID, map[string]interface{}{
+		"operation": "update_vpc",
+		"provider":  h.provider,
+	})
+}
 
-	// Parse request body
+func (h *Handler) logVPCUpdateSuccess(c *gin.Context, userID uuid.UUID, vpcID string) {
+	h.LogBusinessEvent(c, "vpc_updated", userID.String(), vpcID, map[string]interface{}{
+		"operation": "update_vpc",
+		"provider":  h.provider,
+	})
+}
+
+func (h *Handler) logVPCDeletionAttempt(c *gin.Context, userID uuid.UUID, vpcID string) {
+	h.LogBusinessEvent(c, "vpc_deletion_attempted", userID.String(), vpcID, map[string]interface{}{
+		"operation": "delete_vpc",
+		"provider":  h.provider,
+	})
+}
+
+func (h *Handler) logVPCDeletionSuccess(c *gin.Context, userID uuid.UUID, vpcID string) {
+	h.LogBusinessEvent(c, "vpc_deleted", userID.String(), vpcID, map[string]interface{}{
+		"operation": "delete_vpc",
+		"provider":  h.provider,
+	})
+}
+
+// Additional helper methods for Subnet operations
+
+func (h *Handler) extractValidatedSubnetRequest(c *gin.Context) dto.CreateSubnetRequest {
 	var req dto.CreateSubnetRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body: "+err.Error())
-		return
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_subnet_request")
+		return dto.CreateSubnetRequest{}
 	}
-
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(req.CredentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Create subnet
-	subnet, err := h.networkService.CreateSubnet(c.Request.Context(), credential, req)
-	if err != nil {
-		h.LogError(c, err, "Failed to create subnet")
-		responses.InternalServerError(c, "Failed to create subnet: "+err.Error())
-		return
-	}
-
-	responses.Created(c, subnet, "Subnet created successfully")
+	return req
 }
 
-// UpdateSubnet handles subnet update requests
-func (h *Handler) UpdateSubnet(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
-	}
-
-	// Get subnet ID from path parameter
-	subnetID := c.Param("id")
-	if subnetID == "" {
-		responses.BadRequest(c, "Subnet ID is required")
-		return
-	}
-
-	// Parse request body
+func (h *Handler) extractValidatedSubnetUpdateRequest(c *gin.Context) dto.UpdateSubnetRequest {
 	var req dto.UpdateSubnetRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body: "+err.Error())
-		return
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_subnet_update_request")
+		return dto.UpdateSubnetRequest{}
 	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
-		return
-	}
-
-	// Get region from query parameter
-	region := c.Query("region")
-	if region == "" {
-		responses.BadRequest(c, "region is required")
-		return
-	}
-
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Update subnet
-	subnet, err := h.networkService.UpdateSubnet(c.Request.Context(), credential, req, subnetID, region)
-	if err != nil {
-		h.LogError(c, err, "Failed to update subnet")
-		responses.InternalServerError(c, "Failed to update subnet: "+err.Error())
-		return
-	}
-
-	responses.OK(c, subnet, "Subnet updated successfully")
+	return req
 }
 
-// DeleteSubnet handles subnet deletion requests
-func (h *Handler) DeleteSubnet(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
-	}
-
-	// Get subnet ID from path parameter
-	subnetID := c.Param("id")
-	if subnetID == "" {
-		responses.BadRequest(c, "Subnet ID is required")
-		return
-	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
-		return
-	}
-
-	// Get region from query parameter
-	region := c.Query("region")
-	if region == "" {
-		responses.BadRequest(c, "region is required")
-		return
-	}
-
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Create delete request
-	req := dto.DeleteSubnetRequest{
-		CredentialID: credentialID,
-		SubnetID:     subnetID,
-		Region:       region,
-	}
-
-	// Delete subnet
-	err = h.networkService.DeleteSubnet(c.Request.Context(), credential, req)
-	if err != nil {
-		h.LogError(c, err, "Failed to delete subnet")
-		responses.InternalServerError(c, "Failed to delete subnet: "+err.Error())
-		return
-	}
-
-	responses.OK(c, nil, "Subnet deleted successfully")
+func (h *Handler) logSubnetGetAttempt(c *gin.Context, userID uuid.UUID, subnetID string) {
+	h.LogBusinessEvent(c, "subnet_get_attempted", userID.String(), subnetID, map[string]interface{}{
+		"operation": "get_subnet",
+		"provider":  h.provider,
+	})
 }
 
-// GetSecurityGroup handles security group detail requests
-func (h *Handler) GetSecurityGroup(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
-	}
-
-	// Get security group ID from path parameter
-	securityGroupID := c.Param("id")
-	if securityGroupID == "" {
-		responses.BadRequest(c, "Security Group ID is required")
-		return
-	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
-		return
-	}
-
-	// Get region from query parameter
-	region := c.Query("region")
-	if region == "" {
-		responses.BadRequest(c, "region is required")
-		return
-	}
-
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Create request
-	req := dto.GetSecurityGroupRequest{
-		CredentialID:    credentialID,
-		SecurityGroupID: securityGroupID,
-		Region:          region,
-	}
-
-	// Get security group
-	securityGroup, err := h.networkService.GetSecurityGroup(c.Request.Context(), credential, req)
-	if err != nil {
-		h.LogError(c, err, "Failed to get security group")
-		responses.InternalServerError(c, "Failed to get security group: "+err.Error())
-		return
-	}
-
-	responses.OK(c, securityGroup, "Security group retrieved successfully")
+func (h *Handler) logSubnetGetSuccess(c *gin.Context, userID uuid.UUID, subnetID string) {
+	h.LogBusinessEvent(c, "subnet_retrieved", userID.String(), subnetID, map[string]interface{}{
+		"operation": "get_subnet",
+		"provider":  h.provider,
+	})
 }
 
-// CreateSecurityGroup handles security group creation requests
-func (h *Handler) CreateSecurityGroup(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
-	}
+func (h *Handler) logSubnetCreationAttempt(c *gin.Context, userID uuid.UUID, req dto.CreateSubnetRequest) {
+	h.LogBusinessEvent(c, "subnet_creation_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "create_subnet",
+		"provider":      h.provider,
+		"credential_id": req.CredentialID,
+	})
+}
 
-	// Parse request body
+func (h *Handler) logSubnetCreationSuccess(c *gin.Context, userID uuid.UUID, subnet interface{}) {
+	h.LogBusinessEvent(c, "subnet_created", userID.String(), "", map[string]interface{}{
+		"operation": "create_subnet",
+		"provider":  h.provider,
+	})
+}
+
+func (h *Handler) logSubnetUpdateAttempt(c *gin.Context, userID uuid.UUID, subnetID string, req dto.UpdateSubnetRequest) {
+	h.LogBusinessEvent(c, "subnet_update_attempted", userID.String(), subnetID, map[string]interface{}{
+		"operation": "update_subnet",
+		"provider":  h.provider,
+	})
+}
+
+func (h *Handler) logSubnetUpdateSuccess(c *gin.Context, userID uuid.UUID, subnetID string) {
+	h.LogBusinessEvent(c, "subnet_updated", userID.String(), subnetID, map[string]interface{}{
+		"operation": "update_subnet",
+		"provider":  h.provider,
+	})
+}
+
+func (h *Handler) logSubnetDeletionAttempt(c *gin.Context, userID uuid.UUID, subnetID string) {
+	h.LogBusinessEvent(c, "subnet_deletion_attempted", userID.String(), subnetID, map[string]interface{}{
+		"operation": "delete_subnet",
+		"provider":  h.provider,
+	})
+}
+
+func (h *Handler) logSubnetDeletionSuccess(c *gin.Context, userID uuid.UUID, subnetID string) {
+	h.LogBusinessEvent(c, "subnet_deleted", userID.String(), subnetID, map[string]interface{}{
+		"operation": "delete_subnet",
+		"provider":  h.provider,
+	})
+}
+
+// Additional helper methods for Security Group operations
+
+func (h *Handler) extractValidatedSecurityGroupRequest(c *gin.Context) dto.CreateSecurityGroupRequest {
 	var req dto.CreateSecurityGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body: "+err.Error())
-		return
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_security_group_request")
+		return dto.CreateSecurityGroupRequest{}
 	}
-
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(req.CredentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Create security group
-	securityGroup, err := h.networkService.CreateSecurityGroup(c.Request.Context(), credential, req)
-	if err != nil {
-		h.LogError(c, err, "Failed to create security group")
-		responses.InternalServerError(c, "Failed to create security group: "+err.Error())
-		return
-	}
-
-	responses.Created(c, securityGroup, "Security group created successfully")
+	return req
 }
 
-// UpdateSecurityGroup handles security group update requests
-func (h *Handler) UpdateSecurityGroup(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
-	}
-
-	// Get security group ID from path parameter
-	securityGroupID := c.Param("id")
-	if securityGroupID == "" {
-		responses.BadRequest(c, "Security Group ID is required")
-		return
-	}
-
-	// Parse request body
+func (h *Handler) extractValidatedSecurityGroupUpdateRequest(c *gin.Context) dto.UpdateSecurityGroupRequest {
 	var req dto.UpdateSecurityGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body: "+err.Error())
-		return
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_security_group_update_request")
+		return dto.UpdateSecurityGroupRequest{}
 	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
-		return
-	}
-
-	// Get region from query parameter
-	region := c.Query("region")
-	if region == "" {
-		responses.BadRequest(c, "region is required")
-		return
-	}
-
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Update security group
-	securityGroup, err := h.networkService.UpdateSecurityGroup(c.Request.Context(), credential, req, securityGroupID, region)
-	if err != nil {
-		h.LogError(c, err, "Failed to update security group")
-		responses.InternalServerError(c, "Failed to update security group: "+err.Error())
-		return
-	}
-
-	responses.OK(c, securityGroup, "Security group updated successfully")
+	return req
 }
 
-// DeleteSecurityGroup handles security group deletion requests
-func (h *Handler) DeleteSecurityGroup(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
-	}
-
-	// Get security group ID from path parameter
-	securityGroupID := c.Param("id")
-	if securityGroupID == "" {
-		responses.BadRequest(c, "Security Group ID is required")
-		return
-	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
-		return
-	}
-
-	// Get region from query parameter
-	region := c.Query("region")
-	if region == "" {
-		responses.BadRequest(c, "region is required")
-		return
-	}
-
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Create delete request
-	req := dto.DeleteSecurityGroupRequest{
-		CredentialID:    credentialID,
-		SecurityGroupID: securityGroupID,
-		Region:          region,
-	}
-
-	// Delete security group
-	err = h.networkService.DeleteSecurityGroup(c.Request.Context(), credential, req)
-	if err != nil {
-		h.LogError(c, err, "Failed to delete security group")
-		responses.InternalServerError(c, "Failed to delete security group: "+err.Error())
-		return
-	}
-
-	responses.OK(c, nil, "Security group deleted successfully")
-}
-
-// AddSecurityGroupRule adds a rule to a security group
-func (h *Handler) AddSecurityGroupRule(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid user ID")
-		return
-	}
-
-	// Parse request
+func (h *Handler) extractValidatedSecurityGroupRuleRequest(c *gin.Context) dto.AddSecurityGroupRuleRequest {
 	var req dto.AddSecurityGroupRuleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request")
-		return
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_security_group_rule_request")
+		return dto.AddSecurityGroupRuleRequest{}
 	}
-
-	// Parse credential ID
-	credentialID, err := uuid.Parse(req.CredentialID)
-	if err != nil {
-		responses.BadRequest(c, "Invalid credential ID")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-	if err != nil {
-		responses.NotFound(c, "Credential not found")
-		return
-	}
-
-	// Add security group rule
-	result, err := h.networkService.AddSecurityGroupRule(c.Request.Context(), credential, req)
-	if err != nil {
-		h.LogError(c, err, "Failed to add security group rule")
-		responses.InternalServerError(c, "Failed to add security group rule: "+err.Error())
-		return
-	}
-
-	responses.OK(c, result, "Security group rule added successfully")
+	return req
 }
 
-// RemoveSecurityGroupRule removes a rule from a security group
-func (h *Handler) RemoveSecurityGroupRule(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid user ID")
-		return
-	}
-
-	// Parse request
+func (h *Handler) extractValidatedSecurityGroupRuleRemovalRequest(c *gin.Context) dto.RemoveSecurityGroupRuleRequest {
 	var req dto.RemoveSecurityGroupRuleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request")
-		return
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_security_group_rule_removal_request")
+		return dto.RemoveSecurityGroupRuleRequest{}
 	}
-
-	// Parse credential ID
-	credentialID, err := uuid.Parse(req.CredentialID)
-	if err != nil {
-		responses.BadRequest(c, "Invalid credential ID")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-	if err != nil {
-		responses.NotFound(c, "Credential not found")
-		return
-	}
-
-	// Remove security group rule
-	result, err := h.networkService.RemoveSecurityGroupRule(c.Request.Context(), credential, req)
-	if err != nil {
-		h.LogError(c, err, "Failed to remove security group rule")
-		responses.InternalServerError(c, "Failed to remove security group rule: "+err.Error())
-		return
-	}
-
-	responses.OK(c, result, "Security group rule removed successfully")
+	return req
 }
 
-// UpdateSecurityGroupRules updates all rules for a security group
-func (h *Handler) UpdateSecurityGroupRules(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid user ID")
-		return
-	}
-
-	// Parse request
+func (h *Handler) extractValidatedSecurityGroupRulesUpdateRequest(c *gin.Context) dto.UpdateSecurityGroupRulesRequest {
 	var req dto.UpdateSecurityGroupRulesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request")
-		return
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_security_group_rules_update_request")
+		return dto.UpdateSecurityGroupRulesRequest{}
 	}
+	return req
+}
 
-	// Parse credential ID
-	credentialID, err := uuid.Parse(req.CredentialID)
-	if err != nil {
-		responses.BadRequest(c, "Invalid credential ID")
-		return
-	}
+func (h *Handler) logSecurityGroupGetAttempt(c *gin.Context, userID uuid.UUID, securityGroupID string) {
+	h.LogBusinessEvent(c, "security_group_get_attempted", userID.String(), securityGroupID, map[string]interface{}{
+		"operation": "get_security_group",
+		"provider":  h.provider,
+	})
+}
 
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-	if err != nil {
-		responses.NotFound(c, "Credential not found")
-		return
-	}
+func (h *Handler) logSecurityGroupGetSuccess(c *gin.Context, userID uuid.UUID, securityGroupID string) {
+	h.LogBusinessEvent(c, "security_group_retrieved", userID.String(), securityGroupID, map[string]interface{}{
+		"operation": "get_security_group",
+		"provider":  h.provider,
+	})
+}
 
-	// Update security group rules
-	result, err := h.networkService.UpdateSecurityGroupRules(c.Request.Context(), credential, req)
-	if err != nil {
-		h.LogError(c, err, "Failed to update security group rules")
-		responses.InternalServerError(c, "Failed to update security group rules: "+err.Error())
-		return
-	}
+func (h *Handler) logSecurityGroupCreationAttempt(c *gin.Context, userID uuid.UUID, req dto.CreateSecurityGroupRequest) {
+	h.LogBusinessEvent(c, "security_group_creation_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "create_security_group",
+		"provider":      h.provider,
+		"credential_id": req.CredentialID,
+	})
+}
 
-	responses.OK(c, result, "Security group rules updated successfully")
+func (h *Handler) logSecurityGroupCreationSuccess(c *gin.Context, userID uuid.UUID, securityGroup interface{}) {
+	h.LogBusinessEvent(c, "security_group_created", userID.String(), "", map[string]interface{}{
+		"operation": "create_security_group",
+		"provider":  h.provider,
+	})
+}
+
+func (h *Handler) logSecurityGroupUpdateAttempt(c *gin.Context, userID uuid.UUID, securityGroupID string, req dto.UpdateSecurityGroupRequest) {
+	h.LogBusinessEvent(c, "security_group_update_attempted", userID.String(), securityGroupID, map[string]interface{}{
+		"operation": "update_security_group",
+		"provider":  h.provider,
+	})
+}
+
+func (h *Handler) logSecurityGroupUpdateSuccess(c *gin.Context, userID uuid.UUID, securityGroupID string) {
+	h.LogBusinessEvent(c, "security_group_updated", userID.String(), securityGroupID, map[string]interface{}{
+		"operation": "update_security_group",
+		"provider":  h.provider,
+	})
+}
+
+func (h *Handler) logSecurityGroupDeletionAttempt(c *gin.Context, userID uuid.UUID, securityGroupID string) {
+	h.LogBusinessEvent(c, "security_group_deletion_attempted", userID.String(), securityGroupID, map[string]interface{}{
+		"operation": "delete_security_group",
+		"provider":  h.provider,
+	})
+}
+
+func (h *Handler) logSecurityGroupDeletionSuccess(c *gin.Context, userID uuid.UUID, securityGroupID string) {
+	h.LogBusinessEvent(c, "security_group_deleted", userID.String(), securityGroupID, map[string]interface{}{
+		"operation": "delete_security_group",
+		"provider":  h.provider,
+	})
+}
+
+func (h *Handler) logSecurityGroupRuleAdditionAttempt(c *gin.Context, userID uuid.UUID, req dto.AddSecurityGroupRuleRequest) {
+	h.LogBusinessEvent(c, "security_group_rule_addition_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "add_security_group_rule",
+		"provider":      h.provider,
+		"credential_id": req.CredentialID,
+	})
+}
+
+func (h *Handler) logSecurityGroupRuleAdditionSuccess(c *gin.Context, userID uuid.UUID, req dto.AddSecurityGroupRuleRequest) {
+	h.LogBusinessEvent(c, "security_group_rule_added", userID.String(), "", map[string]interface{}{
+		"operation": "add_security_group_rule",
+		"provider":  h.provider,
+	})
+}
+
+func (h *Handler) logSecurityGroupRuleRemovalAttempt(c *gin.Context, userID uuid.UUID, req dto.RemoveSecurityGroupRuleRequest) {
+	h.LogBusinessEvent(c, "security_group_rule_removal_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "remove_security_group_rule",
+		"provider":      h.provider,
+		"credential_id": req.CredentialID,
+	})
+}
+
+func (h *Handler) logSecurityGroupRuleRemovalSuccess(c *gin.Context, userID uuid.UUID, req dto.RemoveSecurityGroupRuleRequest) {
+	h.LogBusinessEvent(c, "security_group_rule_removed", userID.String(), "", map[string]interface{}{
+		"operation": "remove_security_group_rule",
+		"provider":  h.provider,
+	})
+}
+
+func (h *Handler) logSecurityGroupRulesUpdateAttempt(c *gin.Context, userID uuid.UUID, req dto.UpdateSecurityGroupRulesRequest) {
+	h.LogBusinessEvent(c, "security_group_rules_update_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "update_security_group_rules",
+		"provider":      h.provider,
+		"credential_id": req.CredentialID,
+	})
+}
+
+func (h *Handler) logSecurityGroupRulesUpdateSuccess(c *gin.Context, userID uuid.UUID, req dto.UpdateSecurityGroupRulesRequest) {
+	h.LogBusinessEvent(c, "security_group_rules_updated", userID.String(), "", map[string]interface{}{
+		"operation": "update_security_group_rules",
+		"provider":  h.provider,
+	})
 }

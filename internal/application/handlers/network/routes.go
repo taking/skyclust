@@ -5,13 +5,12 @@ import (
 	"skyclust/internal/domain"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 )
 
 // SetupRoutes sets up network resource routes for a specific provider
 // provider: "aws", "gcp", "azure", "ncp"
-func SetupRoutes(router *gin.RouterGroup, networkService *service.NetworkService, credentialService domain.CredentialService, logger *zap.Logger, provider string) {
-	handler := NewHandler(networkService, credentialService, logger, provider)
+func SetupRoutes(router *gin.RouterGroup, networkService *service.NetworkService, credentialService domain.CredentialService, provider string) {
+	handler := NewHandler(networkService, credentialService, provider)
 
 	// VPC management
 	// Path: /api/v1/{provider}/network/vpcs

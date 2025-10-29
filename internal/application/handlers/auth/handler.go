@@ -1,185 +1,184 @@
 package auth
 
 import (
-	"net/http"
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
+	"skyclust/internal/shared/readability"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
-// Handler handles authentication-related HTTP requests
+// Handler handles authentication-related HTTP requests using improved patterns
 type Handler struct {
 	*handlers.BaseHandler
-	authService   domain.AuthService
-	userService   domain.UserService
-	logoutService domain.LogoutService
+	authService       domain.AuthService
+	userService       domain.UserService
+	logoutService     domain.LogoutService
+	readabilityHelper *readability.ReadabilityHelper
 }
 
 // NewHandler creates a new authentication handler
 func NewHandler(authService domain.AuthService, userService domain.UserService) *Handler {
 	return &Handler{
-		BaseHandler: handlers.NewBaseHandler("auth"),
-		authService: authService,
-		userService: userService,
+		BaseHandler:       handlers.NewBaseHandler("auth"),
+		authService:       authService,
+		userService:       userService,
+		readabilityHelper: readability.NewReadabilityHelper(),
 	}
 }
 
 // NewHandlerWithLogout creates a new authentication handler with logout service
 func NewHandlerWithLogout(authService domain.AuthService, userService domain.UserService, logoutService domain.LogoutService) *Handler {
 	return &Handler{
-		BaseHandler:   handlers.NewBaseHandler("auth"),
-		authService:   authService,
-		userService:   userService,
-		logoutService: logoutService,
+		BaseHandler:       handlers.NewBaseHandler("auth"),
+		authService:       authService,
+		userService:       userService,
+		logoutService:     logoutService,
+		readabilityHelper: readability.NewReadabilityHelper(),
 	}
 }
 
-// Register handles user registration
+// Register handles user registration using decorator pattern
 func (h *Handler) Register(c *gin.Context) {
-	// Start performance tracking
-	defer h.TrackRequest(c, "register", http.StatusOK)
+	handler := h.Compose(
+		h.registerHandler(domain.CreateUserRequest{}),
+		h.PublicDecorators("register")...,
+	)
 
-	var req domain.CreateUserRequest
-	if err := h.ValidateRequest(c, &req); err != nil {
-		return
-	}
-
-	// Log business event
-	h.LogBusinessEvent(c, "user_registration_attempt", "", "", map[string]interface{}{
-		"username": req.Username,
-		"email":    req.Email,
-	})
-
-	// Log audit event
-	h.LogAuditEvent(c, "user_registration", "user", "", "", map[string]interface{}{
-		"username": req.Username,
-		"email":    req.Email,
-	})
-
-	// Check if auth service is available
-	if h.authService == nil {
-		h.HandleError(c, &domain.DomainError{
-			Code:    "SERVICE_UNAVAILABLE",
-			Message: "Authentication service is not available",
-		}, "register")
-		return
-	}
-
-	user, token, err := h.authService.Register(req)
-	if err != nil {
-		// Log error
-		h.LogError(c, err, "Failed to register user")
-		h.HandleError(c, err, "register")
-		return
-	}
-
-	// Log successful registration
-	h.LogBusinessEvent(c, "user_registration_success", user.ID.String(), "", map[string]interface{}{
-		"user_id":  user.ID.String(),
-		"username": user.Username,
-		"email":    user.Email,
-	})
-
-	// Log successful audit event
-	h.LogAuditEvent(c, "user_registration", "user", user.ID.String(), user.ID.String(), map[string]interface{}{
-		"username": user.Username,
-		"email":    user.Email,
-	})
-
-	h.Created(c, gin.H{
-		"token": token,
-		"user":  user,
-	}, "User registered successfully")
+	handler(c)
 }
 
-// Login handles user login requests
+// registerHandler is the core business logic for user registration
+func (h *Handler) registerHandler(req domain.CreateUserRequest) handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		req = h.extractValidatedRequest(c)
+
+		h.logUserRegistrationAttempt(c, req)
+
+		if h.authService == nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeServiceUnavailable, "Authentication service is not available", 503), "register")
+			return
+		}
+
+		user, token, err := h.authService.Register(req)
+		if err != nil {
+			h.HandleError(c, err, "register")
+			return
+		}
+
+		h.logUserRegistrationSuccess(c, user)
+		h.Created(c, gin.H{
+			"token": token,
+			"user":  user,
+		}, readability.SuccessMsgUserCreated)
+	}
+}
+
+// Login handles user login requests using decorator pattern
 func (h *Handler) Login(c *gin.Context) {
-	var req struct {
-		Email    string `json:"email" binding:"required,email"`
-		Password string `json:"password" binding:"required"`
-	}
+	handler := h.Compose(
+		h.loginHandler(struct {
+			Email    string `json:"email" binding:"required,email"`
+			Password string `json:"password" binding:"required"`
+		}{}),
+		h.PublicDecorators("login")...,
+	)
 
-	if err := h.ValidateRequest(c, &req); err != nil {
-		return
-	}
-
-	// Extract client information
-	clientIP := c.ClientIP()
-	userAgent := c.GetHeader("User-Agent")
-
-	// Check if auth service is available
-	if h.authService == nil {
-		h.HandleError(c, &domain.DomainError{
-			Code:    "SERVICE_UNAVAILABLE",
-			Message: "Authentication service is not available",
-		}, "login")
-		return
-	}
-
-	user, token, err := h.authService.LoginWithContext(req.Email, req.Password, clientIP, userAgent)
-	if err != nil {
-		h.HandleError(c, err, "login")
-		return
-	}
-
-	h.OK(c, gin.H{
-		"token": token,
-		"user":  user,
-	}, "Login successful")
+	handler(c)
 }
 
-// Logout handles user logout requests
+// loginHandler is the core business logic for user login
+func (h *Handler) loginHandler(req struct {
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required"`
+}) handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		req = h.extractValidatedLoginRequest(c)
+
+		h.logUserLoginAttempt(c, req.Email)
+
+		if h.authService == nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeServiceUnavailable, "Authentication service is not available", 503), "login")
+			return
+		}
+
+		clientIP := c.ClientIP()
+		userAgent := c.GetHeader("User-Agent")
+
+		user, token, err := h.authService.LoginWithContext(req.Email, req.Password, clientIP, userAgent)
+		if err != nil {
+			h.HandleError(c, err, "login")
+			return
+		}
+
+		h.logUserLoginSuccess(c, user)
+		h.OK(c, gin.H{
+			"token": token,
+			"user":  user,
+		}, readability.SuccessMsgLoginSuccess)
+	}
+}
+
+// Logout handles user logout requests using decorator pattern
 func (h *Handler) Logout(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		h.HandleError(c, err, "logout")
-		return
-	}
+	handler := h.Compose(
+		h.logoutHandler(),
+		h.StandardCRUDDecorators("logout")...,
+	)
 
-	// Get Bearer token from Authorization header
-	token, err := h.GetBearerTokenFromHeader(c)
-	if err != nil {
-		h.HandleError(c, err, "logout")
-		return
-	}
-
-	// Check if auth service is available
-	if h.authService == nil {
-		h.HandleError(c, &domain.DomainError{
-			Code:    "SERVICE_UNAVAILABLE",
-			Message: "Authentication service is not available",
-		}, "logout")
-		return
-	}
-
-	err = h.authService.Logout(userID, token)
-	if err != nil {
-		h.HandleError(c, err, "logout")
-		return
-	}
-
-	h.OK(c, nil, "Logout successful")
+	handler(c)
 }
 
-// Me returns the current user's information
+// logoutHandler is the core business logic for user logout
+func (h *Handler) logoutHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := h.extractUserID(c)
+		token := h.extractBearerToken(c)
+
+		h.logUserLogoutAttempt(c, userID)
+
+		if h.authService == nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeServiceUnavailable, "Authentication service is not available", 503), "logout")
+			return
+		}
+
+		err := h.authService.Logout(userID, token)
+		if err != nil {
+			h.HandleError(c, err, "logout")
+			return
+		}
+
+		h.logUserLogoutSuccess(c, userID)
+		h.OK(c, nil, readability.SuccessMsgLogoutSuccess)
+	}
+}
+
+// Me returns the current user's information using decorator pattern
 func (h *Handler) Me(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		h.HandleError(c, err, "me")
-		return
-	}
+	handler := h.Compose(
+		h.meHandler(),
+		h.StandardCRUDDecorators("me")...,
+	)
 
-	// Get user by ID
-	user, err := h.userService.GetUserByID(userID)
-	if err != nil {
-		h.HandleError(c, err, "me")
-		return
-	}
+	handler(c)
+}
 
-	h.OK(c, user, "User retrieved successfully")
+// meHandler is the core business logic for getting current user info
+func (h *Handler) meHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := h.extractUserID(c)
+
+		h.logUserMeRequest(c, userID)
+
+		user, err := h.userService.GetUserByID(userID)
+		if err != nil {
+			h.HandleError(c, err, "me")
+			return
+		}
+
+		h.OK(c, user, "User retrieved successfully")
+	}
 }
 
 // GetUsers handles getting all users (admin only)
@@ -343,5 +342,101 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 		return
 	}
 
-	h.OK(c, gin.H{"message": "User deleted successfully"}, "User deleted successfully")
+	h.OK(c, gin.H{"message": "User deleted successfully"}, readability.SuccessMsgUserDeleted)
+}
+
+// Helper methods for better readability
+
+func (h *Handler) extractValidatedRequest(c *gin.Context) domain.CreateUserRequest {
+	var req domain.CreateUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_request")
+		return domain.CreateUserRequest{}
+	}
+	return req
+}
+
+func (h *Handler) extractValidatedLoginRequest(c *gin.Context) struct {
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required"`
+} {
+	var req struct {
+		Email    string `json:"email" binding:"required,email"`
+		Password string `json:"password" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_login_request")
+		return struct {
+			Email    string `json:"email" binding:"required,email"`
+			Password string `json:"password" binding:"required"`
+		}{}
+	}
+	return req
+}
+
+func (h *Handler) extractUserID(c *gin.Context) uuid.UUID {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "User not authenticated", 401), "extract_user_id")
+		return uuid.Nil
+	}
+	return userID.(uuid.UUID)
+}
+
+func (h *Handler) extractBearerToken(c *gin.Context) string {
+	token, err := h.GetBearerTokenFromHeader(c)
+	if err != nil {
+		h.HandleError(c, err, "extract_bearer_token")
+		return ""
+	}
+	return token
+}
+
+// Logging helper methods
+
+func (h *Handler) logUserRegistrationAttempt(c *gin.Context, req domain.CreateUserRequest) {
+	h.LogBusinessEvent(c, "user_registration_attempted", "", "", map[string]interface{}{
+		"username": req.Username,
+		"email":    req.Email,
+	})
+}
+
+func (h *Handler) logUserRegistrationSuccess(c *gin.Context, user *domain.User) {
+	h.LogBusinessEvent(c, "user_registered", user.ID.String(), "", map[string]interface{}{
+		"user_id":  user.ID.String(),
+		"username": user.Username,
+		"email":    user.Email,
+	})
+}
+
+func (h *Handler) logUserLoginAttempt(c *gin.Context, email string) {
+	h.LogBusinessEvent(c, "user_login_attempted", "", "", map[string]interface{}{
+		"email": email,
+	})
+}
+
+func (h *Handler) logUserLoginSuccess(c *gin.Context, user *domain.User) {
+	h.LogBusinessEvent(c, "user_logged_in", user.ID.String(), "", map[string]interface{}{
+		"user_id":  user.ID.String(),
+		"username": user.Username,
+		"email":    user.Email,
+	})
+}
+
+func (h *Handler) logUserLogoutAttempt(c *gin.Context, userID uuid.UUID) {
+	h.LogBusinessEvent(c, "user_logout_attempted", userID.String(), "", map[string]interface{}{
+		"user_id": userID.String(),
+	})
+}
+
+func (h *Handler) logUserLogoutSuccess(c *gin.Context, userID uuid.UUID) {
+	h.LogBusinessEvent(c, "user_logged_out", userID.String(), "", map[string]interface{}{
+		"user_id": userID.String(),
+	})
+}
+
+func (h *Handler) logUserMeRequest(c *gin.Context, userID uuid.UUID) {
+	h.LogBusinessEvent(c, "user_me_requested", userID.String(), "", map[string]interface{}{
+		"user_id": userID.String(),
+	})
 }

@@ -5,73 +5,198 @@ import (
 
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
+	"skyclust/internal/shared/readability"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 )
 
-// Handler handles export operations
+// Handler handles export operations using improved patterns
 type Handler struct {
 	*handlers.BaseHandler
+	readabilityHelper *readability.ReadabilityHelper
 }
 
 // NewHandler creates a new export handler
 func NewHandler() *Handler {
 	return &Handler{
-		BaseHandler: handlers.NewBaseHandler("export"),
+		BaseHandler:       handlers.NewBaseHandler("export"),
+		readabilityHelper: readability.NewReadabilityHelper(),
 	}
 }
 
-// ExportData handles data export requests
+// ExportData handles data export requests using decorator pattern
 func (h *Handler) ExportData(c *gin.Context) {
-	// Start performance tracking
-	defer h.TrackRequest(c, "export_data", 200)
-
-	// Log operation start
-	h.LogInfo(c, "Exporting data",
-		zap.String("operation", "export_data"))
-
 	var req gin.H
-	if err := h.ValidateRequest(c, &req); err != nil {
-		return
-	}
 
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		h.HandleError(c, err, "export_data")
-		return
-	}
+	handler := h.Compose(
+		h.exportDataHandler(req),
+		h.StandardCRUDDecorators("export_data")...,
+	)
 
-	// Log business event
-	h.LogBusinessEvent(c, "data_export_requested", userID.String(), "", map[string]interface{}{
-		"operation": "export_data",
-	})
-
-	// TODO: Implement export functionality
-	exportID := uuid.New().String()
-
-	h.LogInfo(c, "Export initiated successfully",
-		zap.String("export_id", exportID))
-
-	h.OK(c, gin.H{
-		"export_id": exportID,
-		"status":    "processing",
-		"message":   "Export initiated",
-	}, "Export initiated successfully")
+	handler(c)
 }
 
-// GetSupportedFormats returns supported export formats
+// exportDataHandler is the core business logic for exporting data
+func (h *Handler) exportDataHandler(req gin.H) handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		req = h.extractValidatedRequest(c)
+		userID := h.extractUserID(c)
+
+		h.logExportDataAttempt(c, userID, req)
+
+		// TODO: Implement export functionality
+		exportID := uuid.New().String()
+
+		h.logExportDataSuccess(c, userID, exportID)
+		h.OK(c, gin.H{
+			"export_id": exportID,
+			"status":    "processing",
+			"message":   "Export initiated",
+		}, "Export initiated successfully")
+	}
+}
+
+// GetSupportedFormats returns supported export formats using decorator pattern
 func (h *Handler) GetSupportedFormats(c *gin.Context) {
-	// Start performance tracking
-	defer h.TrackRequest(c, "get_supported_formats", 200)
+	handler := h.Compose(
+		h.getSupportedFormatsHandler(),
+		h.StandardCRUDDecorators("get_supported_formats")...,
+	)
 
-	// Log operation start
-	h.LogInfo(c, "Getting supported export formats",
-		zap.String("operation", "get_supported_formats"))
+	handler(c)
+}
 
-	formats := []gin.H{
+// getSupportedFormatsHandler is the core business logic for getting supported formats
+func (h *Handler) getSupportedFormatsHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		h.logSupportedFormatsRequest(c)
+
+		formats := h.getSupportedFormats()
+
+		h.OK(c, gin.H{
+			"formats": formats,
+		}, "Supported formats retrieved successfully")
+	}
+}
+
+// GetExportHistory retrieves export history using decorator pattern
+func (h *Handler) GetExportHistory(c *gin.Context) {
+	handler := h.Compose(
+		h.getExportHistoryHandler(),
+		h.StandardCRUDDecorators("get_export_history")...,
+	)
+
+	handler(c)
+}
+
+// getExportHistoryHandler is the core business logic for getting export history
+func (h *Handler) getExportHistoryHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := h.extractUserID(c)
+
+		h.logExportHistoryRequest(c, userID)
+
+		// TODO: Implement export history retrieval
+		history := h.getSampleExportHistory()
+
+		h.OK(c, gin.H{
+			"exports": history,
+		}, "Export history retrieved successfully")
+	}
+}
+
+// GetExportStatus retrieves export status using decorator pattern
+func (h *Handler) GetExportStatus(c *gin.Context) {
+	handler := h.Compose(
+		h.getExportStatusHandler(),
+		h.StandardCRUDDecorators("get_export_status")...,
+	)
+
+	handler(c)
+}
+
+// getExportStatusHandler is the core business logic for getting export status
+func (h *Handler) getExportStatusHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := h.extractUserID(c)
+		exportID := h.parseExportID(c)
+
+		if exportID == "" {
+			return
+		}
+
+		h.logExportStatusRequest(c, userID, exportID)
+
+		// TODO: Implement status retrieval
+		h.OK(c, gin.H{
+			"id":       exportID,
+			"status":   "completed",
+			"progress": 100,
+		}, "Export status retrieved successfully")
+	}
+}
+
+// DownloadExport handles export download using decorator pattern
+func (h *Handler) DownloadExport(c *gin.Context) {
+	handler := h.Compose(
+		h.downloadExportHandler(),
+		h.StandardCRUDDecorators("download_export")...,
+	)
+
+	handler(c)
+}
+
+// downloadExportHandler is the core business logic for downloading export
+func (h *Handler) downloadExportHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := h.extractUserID(c)
+		exportID := h.parseExportID(c)
+
+		if exportID == "" {
+			return
+		}
+
+		h.logDownloadExportRequest(c, userID, exportID)
+
+		// TODO: Implement download functionality
+		c.Header("Content-Type", "application/octet-stream")
+		c.Header("Content-Disposition", "attachment; filename=export.csv")
+		c.String(http.StatusOK, "Sample export data")
+	}
+}
+
+// Helper methods for better readability
+
+func (h *Handler) extractUserID(c *gin.Context) uuid.UUID {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "User not authenticated", 401), "extract_user_id")
+		return uuid.Nil
+	}
+	return userID.(uuid.UUID)
+}
+
+func (h *Handler) extractValidatedRequest(c *gin.Context) gin.H {
+	var req gin.H
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_request")
+		return gin.H{}
+	}
+	return req
+}
+
+func (h *Handler) parseExportID(c *gin.Context) string {
+	exportID := c.Param("id")
+	if exportID == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Export ID is required", 400), "parse_export_id")
+		return ""
+	}
+	return exportID
+}
+
+func (h *Handler) getSupportedFormats() []gin.H {
+	return []gin.H{
 		{
 			"format":      "csv",
 			"name":        "CSV",
@@ -91,38 +216,10 @@ func (h *Handler) GetSupportedFormats(c *gin.Context) {
 			"mime_type":   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 		},
 	}
-
-	h.LogInfo(c, "Supported formats retrieved successfully",
-		zap.Int("formats_count", len(formats)))
-
-	h.OK(c, gin.H{
-		"formats": formats,
-	}, "Supported formats retrieved successfully")
 }
 
-// GetExportHistory retrieves export history
-func (h *Handler) GetExportHistory(c *gin.Context) {
-	// Start performance tracking
-	defer h.TrackRequest(c, "get_export_history", 200)
-
-	// Log operation start
-	h.LogInfo(c, "Getting export history",
-		zap.String("operation", "get_export_history"))
-
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		h.HandleError(c, err, "get_export_history")
-		return
-	}
-
-	// Log business event
-	h.LogBusinessEvent(c, "export_history_requested", userID.String(), "", map[string]interface{}{
-		"operation": "get_export_history",
-	})
-
-	// TODO: Implement export history retrieval
-	history := []gin.H{
+func (h *Handler) getSampleExportHistory() []gin.H {
+	return []gin.H{
 		{
 			"id":           uuid.New().String(),
 			"type":         "users",
@@ -132,91 +229,44 @@ func (h *Handler) GetExportHistory(c *gin.Context) {
 			"completed_at": "2024-01-01T00:01:00Z",
 		},
 	}
-
-	h.LogInfo(c, "Export history retrieved successfully",
-		zap.Int("history_count", len(history)))
-
-	h.OK(c, gin.H{
-		"exports": history,
-	}, "Export history retrieved successfully")
 }
 
-// GetExportStatus retrieves export status
-func (h *Handler) GetExportStatus(c *gin.Context) {
-	// Start performance tracking
-	defer h.TrackRequest(c, "get_export_status", 200)
+// Logging helper methods
 
-	exportID := c.Param("id")
+func (h *Handler) logExportDataAttempt(c *gin.Context, userID uuid.UUID, req gin.H) {
+	h.LogBusinessEvent(c, "data_export_attempted", userID.String(), "", map[string]interface{}{
+		"operation": "export_data",
+		"request":   req,
+	})
+}
 
-	// Log operation start
-	h.LogInfo(c, "Getting export status",
-		zap.String("operation", "get_export_status"),
-		zap.String("export_id", exportID))
+func (h *Handler) logExportDataSuccess(c *gin.Context, userID uuid.UUID, exportID string) {
+	h.LogBusinessEvent(c, "data_export_initiated", userID.String(), exportID, map[string]interface{}{
+		"operation": "export_data",
+		"export_id": exportID,
+	})
+}
 
-	if exportID == "" {
-		h.LogWarn(c, "Export ID is required")
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Export ID is required", 400), "get_export_status")
-		return
-	}
+func (h *Handler) logSupportedFormatsRequest(c *gin.Context) {
+	h.LogBusinessEvent(c, "supported_formats_requested", "", "", map[string]interface{}{
+		"operation": "get_supported_formats",
+	})
+}
 
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		h.HandleError(c, err, "get_export_status")
-		return
-	}
+func (h *Handler) logExportHistoryRequest(c *gin.Context, userID uuid.UUID) {
+	h.LogBusinessEvent(c, "export_history_requested", userID.String(), "", map[string]interface{}{
+		"operation": "get_export_history",
+	})
+}
 
-	// Log business event
+func (h *Handler) logExportStatusRequest(c *gin.Context, userID uuid.UUID, exportID string) {
 	h.LogBusinessEvent(c, "export_status_requested", userID.String(), exportID, map[string]interface{}{
 		"export_id": exportID,
 	})
-
-	// TODO: Implement status retrieval
-	h.LogInfo(c, "Export status retrieved successfully",
-		zap.String("export_id", exportID))
-
-	h.OK(c, gin.H{
-		"id":       exportID,
-		"status":   "completed",
-		"progress": 100,
-	}, "Export status retrieved successfully")
 }
 
-// DownloadExport handles export download
-func (h *Handler) DownloadExport(c *gin.Context) {
-	// Start performance tracking
-	defer h.TrackRequest(c, "download_export", 200)
-
-	exportID := c.Param("id")
-
-	// Log operation start
-	h.LogInfo(c, "Downloading export",
-		zap.String("operation", "download_export"),
-		zap.String("export_id", exportID))
-
-	if exportID == "" {
-		h.LogWarn(c, "Export ID is required")
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Export ID is required", 400), "download_export")
-		return
-	}
-
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		h.HandleError(c, err, "download_export")
-		return
-	}
-
-	// Log business event
+func (h *Handler) logDownloadExportRequest(c *gin.Context, userID uuid.UUID, exportID string) {
 	h.LogBusinessEvent(c, "export_download_requested", userID.String(), exportID, map[string]interface{}{
 		"export_id": exportID,
 	})
-
-	// TODO: Implement download functionality
-	h.LogInfo(c, "Export download initiated",
-		zap.String("export_id", exportID))
-
-	c.Header("Content-Type", "application/octet-stream")
-	c.Header("Content-Disposition", "attachment; filename=export.csv")
-	c.String(http.StatusOK, "Sample export data")
 }

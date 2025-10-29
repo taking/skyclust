@@ -11,7 +11,6 @@ import (
 	"skyclust/internal/application/handlers/network"
 	"skyclust/internal/application/handlers/notification"
 	"skyclust/internal/application/handlers/oidc"
-	"skyclust/internal/application/handlers/provider"
 	"skyclust/internal/application/handlers/sse"
 	"skyclust/internal/application/handlers/system"
 	"skyclust/internal/application/handlers/workspace"
@@ -26,27 +25,24 @@ import (
 
 // RouteManager manages all API routes with centralized configuration
 type RouteManager struct {
-	container       di.ContainerInterface
-	providerManager interface{} // gRPC Provider Manager
-	middleware      *middleware.Middleware
-	logger          *zap.Logger
-	config          *config.Config
+	container  di.ContainerInterface
+	middleware *middleware.Middleware
+	logger     *zap.Logger
+	config     *config.Config
 }
 
 // NewRouteManager creates a new route manager
 func NewRouteManager(
 	container di.ContainerInterface,
-	providerManager interface{},
 	middleware *middleware.Middleware,
 	logger *zap.Logger,
 	config *config.Config,
 ) *RouteManager {
 	return &RouteManager{
-		container:       container,
-		providerManager: providerManager,
-		middleware:      middleware,
-		logger:          logger,
-		config:          config,
+		container:  container,
+		middleware: middleware,
+		logger:     logger,
+		config:     config,
 	}
 }
 
@@ -117,10 +113,6 @@ func (rm *RouteManager) setupProtectedRoutes(router *gin.Engine) {
 		// Workspace management routes
 		workspacesGroup := v1Protected.Group("/workspaces")
 		rm.setupWorkspaceRoutes(workspacesGroup)
-
-		// Provider routes
-		providersGroup := v1Protected.Group("/providers")
-		rm.setupProviderRoutes(providersGroup)
 
 		// Provider-specific routes (RESTful)
 		rm.setupProviderSpecificRoutes(v1Protected)
@@ -233,13 +225,6 @@ func (rm *RouteManager) setupWorkspaceRoutes(router *gin.RouterGroup) {
 	}
 }
 
-// setupProviderRoutes sets up cloud provider routes
-func (rm *RouteManager) setupProviderRoutes(router *gin.RouterGroup) {
-	if auditLogRepo := rm.container.GetAuditLogRepository(); auditLogRepo != nil {
-		provider.SetupRoutes(router, rm.providerManager, auditLogRepo)
-	}
-}
-
 // setupProviderSpecificRoutes sets up provider-specific routes (RESTful)
 func (rm *RouteManager) setupProviderSpecificRoutes(router *gin.RouterGroup) {
 	// AWS-specific routes
@@ -279,7 +264,7 @@ func (rm *RouteManager) setupAWSRoutes(router *gin.RouterGroup) {
 	networkGroup := router.Group("/network")
 	if networkService := rm.container.GetNetworkService(); networkService != nil {
 		if networkSvc, ok := networkService.(*service.NetworkService); ok {
-			network.SetupRoutes(networkGroup, networkSvc, rm.container.GetCredentialService(), rm.logger, "aws")
+			network.SetupRoutes(networkGroup, networkSvc, rm.container.GetCredentialService(), "aws")
 		}
 	}
 

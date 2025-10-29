@@ -217,11 +217,30 @@ func (h *BaseHandler) AdminOnlyDecorators(operation string) []HandlerDecorator {
 	}
 }
 
+// WithPublicBusinessLogging adds business event logging for public endpoints
+func (h *BaseHandler) WithPublicBusinessLogging(operation string) HandlerDecorator {
+	return func(next HandlerFunc) HandlerFunc {
+		return func(c *gin.Context) {
+			// 인증되지 않은 요청을 위한 비즈니스 로깅
+			h.LogBusinessEvent(c, operation+"_started", "", "", map[string]interface{}{
+				"operation": operation,
+				"public":    true,
+			})
+			next(c)
+			h.LogBusinessEvent(c, operation+"_completed", "", "", map[string]interface{}{
+				"operation": operation,
+				"public":    true,
+			})
+		}
+	}
+}
+
 func (h *BaseHandler) PublicDecorators(operation string) []HandlerDecorator {
 	return []HandlerDecorator{
 		h.WithRequestID(),
 		h.WithLogging(),
 		h.WithPerformanceTracking(operation, http.StatusOK),
+		h.WithPublicBusinessLogging(operation),
 		h.WithErrorHandling(operation),
 	}
 }

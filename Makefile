@@ -34,8 +34,6 @@ RESET := \033[0m
 # ============================================================================
 
 .PHONY: help build clean docker lint format deps test \
-        proto-gen proto-lint proto-breaking \
-        build-providers providers-up providers-down \
         compose-up compose-down dev run
 
 # ============================================================================
@@ -94,99 +92,6 @@ build-windows: ## Windows AMD64 빌드
 	@mkdir -p $(BUILD_DIR)
 	@CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/server/main.go
 	@echo "$(GREEN)✓ Built $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe$(RESET)"
-
-# ============================================================================
-# Proto Targets
-# ============================================================================
-
-proto-gen: ## gRPC 코드 생성
-	@echo "$(YELLOW)▶ Generating gRPC code from proto files...$(RESET)"
-	@if command -v buf >/dev/null 2>&1; then \
-		buf generate; \
-		echo "$(GREEN)✓ gRPC code generated in api/gen$(RESET)"; \
-	else \
-		echo "$(RED)✗ buf not installed. Install: go install github.com/bufbuild/buf/cmd/buf@latest$(RESET)"; \
-		exit 1; \
-	fi
-
-proto-lint: ## Proto 파일 lint
-	@echo "$(YELLOW)▶ Linting proto files...$(RESET)"
-	@if command -v buf >/dev/null 2>&1; then \
-		buf lint; \
-		echo "$(GREEN)✓ Proto files linted$(RESET)"; \
-	else \
-		echo "$(RED)✗ buf not installed$(RESET)"; \
-		exit 1; \
-	fi
-
-proto-breaking: ## Proto breaking changes 검사
-	@echo "$(YELLOW)▶ Checking for breaking changes...$(RESET)"
-	@if command -v buf >/dev/null 2>&1; then \
-		buf breaking --against '.git#branch=main' || echo "$(YELLOW)⚠ No baseline to compare$(RESET)"; \
-	else \
-		echo "$(RED)✗ buf not installed$(RESET)"; \
-		exit 1; \
-	fi
-
-proto-clean: ## Generated proto 파일 삭제
-	@echo "$(YELLOW)▶ Cleaning generated proto files...$(RESET)"
-	@rm -rf api/gen
-	@echo "$(GREEN)✓ Cleaned api/gen$(RESET)"
-
-# ============================================================================
-# Provider Targets
-# ============================================================================
-
-build-providers: ## 모든 Provider 서버 빌드
-	@echo "$(YELLOW)▶ Building gRPC Provider servers...$(RESET)"
-	@mkdir -p $(BUILD_DIR)/providers
-	@echo "  • AWS Provider..."
-	@cd providers/aws && go build -o ../../$(BUILD_DIR)/providers/aws-provider . 2>/dev/null || echo "$(YELLOW)    ⚠ AWS build skipped (missing dependencies)$(RESET)"
-	@echo "  • GCP Provider..."
-	@cd providers/gcp && go build -o ../../$(BUILD_DIR)/providers/gcp-provider . 2>/dev/null || echo "$(YELLOW)    ⚠ GCP build skipped (missing dependencies)$(RESET)"
-	@echo "  • Azure Provider..."
-	@cd providers/azure && go build -o ../../$(BUILD_DIR)/providers/azure-provider . 2>/dev/null || echo "$(YELLOW)    ⚠ Azure build skipped (missing dependencies)$(RESET)"
-	@echo "  • OpenStack Provider..."
-	@cd providers/openstack && go build -o ../../$(BUILD_DIR)/providers/openstack-provider . 2>/dev/null || echo "$(YELLOW)    ⚠ OpenStack build skipped (missing dependencies)$(RESET)"
-	@echo "  • Proxmox Provider..."
-	@cd providers/proxmox && go build -o ../../$(BUILD_DIR)/providers/proxmox-provider . 2>/dev/null || echo "$(YELLOW)    ⚠ Proxmox build skipped (missing dependencies)$(RESET)"
-	@echo "$(GREEN)✓ Provider servers built$(RESET)"
-
-build-provider-aws: ## AWS Provider 빌드
-	@echo "$(YELLOW)▶ Building AWS Provider...$(RESET)"
-	@mkdir -p $(BUILD_DIR)/providers
-	@cd providers/aws && go build -o ../../$(BUILD_DIR)/providers/aws-provider .
-	@echo "$(GREEN)✓ AWS Provider built$(RESET)"
-
-build-provider-gcp: ## GCP Provider 빌드
-	@echo "$(YELLOW)▶ Building GCP Provider...$(RESET)"
-	@mkdir -p $(BUILD_DIR)/providers
-	@cd providers/gcp && go build -o ../../$(BUILD_DIR)/providers/gcp-provider .
-	@echo "$(GREEN)✓ GCP Provider built$(RESET)"
-
-docker-build-providers: ## 모든 Provider Docker 이미지 빌드
-	@echo "$(YELLOW)▶ Building Provider Docker images...$(RESET)"
-	@docker build -t skyclust-aws-provider:latest ./providers/aws 2>/dev/null || echo "$(YELLOW)  ⚠ AWS image skipped$(RESET)"
-	@docker build -t skyclust-gcp-provider:latest ./providers/gcp 2>/dev/null || echo "$(YELLOW)  ⚠ GCP image skipped$(RESET)"
-	@docker build -t skyclust-azure-provider:latest ./providers/azure 2>/dev/null || echo "$(YELLOW)  ⚠ Azure image skipped$(RESET)"
-	@docker build -t skyclust-openstack-provider:latest ./providers/openstack 2>/dev/null || echo "$(YELLOW)  ⚠ OpenStack image skipped$(RESET)"
-	@docker build -t skyclust-proxmox-provider:latest ./providers/proxmox 2>/dev/null || echo "$(YELLOW)  ⚠ Proxmox image skipped$(RESET)"
-	@echo "$(GREEN)✓ Provider Docker images built$(RESET)"
-
-providers-up: ## Provider 서비스 시작
-	@echo "$(YELLOW)▶ Starting Provider services...$(RESET)"
-	@docker-compose -f docker-compose.providers.yml up -d
-	@echo "$(GREEN)✓ Provider services started$(RESET)"
-
-providers-down: ## Provider 서비스 중지
-	@echo "$(YELLOW)▶ Stopping Provider services...$(RESET)"
-	@docker-compose -f docker-compose.providers.yml down
-	@echo "$(GREEN)✓ Provider services stopped$(RESET)"
-
-providers-logs: ## Provider 서비스 로그
-	@docker-compose -f docker-compose.providers.yml logs -f
-
-providers-restart: providers-down providers-up ## Provider 서비스 재시작
 
 # ============================================================================
 # Development Targets
@@ -315,7 +220,7 @@ clean: ## 빌드 아티팩트 정리
 	@rm -f coverage.out coverage.html
 	@echo "$(GREEN)✓ Cleaned$(RESET)"
 
-clean-all: clean proto-clean ## 모든 아티팩트 정리
+clean-all: clean ## 모든 아티팩트 정리
 	@echo "$(YELLOW)▶ Cleaning all artifacts...$(RESET)"
 	@rm -rf vendor
 	@echo "$(GREEN)✓ All cleaned$(RESET)"
@@ -332,15 +237,12 @@ clean-docker: ## Docker 이미지 정리
 
 setup: ## 프로젝트 초기 설정
 	@echo "$(YELLOW)▶ Setting up project...$(RESET)"
-	@mkdir -p $(BUILD_DIR)/providers
-	@mkdir -p api/gen
+	@mkdir -p $(BUILD_DIR)
 	@echo "$(GREEN)✓ Project setup completed$(RESET)"
 
 install-tools: ## 개발 도구 설치
 	@echo "$(YELLOW)▶ Installing development tools...$(RESET)"
 	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-	@go install github.com/bufbuild/buf/cmd/buf@latest
-	@go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 	@echo "$(GREEN)✓ Tools installed$(RESET)"
 
 # ============================================================================
@@ -375,9 +277,9 @@ release: clean deps lint test build-all-platforms ## 릴리스 준비
 # Quick Commands
 # ============================================================================
 
-quick-start: deps proto-gen build ## 빠른 시작 (deps + proto + build)
+quick-start: deps build ## 빠른 시작 (deps + build)
 	@echo "$(GREEN)✓ Quick start completed$(RESET)"
 	@echo "$(CYAN)  Run: make dev$(RESET)"
 
-full-build: clean deps proto-gen lint build build-providers ## 전체 빌드
+full-build: clean deps lint build ## 전체 빌드
 	@echo "$(GREEN)✓ Full build completed$(RESET)"

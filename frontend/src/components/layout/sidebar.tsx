@@ -7,7 +7,6 @@ import {
   Home,
   Server,
   Key,
-  Cloud,
   Settings,
   Users,
   Plus,
@@ -20,7 +19,6 @@ const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: Home },
   { name: 'VMs', href: '/vms', icon: Server },
   { name: 'Credentials', href: '/credentials', icon: Key },
-  { name: 'Providers', href: '/providers', icon: Cloud },
   { name: 'Workspaces', href: '/workspaces', icon: Users },
   { name: 'Profile', href: '/profile', icon: Settings },
 ];

@@ -108,13 +108,8 @@ func runServer(cmd *cobra.Command, args []string) {
 		}
 	}()
 
-	// Initialize gRPC Provider Manager
-	// TODO: Implement gRPC provider manager
-	var providerManager interface{} = nil
-	log.Println("Provider manager: using gRPC-based providers")
-
 	// Setup router
-	router := setupRouter(appContainer, providerManager, cfg, logger)
+	router := setupRouter(appContainer, cfg, logger)
 
 	// Start server
 	server := &http.Server{
@@ -150,7 +145,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	log.Println("Server exited")
 }
 
-func setupRouter(container di.ContainerInterface, providerManager interface{}, cfg *config.Config, logger *zap.Logger) *gin.Engine {
+func setupRouter(container di.ContainerInterface, cfg *config.Config, logger *zap.Logger) *gin.Engine {
 	// Set Gin mode
 	if cfg.Server.Host == "0.0.0.0" {
 		gin.SetMode(gin.ReleaseMode)
@@ -204,7 +199,7 @@ func setupRouter(container di.ContainerInterface, providerManager interface{}, c
 	)
 
 	// Create route manager
-	routeManager := routes.NewRouteManager(container, providerManager, authMiddleware, logger, cfg)
+	routeManager := routes.NewRouteManager(container, authMiddleware, logger, cfg)
 
 	// Setup all routes using the route manager
 	routeManager.SetupAllRoutes(router)
