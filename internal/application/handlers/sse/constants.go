@@ -24,8 +24,3 @@ const (
 	FieldVMID     = "vmId"
 	FieldProvider = "provider"
 )
-
-// Error messages
-const (
-	ErrClientNotFound = "client not found"
-)

@@ -85,9 +85,19 @@ func (rl *RequestLogger) LogBusinessEvent(c *gin.Context, eventType string, user
 		zap.String("event_type", eventType),
 		zap.String("user_id", userID),
 		zap.String("resource_id", resourceID),
-		zap.String("request_id", c.GetHeader("X-Request-ID")),
-		zap.String("path", c.Request.URL.Path),
-		zap.String("method", c.Request.Method),
+	}
+
+	// Safely get request information
+	if c.Request != nil && c.Request.URL != nil {
+		fields = append(fields, zap.String("path", c.Request.URL.Path))
+	}
+	if c.Request != nil {
+		fields = append(fields, zap.String("method", c.Request.Method))
+	}
+
+	// Safely get request ID
+	if requestID := c.GetString("request_id"); requestID != "" {
+		fields = append(fields, zap.String("request_id", requestID))
 	}
 
 	// Add custom details

@@ -3,6 +3,7 @@ package sse
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -11,6 +12,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/nats-io/nats.go"
 	"go.uber.org/zap"
+)
+
+// Error definitions
+var (
+	ErrClientNotFound = errors.New("client not found")
 )
 
 type SSEHandler struct {
@@ -298,7 +304,7 @@ func (h *SSEHandler) SubscribeToEvent(clientID, eventType string) error {
 
 	client, exists := h.clients[clientID]
 	if !exists {
-		return fmt.Errorf(ErrClientNotFound)
+		return ErrClientNotFound
 	}
 
 	client.SubscribedEvents[eventType] = true
@@ -311,7 +317,7 @@ func (h *SSEHandler) UnsubscribeFromEvent(clientID, eventType string) error {
 
 	client, exists := h.clients[clientID]
 	if !exists {
-		return fmt.Errorf(ErrClientNotFound)
+		return ErrClientNotFound
 	}
 
 	delete(client.SubscribedEvents, eventType)
@@ -324,7 +330,7 @@ func (h *SSEHandler) SubscribeToVM(clientID, vmID string) error {
 
 	client, exists := h.clients[clientID]
 	if !exists {
-		return fmt.Errorf(ErrClientNotFound)
+		return ErrClientNotFound
 	}
 
 	client.SubscribedVMs[vmID] = true
@@ -337,7 +343,7 @@ func (h *SSEHandler) UnsubscribeFromVM(clientID, vmID string) error {
 
 	client, exists := h.clients[clientID]
 	if !exists {
-		return fmt.Errorf(ErrClientNotFound)
+		return ErrClientNotFound
 	}
 
 	delete(client.SubscribedVMs, vmID)
@@ -350,7 +356,7 @@ func (h *SSEHandler) SubscribeToProvider(clientID, provider string) error {
 
 	client, exists := h.clients[clientID]
 	if !exists {
-		return fmt.Errorf(ErrClientNotFound)
+		return ErrClientNotFound
 	}
 
 	client.SubscribedProviders[provider] = true
@@ -363,7 +369,7 @@ func (h *SSEHandler) UnsubscribeFromProvider(clientID, provider string) error {
 
 	client, exists := h.clients[clientID]
 	if !exists {
-		return fmt.Errorf(ErrClientNotFound)
+		return ErrClientNotFound
 	}
 
 	delete(client.SubscribedProviders, provider)
