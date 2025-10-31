@@ -19,11 +19,15 @@ headers {
 }
 
 tests {
-  test("Status code is 204", function() {
-    expect(res.getStatus()).to.equal(204);
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
   });
   
-  test("Response is empty", function() {
-    expect(res.getBody()).to.be.empty;
+  test("Response contains notification ID", function() {
+    expect(res.getBody()).to.have.property('id');
+  });
+  
+  test("Notification ID matches", function() {
+    expect(res.getBody().id).to.equal('{{notificationId}}');
   });
 }

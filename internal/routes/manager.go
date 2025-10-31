@@ -80,7 +80,7 @@ func (rm *RouteManager) setupPublicRoutes(router *gin.Engine) {
 		oidcGroup := v1Public.Group("/auth/oidc")
 		rm.setupOIDCRoutes(oidcGroup)
 
-		// OIDC providers (public)
+		// OIDC providers (public - list available providers)
 		oidcProvidersGroup := v1Public.Group("/oidc-providers")
 		rm.setupOIDCProvidersRoutes(oidcProvidersGroup)
 
@@ -132,6 +132,10 @@ func (rm *RouteManager) setupProtectedRoutes(router *gin.Engine) {
 		// SSE routes
 		sseGroup := v1Protected.Group("/sse")
 		rm.setupSSERoutes(sseGroup)
+
+		// OIDC provider management routes (protected)
+		oidcProviderGroup := v1Protected.Group("/oidc")
+		rm.setupUserOIDCProviderRoutes(oidcProviderGroup)
 	}
 }
 
@@ -167,9 +171,11 @@ func (rm *RouteManager) setupPublicAuthRoutes(router *gin.RouterGroup) {
 	// Public routes only - register and login
 	if authService := rm.container.GetAuthService(); authService != nil {
 		if userService := rm.container.GetUserService(); userService != nil {
-			authHandler := auth.NewHandler(authService, userService)
-			router.POST("/register", authHandler.Register)
-			router.POST("/login", authHandler.Login)
+			if rbacService := rm.container.GetRBACService(); rbacService != nil {
+				authHandler := auth.NewHandler(authService, userService, rbacService)
+				router.POST("/register", authHandler.Register)
+				router.POST("/login", authHandler.Login)
+			}
 		}
 	}
 }
@@ -179,9 +185,11 @@ func (rm *RouteManager) setupProtectedAuthRoutes(router *gin.RouterGroup) {
 	// Protected routes only - logout and me
 	if authService := rm.container.GetAuthService(); authService != nil {
 		if userService := rm.container.GetUserService(); userService != nil {
-			authHandler := auth.NewHandler(authService, userService)
-			router.POST("/logout", authHandler.Logout)
-			router.GET("/me", authHandler.Me)
+			if rbacService := rm.container.GetRBACService(); rbacService != nil {
+				authHandler := auth.NewHandler(authService, userService, rbacService)
+				router.POST("/logout", authHandler.Logout)
+				router.GET("/me", authHandler.Me)
+			}
 		}
 	}
 }
@@ -193,10 +201,20 @@ func (rm *RouteManager) setupOIDCRoutes(router *gin.RouterGroup) {
 	}
 }
 
-// setupOIDCProvidersRoutes sets up OIDC providers routes
+// setupOIDCProvidersRoutes sets up OIDC providers routes (public)
 func (rm *RouteManager) setupOIDCProvidersRoutes(router *gin.RouterGroup) {
 	if oidcService := rm.container.GetOIDCService(); oidcService != nil {
+		// Public routes (list available providers)
 		oidc.SetupProviderRoutes(router, oidcService)
+	}
+}
+
+// setupUserOIDCProviderRoutes sets up user OIDC provider management routes (protected)
+func (rm *RouteManager) setupUserOIDCProviderRoutes(router *gin.RouterGroup) {
+	if oidcService := rm.container.GetOIDCService(); oidcService != nil {
+		if oidcProviderRepo := rm.container.GetOIDCProviderRepository(); oidcProviderRepo != nil {
+			oidc.SetupUserProviderRoutes(router, oidcService, oidcProviderRepo)
+		}
 	}
 }
 
@@ -204,7 +222,9 @@ func (rm *RouteManager) setupOIDCProvidersRoutes(router *gin.RouterGroup) {
 func (rm *RouteManager) setupUserRoutes(router *gin.RouterGroup) {
 	if authService := rm.container.GetAuthService(); authService != nil {
 		if userService := rm.container.GetUserService(); userService != nil {
-			auth.SetupUserRoutes(router, authService, userService)
+			if rbacService := rm.container.GetRBACService(); rbacService != nil {
+				auth.SetupUserRoutes(router, authService, userService, rbacService)
+			}
 		}
 	}
 }
@@ -354,7 +374,14 @@ func (rm *RouteManager) setupNotificationRoutes(router *gin.RouterGroup) {
 
 // setupExportRoutes sets up export routes
 func (rm *RouteManager) setupExportRoutes(router *gin.RouterGroup) {
-	export.SetupRoutes(router)
+	exportHandler := export.NewHandler()
+	// Inject ExportService from container
+	if exportService := rm.container.GetExportService(); exportService != nil {
+		if svc, ok := exportService.(*service.ExportService); ok {
+			exportHandler.SetExportService(svc)
+		}
+	}
+	export.SetupRoutesWithHandler(router, exportHandler)
 }
 
 // setupAdminUserRoutes sets up admin user management routes

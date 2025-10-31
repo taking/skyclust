@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"fmt"
+	"go.uber.org/zap"
 	"skyclust/internal/domain"
 	"skyclust/pkg/cache"
+	"skyclust/pkg/logger"
 	"time"
 )
 
@@ -60,7 +62,10 @@ func (s *cacheService) GetOrSet(ctx context.Context, key string, setter func() (
 	// Store in cache
 	if err := s.Set(ctx, key, value, ttl); err != nil {
 		// Log error but don't fail the operation
-		fmt.Printf("Failed to cache value for key %s: %v\n", key, err)
+		logger.DefaultLogger.GetLogger().Warn("Failed to cache value",
+			zap.String("key", key),
+			zap.Error(err),
+		)
 	}
 
 	return value, nil

@@ -1,0 +1,46 @@
+meta {
+  name: Get Notification Stats
+  type: http
+  seq: 35
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/notifications/stats
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains stats", function() {
+    expect(res.getBody()).to.have.property('total_notifications');
+    expect(res.getBody()).to.have.property('unread_notifications');
+    expect(res.getBody()).to.have.property('read_notifications');
+  });
+  
+  test("Stats have category counts", function() {
+    expect(res.getBody()).to.have.property('system_count');
+    expect(res.getBody()).to.have.property('vm_count');
+    expect(res.getBody()).to.have.property('cost_count');
+    expect(res.getBody()).to.have.property('security_count');
+  });
+  
+  test("Stats have priority counts", function() {
+    expect(res.getBody()).to.have.property('low_priority_count');
+    expect(res.getBody()).to.have.property('medium_priority_count');
+    expect(res.getBody()).to.have.property('high_priority_count');
+    expect(res.getBody()).to.have.property('urgent_priority_count');
+  });
+}
+

@@ -7,8 +7,8 @@ import (
 )
 
 // SetupRoutes sets up authentication routes
-func SetupRoutes(router *gin.RouterGroup, authService domain.AuthService, userService domain.UserService, logoutService domain.LogoutService) {
-	authHandler := NewHandlerWithLogout(authService, userService, logoutService)
+func SetupRoutes(router *gin.RouterGroup, authService domain.AuthService, userService domain.UserService, logoutService domain.LogoutService, rbacService domain.RBACService) {
+	authHandler := NewHandlerWithLogout(authService, userService, logoutService, rbacService)
 
 	// Public authentication routes (no authentication required)
 	router.POST("/register", authHandler.Register)
@@ -20,8 +20,8 @@ func SetupRoutes(router *gin.RouterGroup, authService domain.AuthService, userSe
 }
 
 // SetupUserRoutes sets up user management routes (RESTful)
-func SetupUserRoutes(router *gin.RouterGroup, authService domain.AuthService, userService domain.UserService) {
-	authHandler := NewHandler(authService, userService)
+func SetupUserRoutes(router *gin.RouterGroup, authService domain.AuthService, userService domain.UserService, rbacService domain.RBACService) {
+	authHandler := NewHandler(authService, userService, rbacService)
 
 	// User management routes
 	router.POST("", authHandler.Register)         // Create user

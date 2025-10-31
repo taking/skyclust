@@ -1,7 +1,7 @@
 meta {
-  name: 로그인
+  name: 로그인 - 사용자
   type: http
-  seq: 2
+  seq: 3
 }
 
 post {
@@ -16,13 +16,29 @@ headers {
 
 body:json {
   {
-    "email": "test@example.com",
+    "email": "user@example.com",
     "password": "password123"
   }
 }
 
 script:post-response {
   bru.setEnvVar("token", res.body.data.token);
+  bru.setEnvVar("userId", res.body.data.user.id);
+  
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains token", function() {
+    expect(res.getBody()).to.have.property('token');
+  });
+  
+  test("Token is not empty", function() {
+    expect(res.getBody().token).to.not.be.empty;
+  });
 }
 
 docs {
@@ -76,18 +92,4 @@ docs {
   ## 토큰 사용
   
   발급받은 토큰은 `Authorization: Bearer <token>` 헤더로 다른 API 호출에 사용됩니다.
-}
-
-tests {
-  test("Status code is 200", function() {
-    expect(res.getStatus()).to.equal(200);
-  });
-  
-  test("Response contains token", function() {
-    expect(res.getBody()).to.have.property('token');
-  });
-  
-  test("Token is not empty", function() {
-    expect(res.getBody().token).to.not.be.empty;
-  });
 }

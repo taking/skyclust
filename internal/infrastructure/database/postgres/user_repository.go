@@ -121,13 +121,16 @@ func (r *userRepository) List(limit, offset int, filters map[string]interface{})
 		return nil, 0, err
 	}
 
-	// Apply pagination
+	// Apply pagination and ordering
 	if limit > 0 {
 		query = query.Limit(limit)
 	}
 	if offset > 0 {
 		query = query.Offset(offset)
 	}
+
+	// Order by created_at DESC (newest first)
+	query = query.Order("created_at DESC")
 
 	// Execute query
 	if err := query.Find(&users).Error; err != nil {

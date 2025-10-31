@@ -2,12 +2,13 @@ package grpc
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"skyclust/pkg/logger"
 )
 
 // HealthChecker performs periodic health checks on provider connections
@@ -187,7 +188,10 @@ func (hc *HealthChecker) attemptReconnect(providerName string) {
 	// Attempt reconnection
 	err := hc.manager.ConnectProvider(ctx, providerName)
 	if err != nil {
-		fmt.Printf("Failed to reconnect to provider %s: %v\n", providerName, err)
+		logger.DefaultLogger.GetLogger().Error("Failed to reconnect to provider",
+			zap.String("provider", providerName),
+			zap.Error(err),
+		)
 		return
 	}
 
@@ -198,7 +202,9 @@ func (hc *HealthChecker) attemptReconnect(providerName string) {
 	hc.statuses[providerName] = status
 	hc.mu.Unlock()
 
-	fmt.Printf("Successfully reconnected to provider %s\n", providerName)
+	logger.DefaultLogger.GetLogger().Info("Successfully reconnected to provider",
+		zap.String("provider", providerName),
+	)
 }
 
 // GetStatus returns the health status of a provider
@@ -311,10 +317,14 @@ func (csm *ConnectionStateMonitor) checkConnectionStates() {
 		// Handle specific states
 		switch state {
 		case connectivity.Shutdown:
-			fmt.Printf("Provider %s connection is shutdown, attempting reconnect\n", providerName)
+			logger.DefaultLogger.GetLogger().Warn("Connection shutdown, attempting reconnect",
+				zap.String("provider", providerName),
+			)
 			go csm.attemptReconnect(providerName)
 		case connectivity.TransientFailure:
-			fmt.Printf("Provider %s experiencing transient failure\n", providerName)
+			logger.DefaultLogger.GetLogger().Warn("Transient failure",
+				zap.String("provider", providerName),
+			)
 		}
 	}
 }
@@ -329,9 +339,14 @@ func (csm *ConnectionStateMonitor) attemptReconnect(providerName string) {
 
 	err := csm.manager.ConnectProvider(ctx, providerName)
 	if err != nil {
-		fmt.Printf("Failed to reconnect provider %s: %v\n", providerName, err)
+		logger.DefaultLogger.GetLogger().Error("Failed to reconnect provider",
+			zap.String("provider", providerName),
+			zap.Error(err),
+		)
 		return
 	}
 
-	fmt.Printf("Successfully reconnected provider %s\n", providerName)
+	logger.DefaultLogger.GetLogger().Info("Successfully reconnected provider",
+		zap.String("provider", providerName),
+	)
 }

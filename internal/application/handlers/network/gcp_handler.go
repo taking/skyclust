@@ -5,10 +5,8 @@ import (
 	service "skyclust/internal/application/services"
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
-	"skyclust/internal/shared/responses"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -50,34 +48,26 @@ func (h *GCPHandler) ListGCPVPCs(c *gin.Context) {
 	// List VPCs
 	vpcs, err := h.networkService.ListVPCs(c.Request.Context(), credential, req)
 	if err != nil {
-		h.LogError(c, err, "Failed to list GCP VPCs")
-		responses.InternalServerError(c, "Failed to list VPCs: "+err.Error())
+		h.HandleError(c, err, "list_vpcs")
 		return
 	}
 
-	responses.OK(c, vpcs, "GCP VPCs retrieved successfully")
+	h.OK(c, vpcs, "GCP VPCs retrieved successfully")
 }
 
 // ListGCPSubnets handles subnet listing requests for GCP
 func (h *GCPHandler) ListGCPSubnets(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
+	// Get and validate credential using BaseHandler helper
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, "gcp")
 	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
-	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
+		h.HandleError(c, err, "list_subnets")
 		return
 	}
 
 	// Get VPC ID from query parameter
 	vpcID := c.Query("vpc_id")
 	if vpcID == "" {
-		responses.BadRequest(c, "vpc_id is required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "vpc_id is required", 400), "list_subnets")
 		return
 	}
 
@@ -85,29 +75,9 @@ func (h *GCPHandler) ListGCPSubnets(c *gin.Context) {
 	region := c.Query("region")
 	// Note: VPC is a Global resource, so region is optional
 
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Verify credential matches GCP provider
-	if credential.Provider != "gcp" {
-		responses.BadRequest(c, "Credential provider does not match GCP")
-		return
-	}
-
 	// Create request
 	req := dto.ListSubnetsRequest{
-		CredentialID: credentialID,
+		CredentialID: credential.ID.String(),
 		VPCID:        vpcID,
 		Region:       region,
 	}
@@ -115,34 +85,26 @@ func (h *GCPHandler) ListGCPSubnets(c *gin.Context) {
 	// List subnets
 	subnets, err := h.networkService.ListSubnets(c.Request.Context(), credential, req)
 	if err != nil {
-		h.LogError(c, err, "Failed to list GCP subnets")
-		responses.InternalServerError(c, "Failed to list subnets: "+err.Error())
+		h.HandleError(c, err, "list_subnets")
 		return
 	}
 
-	responses.OK(c, subnets, "GCP subnets retrieved successfully")
+	h.OK(c, subnets, "GCP subnets retrieved successfully")
 }
 
 // ListGCPSecurityGroups handles security group listing requests for GCP
 func (h *GCPHandler) ListGCPSecurityGroups(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
+	// Get and validate credential using BaseHandler helper
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, "gcp")
 	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
-	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
+		h.HandleError(c, err, "list_security_groups")
 		return
 	}
 
 	// Get VPC ID from query parameter
 	vpcID := c.Query("vpc_id")
 	if vpcID == "" {
-		responses.BadRequest(c, "vpc_id is required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "vpc_id is required", 400), "list_security_groups")
 		return
 	}
 
@@ -150,29 +112,9 @@ func (h *GCPHandler) ListGCPSecurityGroups(c *gin.Context) {
 	region := c.Query("region")
 	// Note: VPC is a Global resource, so region is optional
 
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Verify credential matches GCP provider
-	if credential.Provider != "gcp" {
-		responses.BadRequest(c, "Credential provider does not match GCP")
-		return
-	}
-
 	// Create request
 	req := dto.ListSecurityGroupsRequest{
-		CredentialID: credentialID,
+		CredentialID: credential.ID.String(),
 		VPCID:        vpcID,
 		Region:       region,
 	}
@@ -180,34 +122,26 @@ func (h *GCPHandler) ListGCPSecurityGroups(c *gin.Context) {
 	// List security groups
 	securityGroups, err := h.networkService.ListSecurityGroups(c.Request.Context(), credential, req)
 	if err != nil {
-		h.LogError(c, err, "Failed to list GCP security groups")
-		responses.InternalServerError(c, "Failed to list security groups: "+err.Error())
+		h.HandleError(c, err, "list_security_groups")
 		return
 	}
 
-	responses.OK(c, securityGroups, "GCP security groups retrieved successfully")
+	h.OK(c, securityGroups, "GCP security groups retrieved successfully")
 }
 
 // GetGCPVPC handles VPC detail requests for GCP
 func (h *GCPHandler) GetGCPVPC(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
+	// Get and validate credential using BaseHandler helper
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, "gcp")
 	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
+		h.HandleError(c, err, "get_vpc")
 		return
 	}
 
 	// Get VPC name from path parameter
 	vpcName := c.Param("id")
 	if vpcName == "" {
-		responses.BadRequest(c, "VPC name is required")
-		return
-	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "VPC name is required", 400), "get_vpc")
 		return
 	}
 
@@ -215,29 +149,9 @@ func (h *GCPHandler) GetGCPVPC(c *gin.Context) {
 	region := c.Query("region")
 	// Note: VPC is a Global resource, so region is optional
 
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Verify credential matches GCP provider
-	if credential.Provider != "gcp" {
-		responses.BadRequest(c, "Credential provider does not match GCP")
-		return
-	}
-
 	// Create request
 	req := dto.GetVPCRequest{
-		CredentialID: credentialID,
+		CredentialID: credential.ID.String(),
 		VPCID:        vpcName, // Using vpcName as VPCID for service call
 		Region:       region,
 	}
@@ -245,88 +159,59 @@ func (h *GCPHandler) GetGCPVPC(c *gin.Context) {
 	// Get VPC
 	vpc, err := h.networkService.GetVPC(c.Request.Context(), credential, req)
 	if err != nil {
-		h.LogError(c, err, "Failed to get GCP VPC")
-		responses.InternalServerError(c, "Failed to get VPC: "+err.Error())
+		h.HandleError(c, err, "get_vpc")
 		return
 	}
 
-	responses.OK(c, vpc, "GCP VPC retrieved successfully")
+	h.OK(c, vpc, "GCP VPC retrieved successfully")
 }
 
 // CreateGCPVPC handles VPC creation requests for GCP
 func (h *GCPHandler) CreateGCPVPC(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
-	}
-
 	// Parse request body
 	var req dto.CreateVPCRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body: "+err.Error())
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "create_vpc")
 		return
 	}
 
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(req.CredentialID)
+	// Get and validate credential from request body
+	credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, "gcp")
 	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Verify credential matches GCP provider
-	if credential.Provider != "gcp" {
-		responses.BadRequest(c, "Credential provider does not match GCP")
+		h.HandleError(c, err, "create_vpc")
 		return
 	}
 
 	// Create VPC
 	vpc, err := h.networkService.CreateVPC(c.Request.Context(), credential, req)
 	if err != nil {
-		h.LogError(c, err, "Failed to create GCP VPC")
-		responses.InternalServerError(c, "Failed to create VPC: "+err.Error())
+		h.HandleError(c, err, "create_vpc")
 		return
 	}
 
-	responses.Created(c, vpc, "GCP VPC created successfully")
+	h.Created(c, vpc, "GCP VPC created successfully")
 }
 
 // UpdateGCPVPC handles VPC update requests for GCP
 func (h *GCPHandler) UpdateGCPVPC(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
+	// Get and validate credential using BaseHandler helper
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, "gcp")
 	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
+		h.HandleError(c, err, "update_vpc")
 		return
 	}
 
 	// Get VPC name from path parameter
 	vpcName := c.Param("id")
 	if vpcName == "" {
-		responses.BadRequest(c, "VPC name is required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "VPC name is required", 400), "update_vpc")
 		return
 	}
 
 	// Parse request body
 	var req dto.UpdateVPCRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body: "+err.Error())
-		return
-	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "update_vpc")
 		return
 	}
 
@@ -334,57 +219,29 @@ func (h *GCPHandler) UpdateGCPVPC(c *gin.Context) {
 	region := c.Query("region")
 	// Note: VPC is a Global resource, so region is optional
 
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Verify credential matches GCP provider
-	if credential.Provider != "gcp" {
-		responses.BadRequest(c, "Credential provider does not match GCP")
-		return
-	}
-
 	// Update VPC
 	vpc, err := h.networkService.UpdateVPC(c.Request.Context(), credential, req, vpcName, region)
 	if err != nil {
-		h.LogError(c, err, "Failed to update GCP VPC")
-		responses.InternalServerError(c, "Failed to update VPC: "+err.Error())
+		h.HandleError(c, err, "update_vpc")
 		return
 	}
 
-	responses.OK(c, vpc, "GCP VPC updated successfully")
+	h.OK(c, vpc, "GCP VPC updated successfully")
 }
 
 // DeleteGCPVPC handles VPC deletion requests for GCP
 func (h *GCPHandler) DeleteGCPVPC(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
+	// Get and validate credential using BaseHandler helper
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, "gcp")
 	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
+		h.HandleError(c, err, "delete_vpc")
 		return
 	}
 
 	// Get VPC name from path parameter
 	vpcName := c.Param("id")
 	if vpcName == "" {
-		responses.BadRequest(c, "VPC name is required")
-		return
-	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "VPC name is required", 400), "delete_vpc")
 		return
 	}
 
@@ -392,29 +249,9 @@ func (h *GCPHandler) DeleteGCPVPC(c *gin.Context) {
 	region := c.Query("region")
 	// Note: VPC is a Global resource, so region is optional
 
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Verify credential matches GCP provider
-	if credential.Provider != "gcp" {
-		responses.BadRequest(c, "Credential provider does not match GCP")
-		return
-	}
-
 	// Create delete request
 	req := dto.DeleteVPCRequest{
-		CredentialID: credentialID,
+		CredentialID: credential.ID.String(),
 		VPCID:        vpcName, // Using vpcName as VPCID for service call
 		Region:       region,
 	}
@@ -422,34 +259,26 @@ func (h *GCPHandler) DeleteGCPVPC(c *gin.Context) {
 	// Delete VPC
 	err = h.networkService.DeleteVPC(c.Request.Context(), credential, req)
 	if err != nil {
-		h.LogError(c, err, "Failed to delete GCP VPC")
-		responses.InternalServerError(c, "Failed to delete VPC: "+err.Error())
+		h.HandleError(c, err, "delete_vpc")
 		return
 	}
 
-	responses.OK(c, nil, "GCP VPC deleted successfully")
+	h.OK(c, nil, "GCP VPC deleted successfully")
 }
 
 // GetGCPSubnet handles subnet detail requests for GCP
 func (h *GCPHandler) GetGCPSubnet(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
+	// Get and validate credential using BaseHandler helper
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, "gcp")
 	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
+		h.HandleError(c, err, "get_subnet")
 		return
 	}
 
 	// Get subnet ID from path parameter
 	subnetID := c.Param("id")
 	if subnetID == "" {
-		responses.BadRequest(c, "Subnet ID is required")
-		return
-	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Subnet ID is required", 400), "get_subnet")
 		return
 	}
 
@@ -457,29 +286,9 @@ func (h *GCPHandler) GetGCPSubnet(c *gin.Context) {
 	region := c.Query("region")
 	// Note: VPC is a Global resource, so region is optional
 
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Verify credential matches GCP provider
-	if credential.Provider != "gcp" {
-		responses.BadRequest(c, "Credential provider does not match GCP")
-		return
-	}
-
 	// Create request
 	req := dto.GetSubnetRequest{
-		CredentialID: credentialID,
+		CredentialID: credential.ID.String(),
 		SubnetID:     subnetID,
 		Region:       region,
 	}
@@ -487,88 +296,59 @@ func (h *GCPHandler) GetGCPSubnet(c *gin.Context) {
 	// Get subnet
 	subnet, err := h.networkService.GetSubnet(c.Request.Context(), credential, req)
 	if err != nil {
-		h.LogError(c, err, "Failed to get GCP subnet")
-		responses.InternalServerError(c, "Failed to get subnet: "+err.Error())
+		h.HandleError(c, err, "get_subnet")
 		return
 	}
 
-	responses.OK(c, subnet, "GCP subnet retrieved successfully")
+	h.OK(c, subnet, "GCP subnet retrieved successfully")
 }
 
 // CreateGCPSubnet handles subnet creation requests for GCP
 func (h *GCPHandler) CreateGCPSubnet(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
-	}
-
 	// Parse request body
 	var req dto.CreateSubnetRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body: "+err.Error())
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "create_subnet")
 		return
 	}
 
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(req.CredentialID)
+	// Get and validate credential from request body
+	credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, "gcp")
 	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Verify credential matches GCP provider
-	if credential.Provider != "gcp" {
-		responses.BadRequest(c, "Credential provider does not match GCP")
+		h.HandleError(c, err, "create_subnet")
 		return
 	}
 
 	// Create subnet
 	subnet, err := h.networkService.CreateSubnet(c.Request.Context(), credential, req)
 	if err != nil {
-		h.LogError(c, err, "Failed to create GCP subnet")
-		responses.InternalServerError(c, "Failed to create subnet: "+err.Error())
+		h.HandleError(c, err, "create_subnet")
 		return
 	}
 
-	responses.Created(c, subnet, "GCP subnet created successfully")
+	h.Created(c, subnet, "GCP subnet created successfully")
 }
 
 // UpdateGCPSubnet handles subnet update requests for GCP
 func (h *GCPHandler) UpdateGCPSubnet(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
+	// Get and validate credential using BaseHandler helper
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, "gcp")
 	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
+		h.HandleError(c, err, "update_subnet")
 		return
 	}
 
 	// Get subnet ID from path parameter
 	subnetID := c.Param("id")
 	if subnetID == "" {
-		responses.BadRequest(c, "Subnet ID is required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Subnet ID is required", 400), "update_subnet")
 		return
 	}
 
 	// Parse request body
 	var req dto.UpdateSubnetRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body: "+err.Error())
-		return
-	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "update_subnet")
 		return
 	}
 
@@ -576,57 +356,29 @@ func (h *GCPHandler) UpdateGCPSubnet(c *gin.Context) {
 	region := c.Query("region")
 	// Note: VPC is a Global resource, so region is optional
 
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Verify credential matches GCP provider
-	if credential.Provider != "gcp" {
-		responses.BadRequest(c, "Credential provider does not match GCP")
-		return
-	}
-
 	// Update subnet
 	subnet, err := h.networkService.UpdateSubnet(c.Request.Context(), credential, req, subnetID, region)
 	if err != nil {
-		h.LogError(c, err, "Failed to update GCP subnet")
-		responses.InternalServerError(c, "Failed to update subnet: "+err.Error())
+		h.HandleError(c, err, "update_subnet")
 		return
 	}
 
-	responses.OK(c, subnet, "GCP subnet updated successfully")
+	h.OK(c, subnet, "GCP subnet updated successfully")
 }
 
 // DeleteGCPSubnet handles subnet deletion requests for GCP
 func (h *GCPHandler) DeleteGCPSubnet(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
+	// Get and validate credential using BaseHandler helper
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, "gcp")
 	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
+		h.HandleError(c, err, "delete_subnet")
 		return
 	}
 
 	// Get subnet ID from path parameter
 	subnetID := c.Param("id")
 	if subnetID == "" {
-		responses.BadRequest(c, "Subnet ID is required")
-		return
-	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Subnet ID is required", 400), "delete_subnet")
 		return
 	}
 
@@ -634,29 +386,9 @@ func (h *GCPHandler) DeleteGCPSubnet(c *gin.Context) {
 	region := c.Query("region")
 	// Note: VPC is a Global resource, so region is optional
 
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Verify credential matches GCP provider
-	if credential.Provider != "gcp" {
-		responses.BadRequest(c, "Credential provider does not match GCP")
-		return
-	}
-
 	// Create delete request
 	req := dto.DeleteSubnetRequest{
-		CredentialID: credentialID,
+		CredentialID: credential.ID.String(),
 		SubnetID:     subnetID,
 		Region:       region,
 	}
@@ -664,34 +396,26 @@ func (h *GCPHandler) DeleteGCPSubnet(c *gin.Context) {
 	// Delete subnet
 	err = h.networkService.DeleteSubnet(c.Request.Context(), credential, req)
 	if err != nil {
-		h.LogError(c, err, "Failed to delete GCP subnet")
-		responses.InternalServerError(c, "Failed to delete subnet: "+err.Error())
+		h.HandleError(c, err, "delete_subnet")
 		return
 	}
 
-	responses.OK(c, nil, "GCP subnet deleted successfully")
+	h.OK(c, nil, "GCP subnet deleted successfully")
 }
 
 // GetGCPSecurityGroup handles security group detail requests for GCP
 func (h *GCPHandler) GetGCPSecurityGroup(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
+	// Get and validate credential using BaseHandler helper
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, "gcp")
 	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
+		h.HandleError(c, err, "get_security_group")
 		return
 	}
 
 	// Get security group ID from path parameter
 	securityGroupID := c.Param("id")
 	if securityGroupID == "" {
-		responses.BadRequest(c, "Security Group ID is required")
-		return
-	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Security Group ID is required", 400), "get_security_group")
 		return
 	}
 
@@ -699,29 +423,9 @@ func (h *GCPHandler) GetGCPSecurityGroup(c *gin.Context) {
 	region := c.Query("region")
 	// Note: VPC is a Global resource, so region is optional
 
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Verify credential matches GCP provider
-	if credential.Provider != "gcp" {
-		responses.BadRequest(c, "Credential provider does not match GCP")
-		return
-	}
-
 	// Create request
 	req := dto.GetSecurityGroupRequest{
-		CredentialID:    credentialID,
+		CredentialID:    credential.ID.String(),
 		SecurityGroupID: securityGroupID,
 		Region:          region,
 	}
@@ -729,88 +433,59 @@ func (h *GCPHandler) GetGCPSecurityGroup(c *gin.Context) {
 	// Get security group
 	securityGroup, err := h.networkService.GetSecurityGroup(c.Request.Context(), credential, req)
 	if err != nil {
-		h.LogError(c, err, "Failed to get GCP security group")
-		responses.InternalServerError(c, "Failed to get security group: "+err.Error())
+		h.HandleError(c, err, "get_security_group")
 		return
 	}
 
-	responses.OK(c, securityGroup, "GCP security group retrieved successfully")
+	h.OK(c, securityGroup, "GCP security group retrieved successfully")
 }
 
 // CreateGCPSecurityGroup handles security group creation requests for GCP
 func (h *GCPHandler) CreateGCPSecurityGroup(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
-		return
-	}
-
 	// Parse request body
 	var req dto.CreateSecurityGroupRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body: "+err.Error())
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "create_security_group")
 		return
 	}
 
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(req.CredentialID)
+	// Get and validate credential from request body
+	credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, "gcp")
 	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Verify credential matches GCP provider
-	if credential.Provider != "gcp" {
-		responses.BadRequest(c, "Credential provider does not match GCP")
+		h.HandleError(c, err, "create_security_group")
 		return
 	}
 
 	// Create security group
 	securityGroup, err := h.networkService.CreateSecurityGroup(c.Request.Context(), credential, req)
 	if err != nil {
-		h.LogError(c, err, "Failed to create GCP security group")
-		responses.InternalServerError(c, "Failed to create security group: "+err.Error())
+		h.HandleError(c, err, "create_security_group")
 		return
 	}
 
-	responses.Created(c, securityGroup, "GCP security group created successfully")
+	h.Created(c, securityGroup, "GCP security group created successfully")
 }
 
 // UpdateGCPSecurityGroup handles security group update requests for GCP
 func (h *GCPHandler) UpdateGCPSecurityGroup(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
+	// Get and validate credential using BaseHandler helper
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, "gcp")
 	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
+		h.HandleError(c, err, "update_security_group")
 		return
 	}
 
 	// Get security group ID from path parameter
 	securityGroupID := c.Param("id")
 	if securityGroupID == "" {
-		responses.BadRequest(c, "Security Group ID is required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Security Group ID is required", 400), "update_security_group")
 		return
 	}
 
 	// Parse request body
 	var req dto.UpdateSecurityGroupRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body: "+err.Error())
-		return
-	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "update_security_group")
 		return
 	}
 
@@ -818,57 +493,29 @@ func (h *GCPHandler) UpdateGCPSecurityGroup(c *gin.Context) {
 	region := c.Query("region")
 	// Note: VPC is a Global resource, so region is optional
 
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Verify credential matches GCP provider
-	if credential.Provider != "gcp" {
-		responses.BadRequest(c, "Credential provider does not match GCP")
-		return
-	}
-
 	// Update security group
 	securityGroup, err := h.networkService.UpdateSecurityGroup(c.Request.Context(), credential, req, securityGroupID, region)
 	if err != nil {
-		h.LogError(c, err, "Failed to update GCP security group")
-		responses.InternalServerError(c, "Failed to update security group: "+err.Error())
+		h.HandleError(c, err, "update_security_group")
 		return
 	}
 
-	responses.OK(c, securityGroup, "GCP security group updated successfully")
+	h.OK(c, securityGroup, "GCP security group updated successfully")
 }
 
 // DeleteGCPSecurityGroup handles security group deletion requests for GCP
 func (h *GCPHandler) DeleteGCPSecurityGroup(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
+	// Get and validate credential using BaseHandler helper
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, "gcp")
 	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
+		h.HandleError(c, err, "delete_security_group")
 		return
 	}
 
 	// Get security group ID from path parameter
 	securityGroupID := c.Param("id")
 	if securityGroupID == "" {
-		responses.BadRequest(c, "Security Group ID is required")
-		return
-	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Security Group ID is required", 400), "delete_security_group")
 		return
 	}
 
@@ -876,29 +523,9 @@ func (h *GCPHandler) DeleteGCPSecurityGroup(c *gin.Context) {
 	region := c.Query("region")
 	// Note: VPC is a Global resource, so region is optional
 
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Verify credential matches GCP provider
-	if credential.Provider != "gcp" {
-		responses.BadRequest(c, "Credential provider does not match GCP")
-		return
-	}
-
 	// Create delete request
 	req := dto.DeleteSecurityGroupRequest{
-		CredentialID:    credentialID,
+		CredentialID:    credential.ID.String(),
 		SecurityGroupID: securityGroupID,
 		Region:          region,
 	}
@@ -906,297 +533,177 @@ func (h *GCPHandler) DeleteGCPSecurityGroup(c *gin.Context) {
 	// Delete security group
 	err = h.networkService.DeleteSecurityGroup(c.Request.Context(), credential, req)
 	if err != nil {
-		h.LogError(c, err, "Failed to delete GCP security group")
-		responses.InternalServerError(c, "Failed to delete security group: "+err.Error())
+		h.HandleError(c, err, "delete_security_group")
 		return
 	}
 
-	responses.OK(c, nil, "GCP security group deleted successfully")
+	h.OK(c, nil, "GCP security group deleted successfully")
 }
 
 // AddGCPSecurityGroupRule adds a rule to a GCP security group
 func (h *GCPHandler) AddGCPSecurityGroupRule(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid user ID")
-		return
-	}
-
 	// Parse request
 	var req dto.AddSecurityGroupRuleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request")
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "add_security_group_rule")
 		return
 	}
 
-	// Parse credential ID
-	credentialID, err := uuid.Parse(req.CredentialID)
+	// Get and validate credential from request body
+	credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, "gcp")
 	if err != nil {
-		responses.BadRequest(c, "Invalid credential ID")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-	if err != nil {
-		responses.NotFound(c, "Credential not found")
-		return
-	}
-
-	// Verify credential matches GCP provider
-	if credential.Provider != "gcp" {
-		responses.BadRequest(c, "Credential provider does not match GCP")
+		h.HandleError(c, err, "add_security_group_rule")
 		return
 	}
 
 	// Add security group rule
 	result, err := h.networkService.AddSecurityGroupRule(c.Request.Context(), credential, req)
 	if err != nil {
-		h.LogError(c, err, "Failed to add GCP security group rule")
-		responses.InternalServerError(c, "Failed to add security group rule: "+err.Error())
+		h.HandleError(c, err, "add_security_group_rule")
 		return
 	}
 
-	responses.OK(c, result, "GCP security group rule added successfully")
+	h.OK(c, result, "GCP security group rule added successfully")
 }
 
 // RemoveGCPSecurityGroupRule removes a rule from a GCP security group
 func (h *GCPHandler) RemoveGCPSecurityGroupRule(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid user ID")
-		return
-	}
-
 	// Parse request
 	var req dto.RemoveSecurityGroupRuleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request")
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "remove_security_group_rule")
 		return
 	}
 
-	// Parse credential ID
-	credentialID, err := uuid.Parse(req.CredentialID)
+	// Get and validate credential from request body
+	credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, "gcp")
 	if err != nil {
-		responses.BadRequest(c, "Invalid credential ID")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-	if err != nil {
-		responses.NotFound(c, "Credential not found")
-		return
-	}
-
-	// Verify credential matches GCP provider
-	if credential.Provider != "gcp" {
-		responses.BadRequest(c, "Credential provider does not match GCP")
+		h.HandleError(c, err, "remove_security_group_rule")
 		return
 	}
 
 	// Remove security group rule
 	result, err := h.networkService.RemoveSecurityGroupRule(c.Request.Context(), credential, req)
 	if err != nil {
-		h.LogError(c, err, "Failed to remove GCP security group rule")
-		responses.InternalServerError(c, "Failed to remove security group rule: "+err.Error())
+		h.HandleError(c, err, "remove_security_group_rule")
 		return
 	}
 
-	responses.OK(c, result, "GCP security group rule removed successfully")
+	h.OK(c, result, "GCP security group rule removed successfully")
 }
 
 // UpdateGCPSecurityGroupRules updates all rules for a GCP security group
 func (h *GCPHandler) UpdateGCPSecurityGroupRules(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		responses.Unauthorized(c, "Invalid user ID")
-		return
-	}
-
 	// Parse request
 	var req dto.UpdateSecurityGroupRulesRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request")
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "update_security_group_rules")
 		return
 	}
 
-	// Parse credential ID
-	credentialID, err := uuid.Parse(req.CredentialID)
+	// Get and validate credential from request body
+	credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, "gcp")
 	if err != nil {
-		responses.BadRequest(c, "Invalid credential ID")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-	if err != nil {
-		responses.NotFound(c, "Credential not found")
-		return
-	}
-
-	// Verify credential matches GCP provider
-	if credential.Provider != "gcp" {
-		responses.BadRequest(c, "Credential provider does not match GCP")
+		h.HandleError(c, err, "update_security_group_rules")
 		return
 	}
 
 	// Update security group rules
 	result, err := h.networkService.UpdateSecurityGroupRules(c.Request.Context(), credential, req)
 	if err != nil {
-		h.LogError(c, err, "Failed to update GCP security group rules")
-		responses.InternalServerError(c, "Failed to update security group rules: "+err.Error())
+		h.HandleError(c, err, "update_security_group_rules")
 		return
 	}
 
-	responses.OK(c, result, "GCP security group rules updated successfully")
+	h.OK(c, result, "GCP security group rules updated successfully")
 }
 
 // RemoveGCPFirewallRule handles removal of specific firewall rules for GCP
 func (h *GCPHandler) RemoveGCPFirewallRule(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
+	// Get and validate credential using BaseHandler helper
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, "gcp")
 	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
+		h.HandleError(c, err, "remove_firewall_rule")
 		return
 	}
 
 	// Get security group ID from path parameter
 	securityGroupID := c.Param("id")
 	if securityGroupID == "" {
-		responses.BadRequest(c, "Security Group ID is required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Security Group ID is required", 400), "remove_firewall_rule")
 		return
 	}
 
 	// Parse request body
 	var req dto.RemoveFirewallRuleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body: "+err.Error())
-		return
-	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "remove_firewall_rule")
 		return
 	}
 
 	// Get region from query parameter
 	region := c.Query("region")
 	if region == "" {
-		responses.BadRequest(c, "region is required")
-		return
-	}
-
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Verify credential matches GCP provider
-	if credential.Provider != "gcp" {
-		responses.BadRequest(c, "Credential provider does not match GCP")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region is required", 400), "remove_firewall_rule")
 		return
 	}
 
 	// Set request fields
-	req.CredentialID = credentialID
+	req.CredentialID = credential.ID.String()
 	req.SecurityGroupID = securityGroupID
 	req.Region = region
 
 	// Remove firewall rule
 	result, err := h.networkService.RemoveFirewallRule(c.Request.Context(), credential, req)
 	if err != nil {
-		h.LogError(c, err, "Failed to remove GCP firewall rule")
-		responses.InternalServerError(c, "Failed to remove firewall rule: "+err.Error())
+		h.HandleError(c, err, "remove_firewall_rule")
 		return
 	}
 
-	responses.OK(c, result, "GCP firewall rule removed successfully")
+	h.OK(c, result, "GCP firewall rule removed successfully")
 }
 
 // AddGCPFirewallRule handles addition of specific firewall rules for GCP
 func (h *GCPHandler) AddGCPFirewallRule(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
+	// Get and validate credential using BaseHandler helper
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, "gcp")
 	if err != nil {
-		responses.Unauthorized(c, "Invalid token")
+		h.HandleError(c, err, "add_firewall_rule")
 		return
 	}
 
 	// Get security group ID from path parameter
 	securityGroupID := c.Param("id")
 	if securityGroupID == "" {
-		responses.BadRequest(c, "Security Group ID is required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Security Group ID is required", 400), "add_firewall_rule")
 		return
 	}
 
 	// Parse request body
 	var req dto.AddFirewallRuleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body: "+err.Error())
-		return
-	}
-
-	// Get credential ID from query parameter
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		responses.BadRequest(c, "credential_id is required")
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "add_firewall_rule")
 		return
 	}
 
 	// Get region from query parameter
 	region := c.Query("region")
 	if region == "" {
-		responses.BadRequest(c, "region is required")
-		return
-	}
-
-	// Parse credential ID to UUID
-	credentialUUID, err := uuid.Parse(credentialID)
-	if err != nil {
-		responses.BadRequest(c, "invalid credential ID format")
-		return
-	}
-
-	// Get credential
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
-	if err != nil {
-		responses.NotFound(c, "credential not found")
-		return
-	}
-
-	// Verify credential matches GCP provider
-	if credential.Provider != "gcp" {
-		responses.BadRequest(c, "Credential provider does not match GCP")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region is required", 400), "add_firewall_rule")
 		return
 	}
 
 	// Set request fields
-	req.CredentialID = credentialID
+	req.CredentialID = credential.ID.String()
 	req.SecurityGroupID = securityGroupID
 	req.Region = region
 
 	// Add firewall rule
 	result, err := h.networkService.AddFirewallRule(c.Request.Context(), credential, req)
 	if err != nil {
-		h.LogError(c, err, "Failed to add GCP firewall rule")
-		responses.InternalServerError(c, "Failed to add firewall rule: "+err.Error())
+		h.HandleError(c, err, "add_firewall_rule")
 		return
 	}
 
-	responses.OK(c, result, "GCP firewall rule added successfully")
+	h.OK(c, result, "GCP firewall rule added successfully")
 }

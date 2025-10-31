@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"skyclust/internal/domain"
-	"skyclust/internal/infrastructure/messaging"
 
 	"github.com/google/uuid"
 )
@@ -11,14 +10,14 @@ import (
 // pluginActivationService implements the plugin activation business logic
 type pluginActivationService struct {
 	credentialRepo domain.CredentialRepository
-	eventBus       messaging.Bus
+	eventService   domain.EventService
 }
 
 // NewPluginActivationService creates a new plugin activation service
-func NewPluginActivationService(credentialRepo domain.CredentialRepository, eventBus messaging.Bus) domain.PluginActivationService {
+func NewPluginActivationService(credentialRepo domain.CredentialRepository, eventService domain.EventService) domain.PluginActivationService {
 	return &pluginActivationService{
 		credentialRepo: credentialRepo,
-		eventBus:       eventBus,
+		eventService:   eventService,
 	}
 }
 
@@ -43,31 +42,29 @@ func (s *pluginActivationService) ActivatePlugin(ctx context.Context, userID uui
 	}
 
 	// Publish plugin activation event
-	event := messaging.Event{
-		Type:   "plugin_activated",
-		UserID: userID.String(),
-		Data: map[string]interface{}{
+	if s.eventService != nil {
+		if err := s.eventService.Publish(context.Background(), "plugin.activated", map[string]interface{}{
 			"provider": provider,
 			"user_id":  userID.String(),
-		},
+		}); err != nil {
+			return err
+		}
 	}
-
-	return s.eventBus.Publish(context.Background(), event)
+	return nil
 }
 
 // DeactivatePlugin deactivates a plugin for a user
 func (s *pluginActivationService) DeactivatePlugin(ctx context.Context, userID uuid.UUID, provider string) error {
 	// Publish plugin deactivation event
-	event := messaging.Event{
-		Type:   "plugin_deactivated",
-		UserID: userID.String(),
-		Data: map[string]interface{}{
+	if s.eventService != nil {
+		if err := s.eventService.Publish(context.Background(), "plugin.deactivated", map[string]interface{}{
 			"provider": provider,
 			"user_id":  userID.String(),
-		},
+		}); err != nil {
+			return err
+		}
 	}
-
-	return s.eventBus.Publish(context.Background(), event)
+	return nil
 }
 
 // GetActivePlugins returns the list of active plugins for a user

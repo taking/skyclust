@@ -7,17 +7,21 @@ import (
 // SetupRoutes sets up export routes
 func SetupRoutes(router *gin.RouterGroup) {
 	exportHandler := NewHandler()
+	SetupRoutesWithHandler(router, exportHandler)
+}
 
+// SetupRoutesWithHandler sets up export routes with a provided handler
+func SetupRoutesWithHandler(router *gin.RouterGroup, handler *Handler) {
 	// Export data
-	router.POST("", exportHandler.ExportData)
+	router.POST("", handler.ExportData)
 
 	// Get supported formats and types
-	router.GET("/formats", exportHandler.GetSupportedFormats)
+	router.GET("/formats", handler.GetSupportedFormats)
 
 	// Export history
-	router.GET("/history", exportHandler.GetExportHistory)
+	router.GET("/history", handler.GetExportHistory)
 
 	// Export status and download
-	router.GET("/:id/status", exportHandler.GetExportStatus)
-	router.GET("/:id/download", exportHandler.DownloadExport)
+	router.GET("/:id", handler.GetExportStatus)
+	router.GET("/:id/download", handler.DownloadExport)
 }

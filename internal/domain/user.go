@@ -151,6 +151,7 @@ type UserService interface {
 	GetUserStats() (*UserStats, error)
 	Authenticate(ctx context.Context, email, password string) (*User, error)
 	ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error
+	HashPassword(password string) (string, error)
 }
 
 // AuthService defines the interface for authentication business logic

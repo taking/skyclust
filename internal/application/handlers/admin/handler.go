@@ -81,11 +81,6 @@ func (h *Handler) GetUser(c *gin.Context) {
 
 	user, err := h.userService.GetUserByID(userID)
 	if err != nil {
-		if domain.IsNotFoundError(err) {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "User not found", 404), "get_user")
-			return
-		}
-		h.LogError(c, err, "Failed to get user")
 		h.HandleError(c, err, "get_user")
 		return
 	}
@@ -107,20 +102,15 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 	}
 
 	var req domain.UpdateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "update_user")
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "update_user")
 		return
 	}
 
 	// Get existing user
 	user, err := h.userService.GetUserByID(userID)
 	if err != nil {
-		if domain.IsNotFoundError(err) {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "User not found", 404), "get_user")
-			return
-		}
-		h.LogError(c, err, "Failed to get user")
-		h.HandleError(c, err, "get_user")
+		h.HandleError(c, err, "update_user")
 		return
 	}
 
@@ -131,11 +121,22 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 	if req.Email != nil && *req.Email != "" {
 		user.Email = *req.Email
 	}
+	if req.Password != nil && *req.Password != "" {
+		// Hash new password
+		hashedPassword, err := h.userService.HashPassword(*req.Password)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "failed to hash password", 500), "update_user")
+			return
+		}
+		user.PasswordHash = hashedPassword
+	}
+	if req.IsActive != nil {
+		user.Active = *req.IsActive
+	}
 
 	// Update user
 	updatedUser, err := h.userService.UpdateUserDirect(user)
 	if err != nil {
-		h.LogError(c, err, "Failed to update user")
 		h.HandleError(c, err, "update_user")
 		return
 	}
@@ -159,19 +160,13 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 	// Check if user exists
 	_, err = h.userService.GetUserByID(userID)
 	if err != nil {
-		if domain.IsNotFoundError(err) {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "User not found", 404), "get_user")
-			return
-		}
-		h.LogError(c, err, "Failed to get user")
-		h.HandleError(c, err, "get_user")
+		h.HandleError(c, err, "delete_user")
 		return
 	}
 
 	// Delete user
 	err = h.userService.DeleteUserByID(userID)
 	if err != nil {
-		h.LogError(c, err, "Failed to delete user")
 		h.HandleError(c, err, "delete_user")
 		return
 	}
@@ -196,8 +191,8 @@ func (h *Handler) AssignRole(c *gin.Context) {
 		Role string `json:"role" binding:"required"`
 	}
 
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "update_user")
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "assign_role")
 		return
 	}
 
@@ -218,7 +213,6 @@ func (h *Handler) AssignRole(c *gin.Context) {
 	// Assign role
 	err = h.rbacService.AssignRole(userID, roleType)
 	if err != nil {
-		h.LogError(c, err, "Failed to assign role")
 		h.HandleError(c, err, "assign_role")
 		return
 	}
@@ -243,8 +237,8 @@ func (h *Handler) RemoveRole(c *gin.Context) {
 		Role string `json:"role" binding:"required"`
 	}
 
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "update_user")
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "assign_role")
 		return
 	}
 
@@ -265,7 +259,6 @@ func (h *Handler) RemoveRole(c *gin.Context) {
 	// Remove role
 	err = h.rbacService.RemoveRole(userID, roleType)
 	if err != nil {
-		h.LogError(c, err, "Failed to remove role")
 		h.HandleError(c, err, "remove_role")
 		return
 	}
@@ -281,7 +274,6 @@ func (h *Handler) GetUserStats(c *gin.Context) {
 	}
 	stats, err := h.userService.GetUserStats()
 	if err != nil {
-		h.LogError(c, err, "Failed to get user stats")
 		h.HandleError(c, err, "get_user_stats")
 		return
 	}

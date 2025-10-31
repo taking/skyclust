@@ -23,6 +23,7 @@ func NewWorkspaceRepository(db *gorm.DB) *WorkspaceRepository {
 func (r *WorkspaceRepository) Create(ctx context.Context, workspace *domain.Workspace) error {
 	result := r.db.WithContext(ctx).Create(workspace)
 	if result.Error != nil {
+		logger.Errorf("Failed to create workspace in database: %v - workspace: %+v", result.Error, workspace)
 		return fmt.Errorf("failed to create workspace: %w", result.Error)
 	}
 
@@ -63,6 +64,7 @@ func (r *WorkspaceRepository) GetByOwnerID(ctx context.Context, ownerID string) 
 func (r *WorkspaceRepository) Update(ctx context.Context, workspace *domain.Workspace) error {
 	result := r.db.WithContext(ctx).Save(workspace)
 	if result.Error != nil {
+		logger.Errorf("Failed to update workspace in database: %v - workspace: %+v", result.Error, workspace)
 		return fmt.Errorf("failed to update workspace: %w", result.Error)
 	}
 
@@ -196,6 +198,7 @@ func (r *WorkspaceRepository) GetUserWorkspacesOptimized(ctx context.Context, us
 	// First, get workspaces owned by the user
 	result := r.db.WithContext(ctx).
 		Where("owner_id = ?", userID).
+		Order("created_at DESC").
 		Find(&workspaces)
 
 	if result.Error != nil {

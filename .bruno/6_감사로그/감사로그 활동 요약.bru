@@ -1,0 +1,119 @@
+meta {
+  name: 감사로그 활동 요약
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/admin/audit/summary
+  body: none
+  auth: bearer
+}
+
+params:query {
+  start_time: 
+  end_time: 
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains summary data", function() {
+    const body = res.getBody();
+    expect(body).to.have.property('total_events');
+    expect(body).to.have.property('unique_users');
+    expect(body).to.have.property('most_active_user');
+    expect(body).to.have.property('top_actions');
+    expect(body).to.have.property('security_events');
+    expect(body).to.have.property('error_events');
+  });
+  
+  test("Summary has valid structure", function() {
+    const body = res.getBody();
+    expect(body.total_events).to.be.a('number');
+    expect(body.total_events).to.be.at.least(0);
+    expect(body.unique_users).to.be.a('number');
+    expect(body.unique_users).to.be.at.least(0);
+    expect(body.most_active_user).to.be.a('string');
+    expect(body.top_actions).to.be.an('array');
+    expect(body.security_events).to.be.a('number');
+    expect(body.security_events).to.be.at.least(0);
+    expect(body.error_events).to.be.a('number');
+    expect(body.error_events).to.be.at.least(0);
+  });
+  
+  test("Top actions have required fields", function() {
+    const topActions = res.getBody().top_actions;
+    if (topActions.length > 0) {
+      expect(topActions[0]).to.have.property('action');
+      expect(topActions[0]).to.have.property('count');
+      expect(topActions[0].action).to.be.a('string');
+      expect(topActions[0].count).to.be.a('number');
+    }
+  });
+}
+
+docs {
+  # 감사로그 활동 요약
+  
+  ## 기능
+  감사 로그의 활동 요약 정보를 조회합니다. 전체 이벤트 수, 고유 사용자 수, 가장 활발한 사용자, 상위 액션, 보안 이벤트 수, 에러 이벤트 수를 반환합니다.
+  
+  ## 필터 파라미터 (선택사항)
+  
+  ### 날짜 범위 필터
+  - `start_time`: 시작 시간 (RFC3339 형식, 예: `2025-10-01T00:00:00Z`)
+  - `end_time`: 종료 시간 (RFC3339 형식, 예: `2025-10-31T23:59:59Z`)
+  - **기본값**: 날짜 범위가 제공되지 않으면 최근 30일간의 데이터를 반환합니다.
+  
+  ## 반환 데이터
+  
+  ### total_events (int64)
+  - 전체 감사 로그 이벤트 수
+  
+  ### unique_users (int64)
+  - 감사 로그에 기록된 고유 사용자 수
+  
+  ### most_active_user (string)
+  - 해당 기간 동안 가장 활발한 사용자의 UUID
+  - 빈 문자열일 수 있음 (데이터가 없는 경우)
+  
+  ### top_actions ([]map[string]interface{})
+  - 가장 많이 발생한 액션 목록 (최대 5개)
+  - 각 항목: `{"action": "user_login", "count": 150}`
+  
+  ### security_events (int64)
+  - 보안 관련 이벤트 수
+  - 포함되는 액션: `password_change`, `credential_create`, `credential_update`, `credential_delete`, `user_delete`
+  
+  ### error_events (int64)
+  - 에러 관련 이벤트 수
+  - 액션에 "error" 또는 "fail"이 포함되거나, details JSONB에 에러 관련 필드가 있는 경우
+  
+  ## 사용 예시
+  
+  ### 최근 30일 요약 (기본값)
+  ```
+  GET /api/v1/admin/audit/summary
+  ```
+  
+  ### 특정 기간 요약
+  ```
+  GET /api/v1/admin/audit/summary?start_time=2025-10-01T00:00:00Z&end_time=2025-10-31T23:59:59Z
+  ```
+  
+  ## /stats와의 차이점
+  
+  - **/stats**: 상세한 통계 분석 (top_resources, events_by_day 포함, 최대 10개 액션)
+  - **/summary**: 빠른 활동 요약 및 인사이트 (most_active_user, security_events, error_events 포함, 최대 5개 액션)
+}

@@ -15,26 +15,29 @@ type Handler struct {
 	authService       domain.AuthService
 	userService       domain.UserService
 	logoutService     domain.LogoutService
+	rbacService       domain.RBACService
 	readabilityHelper *readability.ReadabilityHelper
 }
 
 // NewHandler creates a new authentication handler
-func NewHandler(authService domain.AuthService, userService domain.UserService) *Handler {
+func NewHandler(authService domain.AuthService, userService domain.UserService, rbacService domain.RBACService) *Handler {
 	return &Handler{
 		BaseHandler:       handlers.NewBaseHandler("auth"),
 		authService:       authService,
 		userService:       userService,
+		rbacService:       rbacService,
 		readabilityHelper: readability.NewReadabilityHelper(),
 	}
 }
 
 // NewHandlerWithLogout creates a new authentication handler with logout service
-func NewHandlerWithLogout(authService domain.AuthService, userService domain.UserService, logoutService domain.LogoutService) *Handler {
+func NewHandlerWithLogout(authService domain.AuthService, userService domain.UserService, logoutService domain.LogoutService, rbacService domain.RBACService) *Handler {
 	return &Handler{
 		BaseHandler:       handlers.NewBaseHandler("auth"),
 		authService:       authService,
 		userService:       userService,
 		logoutService:     logoutService,
+		rbacService:       rbacService,
 		readabilityHelper: readability.NewReadabilityHelper(),
 	}
 }
@@ -177,7 +180,29 @@ func (h *Handler) meHandler() handlers.HandlerFunc {
 			return
 		}
 
-		h.OK(c, user, "User retrieved successfully")
+		// Get role from token (primary role for UI control)
+		// Note: Only role name is exposed, not detailed permissions for security
+		role, err := h.GetUserRoleFromToken(c)
+		if err != nil {
+			// If role extraction fails, continue without role (non-critical)
+			role = ""
+		}
+
+		// Build response with role information
+		// Note: Using UserResponse DTO to expose only necessary information
+		// Role name is exposed for UI control, but detailed permissions are not
+		userResponse := &UserResponse{
+			ID:           user.ID.String(),
+			Username:     user.Username,
+			Email:        user.Email,
+			IsActive:     user.Active,
+			Role:         string(role), // Primary role only (not detailed permissions)
+			OIDCProvider: user.OIDCProvider,
+			CreatedAt:    user.CreatedAt,
+			UpdatedAt:    user.UpdatedAt,
+		}
+
+		h.OK(c, userResponse, "User retrieved successfully")
 	}
 }
 
@@ -208,12 +233,38 @@ func (h *Handler) GetUsers(c *gin.Context) {
 		return
 	}
 
+	// Build user responses with role information
+	// Note: Only primary role is exposed for UI control (not detailed permissions)
+	userResponses := make([]*UserResponse, 0, len(users))
+	for _, user := range users {
+		// Get primary role (first role) for each user
+		var primaryRole domain.Role
+		if h.rbacService != nil {
+			userRoles, err := h.rbacService.GetUserRoles(user.ID)
+			if err == nil && len(userRoles) > 0 {
+				primaryRole = userRoles[0] // Use first role as primary
+			}
+		}
+
+		userResponse := &UserResponse{
+			ID:           user.ID.String(),
+			Username:     user.Username,
+			Email:        user.Email,
+			IsActive:     user.Active,
+			Role:         string(primaryRole), // Primary role only
+			OIDCProvider: user.OIDCProvider,
+			CreatedAt:    user.CreatedAt,
+			UpdatedAt:    user.UpdatedAt,
+		}
+		userResponses = append(userResponses, userResponse)
+	}
+
 	// Calculate pagination info
 	totalPages := (total + int64(limit) - 1) / int64(limit)
 	currentPage := (offset / limit) + 1
 
 	h.OK(c, gin.H{
-		"users": users,
+		"users": userResponses,
 		"pagination": gin.H{
 			"total":        total,
 			"limit":        limit,
@@ -237,7 +288,29 @@ func (h *Handler) GetUser(c *gin.Context) {
 		return
 	}
 
-	h.OK(c, user, "User retrieved successfully")
+	// Get primary role (first role) for the user
+	// Note: Only primary role is exposed for UI control (not detailed permissions)
+	var primaryRole domain.Role
+	if h.rbacService != nil {
+		userRoles, err := h.rbacService.GetUserRoles(userID)
+		if err == nil && len(userRoles) > 0 {
+			primaryRole = userRoles[0] // Use first role as primary
+		}
+	}
+
+	// Build response with role information
+	userResponse := &UserResponse{
+		ID:           user.ID.String(),
+		Username:     user.Username,
+		Email:        user.Email,
+		IsActive:     user.Active,
+		Role:         string(primaryRole), // Primary role only
+		OIDCProvider: user.OIDCProvider,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
+	}
+
+	h.OK(c, userResponse, "User retrieved successfully")
 }
 
 // UpdateUser handles updating a user
@@ -268,6 +341,7 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 
 	var req domain.UpdateUserRequest
 	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "update_user")
 		return
 	}
 
@@ -284,6 +358,18 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 	}
 	if req.Email != nil && *req.Email != "" {
 		user.Email = *req.Email
+	}
+	if req.Password != nil && *req.Password != "" {
+		// Hash new password
+		hashedPassword, err := h.userService.HashPassword(*req.Password)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "failed to hash password", 500), "update_user")
+			return
+		}
+		user.PasswordHash = hashedPassword
+	}
+	if req.IsActive != nil {
+		user.Active = *req.IsActive
 	}
 
 	// Update user
@@ -349,8 +435,8 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 
 func (h *Handler) extractValidatedRequest(c *gin.Context) domain.CreateUserRequest {
 	var req domain.CreateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_request")
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "register")
 		return domain.CreateUserRequest{}
 	}
 	return req
@@ -364,8 +450,8 @@ func (h *Handler) extractValidatedLoginRequest(c *gin.Context) struct {
 		Email    string `json:"email" binding:"required,email"`
 		Password string `json:"password" binding:"required"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_login_request")
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "login")
 		return struct {
 			Email    string `json:"email" binding:"required,email"`
 			Password string `json:"password" binding:"required"`
@@ -375,12 +461,27 @@ func (h *Handler) extractValidatedLoginRequest(c *gin.Context) struct {
 }
 
 func (h *Handler) extractUserID(c *gin.Context) uuid.UUID {
-	userID, exists := c.Get("user_id")
+	userIDValue, exists := c.Get("user_id")
 	if !exists {
 		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "User not authenticated", 401), "extract_user_id")
 		return uuid.Nil
 	}
-	return userID.(uuid.UUID)
+
+	// Convert to uuid.UUID (handle both string and uuid.UUID types)
+	switch v := userIDValue.(type) {
+	case uuid.UUID:
+		return v
+	case string:
+		parsedUserID, err := uuid.Parse(v)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID format", 401), "extract_user_id")
+			return uuid.Nil
+		}
+		return parsedUserID
+	default:
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID type", 401), "extract_user_id")
+		return uuid.Nil
+	}
 }
 
 func (h *Handler) extractBearerToken(c *gin.Context) string {

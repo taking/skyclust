@@ -17,15 +17,28 @@ func SetupRoutes(router *gin.RouterGroup, oidcService domain.OIDCService) {
 	router.GET("/logout/url", oidcHandler.GetLogoutURL)
 }
 
-// SetupProviderRoutes sets up OIDC provider routes (RESTful)
+// SetupProviderRoutes sets up public OIDC provider routes (list available providers)
 func SetupProviderRoutes(router *gin.RouterGroup, oidcService domain.OIDCService) {
 	oidcHandler := NewHandler(oidcService)
 
-	// OIDC provider routes
-	router.GET("/oidc/providers", oidcHandler.GetProviders)                       // List OIDC providers
-	router.GET("/oidc/providers/:provider/auth-urls", oidcHandler.GetAuthURL)     // Get auth URL
-	router.GET("/oidc/providers/:provider/callbacks", oidcHandler.Callback)       // Handle callback
-	router.GET("/oidc/providers/:provider/logout-urls", oidcHandler.GetLogoutURL) // Get logout URL
-	router.POST("/oidc/sessions", oidcHandler.Login)                              // Create OIDC session
-	router.DELETE("/oidc/sessions", oidcHandler.Logout)                           // Delete OIDC session
+	// Public OIDC provider routes (list available providers)
+	router.GET("", oidcHandler.GetProviders) // GET /api/v1/oidc-providers
+}
+
+// SetupUserProviderRoutes sets up user OIDC provider management routes (protected, needs auth)
+// Note: router is already scoped to /api/v1/oidc, so paths are relative to that
+func SetupUserProviderRoutes(router *gin.RouterGroup, oidcService domain.OIDCService, providerRepo domain.OIDCProviderRepository) {
+	oidcHandler := NewHandler(oidcService)
+	oidcHandler.SetOIDCProviderRepository(providerRepo)
+
+	// User OIDC provider management routes
+	// Final paths: /api/v1/oidc/providers
+	providerRoutes := router.Group("/providers")
+	{
+		providerRoutes.POST("", oidcHandler.CreateProvider)       // POST /api/v1/oidc/providers
+		providerRoutes.GET("", oidcHandler.GetUserProviders)      // GET /api/v1/oidc/providers
+		providerRoutes.GET("/:id", oidcHandler.GetProvider)       // GET /api/v1/oidc/providers/:id
+		providerRoutes.PUT("/:id", oidcHandler.UpdateProvider)    // PUT /api/v1/oidc/providers/:id
+		providerRoutes.DELETE("/:id", oidcHandler.DeleteProvider) // DELETE /api/v1/oidc/providers/:id
+	}
 }

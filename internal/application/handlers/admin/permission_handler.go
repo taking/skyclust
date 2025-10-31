@@ -5,7 +5,6 @@ import (
 
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
-	"skyclust/internal/shared/responses"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -37,8 +36,8 @@ func (h *PermissionHandler) GrantPermission(c *gin.Context) {
 		Permission string `json:"permission" binding:"required"`
 	}
 
-	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body")
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "grant_permission")
 		return
 	}
 
@@ -52,7 +51,7 @@ func (h *PermissionHandler) GrantPermission(c *gin.Context) {
 	case "viewer":
 		roleType = domain.ViewerRoleType
 	default:
-		responses.BadRequest(c, "Invalid role")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid role", 400), "grant_permission")
 		return
 	}
 
@@ -62,11 +61,11 @@ func (h *PermissionHandler) GrantPermission(c *gin.Context) {
 	// Grant permission
 	err := h.rbacService.GrantPermission(roleType, permission)
 	if err != nil {
-		responses.InternalServerError(c, "Failed to grant permission")
+		h.HandleError(c, err, "grant_permission")
 		return
 	}
 
-	responses.OK(c, gin.H{"message": "Permission granted successfully"}, "Permission granted successfully")
+	h.OK(c, gin.H{"message": "Permission granted successfully"}, "Permission granted successfully")
 }
 
 // RevokePermission revokes a permission from a role
@@ -81,8 +80,8 @@ func (h *PermissionHandler) RevokePermission(c *gin.Context) {
 		Permission string `json:"permission" binding:"required"`
 	}
 
-	if err := c.ShouldBindJSON(&req); err != nil {
-		responses.BadRequest(c, "Invalid request body")
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "grant_permission")
 		return
 	}
 
@@ -96,7 +95,7 @@ func (h *PermissionHandler) RevokePermission(c *gin.Context) {
 	case "viewer":
 		roleType = domain.ViewerRoleType
 	default:
-		responses.BadRequest(c, "Invalid role")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid role", 400), "revoke_permission")
 		return
 	}
 
@@ -106,11 +105,11 @@ func (h *PermissionHandler) RevokePermission(c *gin.Context) {
 	// Revoke permission
 	err := h.rbacService.RevokePermission(roleType, permission)
 	if err != nil {
-		responses.InternalServerError(c, "Failed to revoke permission")
+		h.HandleError(c, err, "revoke_permission")
 		return
 	}
 
-	responses.OK(c, gin.H{"message": "Permission revoked successfully"}, "Permission revoked successfully")
+	h.OK(c, gin.H{"message": "Permission revoked successfully"}, "Permission revoked successfully")
 }
 
 // GetRolePermissions returns all permissions for a role
@@ -130,18 +129,18 @@ func (h *PermissionHandler) GetRolePermissions(c *gin.Context) {
 	case "viewer":
 		roleType = domain.ViewerRoleType
 	default:
-		responses.BadRequest(c, "Invalid role")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid role", 400), "get_role_permissions")
 		return
 	}
 
 	// Get role permissions
 	permissions, err := h.rbacService.GetRolePermissions(roleType)
 	if err != nil {
-		responses.InternalServerError(c, "Failed to get role permissions")
+		h.HandleError(c, err, "get_role_permissions")
 		return
 	}
 
-	responses.OK(c, gin.H{
+	h.OK(c, gin.H{
 		"role":        roleStr,
 		"permissions": permissions,
 	}, "Role permissions retrieved successfully")
@@ -157,13 +156,13 @@ func (h *PermissionHandler) CheckUserPermission(c *gin.Context) {
 	userIDStr := c.Param("user_id")
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		responses.BadRequest(c, "Invalid user ID format")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid user ID format", 400), "check_user_permission")
 		return
 	}
 
 	permissionStr := c.Query("permission")
 	if permissionStr == "" {
-		responses.BadRequest(c, "Permission parameter required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Permission parameter required", 400), "check_user_permission")
 		return
 	}
 
@@ -172,11 +171,11 @@ func (h *PermissionHandler) CheckUserPermission(c *gin.Context) {
 	// Check permission
 	hasPermission, err := h.rbacService.CheckPermission(userID, permission)
 	if err != nil {
-		responses.InternalServerError(c, "Failed to check permission")
+		h.HandleError(c, err, "check_user_permission")
 		return
 	}
 
-	responses.OK(c, gin.H{
+	h.OK(c, gin.H{
 		"user_id":        userIDStr,
 		"permission":     permissionStr,
 		"has_permission": hasPermission,
@@ -193,18 +192,18 @@ func (h *PermissionHandler) GetUserEffectivePermissions(c *gin.Context) {
 	userIDStr := c.Param("user_id")
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		responses.BadRequest(c, "Invalid user ID format")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid user ID format", 400), "get_user_effective_permissions")
 		return
 	}
 
 	// Get effective permissions
 	permissions, err := h.rbacService.GetUserEffectivePermissions(userID)
 	if err != nil {
-		responses.InternalServerError(c, "Failed to get user effective permissions")
+		h.HandleError(c, err, "get_user_effective_permissions")
 		return
 	}
 
-	responses.OK(c, gin.H{
+	h.OK(c, gin.H{
 		"user_id":     userIDStr,
 		"permissions": permissions,
 	}, "User effective permissions retrieved successfully")
@@ -215,21 +214,17 @@ func (h *PermissionHandler) checkAdminPermission(c *gin.Context) bool {
 	// Get current user role from token for authorization
 	userRole, err := h.GetUserRoleFromToken(c)
 	if err != nil {
-		if domainErr, ok := err.(*domain.DomainError); ok {
-			responses.DomainError(c, domainErr)
-		} else {
-			responses.InternalServerError(c, "Failed to get user role from token")
-		}
+		h.HandleError(c, err, "check_admin_permission")
 		return false
 	}
 
 	// Check if user has admin role
 	if userRole != domain.AdminRoleType {
-		responses.DomainError(c, domain.NewDomainError(
+		h.HandleError(c, domain.NewDomainError(
 			domain.ErrCodeForbidden,
 			"Insufficient permissions - admin role required",
 			http.StatusForbidden,
-		))
+		), "check_admin_permission")
 		return false
 	}
 

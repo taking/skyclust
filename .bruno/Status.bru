@@ -7,7 +7,11 @@ meta {
 get {
   url: {{baseUrl}}/api/{{apiVersion}}/system/status
   body: none
-  auth: inherit
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
 }
 
 settings {

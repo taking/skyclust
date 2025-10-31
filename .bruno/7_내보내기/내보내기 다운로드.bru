@@ -1,0 +1,145 @@
+meta {
+  name: 내보내기 다운로드
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/exports/{{exportId}}/download
+  body: none
+  auth: bearer
+}
+
+headers {
+  Accept: application/json, text/csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has file download headers", function() {
+    const headers = res.getHeaders();
+    expect(headers).to.have.property('content-type');
+    expect(headers).to.have.property('content-disposition');
+  });
+  
+  test("Content-Disposition contains filename", function() {
+    const contentDisposition = res.getHeaders()['content-disposition'];
+    expect(contentDisposition).to.be.a('string');
+    expect(contentDisposition).to.include('attachment');
+    expect(contentDisposition).to.include('filename');
+  });
+  
+  test("Content-Type matches format", function() {
+    const contentType = res.getHeaders()['content-type'];
+    expect(contentType).to.be.a('string');
+    // JSON format
+    if (contentType.includes('application/json')) {
+      expect(contentType).to.include('application/json');
+    }
+    // CSV format
+    else if (contentType.includes('text/csv')) {
+      expect(contentType).to.include('text/csv');
+    }
+    // XLSX format
+    else if (contentType.includes('spreadsheetml')) {
+      expect(contentType).to.include('spreadsheetml');
+    }
+  });
+  
+  test("Response contains data", function() {
+    expect(res.getBody()).to.not.be.empty;
+  });
+  
+  test("Content-Length header exists", function() {
+    const contentLength = res.getHeaders()['content-length'];
+    if (contentLength) {
+      expect(parseInt(contentLength)).to.be.greaterThan(0);
+    }
+  });
+}
+
+docs {
+  # 내보내기 다운로드
+  
+  ## 기능
+  완료된 내보내기 작업의 결과 파일을 다운로드합니다.
+  
+  ## 파라미터
+  
+  ### exportId (경로)
+  - 내보내기 ID
+  - **타입**: `string` (UUID)
+  - **설명**: 다운로드할 내보내기 작업의 ID입니다.
+  
+  ## 반환 데이터
+  
+  ### Content-Type 헤더
+  - 형식에 따라 다른 Content-Type이 설정됩니다:
+    - `json`: `application/json`
+    - `csv`: `text/csv; charset=utf-8`
+    - `xlsx`: `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+  
+  ### Content-Disposition 헤더
+  - `attachment; filename={filename}`
+  - 파일명은 자동으로 생성되며 형식에 따라 다릅니다.
+  - 예시: `workspaces_export_20250101_120000.json`
+  
+  ### Content-Length 헤더
+  - 파일 크기 (바이트)
+  
+  ### 파일 본문
+  - 실제 내보내기 데이터
+  - 형식에 따라 JSON 배열, CSV 텍스트, 또는 XLSX 바이너리 데이터입니다.
+  
+  ## 권한
+  
+  - 본인이 생성한 내보내기만 다운로드할 수 있습니다.
+  - 다른 사용자의 내보내기를 다운로드하려고 하면 403 Forbidden 에러가 반환됩니다.
+  
+  ## 상태 확인
+  
+  - 완료된 내보내기만 다운로드할 수 있습니다.
+  - 처리 중(`processing`)이거나 실패(`failed`)한 내보내기를 다운로드하려고 하면 400 Bad Request 에러가 반환됩니다.
+  - 존재하지 않는 내보내기를 다운로드하려고 하면 404 Not Found 에러가 반환됩니다.
+  
+  ## 사용 예시
+  
+  ### JSON 형식 내보내기 다운로드
+  ```
+  GET /api/v1/exports/123e4567-e89b-12d3-a456-426614174000/download
+  ```
+  
+  **응답 헤더:**
+  ```
+  Content-Type: application/json
+  Content-Disposition: attachment; filename=workspaces_export_20250101_120000.json
+  Content-Length: 1024
+  ```
+  
+  ### CSV 형식 내보내기 다운로드
+  ```
+  GET /api/v1/exports/123e4567-e89b-12d3-a456-426614174000/download
+  ```
+  
+  **응답 헤더:**
+  ```
+  Content-Type: text/csv; charset=utf-8
+  Content-Disposition: attachment; filename=vms_export_20250101_120000.csv
+  Content-Length: 2048
+  ```
+  
+  ## 주의사항
+  
+  - 내보내기 상태를 먼저 확인한 후 다운로드하는 것을 권장합니다.
+  - 큰 파일의 경우 다운로드에 시간이 걸릴 수 있습니다.
+  - 브라우저는 자동으로 파일을 저장합니다.
+  - API 클라이언트에서는 응답 본문을 파일로 저장해야 합니다.
+}
+

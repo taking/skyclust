@@ -45,12 +45,25 @@ func (h *Handler) createWorkspaceHandler(req domain.CreateWorkspaceRequest) hand
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		span := telemetry.SpanFromContext(ctx)
-		req = h.extractValidatedRequest(c)
 		userID := h.extractUserID(c)
 
-		h.logWorkspaceCreationAttempt(c, userID, req)
+		// Extract request from body (JSON binding only, without OwnerID validation)
+		var req domain.CreateWorkspaceRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeValidationFailed, "Request validation failed", 400), "create_workspace")
+			return
+		}
 
+		// Set OwnerID from authenticated user (handler responsibility, not client input)
 		req.OwnerID = userID.String()
+
+		// Now validate with OwnerID set
+		if err := req.Validate(); err != nil {
+			h.HandleError(c, err, "create_workspace")
+			return
+		}
+
+		h.logWorkspaceCreationAttempt(c, userID, req)
 
 		workspace, err := h.workspaceService.CreateWorkspace(ctx, req)
 		if err != nil {
@@ -157,17 +170,44 @@ func (h *Handler) updateWorkspaceHandler(req domain.UpdateWorkspaceRequest) hand
 		req = h.extractValidatedUpdateRequest(c)
 		userID := h.extractUserID(c)
 
-		h.logWorkspaceUpdateAttempt(c, userID, workspaceID)
-
-		workspace, err := h.workspaceService.UpdateWorkspace(ctx, workspaceID.String(), req)
+		// Get workspace to check permissions
+		workspace, err := h.workspaceService.GetWorkspace(ctx, workspaceID.String())
 		if err != nil {
 			h.HandleError(c, err, "update_workspace")
 			return
 		}
 
-		h.logWorkspaceUpdateSuccess(c, userID, workspace)
-		h.setTelemetryAttributes(span, userID, workspace.ID, workspace.Name, "update_workspace")
-		h.OK(c, workspace, readability.SuccessMsgUserUpdated)
+		// Check if user has permission to update (owner or admin)
+		userRole, err := h.GetUserRoleFromToken(c)
+		if err != nil {
+			h.HandleError(c, err, "update_workspace")
+			return
+		}
+
+		ownerID, err := uuid.Parse(workspace.OwnerID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "Invalid owner ID format", 500), "update_workspace")
+			return
+		}
+
+		// Only owner or admin can update
+		if userID != ownerID && userRole != domain.AdminRoleType {
+			h.Forbidden(c, "Insufficient permissions to update this workspace")
+			return
+		}
+
+		h.logWorkspaceUpdateAttempt(c, userID, workspaceID)
+
+		// Update workspace (owner_id remains unchanged)
+		updatedWorkspace, err := h.workspaceService.UpdateWorkspace(ctx, workspaceID.String(), req)
+		if err != nil {
+			h.HandleError(c, err, "update_workspace")
+			return
+		}
+
+		h.logWorkspaceUpdateSuccess(c, userID, updatedWorkspace)
+		h.setTelemetryAttributes(span, userID, updatedWorkspace.ID, updatedWorkspace.Name, "update_workspace")
+		h.OK(c, updatedWorkspace, readability.SuccessMsgUserUpdated)
 	}
 }
 
@@ -205,27 +245,37 @@ func (h *Handler) deleteWorkspaceHandler() handlers.HandlerFunc {
 
 // Helper methods for better readability
 
-func (h *Handler) extractValidatedRequest(c *gin.Context) domain.CreateWorkspaceRequest {
-	if validatedReq, exists := c.Get("validated_request"); exists {
-		return validatedReq.(domain.CreateWorkspaceRequest)
-	}
-	return domain.CreateWorkspaceRequest{}
-}
-
 func (h *Handler) extractValidatedUpdateRequest(c *gin.Context) domain.UpdateWorkspaceRequest {
-	if validatedReq, exists := c.Get("validated_request"); exists {
-		return validatedReq.(domain.UpdateWorkspaceRequest)
+	var req domain.UpdateWorkspaceRequest
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "update_workspace")
+		return domain.UpdateWorkspaceRequest{}
 	}
-	return domain.UpdateWorkspaceRequest{}
+	return req
 }
 
 func (h *Handler) extractUserID(c *gin.Context) uuid.UUID {
-	userID, exists := c.Get("user_id")
+	userIDValue, exists := c.Get("user_id")
 	if !exists {
 		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "User not authenticated", 401), "extract_user_id")
 		return uuid.Nil
 	}
-	return userID.(uuid.UUID)
+	
+	// Convert to uuid.UUID (handle both string and uuid.UUID types)
+	switch v := userIDValue.(type) {
+	case uuid.UUID:
+		return v
+	case string:
+		parsedUserID, err := uuid.Parse(v)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID format", 401), "extract_user_id")
+			return uuid.Nil
+		}
+		return parsedUserID
+	default:
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID type", 401), "extract_user_id")
+		return uuid.Nil
+	}
 }
 
 func (h *Handler) parseWorkspaceID(c *gin.Context) uuid.UUID {

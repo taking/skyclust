@@ -1,10 +1,48 @@
 package domain
 
 import (
+	"database/sql/driver"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+// JSONBMap is a custom type for handling JSONB fields in PostgreSQL
+type JSONBMap map[string]interface{}
+
+// Value implements the driver.Valuer interface for JSONBMap
+func (j JSONBMap) Value() (driver.Value, error) {
+	if j == nil {
+		return nil, nil
+	}
+	return json.Marshal(j)
+}
+
+// Scan implements the sql.Scanner interface for JSONBMap
+func (j *JSONBMap) Scan(value interface{}) error {
+	if value == nil {
+		*j = nil
+		return nil
+	}
+
+	var bytes []byte
+	switch v := value.(type) {
+	case []byte:
+		bytes = v
+	case string:
+		bytes = []byte(v)
+	default:
+		return json.Unmarshal([]byte{}, j)
+	}
+
+	if len(bytes) == 0 {
+		*j = make(JSONBMap)
+		return nil
+	}
+
+	return json.Unmarshal(bytes, j)
+}
 
 // AuditLog represents an audit log entry
 type AuditLog struct {
@@ -14,7 +52,7 @@ type AuditLog struct {
 	Resource  string                 `json:"resource" gorm:"size:100"`             // api endpoint
 	IPAddress string                 `json:"ip_address" gorm:"type:inet"`
 	UserAgent string                 `json:"user_agent" gorm:"type:text"`
-	Details   map[string]interface{} `json:"details" gorm:"type:jsonb"`
+	Details   JSONBMap               `json:"details" gorm:"type:jsonb"`
 	CreatedAt time.Time              `json:"created_at" gorm:"index"`
 
 	// Relationships
@@ -24,12 +62,23 @@ type AuditLog struct {
 // AuditLogRepository defines the interface for audit log data operations
 type AuditLogRepository interface {
 	Create(log *AuditLog) error
+	GetByID(id uuid.UUID) (*AuditLog, error)
 	GetByUserID(userID uuid.UUID, limit, offset int) ([]*AuditLog, error)
 	GetByAction(action string, limit, offset int) ([]*AuditLog, error)
 	GetByDateRange(start, end time.Time, limit, offset int) ([]*AuditLog, error)
 	CountByUserID(userID uuid.UUID) (int64, error)
 	CountByAction(action string) (int64, error)
-	DeleteOldLogs(before time.Time) error
+	DeleteOldLogs(before time.Time) (int64, error)
+	// Statistics methods
+	GetTotalCount(filters AuditStatsFilters) (int64, error)
+	GetUniqueUsersCount(filters AuditStatsFilters) (int64, error)
+	GetTopActions(filters AuditStatsFilters, limit int) ([]map[string]interface{}, error)
+	GetTopResources(filters AuditStatsFilters, limit int) ([]map[string]interface{}, error)
+	GetEventsByDay(filters AuditStatsFilters) ([]map[string]interface{}, error)
+	// Summary methods
+	GetMostActiveUser(startTime, endTime time.Time) (uuid.UUID, int64, error)
+	GetSecurityEventsCount(startTime, endTime time.Time) (int64, error)
+	GetErrorEventsCount(startTime, endTime time.Time) (int64, error)
 }
 
 // AuditLogFilters represents filters for audit log queries

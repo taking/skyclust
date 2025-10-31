@@ -23,15 +23,24 @@ tests {
     expect(res.getStatus()).to.equal(200);
   });
   
-  test("Response contains preferences", function() {
-    expect(res.getBody()).to.have.property('email');
-    expect(res.getBody()).to.have.property('browser');
-    expect(res.getBody()).to.have.property('in_app');
+  test("Response contains notification preferences", function() {
+    expect(res.getBody()).to.have.property('email_enabled');
+    expect(res.getBody()).to.have.property('push_enabled');
+    expect(res.getBody()).to.have.property('browser_enabled');
+    expect(res.getBody()).to.have.property('in_app_enabled');
   });
   
-  test("Preferences have required fields", function() {
-    const prefs = res.getBody();
-    expect(prefs).to.have.property('preferences');
-    expect(prefs.preferences).to.be.an('object');
+  test("Preferences have category settings", function() {
+    expect(res.getBody()).to.have.property('system_notifications');
+    expect(res.getBody()).to.have.property('vm_notifications');
+    expect(res.getBody()).to.have.property('cost_notifications');
+    expect(res.getBody()).to.have.property('security_notifications');
+  });
+  
+  test("Preferences have priority settings", function() {
+    expect(res.getBody()).to.have.property('low_priority_enabled');
+    expect(res.getBody()).to.have.property('medium_priority_enabled');
+    expect(res.getBody()).to.have.property('high_priority_enabled');
+    expect(res.getBody()).to.have.property('urgent_priority_enabled');
   });
 }

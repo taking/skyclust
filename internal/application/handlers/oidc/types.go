@@ -63,3 +63,47 @@ type ProviderListResponse struct {
 	Providers []*ProviderResponse `json:"providers"`
 	Total     int                 `json:"total"`
 }
+
+// CreateProviderRequest represents a request to create an OIDC provider
+type CreateProviderRequest struct {
+	Name         string `json:"name" validate:"required,min=1,max=100"`
+	ProviderType string `json:"provider_type" validate:"required,oneof=google github azure microsoft custom"`
+	ClientID     string `json:"client_id" validate:"required,min=1"`
+	ClientSecret string `json:"client_secret" validate:"required,min=1"`
+	RedirectURL  string `json:"redirect_url" validate:"required,url"`
+	AuthURL      string `json:"auth_url,omitempty" validate:"omitempty,url"`
+	TokenURL     string `json:"token_url,omitempty" validate:"omitempty,url"`
+	UserInfoURL  string `json:"user_info_url,omitempty" validate:"omitempty,url"`
+	Scopes       string `json:"scopes,omitempty" validate:"omitempty"`
+	Enabled      bool   `json:"enabled,omitempty"`
+}
+
+// UpdateProviderRequest represents a request to update an OIDC provider
+type UpdateProviderRequest struct {
+	Name         string `json:"name,omitempty" validate:"omitempty,min=1,max=100"`
+	ClientID     string `json:"client_id,omitempty" validate:"omitempty,min=1"`
+	ClientSecret string `json:"client_secret,omitempty" validate:"omitempty,min=1"`
+	RedirectURL  string `json:"redirect_url,omitempty" validate:"omitempty,url"`
+	AuthURL      string `json:"auth_url,omitempty" validate:"omitempty,url"`
+	TokenURL     string `json:"token_url,omitempty" validate:"omitempty,url"`
+	UserInfoURL  string `json:"user_info_url,omitempty" validate:"omitempty,url"`
+	Scopes       string `json:"scopes,omitempty"`
+	Enabled      *bool  `json:"enabled,omitempty"`
+}
+
+// ProviderDetailResponse represents detailed OIDC provider information
+type ProviderDetailResponse struct {
+	ID           string `json:"id"`
+	UserID       string `json:"user_id"`
+	Name         string `json:"name"`
+	ProviderType string `json:"provider_type"`
+	ClientID     string `json:"client_id"`
+	RedirectURL  string `json:"redirect_url"`
+	AuthURL      string `json:"auth_url,omitempty"`
+	TokenURL     string `json:"token_url,omitempty"`
+	UserInfoURL  string `json:"user_info_url,omitempty"`
+	Scopes       string `json:"scopes,omitempty"`
+	Enabled      bool   `json:"enabled"`
+	CreatedAt    string `json:"created_at"`
+	UpdatedAt    string `json:"updated_at"`
+}

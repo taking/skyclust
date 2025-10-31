@@ -33,6 +33,7 @@ type UserResponse struct {
 	Username     string    `json:"username"`
 	Email        string    `json:"email"`
 	IsActive     bool      `json:"is_active"`
+	Role         string    `json:"role,omitempty"` // Primary role for UI control (not detailed permissions)
 	OIDCProvider string    `json:"oidc_provider,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`

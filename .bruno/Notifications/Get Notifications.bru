@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/notifications
+  url: {{baseUrl}}/api/{{apiVersion}}/notifications?limit=20&offset=0&unread_only=false&category=&priority=
   body: none
   auth: bearer
 }
@@ -23,9 +23,19 @@ tests {
     expect(res.getStatus()).to.equal(200);
   });
   
-  test("Response contains notifications array", function() {
+  test("Response contains notifications array and pagination", function() {
     expect(res.getBody()).to.have.property('notifications');
     expect(res.getBody().notifications).to.be.an('array');
+    expect(res.getBody()).to.have.property('pagination');
+  });
+  
+  test("Pagination has required fields", function() {
+    const pagination = res.getBody().pagination;
+    expect(pagination).to.have.property('total');
+    expect(pagination).to.have.property('limit');
+    expect(pagination).to.have.property('offset');
+    expect(pagination).to.have.property('current_page');
+    expect(pagination).to.have.property('total_pages');
   });
   
   test("Notifications have required fields", function() {
@@ -34,6 +44,9 @@ tests {
       expect(notifications[0]).to.have.property('id');
       expect(notifications[0]).to.have.property('title');
       expect(notifications[0]).to.have.property('message');
+      expect(notifications[0]).to.have.property('type');
+      expect(notifications[0]).to.have.property('status');
+      expect(notifications[0]).to.have.property('created_at');
     }
   });
 }

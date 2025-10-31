@@ -1,26 +1,30 @@
 package cost_analysis
 
 import (
-	"skyclust/internal/shared/responses"
+	"skyclust/internal/domain"
+	"skyclust/internal/shared/handlers"
 
 	"github.com/gin-gonic/gin"
 )
 
 // Handler handles cost analysis operations
 type Handler struct {
+	*handlers.BaseHandler
 	// TODO: Add cost analysis service dependency
 }
 
 // NewHandler creates a new cost analysis handler
 func NewHandler() *Handler {
-	return &Handler{}
+	return &Handler{
+		BaseHandler: handlers.NewBaseHandler("cost_analysis"),
+	}
 }
 
 // GetCostSummary retrieves cost summary for a workspace
 func (h *Handler) GetCostSummary(c *gin.Context) {
 	workspaceID := c.Param("workspaceId")
 	if workspaceID == "" {
-		responses.BadRequest(c, "Workspace ID is required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Workspace ID is required", 400), "get_cost_summary")
 		return
 	}
 
@@ -37,14 +41,14 @@ func (h *Handler) GetCostSummary(c *gin.Context) {
 		},
 	}
 
-	responses.OK(c, summary, "Cost summary retrieved successfully")
+	h.OK(c, summary, "Cost summary retrieved successfully")
 }
 
 // GetCostPredictions retrieves cost predictions for a workspace
 func (h *Handler) GetCostPredictions(c *gin.Context) {
 	workspaceID := c.Param("workspaceId")
 	if workspaceID == "" {
-		responses.BadRequest(c, "Workspace ID is required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Workspace ID is required", 400), "get_cost")
 		return
 	}
 
@@ -65,14 +69,14 @@ func (h *Handler) GetCostPredictions(c *gin.Context) {
 		},
 	}
 
-	responses.OK(c, predictions, "Cost predictions retrieved successfully")
+	h.OK(c, predictions, "Cost predictions retrieved successfully")
 }
 
 // GetBudgetAlerts retrieves budget alerts for a workspace
 func (h *Handler) GetBudgetAlerts(c *gin.Context) {
 	workspaceID := c.Param("workspaceId")
 	if workspaceID == "" {
-		responses.BadRequest(c, "Workspace ID is required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Workspace ID is required", 400), "get_cost")
 		return
 	}
 
@@ -89,7 +93,7 @@ func (h *Handler) GetBudgetAlerts(c *gin.Context) {
 		},
 	}
 
-	responses.OK(c, gin.H{
+	h.OK(c, gin.H{
 		"workspace_id": workspaceID,
 		"alerts":       alerts,
 	}, "Budget alerts retrieved successfully")
@@ -99,7 +103,7 @@ func (h *Handler) GetBudgetAlerts(c *gin.Context) {
 func (h *Handler) GetCostTrend(c *gin.Context) {
 	workspaceID := c.Param("workspaceId")
 	if workspaceID == "" {
-		responses.BadRequest(c, "Workspace ID is required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Workspace ID is required", 400), "get_cost")
 		return
 	}
 
@@ -124,14 +128,14 @@ func (h *Handler) GetCostTrend(c *gin.Context) {
 		"change_percentage": 11.17,
 	}
 
-	responses.OK(c, trend, "Cost trend retrieved successfully")
+	h.OK(c, trend, "Cost trend retrieved successfully")
 }
 
 // GetCostBreakdown retrieves cost breakdown for a workspace
 func (h *Handler) GetCostBreakdown(c *gin.Context) {
 	workspaceID := c.Param("workspaceId")
 	if workspaceID == "" {
-		responses.BadRequest(c, "Workspace ID is required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Workspace ID is required", 400), "get_cost")
 		return
 	}
 
@@ -180,14 +184,14 @@ func (h *Handler) GetCostBreakdown(c *gin.Context) {
 		},
 	}
 
-	responses.OK(c, breakdown, "Cost breakdown retrieved successfully")
+	h.OK(c, breakdown, "Cost breakdown retrieved successfully")
 }
 
 // GetCostComparison retrieves cost comparison for a workspace
 func (h *Handler) GetCostComparison(c *gin.Context) {
 	workspaceID := c.Param("workspaceId")
 	if workspaceID == "" {
-		responses.BadRequest(c, "Workspace ID is required")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Workspace ID is required", 400), "get_cost")
 		return
 	}
 
@@ -208,5 +212,5 @@ func (h *Handler) GetCostComparison(c *gin.Context) {
 		},
 	}
 
-	responses.OK(c, comparison, "Cost comparison retrieved successfully")
+	h.OK(c, comparison, "Cost comparison retrieved successfully")
 }

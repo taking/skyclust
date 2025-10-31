@@ -43,7 +43,9 @@ func (r *credentialRepository) GetByID(id uuid.UUID) (*domain.Credential, error)
 // GetByUserID retrieves all credentials for a user
 func (r *credentialRepository) GetByUserID(userID uuid.UUID) ([]*domain.Credential, error) {
 	var credentials []*domain.Credential
-	if err := r.db.Where("user_id = ? AND deleted_at IS NULL", userID).Find(&credentials).Error; err != nil {
+	if err := r.db.Where("user_id = ? AND deleted_at IS NULL", userID).
+		Order("created_at DESC").
+		Find(&credentials).Error; err != nil {
 		logger.Errorf("Failed to get credentials by user ID: %v", err)
 		return nil, err
 	}
@@ -53,7 +55,9 @@ func (r *credentialRepository) GetByUserID(userID uuid.UUID) ([]*domain.Credenti
 // GetByUserIDAndProvider retrieves credentials for a user and provider
 func (r *credentialRepository) GetByUserIDAndProvider(userID uuid.UUID, provider string) ([]*domain.Credential, error) {
 	var credentials []*domain.Credential
-	if err := r.db.Where("user_id = ? AND provider = ? AND deleted_at IS NULL", userID, provider).Find(&credentials).Error; err != nil {
+	if err := r.db.Where("user_id = ? AND provider = ? AND deleted_at IS NULL", userID, provider).
+		Order("created_at DESC").
+		Find(&credentials).Error; err != nil {
 		logger.Errorf("Failed to get credentials by user ID and provider: %v", err)
 		return nil, err
 	}

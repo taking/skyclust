@@ -19,13 +19,20 @@ tests {
     expect(res.getStatus()).to.equal(200);
   });
   
-  test("Response contains auth URL", function() {
+  test("Response contains auth URL and state", function() {
     expect(res.getBody()).to.have.property('auth_url');
+    expect(res.getBody()).to.have.property('state');
   });
   
   test("Auth URL is valid", function() {
     const authUrl = res.getBody().auth_url;
     expect(authUrl).to.include('google');
     expect(authUrl).to.include('oauth');
+  });
+  
+  test("State parameter is present", function() {
+    const state = res.getBody().state;
+    expect(state).to.be.a('string');
+    expect(state.length).to.be.greaterThan(0);
   });
 }

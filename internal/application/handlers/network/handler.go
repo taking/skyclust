@@ -46,24 +46,24 @@ func (h *Handler) ListVPCs(c *gin.Context) {
 // listVPCsHandler is the core business logic for listing VPCs
 func (h *Handler) listVPCsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
+		// Get and validate credential using BaseHandler helper (no provider validation)
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, "")
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
+
 		userID := h.extractUserID(c)
-		credentialID := h.parseCredentialID(c)
 		region := h.parseRegion(c)
 
-		if credentialID == uuid.Nil || region == "" {
+		if region == "" {
 			return
 		}
 
-		h.logVPCsListAttempt(c, userID, credentialID, region)
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "list_vpcs")
-			return
-		}
+		h.logVPCsListAttempt(c, userID, credential.ID, region)
 
 		req := dto.ListVPCsRequest{
-			CredentialID: credentialID.String(),
+			CredentialID: credential.ID.String(),
 			Region:       region,
 		}
 
@@ -91,25 +91,25 @@ func (h *Handler) ListSubnets(c *gin.Context) {
 // listSubnetsHandler is the core business logic for listing subnets
 func (h *Handler) listSubnetsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
+		// Get and validate credential using BaseHandler helper (no provider validation)
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, "")
+		if err != nil {
+			h.HandleError(c, err, "list_subnets")
+			return
+		}
+
 		userID := h.extractUserID(c)
-		credentialID := h.parseCredentialID(c)
 		vpcID := h.parseVPCID(c)
 		region := h.parseRegion(c)
 
-		if credentialID == uuid.Nil || vpcID == "" || region == "" {
+		if vpcID == "" || region == "" {
 			return
 		}
 
-		h.logSubnetsListAttempt(c, userID, credentialID, vpcID, region)
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "list_subnets")
-			return
-		}
+		h.logSubnetsListAttempt(c, userID, credential.ID, vpcID, region)
 
 		req := dto.ListSubnetsRequest{
-			CredentialID: credentialID.String(),
+			CredentialID: credential.ID.String(),
 			VPCID:        vpcID,
 			Region:       region,
 		}
@@ -138,25 +138,25 @@ func (h *Handler) ListSecurityGroups(c *gin.Context) {
 // listSecurityGroupsHandler is the core business logic for listing security groups
 func (h *Handler) listSecurityGroupsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
+		// Get and validate credential using BaseHandler helper (no provider validation)
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, "")
+		if err != nil {
+			h.HandleError(c, err, "list_security_groups")
+			return
+		}
+
 		userID := h.extractUserID(c)
-		credentialID := h.parseCredentialID(c)
 		vpcID := h.parseVPCID(c)
 		region := h.parseRegion(c)
 
-		if credentialID == uuid.Nil || vpcID == "" || region == "" {
+		if vpcID == "" || region == "" {
 			return
 		}
 
-		h.logSecurityGroupsListAttempt(c, userID, credentialID, vpcID, region)
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "list_security_groups")
-			return
-		}
+		h.logSecurityGroupsListAttempt(c, userID, credential.ID, vpcID, region)
 
 		req := dto.ListSecurityGroupsRequest{
-			CredentialID: credentialID.String(),
+			CredentialID: credential.ID.String(),
 			VPCID:        vpcID,
 			Region:       region,
 		}
@@ -185,25 +185,25 @@ func (h *Handler) GetVPC(c *gin.Context) {
 // getVPCHandler is the core business logic for getting a VPC
 func (h *Handler) getVPCHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := h.extractUserID(c)
+		// Get and validate credential using BaseHandler helper (no provider validation)
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, "")
+		if err != nil {
+			h.HandleError(c, err, "get_vpc")
+			return
+		}
+
 		vpcID := h.parseResourceID(c)
-		credentialID := h.parseCredentialID(c)
 		region := c.Query("region") // Optional for VPC
 
-		if vpcID == "" || credentialID == uuid.Nil {
+		if vpcID == "" {
 			return
 		}
 
-		h.logVPCGetAttempt(c, userID, vpcID, credentialID, region)
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "get_vpc")
-			return
-		}
+		userID := h.extractUserID(c)
+		h.logVPCGetAttempt(c, userID, vpcID, credential.ID, region)
 
 		req := dto.GetVPCRequest{
-			CredentialID: credentialID.String(),
+			CredentialID: credential.ID.String(),
 			VPCID:        vpcID,
 			Region:       region,
 		}
@@ -234,20 +234,18 @@ func (h *Handler) CreateVPC(c *gin.Context) {
 // createVPCHandler is the core business logic for creating a VPC
 func (h *Handler) createVPCHandler(req dto.CreateVPCRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		req = h.extractValidatedVPCRequest(c)
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "create_vpc")
+			return
+		}
 		userID := h.extractUserID(c)
 
 		h.logVPCCreationAttempt(c, userID, req)
 
-		credentialID, err := uuid.Parse(req.CredentialID)
+		// Get and validate credential from request body
+		credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, h.provider)
 		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "create_vpc")
-			return
-		}
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "create_vpc")
+			h.HandleError(c, err, "create_vpc")
 			return
 		}
 
@@ -277,7 +275,18 @@ func (h *Handler) UpdateVPC(c *gin.Context) {
 // updateVPCHandler is the core business logic for updating a VPC
 func (h *Handler) updateVPCHandler(req dto.UpdateVPCRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		req = h.extractValidatedVPCUpdateRequest(c)
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "update_vpc")
+			return
+		}
+
+		// Get and validate credential using BaseHandler helper (no provider validation)
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, "")
+		if err != nil {
+			h.HandleError(c, err, "update_vpc")
+			return
+		}
+
 		userID := h.extractUserID(c)
 		vpcID := h.parseResourceID(c)
 
@@ -287,18 +296,7 @@ func (h *Handler) updateVPCHandler(req dto.UpdateVPCRequest) handlers.HandlerFun
 
 		h.logVPCUpdateAttempt(c, userID, vpcID, req)
 
-		credentialID := h.parseCredentialID(c)
 		region := c.Query("region") // Optional for VPC
-
-		if credentialID == uuid.Nil {
-			return
-		}
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "update_vpc")
-			return
-		}
 
 		vpc, err := h.networkService.UpdateVPC(c.Request.Context(), credential, req, vpcID, region)
 		if err != nil {
@@ -324,6 +322,13 @@ func (h *Handler) DeleteVPC(c *gin.Context) {
 // deleteVPCHandler is the core business logic for deleting a VPC
 func (h *Handler) deleteVPCHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
+		// Get and validate credential using BaseHandler helper (no provider validation)
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, "")
+		if err != nil {
+			h.HandleError(c, err, "delete_vpc")
+			return
+		}
+
 		userID := h.extractUserID(c)
 		vpcID := h.parseResourceID(c)
 
@@ -333,27 +338,15 @@ func (h *Handler) deleteVPCHandler() handlers.HandlerFunc {
 
 		h.logVPCDeletionAttempt(c, userID, vpcID)
 
-		credentialID := h.parseCredentialID(c)
 		region := c.Query("region") // Optional for VPC
 
-		if credentialID == uuid.Nil {
-			return
-		}
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "delete_vpc")
-			return
-		}
-
 		req := dto.DeleteVPCRequest{
-			CredentialID: credentialID.String(),
+			CredentialID: credential.ID.String(),
 			VPCID:        vpcID,
 			Region:       region,
 		}
 
-		err = h.networkService.DeleteVPC(c.Request.Context(), credential, req)
-		if err != nil {
+		if err := h.networkService.DeleteVPC(c.Request.Context(), credential, req); err != nil {
 			h.HandleError(c, err, "delete_vpc")
 			return
 		}
@@ -376,6 +369,13 @@ func (h *Handler) GetSubnet(c *gin.Context) {
 // getSubnetHandler is the core business logic for getting a subnet
 func (h *Handler) getSubnetHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
+		// Get and validate credential using BaseHandler helper (no provider validation)
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, "")
+		if err != nil {
+			h.HandleError(c, err, "get_subnet")
+			return
+		}
+
 		userID := h.extractUserID(c)
 		subnetID := h.parseResourceID(c)
 
@@ -385,21 +385,14 @@ func (h *Handler) getSubnetHandler() handlers.HandlerFunc {
 
 		h.logSubnetGetAttempt(c, userID, subnetID)
 
-		credentialID := h.parseCredentialID(c)
 		region := h.parseRegion(c)
 
-		if credentialID == uuid.Nil || region == "" {
-			return
-		}
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "get_subnet")
+		if region == "" {
 			return
 		}
 
 		req := dto.GetSubnetRequest{
-			CredentialID: credentialID.String(),
+			CredentialID: credential.ID.String(),
 			SubnetID:     subnetID,
 			Region:       region,
 		}
@@ -430,20 +423,19 @@ func (h *Handler) CreateSubnet(c *gin.Context) {
 // createSubnetHandler is the core business logic for creating a subnet
 func (h *Handler) createSubnetHandler(req dto.CreateSubnetRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		req = h.extractValidatedSubnetRequest(c)
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "create_subnet")
+			return
+		}
+
 		userID := h.extractUserID(c)
 
 		h.logSubnetCreationAttempt(c, userID, req)
 
-		credentialID, err := uuid.Parse(req.CredentialID)
+		// Get and validate credential from request body
+		credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, h.provider)
 		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "create_subnet")
-			return
-		}
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "create_subnet")
+			h.HandleError(c, err, "create_subnet")
 			return
 		}
 
@@ -473,7 +465,18 @@ func (h *Handler) UpdateSubnet(c *gin.Context) {
 // updateSubnetHandler is the core business logic for updating a subnet
 func (h *Handler) updateSubnetHandler(req dto.UpdateSubnetRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		req = h.extractValidatedSubnetUpdateRequest(c)
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "update_subnet")
+			return
+		}
+
+		// Get and validate credential using BaseHandler helper (no provider validation)
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, "")
+		if err != nil {
+			h.HandleError(c, err, "update_subnet")
+			return
+		}
+
 		userID := h.extractUserID(c)
 		subnetID := h.parseResourceID(c)
 
@@ -483,16 +486,9 @@ func (h *Handler) updateSubnetHandler(req dto.UpdateSubnetRequest) handlers.Hand
 
 		h.logSubnetUpdateAttempt(c, userID, subnetID, req)
 
-		credentialID := h.parseCredentialID(c)
 		region := h.parseRegion(c)
 
-		if credentialID == uuid.Nil || region == "" {
-			return
-		}
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "update_subnet")
+		if region == "" {
 			return
 		}
 
@@ -520,6 +516,13 @@ func (h *Handler) DeleteSubnet(c *gin.Context) {
 // deleteSubnetHandler is the core business logic for deleting a subnet
 func (h *Handler) deleteSubnetHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
+		// Get and validate credential using BaseHandler helper (no provider validation)
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, "")
+		if err != nil {
+			h.HandleError(c, err, "delete_subnet")
+			return
+		}
+
 		userID := h.extractUserID(c)
 		subnetID := h.parseResourceID(c)
 
@@ -529,27 +532,19 @@ func (h *Handler) deleteSubnetHandler() handlers.HandlerFunc {
 
 		h.logSubnetDeletionAttempt(c, userID, subnetID)
 
-		credentialID := h.parseCredentialID(c)
 		region := h.parseRegion(c)
 
-		if credentialID == uuid.Nil || region == "" {
-			return
-		}
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "delete_subnet")
+		if region == "" {
 			return
 		}
 
 		req := dto.DeleteSubnetRequest{
-			CredentialID: credentialID.String(),
+			CredentialID: credential.ID.String(),
 			SubnetID:     subnetID,
 			Region:       region,
 		}
 
-		err = h.networkService.DeleteSubnet(c.Request.Context(), credential, req)
-		if err != nil {
+		if err := h.networkService.DeleteSubnet(c.Request.Context(), credential, req); err != nil {
 			h.HandleError(c, err, "delete_subnet")
 			return
 		}
@@ -572,6 +567,13 @@ func (h *Handler) GetSecurityGroup(c *gin.Context) {
 // getSecurityGroupHandler is the core business logic for getting a security group
 func (h *Handler) getSecurityGroupHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
+		// Get and validate credential using BaseHandler helper (no provider validation)
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, "")
+		if err != nil {
+			h.HandleError(c, err, "get_security_group")
+			return
+		}
+
 		userID := h.extractUserID(c)
 		securityGroupID := h.parseResourceID(c)
 
@@ -581,21 +583,14 @@ func (h *Handler) getSecurityGroupHandler() handlers.HandlerFunc {
 
 		h.logSecurityGroupGetAttempt(c, userID, securityGroupID)
 
-		credentialID := h.parseCredentialID(c)
 		region := h.parseRegion(c)
 
-		if credentialID == uuid.Nil || region == "" {
-			return
-		}
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "get_security_group")
+		if region == "" {
 			return
 		}
 
 		req := dto.GetSecurityGroupRequest{
-			CredentialID:    credentialID.String(),
+			CredentialID:    credential.ID.String(),
 			SecurityGroupID: securityGroupID,
 			Region:          region,
 		}
@@ -626,20 +621,19 @@ func (h *Handler) CreateSecurityGroup(c *gin.Context) {
 // createSecurityGroupHandler is the core business logic for creating a security group
 func (h *Handler) createSecurityGroupHandler(req dto.CreateSecurityGroupRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		req = h.extractValidatedSecurityGroupRequest(c)
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "create_security_group")
+			return
+		}
+
 		userID := h.extractUserID(c)
 
 		h.logSecurityGroupCreationAttempt(c, userID, req)
 
-		credentialID, err := uuid.Parse(req.CredentialID)
+		// Get and validate credential from request body
+		credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, h.provider)
 		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "create_security_group")
-			return
-		}
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "create_security_group")
+			h.HandleError(c, err, "create_security_group")
 			return
 		}
 
@@ -669,7 +663,18 @@ func (h *Handler) UpdateSecurityGroup(c *gin.Context) {
 // updateSecurityGroupHandler is the core business logic for updating a security group
 func (h *Handler) updateSecurityGroupHandler(req dto.UpdateSecurityGroupRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		req = h.extractValidatedSecurityGroupUpdateRequest(c)
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "update_security_group")
+			return
+		}
+
+		// Get and validate credential using BaseHandler helper (no provider validation)
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, "")
+		if err != nil {
+			h.HandleError(c, err, "update_security_group")
+			return
+		}
+
 		userID := h.extractUserID(c)
 		securityGroupID := h.parseResourceID(c)
 
@@ -679,16 +684,9 @@ func (h *Handler) updateSecurityGroupHandler(req dto.UpdateSecurityGroupRequest)
 
 		h.logSecurityGroupUpdateAttempt(c, userID, securityGroupID, req)
 
-		credentialID := h.parseCredentialID(c)
 		region := h.parseRegion(c)
 
-		if credentialID == uuid.Nil || region == "" {
-			return
-		}
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "update_security_group")
+		if region == "" {
 			return
 		}
 
@@ -716,6 +714,13 @@ func (h *Handler) DeleteSecurityGroup(c *gin.Context) {
 // deleteSecurityGroupHandler is the core business logic for deleting a security group
 func (h *Handler) deleteSecurityGroupHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
+		// Get and validate credential using BaseHandler helper (no provider validation)
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, "")
+		if err != nil {
+			h.HandleError(c, err, "delete_security_group")
+			return
+		}
+
 		userID := h.extractUserID(c)
 		securityGroupID := h.parseResourceID(c)
 
@@ -725,27 +730,19 @@ func (h *Handler) deleteSecurityGroupHandler() handlers.HandlerFunc {
 
 		h.logSecurityGroupDeletionAttempt(c, userID, securityGroupID)
 
-		credentialID := h.parseCredentialID(c)
 		region := h.parseRegion(c)
 
-		if credentialID == uuid.Nil || region == "" {
-			return
-		}
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "delete_security_group")
+		if region == "" {
 			return
 		}
 
 		req := dto.DeleteSecurityGroupRequest{
-			CredentialID:    credentialID.String(),
+			CredentialID:    credential.ID.String(),
 			SecurityGroupID: securityGroupID,
 			Region:          region,
 		}
 
-		err = h.networkService.DeleteSecurityGroup(c.Request.Context(), credential, req)
-		if err != nil {
+		if err := h.networkService.DeleteSecurityGroup(c.Request.Context(), credential, req); err != nil {
 			h.HandleError(c, err, "delete_security_group")
 			return
 		}
@@ -770,20 +767,19 @@ func (h *Handler) AddSecurityGroupRule(c *gin.Context) {
 // addSecurityGroupRuleHandler is the core business logic for adding a security group rule
 func (h *Handler) addSecurityGroupRuleHandler(req dto.AddSecurityGroupRuleRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		req = h.extractValidatedSecurityGroupRuleRequest(c)
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "add_security_group_rule")
+			return
+		}
+
 		userID := h.extractUserID(c)
 
 		h.logSecurityGroupRuleAdditionAttempt(c, userID, req)
 
-		credentialID, err := uuid.Parse(req.CredentialID)
+		// Get and validate credential from request body
+		credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, h.provider)
 		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "add_security_group_rule")
-			return
-		}
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "add_security_group_rule")
+			h.HandleError(c, err, "add_security_group_rule")
 			return
 		}
 
@@ -813,20 +809,19 @@ func (h *Handler) RemoveSecurityGroupRule(c *gin.Context) {
 // removeSecurityGroupRuleHandler is the core business logic for removing a security group rule
 func (h *Handler) removeSecurityGroupRuleHandler(req dto.RemoveSecurityGroupRuleRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		req = h.extractValidatedSecurityGroupRuleRemovalRequest(c)
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "remove_security_group_rule")
+			return
+		}
+
 		userID := h.extractUserID(c)
 
 		h.logSecurityGroupRuleRemovalAttempt(c, userID, req)
 
-		credentialID, err := uuid.Parse(req.CredentialID)
+		// Get and validate credential from request body
+		credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, h.provider)
 		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "remove_security_group_rule")
-			return
-		}
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "remove_security_group_rule")
+			h.HandleError(c, err, "remove_security_group_rule")
 			return
 		}
 
@@ -856,20 +851,18 @@ func (h *Handler) UpdateSecurityGroupRules(c *gin.Context) {
 // updateSecurityGroupRulesHandler is the core business logic for updating security group rules
 func (h *Handler) updateSecurityGroupRulesHandler(req dto.UpdateSecurityGroupRulesRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		req = h.extractValidatedSecurityGroupRulesUpdateRequest(c)
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "update_security_group_rules")
+			return
+		}
 		userID := h.extractUserID(c)
 
 		h.logSecurityGroupRulesUpdateAttempt(c, userID, req)
 
-		credentialID, err := uuid.Parse(req.CredentialID)
+		// Get and validate credential from request body
+		credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, h.provider)
 		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "update_security_group_rules")
-			return
-		}
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "update_security_group_rules")
+			h.HandleError(c, err, "update_security_group_rules")
 			return
 		}
 
@@ -887,27 +880,27 @@ func (h *Handler) updateSecurityGroupRulesHandler(req dto.UpdateSecurityGroupRul
 // Helper methods for better readability
 
 func (h *Handler) extractUserID(c *gin.Context) uuid.UUID {
-	userID, exists := c.Get("user_id")
+	userIDValue, exists := c.Get("user_id")
 	if !exists {
 		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "User not authenticated", 401), "extract_user_id")
 		return uuid.Nil
 	}
-	return userID.(uuid.UUID)
-}
 
-func (h *Handler) parseCredentialID(c *gin.Context) uuid.UUID {
-	credentialIDStr := c.Query("credential_id")
-	if credentialIDStr == "" {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "credential_id is required", 400), "parse_credential_id")
+	// Convert to uuid.UUID (handle both string and uuid.UUID types)
+	switch v := userIDValue.(type) {
+	case uuid.UUID:
+		return v
+	case string:
+		parsedUserID, err := uuid.Parse(v)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID format", 401), "extract_user_id")
+			return uuid.Nil
+		}
+		return parsedUserID
+	default:
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID type", 401), "extract_user_id")
 		return uuid.Nil
 	}
-
-	credentialID, err := uuid.Parse(credentialIDStr)
-	if err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "parse_credential_id")
-		return uuid.Nil
-	}
-	return credentialID
 }
 
 func (h *Handler) parseRegion(c *gin.Context) string {
@@ -1008,23 +1001,7 @@ func (h *Handler) logVPCGetSuccess(c *gin.Context, userID uuid.UUID, vpcID strin
 
 // Additional helper methods for VPC operations
 
-func (h *Handler) extractValidatedVPCRequest(c *gin.Context) dto.CreateVPCRequest {
-	var req dto.CreateVPCRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_vpc_request")
-		return dto.CreateVPCRequest{}
-	}
-	return req
-}
-
-func (h *Handler) extractValidatedVPCUpdateRequest(c *gin.Context) dto.UpdateVPCRequest {
-	var req dto.UpdateVPCRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_vpc_update_request")
-		return dto.UpdateVPCRequest{}
-	}
-	return req
-}
+// Deprecated helpers removed: validation now handled via h.ValidateRequest in handlers
 
 func (h *Handler) logVPCCreationAttempt(c *gin.Context, userID uuid.UUID, req dto.CreateVPCRequest) {
 	h.LogBusinessEvent(c, "vpc_creation_attempted", userID.String(), "", map[string]interface{}{
@@ -1071,23 +1048,7 @@ func (h *Handler) logVPCDeletionSuccess(c *gin.Context, userID uuid.UUID, vpcID 
 
 // Additional helper methods for Subnet operations
 
-func (h *Handler) extractValidatedSubnetRequest(c *gin.Context) dto.CreateSubnetRequest {
-	var req dto.CreateSubnetRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_subnet_request")
-		return dto.CreateSubnetRequest{}
-	}
-	return req
-}
-
-func (h *Handler) extractValidatedSubnetUpdateRequest(c *gin.Context) dto.UpdateSubnetRequest {
-	var req dto.UpdateSubnetRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_subnet_update_request")
-		return dto.UpdateSubnetRequest{}
-	}
-	return req
-}
+// Deprecated helpers removed: validation now handled via h.ValidateRequest in handlers
 
 func (h *Handler) logSubnetGetAttempt(c *gin.Context, userID uuid.UUID, subnetID string) {
 	h.LogBusinessEvent(c, "subnet_get_attempted", userID.String(), subnetID, map[string]interface{}{
@@ -1148,50 +1109,7 @@ func (h *Handler) logSubnetDeletionSuccess(c *gin.Context, userID uuid.UUID, sub
 
 // Additional helper methods for Security Group operations
 
-func (h *Handler) extractValidatedSecurityGroupRequest(c *gin.Context) dto.CreateSecurityGroupRequest {
-	var req dto.CreateSecurityGroupRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_security_group_request")
-		return dto.CreateSecurityGroupRequest{}
-	}
-	return req
-}
-
-func (h *Handler) extractValidatedSecurityGroupUpdateRequest(c *gin.Context) dto.UpdateSecurityGroupRequest {
-	var req dto.UpdateSecurityGroupRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_security_group_update_request")
-		return dto.UpdateSecurityGroupRequest{}
-	}
-	return req
-}
-
-func (h *Handler) extractValidatedSecurityGroupRuleRequest(c *gin.Context) dto.AddSecurityGroupRuleRequest {
-	var req dto.AddSecurityGroupRuleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_security_group_rule_request")
-		return dto.AddSecurityGroupRuleRequest{}
-	}
-	return req
-}
-
-func (h *Handler) extractValidatedSecurityGroupRuleRemovalRequest(c *gin.Context) dto.RemoveSecurityGroupRuleRequest {
-	var req dto.RemoveSecurityGroupRuleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_security_group_rule_removal_request")
-		return dto.RemoveSecurityGroupRuleRequest{}
-	}
-	return req
-}
-
-func (h *Handler) extractValidatedSecurityGroupRulesUpdateRequest(c *gin.Context) dto.UpdateSecurityGroupRulesRequest {
-	var req dto.UpdateSecurityGroupRulesRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_security_group_rules_update_request")
-		return dto.UpdateSecurityGroupRulesRequest{}
-	}
-	return req
-}
+// Deprecated helpers removed: validation now handled via h.ValidateRequest in handlers
 
 func (h *Handler) logSecurityGroupGetAttempt(c *gin.Context, userID uuid.UUID, securityGroupID string) {
 	h.LogBusinessEvent(c, "security_group_get_attempted", userID.String(), securityGroupID, map[string]interface{}{

@@ -1,0 +1,146 @@
+meta {
+  name: 내보내기 생성
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/exports
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "type": "workspaces",
+    "format": "json",
+    "filters": {},
+    "workspace_id": ""
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("exportId", res.body.data.export_id);
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response contains export ID", function() {
+    const body = res.getBody();
+    expect(body.data).to.have.property('id');
+    expect(body.data.id).to.be.a('string');
+  });
+  
+  test("Response contains status", function() {
+    const body = res.getBody();
+    expect(body.data).to.have.property('status');
+    expect(body.data.status).to.be.a('string');
+    expect(['processing', 'completed', 'failed']).to.include(body.data.status);
+  });
+  
+  test("Response contains success message", function() {
+    expect(res.getBody().message).to.include('successfully');
+  });
+}
+
+docs {
+  # 내보내기 생성
+  
+  ## 기능
+  데이터를 다양한 형식으로 내보내기 위한 작업을 생성합니다. 내보내기는 비동기로 처리되며, 생성된 export ID를 통해 상태를 조회하고 결과를 다운로드할 수 있습니다.
+  
+  ## 요청 본문
+  
+  ### type (필수)
+  - 내보낼 데이터 타입
+  - **값**: `vms`, `workspaces`, `credentials`, `audit_logs`
+  - **설명**: 내보낼 데이터의 타입을 지정합니다.
+  
+  ### format (필수)
+  - 내보내기 형식
+  - **값**: `csv`, `json`, `xlsx`
+  - **설명**: 내보낼 파일 형식을 지정합니다.
+  
+  ### filters (선택)
+  - 필터 조건
+  - **타입**: `object`
+  - **설명**: 데이터를 필터링하기 위한 조건입니다. 타입별로 다른 필터를 지원합니다.
+  
+  ### workspace_id (선택)
+  - 워크스페이스 ID
+  - **타입**: `string` (UUID)
+  - **설명**: 특정 워크스페이스의 데이터만 내보낼 때 사용합니다.
+  
+  ### date_from (선택)
+  - 시작 날짜
+  - **타입**: `string` (RFC3339)
+  - **예시**: `2025-01-01T00:00:00Z`
+  - **설명**: 날짜 범위 필터의 시작 날짜입니다. `date_to`와 함께 사용합니다.
+  
+  ### date_to (선택)
+  - 종료 날짜
+  - **타입**: `string` (RFC3339)
+  - **예시**: `2025-01-31T23:59:59Z`
+  - **설명**: 날짜 범위 필터의 종료 날짜입니다. `date_from`과 함께 사용합니다.
+  
+  ## 반환 데이터
+  
+  ### id (string)
+  - 생성된 export ID
+  - 내보내기 상태 조회 및 다운로드에 사용됩니다.
+  
+  ### status (string)
+  - 내보내기 상태
+  - **값**: `processing` (처리 중), `completed` (완료), `failed` (실패)
+  - 초기 상태는 `processing`입니다.
+  
+  ### message (string)
+  - 성공 메시지
+  
+  ## 사용 예시
+  
+  ### 워크스페이스를 JSON 형식으로 내보내기
+  ```json
+  {
+    "type": "workspaces",
+    "format": "json"
+  }
+  ```
+  
+  ### VMs를 CSV 형식으로 내보내기
+  ```json
+  {
+    "type": "vms",
+    "format": "csv",
+    "workspace_id": "123e4567-e89b-12d3-a456-426614174000"
+  }
+  ```
+  
+  ### 감사 로그를 날짜 범위로 내보내기
+  ```json
+  {
+    "type": "audit_logs",
+    "format": "json",
+    "date_from": "2025-01-01T00:00:00Z",
+    "date_to": "2025-01-31T23:59:59Z"
+  }
+  ```
+  
+  ## 주의사항
+  
+  - 내보내기는 비동기로 처리됩니다. 즉시 완료되지 않을 수 있습니다.
+  - 내보내기 상태는 `GET /api/v1/exports/:id`로 확인할 수 있습니다.
+  - 완료된 내보내기는 `GET /api/v1/exports/:id/download`로 다운로드할 수 있습니다.
+  - `xlsx` 형식은 현재 미구현 상태입니다.
+}

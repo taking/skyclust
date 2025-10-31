@@ -16,14 +16,32 @@ headers {
 
 body:json {
   {
-    "username": "testuser",
-    "email": "test6@example.com",
+    "username": "admin",
+    "email": "admin@example.com",
     "password": "password123"
   }
 }
 
 script:post-response {
   bru.setEnvVar("token", res.body.data.token);
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response contains user data", function() {
+    expect(res.getBody()).to.have.property('user');
+    expect(res.getBody()).to.have.property('token');
+  });
+  
+  test("User has required fields", function() {
+    const user = res.getBody().user;
+    expect(user).to.have.property('id');
+    expect(user).to.have.property('username');
+    expect(user).to.have.property('email');
+  });
 }
 
 docs {
@@ -87,22 +105,4 @@ docs {
   - 회원가입 시 자동으로 로그인되어 JWT 토큰이 발급됩니다
   - 이메일과 사용자명은 고유해야 합니다
   - 비밀번호는 암호화되어 저장됩니다
-}
-
-tests {
-  test("Status code is 201", function() {
-    expect(res.getStatus()).to.equal(201);
-  });
-  
-  test("Response contains user data", function() {
-    expect(res.getBody()).to.have.property('user');
-    expect(res.getBody()).to.have.property('token');
-  });
-  
-  test("User has required fields", function() {
-    const user = res.getBody().user;
-    expect(user).to.have.property('id');
-    expect(user).to.have.property('username');
-    expect(user).to.have.property('email');
-  });
 }

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"skyclust/internal/infrastructure/messaging"
 	"skyclust/pkg/logger"
 )
 
@@ -16,7 +15,7 @@ type VMService struct {
 	vmRepo        domain.VMRepository
 	workspaceRepo domain.WorkspaceRepository
 	cloudProvider CloudProviderService
-	eventBus      messaging.Bus
+	eventService  domain.EventService
 	auditLogRepo  domain.AuditLogRepository
 }
 
@@ -54,14 +53,14 @@ func NewVMService(
 	vmRepo domain.VMRepository,
 	workspaceRepo domain.WorkspaceRepository,
 	cloudProvider CloudProviderService,
-	eventBus messaging.Bus,
+	eventService domain.EventService,
 	auditLogRepo domain.AuditLogRepository,
 ) *VMService {
 	return &VMService{
 		vmRepo:        vmRepo,
 		workspaceRepo: workspaceRepo,
 		cloudProvider: cloudProvider,
-		eventBus:      eventBus,
+		eventService:  eventService,
 		auditLogRepo:  auditLogRepo,
 	}
 }
@@ -133,18 +132,15 @@ func (s *VMService) CreateVM(ctx context.Context, req domain.CreateVMRequest) (*
 	}
 
 	// Publish event
-	event := messaging.Event{
-		Type: "vm.created",
-		Data: map[string]interface{}{
+	if s.eventService != nil {
+		if err := s.eventService.Publish(ctx, domain.EventVMCreated, map[string]interface{}{
 			"vm_id":        vm.ID,
 			"workspace_id": vm.WorkspaceID,
 			"provider":     vm.Provider,
 			"name":         vm.Name,
-		},
-		Timestamp: time.Now().Unix(),
-	}
-	if err := s.eventBus.Publish(ctx, event); err != nil {
-		logger.Error(fmt.Sprintf("Failed to publish VM created event: %v", err))
+		}); err != nil {
+			logger.Error(fmt.Sprintf("Failed to publish VM created event: %v", err))
+		}
 	}
 
 	logger.Info(fmt.Sprintf("VM created successfully: %s (%s) - %s", vm.ID, vm.Name, vm.Provider))
@@ -223,18 +219,15 @@ func (s *VMService) DeleteVM(ctx context.Context, id string) error {
 	}
 
 	// Publish event
-	event := messaging.Event{
-		Type: "vm.deleted",
-		Data: map[string]interface{}{
+	if s.eventService != nil {
+		if err := s.eventService.Publish(ctx, domain.EventVMDeleted, map[string]interface{}{
 			"vm_id":        vm.ID,
 			"workspace_id": vm.WorkspaceID,
 			"provider":     vm.Provider,
 			"name":         vm.Name,
-		},
-		Timestamp: time.Now().Unix(),
-	}
-	if err := s.eventBus.Publish(ctx, event); err != nil {
-		logger.Error(fmt.Sprintf("Failed to publish VM deleted event: %v", err))
+		}); err != nil {
+			logger.Error(fmt.Sprintf("Failed to publish VM deleted event: %v", err))
+		}
 	}
 
 	logger.Info(fmt.Sprintf("VM deleted successfully: %s", vm.ID))

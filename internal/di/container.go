@@ -77,6 +77,7 @@ func (c *Container) Initialize(ctx context.Context, cfg *config.Config) error {
 		JWTExpiry:     cfg.Security.JWTExpiration,
 		EncryptionKey: cfg.Security.EncryptionKey,
 		RedisClient:   redisClient, // Pass Redis client for TokenBlacklist
+		Cache:         c.cache,     // Pass cache for OIDC state storage
 	}
 
 	logger.Info("Initializing service module...")
@@ -177,6 +178,13 @@ func (c *Container) GetAuditLogRepository() domain.AuditLogRepository {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.repositoryModule.GetContainer().AuditLogRepository
+}
+
+// GetOIDCProviderRepository returns the OIDC provider repository
+func (c *Container) GetOIDCProviderRepository() domain.OIDCProviderRepository {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.repositoryModule.GetContainer().OIDCProviderRepository
 }
 
 // GetUserService returns the user service

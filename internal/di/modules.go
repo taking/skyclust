@@ -23,23 +23,28 @@ func NewRepositoryModule(db *gorm.DB, redisClient *redis.Client) *RepositoryModu
 	logger.Info("Initializing repository module...")
 
 	// Create repositories
+	// Note: OIDCProviderRepository needs encryptor, which will be created later in ServiceModule
+	// We'll create it separately after encryptor is available
 	userRepo := postgres.NewUserRepository(db)
 	workspaceRepo := postgres.NewWorkspaceRepository(db)
 	vmRepo := postgres.NewVMRepository(db)
 	credentialRepo := postgres.NewCredentialRepository(db)
 	auditLogRepo := postgres.NewAuditLogRepository(db)
 	notificationRepo := postgres.NewNotificationRepository(db)
+	notificationPreferencesRepo := postgres.NewNotificationPreferencesRepository(db)
 
 	logger.Info("Repository module initialized")
 
 	return &RepositoryModule{
 		repositories: &RepositoryContainer{
-			UserRepository:         userRepo,
-			WorkspaceRepository:    workspaceRepo,
-			VMRepository:           vmRepo,
-			CredentialRepository:   credentialRepo,
-			AuditLogRepository:     auditLogRepo,
-			NotificationRepository: notificationRepo,
+			UserRepository:                    userRepo,
+			WorkspaceRepository:               workspaceRepo,
+			VMRepository:                      vmRepo,
+			CredentialRepository:              credentialRepo,
+			AuditLogRepository:                auditLogRepo,
+			NotificationRepository:            notificationRepo,
+			NotificationPreferencesRepository: notificationPreferencesRepo,
+			OIDCProviderRepository:           nil, // Will be set later after encryptor is available
 		},
 	}
 }
@@ -178,9 +183,20 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 	auditLogService := service.NewAuditLogService(repos.AuditLogRepository)
 	logger.Info("Audit Log service created")
 
+	// Create CacheService for OIDC state storage
+	logger.Info("Creating Cache service...")
+	cacheService := service.NewCacheService(config.Cache)
+	logger.Info("Cache service created")
+
+	// Create OIDCProviderRepository (needs encryptor)
+	logger.Info("Creating OIDC Provider repository...")
+	oidcProviderRepo := postgres.NewOIDCProviderRepository(db, encryptor)
+	repos.OIDCProviderRepository = oidcProviderRepo
+	logger.Info("OIDC Provider repository created")
+
 	// Create OIDCService
 	logger.Info("Creating OIDC service...")
-	oidcService := service.NewOIDCService(repos.UserRepository, repos.AuditLogRepository, authService)
+	oidcService := service.NewOIDCService(repos.UserRepository, repos.AuditLogRepository, authService, cacheService, oidcProviderRepo)
 	logger.Info("OIDC service created")
 
 	// Create WorkspaceService
@@ -192,6 +208,8 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 	logger.Info("Creating Notification service...")
 	notificationService := service.NewNotificationService(
 		logger.DefaultLogger.GetLogger(),
+		repos.NotificationRepository,
+		repos.NotificationPreferencesRepository,
 		repos.AuditLogRepository,
 		repos.UserRepository,
 		repos.WorkspaceRepository,
@@ -288,6 +306,7 @@ type ServiceConfig struct {
 	JWTExpiry     time.Duration
 	EncryptionKey string
 	RedisClient   interface{} // Redis client for TokenBlacklist
+	Cache         cache.Cache // Cache for OIDC state storage
 }
 
 // DomainModule initializes domain service dependencies

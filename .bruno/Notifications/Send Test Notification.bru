@@ -1,0 +1,43 @@
+meta {
+  name: Send Test Notification
+  type: http
+  seq: 36
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/notifications/test
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains test notification", function() {
+    expect(res.getBody()).to.have.property('notification');
+  });
+  
+  test("Notification has required fields", function() {
+    const notification = res.getBody().notification;
+    expect(notification).to.have.property('id');
+    expect(notification).to.have.property('title');
+    expect(notification).to.have.property('message');
+    expect(notification).to.have.property('type');
+    expect(notification).to.have.property('created_at');
+  });
+  
+  test("Notification title is 'Test Notification'", function() {
+    expect(res.getBody().notification.title).to.equal('Test Notification');
+  });
+}
+

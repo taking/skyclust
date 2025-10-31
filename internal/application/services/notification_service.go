@@ -10,26 +10,32 @@ import (
 )
 
 type NotificationService struct {
-	logger        *zap.Logger
-	auditLogRepo  domain.AuditLogRepository
-	userRepo      domain.UserRepository
-	workspaceRepo domain.WorkspaceRepository
-	eventService  domain.EventService
+	logger              *zap.Logger
+	notificationRepo    domain.NotificationRepository
+	preferencesRepo     domain.NotificationPreferencesRepository
+	auditLogRepo        domain.AuditLogRepository
+	userRepo            domain.UserRepository
+	workspaceRepo       domain.WorkspaceRepository
+	eventService        domain.EventService
 }
 
 func NewNotificationService(
 	logger *zap.Logger,
+	notificationRepo domain.NotificationRepository,
+	preferencesRepo domain.NotificationPreferencesRepository,
 	auditLogRepo domain.AuditLogRepository,
 	userRepo domain.UserRepository,
 	workspaceRepo domain.WorkspaceRepository,
 	eventService domain.EventService,
-) *NotificationService {
+) domain.NotificationService {
 	return &NotificationService{
-		logger:        logger,
-		auditLogRepo:  auditLogRepo,
-		userRepo:      userRepo,
-		workspaceRepo: workspaceRepo,
-		eventService:  eventService,
+		logger:           logger,
+		notificationRepo: notificationRepo,
+		preferencesRepo:  preferencesRepo,
+		auditLogRepo:     auditLogRepo,
+		userRepo:         userRepo,
+		workspaceRepo:    workspaceRepo,
+		eventService:     eventService,
 	}
 }
 
@@ -223,143 +229,164 @@ func (s *NotificationService) getMockNotifications(userID string, limit, offset 
 
 // CreateNotification creates a new notification
 func (s *NotificationService) CreateNotification(ctx context.Context, notification *domain.Notification) error {
-	// This is a placeholder implementation
-	// In a real implementation, this would save to database
-	s.logger.Info("Creating notification",
-		zap.String("user_id", notification.UserID),
-		zap.String("title", notification.Title))
+	if err := s.notificationRepo.Create(ctx, notification); err != nil {
+		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to create notification: %v", err), 500)
+	}
+
+	// Publish event if event service is available
+	if s.eventService != nil {
+		_ = s.eventService.Publish(ctx, "notification.created", notification)
+	}
 
 	return nil
 }
 
 // GetNotification gets a notification by ID
 func (s *NotificationService) GetNotification(ctx context.Context, userID, notificationID string) (*domain.Notification, error) {
-	// This is a placeholder implementation
-	s.logger.Info("Getting notification",
-		zap.String("user_id", userID),
-		zap.String("notification_id", notificationID))
-
-	return nil, fmt.Errorf("not implemented")
+	notification, err := s.notificationRepo.GetByID(ctx, userID, notificationID)
+	if err != nil {
+		return nil, domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("notification not found: %s", notificationID), 404)
+	}
+	return notification, nil
 }
 
 // GetNotifications gets notifications for a user
 func (s *NotificationService) GetNotifications(ctx context.Context, userID string, limit, offset int, unreadOnly bool, category, priority string) ([]*domain.Notification, int, error) {
-	// This is a placeholder implementation
-	s.logger.Info("Getting notifications",
-		zap.String("user_id", userID),
-		zap.Int("limit", limit),
-		zap.Int("offset", offset))
-
-	return []*domain.Notification{}, 0, nil
+	notifications, total, err := s.notificationRepo.GetByUserID(ctx, userID, limit, offset, unreadOnly, category, priority)
+	if err != nil {
+		return nil, 0, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to get notifications: %v", err), 500)
+	}
+	return notifications, total, nil
 }
 
 // UpdateNotification updates a notification
 func (s *NotificationService) UpdateNotification(ctx context.Context, notification *domain.Notification) error {
-	// This is a placeholder implementation
-	s.logger.Info("Updating notification",
-		zap.String("user_id", notification.UserID),
-		zap.String("notification_id", notification.ID))
-
+	if err := s.notificationRepo.Update(ctx, notification); err != nil {
+		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to update notification: %v", err), 500)
+	}
 	return nil
 }
 
 // DeleteNotification deletes a notification
 func (s *NotificationService) DeleteNotification(ctx context.Context, userID, notificationID string) error {
-	// This is a placeholder implementation
-	s.logger.Info("Deleting notification",
-		zap.String("user_id", userID),
-		zap.String("notification_id", notificationID))
-
+	if err := s.notificationRepo.Delete(ctx, userID, notificationID); err != nil {
+		return domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("notification not found: %s", notificationID), 404)
+	}
 	return nil
 }
 
 // DeleteNotifications deletes multiple notifications
 func (s *NotificationService) DeleteNotifications(ctx context.Context, userID string, notificationIDs []string) error {
-	// This is a placeholder implementation
-	s.logger.Info("Deleting notifications",
-		zap.String("user_id", userID),
-		zap.Strings("notification_ids", notificationIDs))
-
+	if err := s.notificationRepo.DeleteMultiple(ctx, userID, notificationIDs); err != nil {
+		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to delete notifications: %v", err), 500)
+	}
 	return nil
 }
 
 // MarkAsRead marks a notification as read
 func (s *NotificationService) MarkAsRead(ctx context.Context, userID, notificationID string) error {
-	// This is a placeholder implementation
-	s.logger.Info("Marking notification as read",
-		zap.String("user_id", userID),
-		zap.String("notification_id", notificationID))
-
+	if err := s.notificationRepo.MarkAsRead(ctx, userID, notificationID); err != nil {
+		return domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("notification not found: %s", notificationID), 404)
+	}
 	return nil
 }
 
 // MarkAllAsRead marks all notifications as read for a user
 func (s *NotificationService) MarkAllAsRead(ctx context.Context, userID string) error {
-	// This is a placeholder implementation
-	s.logger.Info("Marking all notifications as read",
-		zap.String("user_id", userID))
-
+	if err := s.notificationRepo.MarkAllAsRead(ctx, userID); err != nil {
+		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to mark all notifications as read: %v", err), 500)
+	}
 	return nil
 }
 
 // GetNotificationPreferences gets notification preferences for a user
 func (s *NotificationService) GetNotificationPreferences(ctx context.Context, userID string) (*domain.NotificationPreferences, error) {
-	// This is a placeholder implementation
-	s.logger.Info("Getting notification preferences",
-		zap.String("user_id", userID))
-
-	return &domain.NotificationPreferences{}, nil
+	preferences, err := s.preferencesRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to get notification preferences: %v", err), 500)
+	}
+	return preferences, nil
 }
 
 // UpdateNotificationPreferences updates notification preferences for a user
 func (s *NotificationService) UpdateNotificationPreferences(ctx context.Context, userID string, preferences *domain.NotificationPreferences) error {
-	// This is a placeholder implementation
-	s.logger.Info("Updating notification preferences",
-		zap.String("user_id", userID))
-
+	// Ensure userID matches
+	preferences.UserID = userID
+	
+	// Use Upsert to create or update
+	if err := s.preferencesRepo.Upsert(ctx, preferences); err != nil {
+		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to update notification preferences: %v", err), 500)
+	}
 	return nil
 }
 
 // GetNotificationStats gets notification statistics for a user
 func (s *NotificationService) GetNotificationStats(ctx context.Context, userID string) (*domain.NotificationStats, error) {
-	// This is a placeholder implementation
-	s.logger.Info("Getting notification stats",
-		zap.String("user_id", userID))
-
-	return &domain.NotificationStats{}, nil
+	stats, err := s.notificationRepo.GetStats(ctx, userID)
+	if err != nil {
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to get notification stats: %v", err), 500)
+	}
+	return stats, nil
 }
 
 // SendNotification sends a notification to a user
 func (s *NotificationService) SendNotification(ctx context.Context, userID string, notification *domain.Notification) error {
-	// This is a placeholder implementation
-	s.logger.Info("Sending notification",
-		zap.String("user_id", userID),
-		zap.String("title", notification.Title))
-
+	// Ensure userID matches
+	notification.UserID = userID
+	
+	// Create notification in database
+	if err := s.notificationRepo.Create(ctx, notification); err != nil {
+		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to send notification: %v", err), 500)
+	}
+	
+	// Publish event if event service is available
+	if s.eventService != nil {
+		_ = s.eventService.Publish(ctx, "notification.created", notification)
+	}
+	
 	return nil
 }
 
 // SendBulkNotification sends a notification to multiple users
 func (s *NotificationService) SendBulkNotification(ctx context.Context, userIDs []string, notification *domain.Notification) error {
-	// This is a placeholder implementation
-	s.logger.Info("Sending bulk notification",
+	// Create notification for each user
+	for _, userID := range userIDs {
+		bulkNotification := *notification // Copy
+		bulkNotification.UserID = userID
+		// Ensure unique ID per user (append userID to notification ID)
+		bulkNotification.ID = fmt.Sprintf("%s-%s", notification.ID, userID)
+
+		if err := s.notificationRepo.Create(ctx, &bulkNotification); err != nil {
+			s.logger.Warn("Failed to send notification to user",
+				zap.String("user_id", userID),
+				zap.Error(err))
+			// Continue with other users instead of failing completely
+			continue
+		}
+
+		// Publish event if event service is available
+		if s.eventService != nil {
+			_ = s.eventService.Publish(ctx, "notification.created", &bulkNotification)
+		}
+	}
+
+	s.logger.Info("Bulk notification sent",
 		zap.Strings("user_ids", userIDs),
-		zap.String("title", notification.Title))
+		zap.String("title", notification.Title),
+		zap.Int("count", len(userIDs)))
 
 	return nil
 }
 
 // CleanupOldNotifications removes old notifications
 func (s *NotificationService) CleanupOldNotifications(ctx context.Context, olderThan time.Duration) error {
-	// This would typically be called by a background job
-	// For now, we'll just log that cleanup was requested
-	s.logger.Info("Cleanup old notifications requested",
-		zap.Duration("older_than", olderThan))
+	// Call repository cleanup method
+	if err := s.notificationRepo.CleanupOld(ctx, olderThan); err != nil {
+		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to cleanup old notifications: %v", err), 500)
+	}
 
-	// In a real implementation, this would:
-	// 1. Query for notifications older than the specified duration
-	// 2. Delete them in batches
-	// 3. Log the cleanup results
+	s.logger.Info("Cleanup old notifications completed",
+		zap.Duration("older_than", olderThan))
 
 	return nil
 }

@@ -81,10 +81,6 @@ func (s *SystemMonitoringService) GetHealthStatus() gin.H {
 		"services":     services,
 		"dependencies": dependencies,
 		"metrics":      metrics,
-		"providers": gin.H{
-			"type": "gRPC",
-			"note": "Use /api/v1/providers endpoint for details",
-		},
 		"config": gin.H{
 			"environment": s.getEnvironment(),
 			"debug_mode":  s.isDebugMode(),
@@ -122,7 +118,6 @@ func (s *SystemMonitoringService) getServiceStatus() gin.H {
 	services := gin.H{
 		"database": s.checkDatabaseStatus(),
 		"redis":    s.checkRedisStatus(),
-		"plugins":  s.checkPluginStatus(),
 		"auth":     s.checkAuthServiceStatus(),
 	}
 	return services
@@ -144,34 +139,61 @@ func (s *SystemMonitoringService) isAllServicesHealthy(services gin.H) bool {
 
 // checkDatabaseStatus checks database connectivity
 func (s *SystemMonitoringService) checkDatabaseStatus() gin.H {
+	// Measure response time for consistency
+	start := time.Now()
+
 	// TODO: Implement DB health check
 	// if s.container.DB == nil {
-	// 	return gin.H{"healthy": false, "error": "database not initialized"}
+	// 	responseTime := time.Since(start)
+	// 	return gin.H{
+	// 		"healthy":          false,
+	// 		"status":           "not_initialized",
+	// 		"response_time_ms": float64(responseTime.Nanoseconds()) / 1e6,
+	// 		"error":            "database not initialized",
+	// 	}
 	// }
 
 	// TODO: Implement DB connection check
 	// sqlDB, err := s.container.DB.DB()
 	// if err != nil {
-	// 	return gin.H{"healthy": false, "error": err.Error()}
+	// 	responseTime := time.Since(start)
+	// 	return gin.H{
+	// 		"healthy":          false,
+	// 		"status":           "connection_failed",
+	// 		"response_time_ms": float64(responseTime.Nanoseconds()) / 1e6,
+	// 		"error":            err.Error(),
+	// 	}
 	// }
 
 	// TODO: Implement DB ping check
 	// if err := sqlDB.Ping(); err != nil {
-	// 	return gin.H{"healthy": false, "error": err.Error()}
+	// 	responseTime := time.Since(start)
+	// 	return gin.H{
+	// 		"healthy":          false,
+	// 		"status":           "ping_failed",
+	// 		"response_time_ms": float64(responseTime.Nanoseconds()) / 1e6,
+	// 		"error":            err.Error(),
+	// 	}
 	// }
 
-	// TODO: Implement DB health response
-	// return gin.H{"healthy": true, "status": "connected"}
-	return gin.H{"healthy": true, "status": "connected"}
+	// For now, return status with minimal response time (TODO: implement actual DB check)
+	responseTime := time.Since(start)
+	return gin.H{
+		"healthy":          true,
+		"status":           "connected",
+		"response_time_ms": float64(responseTime.Nanoseconds()) / 1e6,
+	}
 }
 
 // checkRedisStatus checks Redis connectivity
 func (s *SystemMonitoringService) checkRedisStatus() gin.H {
 	if s.redisClient == nil {
+		// Even when not configured, return consistent structure with 0 response time
 		return gin.H{
-			"healthy": false,
-			"status":  "not_configured",
-			"note":    "Redis client not available",
+			"healthy":          false,
+			"status":           "not_configured",
+			"response_time_ms": 0.0,
+			"note":             "Redis client not available",
 		}
 	}
 
@@ -186,9 +208,10 @@ func (s *SystemMonitoringService) checkRedisStatus() gin.H {
 	if err != nil {
 		s.logger.Warn("Redis health check failed", zap.Error(err))
 		return gin.H{
-			"healthy": false,
-			"status":  "disconnected",
-			"error":   err.Error(),
+			"healthy":          false,
+			"status":           "disconnected",
+			"response_time_ms": float64(responseTime.Nanoseconds()) / 1e6,
+			"error":            err.Error(),
 		}
 	}
 
@@ -211,11 +234,19 @@ func (s *SystemMonitoringService) checkPluginStatus() gin.H {
 
 // checkAuthServiceStatus checks authentication service status
 func (s *SystemMonitoringService) checkAuthServiceStatus() gin.H {
+	// Measure response time for consistency
+	start := time.Now()
+
 	// TODO: Implement auth service check
-	// if s.container.AuthService == nil {
-	// 	return gin.H{"healthy": false, "error": "auth service not initialized"}
-	// }
-	return gin.H{"healthy": true, "status": "available"}
+	// Simple check - auth service availability is verified by successful API calls
+	// For now, assume available if system is running
+
+	responseTime := time.Since(start)
+	return gin.H{
+		"healthy":          true,
+		"status":           "available",
+		"response_time_ms": float64(responseTime.Nanoseconds()) / 1e6,
+	}
 }
 
 // isDebugMode returns whether debug mode is enabled
@@ -242,7 +273,6 @@ func (s *SystemMonitoringService) getDependenciesStatus() gin.H {
 	return gin.H{
 		"postgres": s.checkPostgresDependency(),
 		"redis":    s.checkRedisDependency(),
-		"plugins":  s.checkPluginDependencies(),
 	}
 }
 
@@ -484,41 +514,60 @@ func (s *SystemMonitoringService) getAlertThresholds() gin.H {
 
 // checkPostgresDependency checks PostgreSQL connection
 func (s *SystemMonitoringService) checkPostgresDependency() gin.H {
+	// Measure response time for consistency
+	start := time.Now()
+
 	// TODO: Implement DB health check
 	// if s.container.DB == nil {
-	// 	return gin.H{"healthy": false, "error": "database not initialized"}
+	// 	responseTime := time.Since(start)
+	// 	return gin.H{
+	// 		"healthy":          false,
+	// 		"status":           "not_initialized",
+	// 		"response_time_ms": float64(responseTime.Nanoseconds()) / 1e6,
+	// 		"error":            "database not initialized",
+	// 	}
 	// }
 
-	// TODO: Implement timing
-	// start := time.Now()
 	// TODO: Implement DB connection check
 	// sqlDB, err := s.container.DB.DB()
 	// if err != nil {
-	// 	return gin.H{"healthy": false, "error": err.Error()}
+	// 	responseTime := time.Since(start)
+	// 	return gin.H{
+	// 		"healthy":          false,
+	// 		"status":           "connection_failed",
+	// 		"response_time_ms": float64(responseTime.Nanoseconds()) / 1e6,
+	// 		"error":            err.Error(),
+	// 	}
 	// }
 
 	// TODO: Implement DB ping check
 	// if err := sqlDB.Ping(); err != nil {
-	// 	return gin.H{"healthy": false, "error": err.Error()}
+	// 	responseTime := time.Since(start)
+	// 	return gin.H{
+	// 		"healthy":          false,
+	// 		"status":           "ping_failed",
+	// 		"response_time_ms": float64(responseTime.Nanoseconds()) / 1e6,
+	// 		"error":            err.Error(),
+	// 	}
 	// }
 
-	// TODO: Implement response time calculation
-	// responseTime := time.Since(start)
-	responseTime := time.Since(time.Now())
+	// For now, return status with minimal response time (TODO: implement actual DB check)
+	responseTime := time.Since(start)
 	return gin.H{
 		"healthy":          true,
 		"status":           "connected",
-		"response_time_ms": float64(responseTime.Nanoseconds()) / 1000000,
+		"response_time_ms": float64(responseTime.Nanoseconds()) / 1e6,
 	}
 }
 
 // checkRedisDependency checks Redis connection
 func (s *SystemMonitoringService) checkRedisDependency() gin.H {
 	if s.redisClient == nil {
+		// Even when not configured, return consistent structure with 0 response time
 		return gin.H{
 			"healthy":          false,
 			"status":           "not_configured",
-			"response_time_ms": 0,
+			"response_time_ms": 0.0,
 			"note":             "Redis client not available",
 		}
 	}

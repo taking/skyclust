@@ -48,25 +48,19 @@ func (h *Handler) CreateCluster(c *gin.Context) {
 // createClusterHandler is the core business logic for creating a cluster
 func (h *Handler) createClusterHandler(req dto.CreateClusterRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		req = h.extractValidatedRequest(c)
+		var req dto.CreateClusterRequest
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "create_cluster")
+			return
+		}
 		userID := h.extractUserID(c)
 
 		h.logClusterCreationAttempt(c, userID, req)
 
-		credentialID, err := uuid.Parse(req.CredentialID)
+		// Get and validate credential from request body
+		credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, h.provider)
 		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "create_cluster")
-			return
-		}
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "create_cluster")
-			return
-		}
-
-		if credential.Provider != h.provider {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Credential provider does not match the requested provider", 400), "create_cluster")
+			h.HandleError(c, err, "create_cluster")
 			return
 		}
 
@@ -94,22 +88,17 @@ func (h *Handler) ListClusters(c *gin.Context) {
 // listClustersHandler is the core business logic for listing clusters
 func (h *Handler) listClustersHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
+		// Get and validate credential using BaseHandler helper (with provider validation)
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, h.provider)
+		if err != nil {
+			h.HandleError(c, err, "list_clusters")
+			return
+		}
+
 		userID := h.extractUserID(c)
-		credentialID := h.parseCredentialID(c)
 		region := c.Query("region")
 
-		h.logClusterListAttempt(c, userID, credentialID, region)
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "list_clusters")
-			return
-		}
-
-		if credential.Provider != h.provider {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Credential provider does not match the requested provider", 400), "list_clusters")
-			return
-		}
+		h.logClusterListAttempt(c, userID, credential.ID, region)
 
 		clusters, err := h.k8sService.ListEKSClusters(c.Request.Context(), credential, region)
 		if err != nil {
@@ -135,22 +124,22 @@ func (h *Handler) GetCluster(c *gin.Context) {
 // getClusterHandler is the core business logic for getting a cluster
 func (h *Handler) getClusterHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
+		// Get and validate credential using BaseHandler helper (with provider validation)
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, h.provider)
+		if err != nil {
+			h.HandleError(c, err, "get_cluster")
+			return
+		}
+
 		userID := h.extractUserID(c)
 		clusterName := h.parseClusterName(c)
-		credentialID := h.parseCredentialID(c)
 		region := h.parseRegion(c)
 
-		if clusterName == "" || credentialID == uuid.Nil || region == "" {
+		if clusterName == "" || region == "" {
 			return
 		}
 
-		h.logClusterGetAttempt(c, userID, clusterName, credentialID, region)
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "get_cluster")
-			return
-		}
+		h.logClusterGetAttempt(c, userID, clusterName, credential.ID, region)
 
 		cluster, err := h.k8sService.GetEKSCluster(c.Request.Context(), credential, clusterName, region)
 		if err != nil {
@@ -176,25 +165,24 @@ func (h *Handler) DeleteCluster(c *gin.Context) {
 // deleteClusterHandler is the core business logic for deleting a cluster
 func (h *Handler) deleteClusterHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
+		// Get and validate credential using BaseHandler helper (with provider validation)
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, h.provider)
+		if err != nil {
+			h.HandleError(c, err, "delete_cluster")
+			return
+		}
+
 		userID := h.extractUserID(c)
 		clusterName := h.parseClusterName(c)
-		credentialID := h.parseCredentialID(c)
 		region := h.parseRegion(c)
 
-		if clusterName == "" || credentialID == uuid.Nil || region == "" {
+		if clusterName == "" || region == "" {
 			return
 		}
 
-		h.logClusterDeletionAttempt(c, userID, clusterName, credentialID, region)
+		h.logClusterDeletionAttempt(c, userID, clusterName, credential.ID, region)
 
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "delete_cluster")
-			return
-		}
-
-		err = h.k8sService.DeleteEKSCluster(c.Request.Context(), credential, clusterName, region)
-		if err != nil {
+		if err := h.k8sService.DeleteEKSCluster(c.Request.Context(), credential, clusterName, region); err != nil {
 			h.HandleError(c, err, "delete_cluster")
 			return
 		}
@@ -217,22 +205,22 @@ func (h *Handler) GetKubeconfig(c *gin.Context) {
 // getKubeconfigHandler is the core business logic for getting kubeconfig
 func (h *Handler) getKubeconfigHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
+		// Get and validate credential using BaseHandler helper (with provider validation)
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, h.provider)
+		if err != nil {
+			h.HandleError(c, err, "get_kubeconfig")
+			return
+		}
+
 		userID := h.extractUserID(c)
 		clusterName := h.parseClusterName(c)
-		credentialID := h.parseCredentialID(c)
 		region := h.parseRegion(c)
 
-		if clusterName == "" || credentialID == uuid.Nil || region == "" {
+		if clusterName == "" || region == "" {
 			return
 		}
 
-		h.logKubeconfigGetAttempt(c, userID, clusterName, credentialID, region)
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "get_kubeconfig")
-			return
-		}
+		h.logKubeconfigGetAttempt(c, userID, clusterName, credential.ID, region)
 
 		kubeconfig, err := h.k8sService.GetEKSKubeconfig(c.Request.Context(), credential, clusterName, region)
 		if err != nil {
@@ -241,7 +229,7 @@ func (h *Handler) getKubeconfigHandler() handlers.HandlerFunc {
 		}
 
 		h.logKubeconfigGetSuccess(c, userID, clusterName)
-		
+
 		// Return as downloadable file
 		c.Header("Content-Type", "application/x-yaml")
 		c.Header("Content-Disposition", "attachment; filename=kubeconfig-"+clusterName+".yaml")
@@ -264,7 +252,12 @@ func (h *Handler) CreateNodePool(c *gin.Context) {
 // createNodePoolHandler is the core business logic for creating a node pool
 func (h *Handler) createNodePoolHandler(req dto.CreateNodePoolRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		req = h.extractValidatedNodePoolRequest(c)
+		var req dto.CreateNodePoolRequest
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "create_node_pool")
+			return
+		}
+
 		userID := h.extractUserID(c)
 		clusterName := h.parseClusterName(c)
 
@@ -276,15 +269,10 @@ func (h *Handler) createNodePoolHandler(req dto.CreateNodePoolRequest) handlers.
 
 		h.logNodePoolCreationAttempt(c, userID, clusterName, req)
 
-		credentialID, err := uuid.Parse(req.CredentialID)
+		// Get and validate credential from request body
+		credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, h.provider)
 		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "create_node_pool")
-			return
-		}
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "create_node_pool")
+			h.HandleError(c, err, "create_node_pool")
 			return
 		}
 
@@ -314,7 +302,12 @@ func (h *Handler) CreateNodeGroup(c *gin.Context) {
 // createNodeGroupHandler is the core business logic for creating a node group
 func (h *Handler) createNodeGroupHandler(req dto.CreateNodeGroupRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		req = h.extractValidatedNodeGroupRequest(c)
+		var req dto.CreateNodeGroupRequest
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "create_node_group")
+			return
+		}
+
 		userID := h.extractUserID(c)
 		clusterName := h.parseClusterName(c)
 
@@ -326,20 +319,10 @@ func (h *Handler) createNodeGroupHandler(req dto.CreateNodeGroupRequest) handler
 
 		h.logNodeGroupCreationAttempt(c, userID, clusterName, req)
 
-		credentialID, err := uuid.Parse(req.CredentialID)
+		// Get and validate credential from request body
+		credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, h.provider)
 		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "create_node_group")
-			return
-		}
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "create_node_group")
-			return
-		}
-
-		if credential.Provider != h.provider {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Credential provider does not match the requested provider", 400), "create_node_group")
+			h.HandleError(c, err, "create_node_group")
 			return
 		}
 
@@ -367,30 +350,25 @@ func (h *Handler) ListNodeGroups(c *gin.Context) {
 // listNodeGroupsHandler is the core business logic for listing node groups
 func (h *Handler) listNodeGroupsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
+		// Get and validate credential using BaseHandler helper (with provider validation)
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, h.provider)
+		if err != nil {
+			h.HandleError(c, err, "list_node_groups")
+			return
+		}
+
 		userID := h.extractUserID(c)
 		clusterName := h.parseClusterName(c)
-		credentialID := h.parseCredentialID(c)
 		region := h.parseRegion(c)
 
-		if clusterName == "" || credentialID == uuid.Nil || region == "" {
+		if clusterName == "" || region == "" {
 			return
 		}
 
-		h.logNodeGroupsListAttempt(c, userID, clusterName, credentialID, region)
-
-		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "list_node_groups")
-			return
-		}
-
-		if credential.Provider != h.provider {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Credential provider does not match the requested provider", 400), "list_node_groups")
-			return
-		}
+		h.logNodeGroupsListAttempt(c, userID, clusterName, credential.ID, region)
 
 		req := dto.ListNodeGroupsRequest{
-			CredentialID: credentialID.String(),
+			CredentialID: credential.ID.String(),
 			ClusterName:  clusterName,
 			Region:       region,
 		}
@@ -408,10 +386,10 @@ func (h *Handler) listNodeGroupsHandler() handlers.HandlerFunc {
 
 // GetNodeGroup handles getting node group details
 func (h *Handler) GetNodeGroup(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
+	// Get and validate credential using BaseHandler helper (with provider validation)
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, h.provider)
 	if err != nil {
-		h.HandleError(c, err, "create_cluster")
+		h.HandleError(c, err, "get_node_group")
 		return
 	}
 
@@ -423,31 +401,15 @@ func (h *Handler) GetNodeGroup(c *gin.Context) {
 		return
 	}
 
-	// Get credential ID and region from query
-	credentialIDStr := c.Query("credential_id")
 	region := c.Query("region")
-
-	if credentialIDStr == "" || region == "" {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "credential_id and region are required", 400), "get_cluster")
-		return
-	}
-
-	credentialID, err := uuid.Parse(credentialIDStr)
-	if err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "create_cluster")
-		return
-	}
-
-	// Verify credential belongs to user
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-	if err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "create_cluster")
+	if region == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region is required", 400), "get_node_group")
 		return
 	}
 
 	// Get node group
 	req := dto.GetNodeGroupRequest{
-		CredentialID:  credentialIDStr,
+		CredentialID:  credential.ID.String(),
 		ClusterName:   clusterName,
 		NodeGroupName: nodeGroupName,
 		Region:        region,
@@ -455,7 +417,6 @@ func (h *Handler) GetNodeGroup(c *gin.Context) {
 
 	nodeGroup, err := h.k8sService.GetNodeGroup(c.Request.Context(), credential, req)
 	if err != nil {
-		h.LogError(c, err, "Failed to get node group")
 		h.HandleError(c, err, "get_node_group")
 		return
 	}
@@ -465,18 +426,11 @@ func (h *Handler) GetNodeGroup(c *gin.Context) {
 
 // DeleteNodeGroup handles deleting a node group
 func (h *Handler) DeleteNodeGroup(c *gin.Context) {
-	// Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		h.HandleError(c, err, "create_cluster")
-		return
-	}
-
 	clusterName := c.Param("name")
 	nodeGroupName := c.Param("nodegroup")
 
 	if clusterName == "" || nodeGroupName == "" {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "cluster name and node group name are required", 400), "get_node_group")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "cluster name and node group name are required", 400), "delete_node_group")
 		return
 	}
 
@@ -487,33 +441,26 @@ func (h *Handler) DeleteNodeGroup(c *gin.Context) {
 	}
 
 	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "delete_node_group")
 		return
 	}
 
-	credentialID, err := uuid.Parse(req.CredentialID)
+	// Get and validate credential from request body
+	credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, h.provider)
 	if err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "create_cluster")
-		return
-	}
-
-	// Verify credential belongs to user
-	credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), userID, credentialID)
-	if err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404), "create_cluster")
+		h.HandleError(c, err, "delete_node_group")
 		return
 	}
 
 	// Delete node group
 	deleteReq := dto.DeleteNodeGroupRequest{
-		CredentialID:  req.CredentialID,
+		CredentialID:  credential.ID.String(),
 		ClusterName:   clusterName,
 		NodeGroupName: nodeGroupName,
 		Region:        req.Region,
 	}
 
-	err = h.k8sService.DeleteNodeGroup(c.Request.Context(), credential, deleteReq)
-	if err != nil {
-		h.LogError(c, err, "Failed to delete node group")
+	if err := h.k8sService.DeleteNodeGroup(c.Request.Context(), credential, deleteReq); err != nil {
 		h.HandleError(c, err, "delete_node_group")
 		return
 	}
@@ -524,36 +471,27 @@ func (h *Handler) DeleteNodeGroup(c *gin.Context) {
 // Helper methods for better readability
 
 func (h *Handler) extractUserID(c *gin.Context) uuid.UUID {
-	userID, exists := c.Get("user_id")
+	userIDValue, exists := c.Get("user_id")
 	if !exists {
 		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "User not authenticated", 401), "extract_user_id")
 		return uuid.Nil
 	}
-	return userID.(uuid.UUID)
-}
-
-func (h *Handler) extractValidatedRequest(c *gin.Context) dto.CreateClusterRequest {
-	var req dto.CreateClusterRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_request")
-		return dto.CreateClusterRequest{}
-	}
-	return req
-}
-
-func (h *Handler) parseCredentialID(c *gin.Context) uuid.UUID {
-	credentialIDStr := c.Query("credential_id")
-	if credentialIDStr == "" {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "credential_id is required", 400), "parse_credential_id")
+	
+	// Convert to uuid.UUID (handle both string and uuid.UUID types)
+	switch v := userIDValue.(type) {
+	case uuid.UUID:
+		return v
+	case string:
+		parsedUserID, err := uuid.Parse(v)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID format", 401), "extract_user_id")
+			return uuid.Nil
+		}
+		return parsedUserID
+	default:
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID type", 401), "extract_user_id")
 		return uuid.Nil
 	}
-
-	credentialID, err := uuid.Parse(credentialIDStr)
-	if err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID", 400), "parse_credential_id")
-		return uuid.Nil
-	}
-	return credentialID
 }
 
 func (h *Handler) parseClusterName(c *gin.Context) string {
@@ -659,7 +597,7 @@ func (h *Handler) logKubeconfigGetSuccess(c *gin.Context, userID uuid.UUID, clus
 
 func (h *Handler) logNodePoolCreationAttempt(c *gin.Context, userID uuid.UUID, clusterName string, req dto.CreateNodePoolRequest) {
 	h.LogBusinessEvent(c, "node_pool_creation_attempted", userID.String(), clusterName, map[string]interface{}{
-		"operation":       "create_node_pool",
+		"operation":      "create_node_pool",
 		"provider":       h.provider,
 		"node_pool_name": req.NodePoolName,
 		"credential_id":  req.CredentialID,
@@ -675,7 +613,7 @@ func (h *Handler) logNodePoolCreationSuccess(c *gin.Context, userID uuid.UUID, c
 
 func (h *Handler) logNodeGroupCreationAttempt(c *gin.Context, userID uuid.UUID, clusterName string, req dto.CreateNodeGroupRequest) {
 	h.LogBusinessEvent(c, "node_group_creation_attempted", userID.String(), clusterName, map[string]interface{}{
-		"operation":        "create_node_group",
+		"operation":       "create_node_group",
 		"provider":        h.provider,
 		"node_group_name": req.NodeGroupName,
 		"credential_id":   req.CredentialID,
@@ -706,20 +644,3 @@ func (h *Handler) logNodeGroupsListSuccess(c *gin.Context, userID uuid.UUID, clu
 	})
 }
 
-func (h *Handler) extractValidatedNodePoolRequest(c *gin.Context) dto.CreateNodePoolRequest {
-	var req dto.CreateNodePoolRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_node_pool_request")
-		return dto.CreateNodePoolRequest{}
-	}
-	return req
-}
-
-func (h *Handler) extractValidatedNodeGroupRequest(c *gin.Context) dto.CreateNodeGroupRequest {
-	var req dto.CreateNodeGroupRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid request body", 400), "extract_validated_node_group_request")
-		return dto.CreateNodeGroupRequest{}
-	}
-	return req
-}

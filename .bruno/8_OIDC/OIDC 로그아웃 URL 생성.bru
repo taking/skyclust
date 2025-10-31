@@ -1,0 +1,94 @@
+meta {
+  name: OIDC 로그아웃 URL 생성
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/auth/oidc/{{provider}}/logout/url
+  body: none
+  auth: none
+}
+
+params:query {
+  provider: google
+  post_logout_redirect_uri: http://localhost:3000
+}
+
+headers {
+  Content-Type: application/json
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains logout URL", function() {
+    const body = res.getBody();
+    expect(body.data).to.have.property('logout_url');
+  });
+  
+  test("Logout URL is valid", function() {
+    const logoutUrl = res.getBody().data.logout_url;
+    expect(logoutUrl).to.be.a('string');
+    expect(logoutUrl.length).to.be.greaterThan(0);
+    expect(logoutUrl).to.include('http');
+  });
+}
+
+docs {
+  # OIDC 로그아웃 URL 생성
+  
+  ## 기능
+  지정된 OIDC 프로바이더의 로그아웃 URL을 생성합니다. 이 URL로 리디렉션하면 사용자가 프로바이더에서 로그아웃됩니다.
+  
+  ## 파라미터
+  
+  ### provider (경로)
+  - OIDC 프로바이더 이름
+  - **값**: `google`, `github`, `azure`, `microsoft`
+  
+  ### post_logout_redirect_uri (쿼리, 선택)
+  - 로그아웃 후 리디렉션 URL
+  - **설명**: 프로바이더 로그아웃 후 이동할 URL입니다.
+  - **기본값**: 없음 (프로바이더 기본 리디렉션 URL 사용)
+  
+  ## 반환 데이터
+  
+  ### logout_url (string)
+  - OAuth 로그아웃 URL
+  - **설명**: 사용자를 이 URL로 리디렉션하면 프로바이더에서 로그아웃됩니다.
+  
+  ## 사용 흐름
+  
+  1. 이 엔드포인트를 호출하여 `logout_url`을 받습니다.
+  2. 서버 측에서 세션을 종료합니다 (토큰 무효화 등).
+  3. 사용자를 `logout_url`로 리디렉션합니다.
+  4. 사용자가 프로바이더에서 로그아웃하면 지정한 URL로 리디렉션됩니다.
+  
+  ## 사용 예시
+  
+  ### Google 로그아웃 URL 생성
+  ```
+  GET /api/v1/auth/oidc/google/logout/url?post_logout_redirect_uri=http://localhost:3000
+  ```
+  
+  ### 응답 예시
+  ```json
+  {
+    "success": true,
+    "data": {
+      "logout_url": "https://accounts.google.com/logout?continue=http://localhost:3000"
+    },
+    "message": "Logout URL generated successfully"
+  }
+  ```
+  
+  ## 주의사항
+  
+  - 프로바이더에 따라 로그아웃 URL 형식이 다를 수 있습니다.
+  - 일부 프로바이더는 로그아웃 URL을 지원하지 않을 수 있습니다.
+  - 서버 측 세션 종료는 별도로 처리해야 합니다.
+}
+

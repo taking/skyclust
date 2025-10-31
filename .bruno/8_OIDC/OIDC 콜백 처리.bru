@@ -1,0 +1,141 @@
+meta {
+  name: OIDC 콜백 처리
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/auth/oidc/{{provider}}/callback?code={{code}}&state={{state}}
+  body: none
+  auth: none
+}
+
+params:query {
+  provider: google
+  code: 
+  state: 
+}
+
+headers {
+  Content-Type: application/json
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains user and token", function() {
+    const body = res.getBody();
+    expect(body.data).to.have.property('user');
+    expect(body.data).to.have.property('token');
+  });
+  
+  test("User has required fields", function() {
+    const user = res.getBody().data.user;
+    expect(user).to.have.property('id');
+    expect(user).to.have.property('email');
+    expect(user).to.have.property('username');
+  });
+  
+  test("Token is not empty", function() {
+    const token = res.getBody().data.token;
+    expect(token).to.be.a('string');
+    expect(token.length).to.be.greaterThan(0);
+  });
+  
+  test("User has OIDC provider info", function() {
+    const user = res.getBody().data.user;
+    // User should have OIDC provider information
+    if (user.oidc_provider) {
+      expect(['google', 'github', 'azure', 'microsoft']).to.include(user.oidc_provider);
+    }
+  });
+}
+
+docs {
+  # OIDC 콜백 처리
+  
+  ## 기능
+  OIDC 프로바이더에서 리디렉션된 콜백을 처리합니다. 인증 코드를 토큰으로 교환하고, 사용자 정보를 가져와서 JWT 토큰을 발급합니다.
+  
+  ## 파라미터
+  
+  ### provider (경로)
+  - OIDC 프로바이더 이름
+  - **값**: `google`, `github`, `azure`, `microsoft`
+  
+  ### code (쿼리, 필수)
+  - 인증 코드
+  - **설명**: OIDC 프로바이더에서 받은 인증 코드입니다.
+  - **TTL**: 보통 1분 이내
+  
+  ### state (쿼리, 필수)
+  - State 파라미터
+  - **설명**: 인증 URL 생성 시 받은 `state` 값입니다. CSRF 보호를 위해 검증됩니다.
+  
+  ## 반환 데이터
+  
+  ### user (object)
+  - 인증된 사용자 정보
+  - **필드**:
+    - `id` (string): 사용자 ID (UUID)
+    - `username` (string): 사용자명
+    - `email` (string): 이메일
+    - `oidc_provider` (string, 선택): OIDC 프로바이더 이름
+    - `oidc_subject` (string, 선택): OIDC subject ID
+    - `is_active` (boolean): 활성화 여부
+  
+  ### token (string)
+  - JWT 인증 토큰
+  - **설명**: 이후 API 요청에 사용할 인증 토큰입니다.
+  - **사용**: `Authorization: Bearer {token}` 헤더로 사용
+  
+  ## 사용 흐름
+  
+  1. 사용자가 인증 URL로 리디렉션됩니다.
+  2. 사용자가 프로바이더에서 로그인하면 이 콜백 URL로 리디렉션됩니다.
+  3. 콜백 URL에는 `code`와 `state` 파라미터가 포함됩니다.
+  4. 서버는 `state`를 검증하고 `code`를 토큰으로 교환합니다.
+  5. 사용자 정보를 가져와서 사용자가 없으면 생성합니다.
+  6. JWT 토큰을 발급하고 반환합니다.
+  
+  ## 사용 예시
+  
+  ```
+  GET /api/v1/auth/oidc/google/callback?code=4/0Aean...&state=abc123...
+  ```
+  
+  ### 응답 예시
+  ```json
+  {
+    "success": true,
+    "data": {
+      "user": {
+        "id": "123e4567-e89b-12d3-a456-426614174000",
+        "username": "john.doe",
+        "email": "john.doe@example.com",
+        "oidc_provider": "google",
+        "oidc_subject": "123456789",
+        "is_active": true
+      },
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    },
+    "message": "Authentication successful"
+  }
+  ```
+  
+  ## 주의사항
+  
+  - `state` 파라미터는 반드시 검증됩니다. 일치하지 않으면 에러가 발생합니다.
+  - `code`는 한 번만 사용 가능하며, 만료되면 다시 인증해야 합니다.
+  - 기존 사용자가 없으면 자동으로 생성됩니다.
+  - 사용자 생성 시 OIDC 프로바이더 정보가 저장됩니다.
+  
+  ## 에러 처리
+  
+  - **400 Bad Request**: `code` 또는 `state`가 누락된 경우
+  - **400 Bad Request**: `state`가 유효하지 않거나 만료된 경우
+  - **500 Internal Error**: 토큰 교환 또는 사용자 정보 가져오기 실패
+}
+

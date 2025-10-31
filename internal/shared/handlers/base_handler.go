@@ -54,10 +54,30 @@ func (h *BaseHandler) GetBearerTokenFromHeader(c *gin.Context) (string, error) {
 // GetCredentialFromRequest extracts and validates credential from request
 // This is a common pattern across all cloud provider handlers
 func (h *BaseHandler) GetCredentialFromRequest(c *gin.Context, credentialService domain.CredentialService, expectedProvider string) (*domain.Credential, error) {
-	// 1. Get user ID from token
-	userID, err := h.GetUserIDFromToken(c)
-	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid token", 401)
+	// 1. Get user ID from context (set by AuthMiddleware or WithAuthentication decorator)
+	userIDValue, exists := c.Get("user_id")
+	if !exists {
+		// Fallback: try to get from token if not in context
+		userID, err := h.GetUserIDFromToken(c)
+		if err != nil {
+			return nil, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid token", 401)
+		}
+		userIDValue = userID
+	}
+
+	// Convert to uuid.UUID
+	var userID uuid.UUID
+	switch v := userIDValue.(type) {
+	case uuid.UUID:
+		userID = v
+	case string:
+		var err error
+		userID, err = uuid.Parse(v)
+		if err != nil {
+			return nil, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID format", 401)
+		}
+	default:
+		return nil, domain.NewDomainError(domain.ErrCodeUnauthorized, "User ID not found", 401)
 	}
 
 	// 2. Get credential ID from query parameter
@@ -90,28 +110,85 @@ func (h *BaseHandler) GetCredentialFromRequest(c *gin.Context, credentialService
 	return credential, nil
 }
 
+// GetCredentialFromBody extracts and validates credential from request body (credential_id in body)
+// This is used when credential_id is part of the request body instead of query parameter
+func (h *BaseHandler) GetCredentialFromBody(c *gin.Context, credentialService domain.CredentialService, credentialIDStr string, expectedProvider string) (*domain.Credential, error) {
+	// 1. Get user ID from context (set by AuthMiddleware or WithAuthentication decorator)
+	userIDValue, exists := c.Get("user_id")
+	if !exists {
+		// Fallback: try to get from token if not in context
+		userID, err := h.GetUserIDFromToken(c)
+		if err != nil {
+			return nil, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid token", 401)
+		}
+		userIDValue = userID
+	}
+
+	// Convert to uuid.UUID
+	var userID uuid.UUID
+	switch v := userIDValue.(type) {
+	case uuid.UUID:
+		userID = v
+	case string:
+		var err error
+		userID, err = uuid.Parse(v)
+		if err != nil {
+			return nil, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID format", 401)
+		}
+	default:
+		return nil, domain.NewDomainError(domain.ErrCodeUnauthorized, "User ID not found", 401)
+	}
+
+	// 2. Validate credential ID is not empty
+	if credentialIDStr == "" {
+		return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "credential_id is required", 400)
+	}
+
+	// 3. Parse credential UUID
+	credentialUUID, err := uuid.Parse(credentialIDStr)
+	if err != nil {
+		return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "invalid credential ID format", 400)
+	}
+
+	// 4. Get credential from service
+	credential, err := credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 5. Verify credential matches expected provider
+	if expectedProvider != "" && credential.Provider != expectedProvider {
+		return nil, domain.NewDomainError(
+			domain.ErrCodeBadRequest,
+			"Credential provider does not match "+expectedProvider,
+			400,
+		)
+	}
+
+	return credential, nil
+}
+
 // ValidateRequest validates the request body against the provided struct with enhanced error handling
 func (h *BaseHandler) ValidateRequest(c *gin.Context, req interface{}) error {
 	if err := c.ShouldBindJSON(req); err != nil {
-		// Enhanced validation with validation rules
-		validationErrors := make(map[string]string)
-		validationErrors["binding"] = err.Error()
-
-		// Additional validation using validation rules
-		if reqStruct, ok := req.(interface{ Validate() error }); ok {
-			if validateErr := reqStruct.Validate(); validateErr != nil {
-				validationErrors["validation"] = validateErr.Error()
-			}
-		}
-
 		// Log validation error with context
 		h.LogWarn(c, "Request validation failed",
-			zap.Any("errors", validationErrors),
+			zap.Error(err),
 			zap.String("content_type", c.GetHeader("Content-Type")))
 
 		// Return domain error instead of direct response
 		return domain.NewDomainError(domain.ErrCodeValidationFailed, "Request validation failed", 400)
 	}
+
+	// Additional validation using validation rules (only if binding succeeded)
+	if reqStruct, ok := req.(interface{ Validate() error }); ok {
+		if validateErr := reqStruct.Validate(); validateErr != nil {
+			h.LogWarn(c, "Request custom validation failed",
+				zap.Error(validateErr))
+			return domain.NewDomainError(domain.ErrCodeValidationFailed, validateErr.Error(), 400)
+		}
+	}
+
 	return nil
 }
 

@@ -1,0 +1,130 @@
+meta {
+  name: OIDC 로그인
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/auth/oidc/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "provider": "google",
+    "code": "",
+    "state": ""
+  }
+}
+
+headers {
+  Content-Type: application/json
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains user and token", function() {
+    const body = res.getBody();
+    expect(body.data).to.have.property('user');
+    expect(body.data).to.have.property('token');
+  });
+  
+  test("User has required fields", function() {
+    const user = res.getBody().data.user;
+    expect(user).to.have.property('id');
+    expect(user).to.have.property('email');
+    expect(user).to.have.property('username');
+  });
+  
+  test("Token is not empty", function() {
+    const token = res.getBody().data.token;
+    expect(token).to.be.a('string');
+    expect(token.length).to.be.greaterThan(0);
+  });
+  
+  test("Login successful message", function() {
+    expect(res.getBody().message).to.include('successful');
+  });
+}
+
+docs {
+  # OIDC 로그인
+  
+  ## 기능
+  OIDC 프로바이더에서 받은 인증 코드를 사용하여 로그인합니다. 콜백 URL 대신 POST 요청으로 로그인을 처리할 때 사용합니다.
+  
+  ## 요청 본문
+  
+  ### provider (필수)
+  - OIDC 프로바이더 이름
+  - **값**: `google`, `github`, `azure`, `microsoft`
+  
+  ### code (필수)
+  - 인증 코드
+  - **설명**: OIDC 프로바이더에서 받은 인증 코드입니다.
+  
+  ### state (필수)
+  - State 파라미터
+  - **설명**: 인증 URL 생성 시 받은 `state` 값입니다. CSRF 보호를 위해 검증됩니다.
+  
+  ## 반환 데이터
+  
+  ### user (object)
+  - 인증된 사용자 정보
+  
+  ### token (string)
+  - JWT 인증 토큰
+  
+  ## 사용 흐름
+  
+  1. 클라이언트에서 인증 URL을 받습니다 (`GET /auth/oidc/{provider}`).
+  2. 사용자를 인증 URL로 리디렉션합니다.
+  3. 사용자가 로그인하면 콜백 URL로 리디렉션됩니다.
+  4. 콜백에서 받은 `code`와 `state`를 이 엔드포인트로 전송합니다.
+  5. 서버는 인증을 처리하고 JWT 토큰을 반환합니다.
+  
+  ## 사용 예시
+  
+  ```json
+  POST /api/v1/auth/oidc/login
+  {
+    "provider": "google",
+    "code": "4/0Aean...",
+    "state": "abc123..."
+  }
+  ```
+  
+  ### 응답 예시
+  ```json
+  {
+    "success": true,
+    "data": {
+      "user": {
+        "id": "123e4567-e89b-12d3-a456-426614174000",
+        "username": "john.doe",
+        "email": "john.doe@example.com",
+        "oidc_provider": "google",
+        "is_active": true
+      },
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    },
+    "message": "Login successful"
+  }
+  ```
+  
+  ## 콜백 URL과의 차이
+  
+  - **콜백 URL** (`GET /auth/oidc/{provider}/callback`): 브라우저 리디렉션에 적합
+  - **로그인 엔드포인트** (`POST /auth/oidc/login`): 클라이언트 애플리케이션에서 직접 호출
+  
+  ## 주의사항
+  
+  - `state` 파라미터는 반드시 검증됩니다.
+  - `code`는 한 번만 사용 가능합니다.
+  - 기존 사용자가 없으면 자동으로 생성됩니다.
+}
+

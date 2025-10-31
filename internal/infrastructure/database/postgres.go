@@ -3,8 +3,10 @@ package database
 import (
 	"fmt"
 	"skyclust/internal/domain"
+	pkglogger "skyclust/pkg/logger"
 	"time"
 
+	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	gormLogger "gorm.io/gorm/logger"
@@ -93,7 +95,7 @@ func NewPostgresService(config PostgresConfig) (*PostgresService, error) {
 	// Enable UUID extension
 	if err := db.Exec("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"").Error; err != nil {
 		// Log warning but don't fail startup - some databases might not support this
-		fmt.Printf("Warning: Failed to enable uuid-ossp extension: %v\n", err)
+		pkglogger.DefaultLogger.GetLogger().Warn("Failed to enable uuid-ossp extension", zap.Error(err))
 	}
 
 	// Auto-migrate the schema
@@ -105,6 +107,7 @@ func NewPostgresService(config PostgresConfig) (*PostgresService, error) {
 		&domain.WorkspaceUser{},
 		&domain.UserRole{},
 		&domain.RolePermission{},
+		&domain.OIDCProvider{},
 	); err != nil {
 		return nil, fmt.Errorf("failed to auto-migrate schema: %w", err)
 	}
@@ -112,16 +115,16 @@ func NewPostgresService(config PostgresConfig) (*PostgresService, error) {
 	// Create performance indexes
 	if err := service.optimizer.CreateIndexes(); err != nil {
 		// Log warning but don't fail startup
-		fmt.Printf("Warning: Failed to create some indexes: %v\n", err)
+		pkglogger.DefaultLogger.GetLogger().Warn("Failed to create some indexes", zap.Error(err))
 	}
 
 	// Optimize queries
 	if err := service.optimizer.OptimizeQueries(); err != nil {
 		// Log warning but don't fail startup
-		fmt.Printf("Warning: Failed to optimize queries: %v\n", err)
+		pkglogger.DefaultLogger.GetLogger().Warn("Failed to optimize queries", zap.Error(err))
 	}
 
-	fmt.Println("Successfully connected to PostgreSQL database")
+	pkglogger.DefaultLogger.GetLogger().Info("Successfully connected to PostgreSQL database")
 	return service, nil
 }
 

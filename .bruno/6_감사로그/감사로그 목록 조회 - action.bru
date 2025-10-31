@@ -1,0 +1,106 @@
+meta {
+  name: 감사로그 목록 조회 (action)
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/admin/audit?action=user_login&limit=50&offset=0
+  body: none
+  auth: bearer
+}
+
+params:query {
+  action: user_login
+  limit: 50
+  offset: 0
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+script:post-response {
+  bru.setEnvVar("auditLogId", res.body.data.logs[0].id);
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains logs array and pagination", function() {
+    expect(res.getBody()).to.have.property('logs');
+    expect(res.getBody().logs).to.be.an('array');
+    expect(res.getBody()).to.have.property('pagination');
+  });
+  
+  test("Pagination has required fields", function() {
+    const pagination = res.getBody().pagination;
+    expect(pagination).to.have.property('total');
+    expect(pagination).to.have.property('limit');
+    expect(pagination).to.have.property('offset');
+  });
+  
+  test("Logs have required fields", function() {
+    const logs = res.getBody().logs;
+    if (logs.length > 0) {
+      expect(logs[0]).to.have.property('id');
+      expect(logs[0]).to.have.property('user_id');
+      expect(logs[0]).to.have.property('action');
+      expect(logs[0]).to.have.property('resource');
+      expect(logs[0]).to.have.property('created_at');
+    }
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # 감사로그 목록 조회
+  
+  ## 필터 파라미터 (최소 1개 필수)
+  
+  ### 단일 필터
+  - `action`: 액션 타입으로 필터링 (예: `user_login`, `user_logout`, `credential_create`)
+  - `user_id`: 사용자 UUID로 필터링
+  - `resource`: 리소스로 필터링
+  
+  ### 날짜 범위 필터
+  - `start_time`: 시작 시간 (RFC3339 형식, 예: `2025-10-01T00:00:00Z`)
+  - `end_time`: 종료 시간 (RFC3339 형식, 예: `2025-10-31T23:59:59Z`)
+  - **주의**: `start_time`과 `end_time`은 함께 제공되어야 합니다.
+  
+  ### 페이징 파라미터
+  - `limit`: 페이지당 항목 수 (기본값: 50)
+  - `offset`: 오프셋 (기본값: 0)
+  
+  ## 사용 예시
+  
+  ### 액션으로 필터링
+  ```
+  GET /api/v1/admin/audit?action=user_login&limit=50&offset=0
+  ```
+  
+  ### 사용자 ID로 필터링
+  ```
+  GET /api/v1/admin/audit?user_id=83973f6b-5d90-4e4e-9cf6-09e33f685a32&limit=50
+  ```
+  
+  ### 날짜 범위로 필터링
+  ```
+  GET /api/v1/admin/audit?start_time=2025-10-01T00:00:00Z&end_time=2025-10-31T23:59:59Z
+  ```
+  
+  ### 액션 + 날짜 범위 조합
+  ```
+  GET /api/v1/admin/audit?action=user_login&start_time=2025-10-01T00:00:00Z&end_time=2025-10-31T23:59:59Z
+  ```
+}

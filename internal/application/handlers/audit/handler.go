@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"fmt"
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
 	"strconv"
@@ -40,6 +41,8 @@ func (h *Handler) GetAuditLogs(c *gin.Context) {
 	userID := c.Query("user_id")
 	action := c.Query("action")
 	resource := c.Query("resource")
+	startTimeStr := c.Query("start_time")
+	endTimeStr := c.Query("end_time")
 
 	limit, err := strconv.Atoi(limitStr)
 	if err != nil || limit < 1 {
@@ -68,11 +71,49 @@ func (h *Handler) GetAuditLogs(c *gin.Context) {
 		}
 	}
 
+	var startTime *time.Time
+	if startTimeStr != "" {
+		if parsed, err := time.Parse(time.RFC3339, startTimeStr); err == nil {
+			startTime = &parsed
+		} else {
+			h.LogWarn(c, "Invalid start_time format, expected RFC3339",
+				zap.String("start_time", startTimeStr),
+				zap.Error(err))
+		}
+	}
+
+	var endTime *time.Time
+	if endTimeStr != "" {
+		if parsed, err := time.Parse(time.RFC3339, endTimeStr); err == nil {
+			endTime = &parsed
+		} else {
+			h.LogWarn(c, "Invalid end_time format, expected RFC3339",
+				zap.String("end_time", endTimeStr),
+				zap.Error(err))
+		}
+	}
+
+	// Validate that at least one filter is provided
+	if userIDUUID == nil && action == "" && resource == "" && startTime == nil && endTime == nil {
+		h.LogWarn(c, "No filters provided for audit log query")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "at least one filter is required. Provide one of: user_id, action, resource, or start_time/end_time", 400), "get_audit_logs")
+		return
+	}
+
+	// Validate date range: if one date is provided, both should be provided
+	if (startTime != nil && endTime == nil) || (startTime == nil && endTime != nil) {
+		h.LogWarn(c, "Both start_time and end_time must be provided together")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "both start_time and end_time must be provided together", 400), "get_audit_logs")
+		return
+	}
+
 	filters := domain.AuditLogFilters{
-		Limit:    limit,
-		UserID:   userIDUUID,
-		Action:   action,
-		Resource: resource,
+		Limit:     limit,
+		UserID:    userIDUUID,
+		Action:    action,
+		Resource:  resource,
+		StartTime: startTime,
+		EndTime:   endTime,
 	}
 
 	// Log business event
@@ -182,13 +223,49 @@ func (h *Handler) GetAuditLogSummary(c *gin.Context) {
 	h.LogInfo(c, "Getting audit log summary",
 		zap.String("operation", "get_audit_summary"))
 
+	// Parse date range parameters (optional)
+	startTimeStr := c.Query("start_time")
+	endTimeStr := c.Query("end_time")
+
+	// Default to last 30 days if no date range provided
+	startTime := time.Now().AddDate(0, 0, -30)
+	endTime := time.Now()
+
+	if startTimeStr != "" {
+		if parsed, err := time.Parse(time.RFC3339, startTimeStr); err == nil {
+			startTime = parsed
+		} else {
+			h.LogWarn(c, "Invalid start_time format, expected RFC3339, using default (30 days ago)",
+				zap.String("start_time", startTimeStr),
+				zap.Error(err))
+		}
+	}
+
+	if endTimeStr != "" {
+		if parsed, err := time.Parse(time.RFC3339, endTimeStr); err == nil {
+			endTime = parsed
+		} else {
+			h.LogWarn(c, "Invalid end_time format, expected RFC3339, using default (now)",
+				zap.String("end_time", endTimeStr),
+				zap.Error(err))
+		}
+	}
+
+	// Validate date range: start_time should be before end_time
+	if startTime.After(endTime) {
+		h.LogWarn(c, "start_time is after end_time, swapping values")
+		startTime, endTime = endTime, startTime
+	}
+
 	// Log business event
 	h.LogBusinessEvent(c, "audit_summary_requested", "", "", map[string]interface{}{
-		"operation": "get_audit_summary",
-		"period":    "30_days",
+		"operation":   "get_audit_summary",
+		"start_time":  startTime,
+		"end_time":    endTime,
+		"period_days": int(endTime.Sub(startTime).Hours() / 24),
 	})
 
-	summary, err := h.auditLogService.GetAuditLogSummary(time.Now().AddDate(0, 0, -30), time.Now())
+	summary, err := h.auditLogService.GetAuditLogSummary(startTime, endTime)
 	if err != nil {
 		h.LogError(c, err, "Failed to get audit log summary")
 		h.HandleError(c, err, "get_audit_summary")
@@ -196,7 +273,11 @@ func (h *Handler) GetAuditLogSummary(c *gin.Context) {
 	}
 
 	// Log successful operation
-	h.LogInfo(c, "Audit log summary retrieved successfully")
+	h.LogInfo(c, "Audit log summary retrieved successfully",
+		zap.Int64("total_events", summary.TotalEvents),
+		zap.Int64("unique_users", summary.UniqueUsers),
+		zap.Int64("security_events", summary.SecurityEvents),
+		zap.Int64("error_events", summary.ErrorEvents))
 
 	h.OK(c, summary, "Audit log summary retrieved successfully")
 }
@@ -210,17 +291,111 @@ func (h *Handler) ExportAuditLogs(c *gin.Context) {
 	h.LogInfo(c, "Exporting audit logs",
 		zap.String("operation", "export_audit_logs"))
 
+	// Parse format (default: json)
+	format := c.DefaultQuery("format", "json")
+	if format != "json" && format != "csv" && format != "xlsx" {
+		h.BadRequest(c, "Invalid format. Supported formats: json, csv")
+		return
+	}
+
+	// Parse filters
+	filters := h.parseExportFilters(c)
+
+	// Validate that at least one filter is provided (optional validation, but helpful)
+	if filters.UserID == nil && filters.Action == "" && filters.Resource == "" && filters.StartTime == nil && filters.EndTime == nil {
+		// Allow export without filters, but log it
+		h.LogInfo(c, "Exporting audit logs without filters",
+			zap.String("operation", "export_audit_logs"),
+			zap.String("format", format))
+	}
+
 	// Log business event
 	h.LogBusinessEvent(c, "audit_logs_export_requested", "", "", map[string]interface{}{
 		"operation": "export_audit_logs",
+		"format":    format,
+		"filters":   filters,
 	})
 
-	// TODO: Implement export functionality
-	h.LogWarn(c, "Export functionality not implemented yet")
+	// Export audit logs
+	data, err := h.auditLogService.ExportAuditLogs(filters, format)
+	if err != nil {
+		h.HandleError(c, err, "export_audit_logs")
+		return
+	}
 
-	h.OK(c, gin.H{
-		"message": "Export functionality not implemented yet",
-	}, "Export initiated")
+	// Set response headers for file download
+	c.Header("Content-Type", h.getContentType(format))
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=audit_logs_%s.%s", time.Now().Format("20060102_150405"), format))
+
+	// Return file data
+	c.Data(200, h.getContentType(format), data)
+}
+
+// parseExportFilters parses export filters from query parameters
+func (h *Handler) parseExportFilters(c *gin.Context) domain.AuditLogFilters {
+	filters := domain.AuditLogFilters{}
+
+	// Parse user ID
+	if userIDStr := c.Query("user_id"); userIDStr != "" {
+		if userID, err := uuid.Parse(userIDStr); err == nil {
+			filters.UserID = &userID
+		}
+	}
+
+	// Parse action
+	filters.Action = c.Query("action")
+
+	// Parse resource
+	filters.Resource = c.Query("resource")
+
+	// Parse date range
+	if startStr := c.Query("start_time"); startStr != "" {
+		if startTime, err := time.Parse(time.RFC3339, startStr); err == nil {
+			filters.StartTime = &startTime
+		} else {
+			// Log parsing error but don't fail - will be validated in service
+			filters.StartTime = nil
+		}
+	}
+	if endStr := c.Query("end_time"); endStr != "" {
+		if endTime, err := time.Parse(time.RFC3339, endStr); err == nil {
+			filters.EndTime = &endTime
+		} else {
+			// Log parsing error but don't fail - will be validated in service
+			filters.EndTime = nil
+		}
+	}
+
+	// Parse pagination
+	limitStr := c.DefaultQuery("limit", "1000")
+	if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 {
+		filters.Limit = limit
+	} else {
+		filters.Limit = 1000 // Default limit for export
+	}
+
+	pageStr := c.DefaultQuery("page", "1")
+	if page, err := strconv.Atoi(pageStr); err == nil && page > 0 {
+		filters.Page = page
+	} else {
+		filters.Page = 1
+	}
+
+	return filters
+}
+
+// getContentType returns the Content-Type header for the given format
+func (h *Handler) getContentType(format string) string {
+	switch format {
+	case "csv":
+		return "text/csv"
+	case "json":
+		return "application/json"
+	case "xlsx":
+		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	default:
+		return "application/octet-stream"
+	}
 }
 
 // CleanupAuditLogs cleans up old audit logs
@@ -232,15 +407,30 @@ func (h *Handler) CleanupAuditLogs(c *gin.Context) {
 	h.LogInfo(c, "Cleaning up audit logs",
 		zap.String("operation", "cleanup_audit_logs"))
 
+	// Parse retention days from query parameter or body
+	retentionDaysStr := c.DefaultQuery("retention_days", "90")
+	retentionDays, err := strconv.Atoi(retentionDaysStr)
+	if err != nil || retentionDays <= 0 {
+		h.BadRequest(c, "Invalid retention_days parameter. Must be a positive integer greater than 0.")
+		return
+	}
+
 	// Log business event
 	h.LogBusinessEvent(c, "audit_logs_cleanup_requested", "", "", map[string]interface{}{
-		"operation": "cleanup_audit_logs",
+		"operation":     "cleanup_audit_logs",
+		"retention_days": retentionDays,
 	})
 
-	// TODO: Implement cleanup functionality
-	h.LogWarn(c, "Cleanup functionality not implemented yet")
+	// Cleanup audit logs
+	deletedCount, err := h.auditLogService.CleanupAuditLogs(retentionDays)
+	if err != nil {
+		h.HandleError(c, err, "cleanup_audit_logs")
+		return
+	}
 
 	h.OK(c, gin.H{
-		"message": "Cleanup functionality not implemented yet",
-	}, "Cleanup initiated")
+		"message":        "Audit logs cleaned up successfully",
+		"retention_days": retentionDays,
+		"deleted_count":  deletedCount,
+	}, "Cleanup completed")
 }

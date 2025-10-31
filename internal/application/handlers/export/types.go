@@ -4,9 +4,12 @@ import "time"
 
 // ExportRequest represents an export request
 type ExportRequest struct {
-	Type    string                 `json:"type" validate:"required,oneof=users workspaces credentials audit"`
-	Format  string                 `json:"format" validate:"required,oneof=csv json xlsx"`
-	Filters map[string]interface{} `json:"filters,omitempty"`
+	Type        string                 `json:"type" validate:"required,oneof=vms workspaces credentials audit_logs"`
+	Format      string                 `json:"format" validate:"required,oneof=csv json xlsx"`
+	Filters     map[string]interface{} `json:"filters,omitempty"`
+	WorkspaceID string                 `json:"workspace_id,omitempty"`
+	DateFrom    *time.Time             `json:"date_from,omitempty"`
+	DateTo      *time.Time             `json:"date_to,omitempty"`
 }
 
 // ExportResponse represents an export response

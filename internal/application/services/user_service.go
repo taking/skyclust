@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"skyclust/internal/domain"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -276,15 +277,52 @@ func (s *UserService) GetUsersWithFilters(filters domain.UserFilters) ([]*domain
 }
 
 // UpdateUserDirect updates a user (admin method)
+// Note: Password should already be hashed before calling this method
 func (s *UserService) UpdateUserDirect(user *domain.User) (*domain.User, error) {
+	// Check if username is being changed and if it conflicts with existing user
+	if user.Username != "" {
+		existingUser, err := s.userRepo.GetByUsername(user.Username)
+		if err == nil && existingUser != nil && existingUser.ID != user.ID {
+			return nil, domain.NewDomainError(domain.ErrCodeAlreadyExists, "username already exists", 409)
+		}
+	}
+
+	// Check if email is being changed and if it conflicts with existing user
+	if user.Email != "" {
+		existingUser, err := s.userRepo.GetByEmail(user.Email)
+		if err == nil && existingUser != nil && existingUser.ID != user.ID {
+			return nil, domain.NewDomainError(domain.ErrCodeAlreadyExists, "email already exists", 409)
+		}
+	}
+
 	user.UpdatedAt = time.Now()
 
 	if err := s.userRepo.Update(user); err != nil {
-		return nil, fmt.Errorf("failed to update user: %w", err)
+		logger.Error(fmt.Sprintf("Failed to update user: %v - user: %+v", err, user))
+
+		// Check for unique constraint violation
+		errStr := err.Error()
+		if strings.Contains(errStr, "duplicate key") || strings.Contains(errStr, "unique constraint") ||
+			strings.Contains(errStr, "username") || strings.Contains(errStr, "email") {
+			if strings.Contains(errStr, "username") {
+				return nil, domain.NewDomainError(domain.ErrCodeAlreadyExists, "username already exists", 409)
+			}
+			if strings.Contains(errStr, "email") {
+				return nil, domain.NewDomainError(domain.ErrCodeAlreadyExists, "email already exists", 409)
+			}
+			return nil, domain.NewDomainError(domain.ErrCodeAlreadyExists, "user information already exists", 409)
+		}
+
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to update user: %v", err), 500)
 	}
 
 	logger.Info(fmt.Sprintf("User updated successfully: %s", user.ID))
 	return user, nil
+}
+
+// HashPassword hashes a password using the service's hasher
+func (s *UserService) HashPassword(password string) (string, error) {
+	return s.hasher.HashPassword(password)
 }
 
 // DeleteUserByID deletes a user (admin method)

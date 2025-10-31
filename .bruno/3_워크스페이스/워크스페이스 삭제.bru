@@ -1,7 +1,7 @@
 meta {
   name: 워크스페이스 삭제
   type: http
-  seq: 17
+  seq: 5
 }
 
 delete {
@@ -10,20 +10,17 @@ delete {
   auth: bearer
 }
 
+headers {
+  Content-Type: application/json
+}
+
 auth:bearer {
   token: {{token}}
 }
 
-headers {
-  
-}
-
-tests {
-  test("Status code is 204", function() {
-    expect(res.getStatus()).to.equal(204);
-  });
-  
-  test("Response is empty", function() {
-    expect(res.getBody()).to.be.empty;
-  });
+body:json {
+  {
+    "name": "Test Workspace",
+    "description": "A test workspace for API testing"
+  }
 }

@@ -3,11 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"skyclust/internal/domain"
 	"time"
 
 	"github.com/google/uuid"
-	"skyclust/internal/infrastructure/messaging"
 	"skyclust/pkg/logger"
 )
 
@@ -15,16 +15,16 @@ import (
 type WorkspaceService struct {
 	workspaceRepo domain.WorkspaceRepository
 	userRepo      domain.UserRepository
-	eventBus      messaging.Bus
+	eventService  domain.EventService
 	auditLogRepo  domain.AuditLogRepository
 }
 
 // NewWorkspaceService creates a new WorkspaceService
-func NewWorkspaceService(workspaceRepo domain.WorkspaceRepository, userRepo domain.UserRepository, eventBus messaging.Bus, auditLogRepo domain.AuditLogRepository) *WorkspaceService {
+func NewWorkspaceService(workspaceRepo domain.WorkspaceRepository, userRepo domain.UserRepository, eventService domain.EventService, auditLogRepo domain.AuditLogRepository) *WorkspaceService {
 	return &WorkspaceService{
 		workspaceRepo: workspaceRepo,
 		userRepo:      userRepo,
-		eventBus:      eventBus,
+		eventService:  eventService,
 		auditLogRepo:  auditLogRepo,
 	}
 }
@@ -33,21 +33,32 @@ func NewWorkspaceService(workspaceRepo domain.WorkspaceRepository, userRepo doma
 func (s *WorkspaceService) CreateWorkspace(ctx context.Context, req domain.CreateWorkspaceRequest) (*domain.Workspace, error) {
 	// Validate request
 	if err := req.Validate(); err != nil {
-		return nil, fmt.Errorf("validation failed: %w", err)
+		return nil, err
 	}
 
 	// Check if owner exists
 	ownerID, err := uuid.Parse(req.OwnerID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid owner ID: %w", err)
+		return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "invalid owner ID format", 400)
 	}
 
 	owner, err := s.userRepo.GetByID(ownerID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get owner: %w", err)
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, "failed to get owner", 500)
 	}
 	if owner == nil {
 		return nil, domain.ErrUserNotFound
+	}
+
+	// Check if workspace name already exists for this owner
+	existingWorkspaces, err := s.workspaceRepo.GetByOwnerID(ctx, req.OwnerID)
+	if err != nil {
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, "failed to check existing workspaces", 500)
+	}
+	for _, ws := range existingWorkspaces {
+		if ws.Name == req.Name {
+			return nil, domain.NewDomainError(domain.ErrCodeAlreadyExists, "workspace name already exists", 409)
+		}
 	}
 
 	// Create workspace
@@ -62,7 +73,15 @@ func (s *WorkspaceService) CreateWorkspace(ctx context.Context, req domain.Creat
 	}
 
 	if err := s.workspaceRepo.Create(ctx, workspace); err != nil {
-		return nil, fmt.Errorf("failed to create workspace: %w", err)
+		logger.Error(fmt.Sprintf("Failed to create workspace: %v - workspace: %+v", err, workspace))
+		
+		// Check for unique constraint violation (name already exists)
+		errStr := err.Error()
+		if strings.Contains(errStr, "duplicate key") || strings.Contains(errStr, "unique constraint") || strings.Contains(errStr, "idx_workspaces_name") {
+			return nil, domain.NewDomainError(domain.ErrCodeAlreadyExists, "workspace name already exists", 409)
+		}
+		
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to create workspace: %v", err), 500)
 	}
 
 	logger.Info(fmt.Sprintf("Workspace created successfully: %s (%s) - owner: %s", workspace.ID, workspace.Name, workspace.OwnerID))
@@ -85,19 +104,33 @@ func (s *WorkspaceService) GetWorkspace(ctx context.Context, id string) (*domain
 func (s *WorkspaceService) UpdateWorkspace(ctx context.Context, id string, req domain.UpdateWorkspaceRequest) (*domain.Workspace, error) {
 	// Validate request
 	if err := req.Validate(); err != nil {
-		return nil, fmt.Errorf("validation failed: %w", err)
+		return nil, err
 	}
 
 	// Get existing workspace
 	workspace, err := s.workspaceRepo.GetByID(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get workspace: %w", err)
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, "failed to get workspace", 500)
 	}
 	if workspace == nil {
 		return nil, domain.ErrWorkspaceNotFound
 	}
 
-	// Update fields
+	// Check if name is being changed and if it conflicts with existing workspace
+	if req.Name != nil && *req.Name != workspace.Name {
+		// Check if new name already exists for this owner (excluding current workspace)
+		existingWorkspaces, err := s.workspaceRepo.GetByOwnerID(ctx, workspace.OwnerID)
+		if err != nil {
+			return nil, domain.NewDomainError(domain.ErrCodeInternalError, "failed to check existing workspaces", 500)
+		}
+		for _, ws := range existingWorkspaces {
+			if ws.ID != id && ws.Name == *req.Name {
+				return nil, domain.NewDomainError(domain.ErrCodeAlreadyExists, "workspace name already exists", 409)
+			}
+		}
+	}
+
+	// Update fields (owner_id remains unchanged)
 	if req.Name != nil {
 		workspace.Name = *req.Name
 	}
@@ -111,7 +144,15 @@ func (s *WorkspaceService) UpdateWorkspace(ctx context.Context, id string, req d
 	workspace.UpdatedAt = time.Now()
 
 	if err := s.workspaceRepo.Update(ctx, workspace); err != nil {
-		return nil, fmt.Errorf("failed to update workspace: %w", err)
+		logger.Error(fmt.Sprintf("Failed to update workspace: %v - workspace: %+v", err, workspace))
+		
+		// Check for unique constraint violation (name already exists)
+		errStr := err.Error()
+		if strings.Contains(errStr, "duplicate key") || strings.Contains(errStr, "unique constraint") || strings.Contains(errStr, "idx_workspaces_name") {
+			return nil, domain.NewDomainError(domain.ErrCodeAlreadyExists, "workspace name already exists", 409)
+		}
+		
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to update workspace: %v", err), 500)
 	}
 
 	logger.Info(fmt.Sprintf("Workspace updated successfully: %s", workspace.ID))

@@ -11,18 +11,28 @@ import (
 	"net/http"
 	"net/url"
 	"skyclust/internal/domain"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
 
+// OIDCState represents stored OIDC state information
+type OIDCState struct {
+	Provider    string    `json:"provider"`
+	Timestamp   time.Time `json:"timestamp"`
+	UserSession string    `json:"user_session,omitempty"`
+}
+
 // OIDCService handles OIDC authentication
 type OIDCService struct {
-	userRepo     domain.UserRepository
-	auditLogRepo domain.AuditLogRepository
-	authService  domain.AuthService
-	configs      map[string]*OIDCConfig
-	httpClient   *http.Client
+	userRepo         domain.UserRepository
+	auditLogRepo     domain.AuditLogRepository
+	authService      domain.AuthService
+	cacheService     domain.CacheService
+	oidcProviderRepo domain.OIDCProviderRepository
+	configs          map[string]*OIDCConfig
+	httpClient       *http.Client
 }
 
 // OIDCConfig holds OIDC provider configuration
@@ -48,13 +58,17 @@ func NewOIDCService(
 	userRepo domain.UserRepository,
 	auditLogRepo domain.AuditLogRepository,
 	authService domain.AuthService,
+	cacheService domain.CacheService,
+	oidcProviderRepo domain.OIDCProviderRepository,
 ) domain.OIDCService {
 	service := &OIDCService{
-		userRepo:     userRepo,
-		auditLogRepo: auditLogRepo,
-		authService:  authService,
-		configs:      make(map[string]*OIDCConfig),
-		httpClient:   &http.Client{Timeout: 30 * time.Second},
+		userRepo:         userRepo,
+		auditLogRepo:     auditLogRepo,
+		authService:      authService,
+		cacheService:     cacheService,
+		oidcProviderRepo: oidcProviderRepo,
+		configs:          make(map[string]*OIDCConfig),
+		httpClient:       &http.Client{Timeout: 30 * time.Second},
 	}
 
 	// Initialize OIDC configurations
@@ -65,21 +79,91 @@ func NewOIDCService(
 
 // GetAuthURL returns the OAuth authorization URL for the specified provider
 func (s *OIDCService) GetAuthURL(ctx context.Context, provider string, state string) (string, error) {
-	config, exists := s.configs[provider]
-	if !exists {
-		return "", domain.NewDomainError(domain.ErrCodeValidationFailed, "unsupported OIDC provider", 400)
+	var config *OIDCConfig
+
+	// Try to parse provider as UUID (user-registered provider)
+	if providerID, err := uuid.Parse(provider); err == nil {
+		// User-registered provider
+		userProvider, err := s.oidcProviderRepo.GetByID(providerID)
+		if err != nil {
+			return "", domain.NewDomainError(domain.ErrCodeInternalError, "failed to get user provider", 500)
+		}
+		if userProvider == nil {
+			return "", domain.NewDomainError(domain.ErrCodeNotFound, "OIDC provider not found", 404)
+		}
+		if !userProvider.Enabled {
+			return "", domain.NewDomainError(domain.ErrCodeValidationFailed, "OIDC provider is disabled", 400)
+		}
+
+		// Create OAuth2 config from user provider
+		config, err = s.createConfigFromProvider(userProvider)
+		if err != nil {
+			return "", domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to create config: %v", err), 500)
+		}
+		provider = userProvider.ProviderType // Use provider type for state storage
+	} else {
+		// System provider
+		var exists bool
+		config, exists = s.configs[provider]
+		if !exists {
+			return "", domain.NewDomainError(domain.ErrCodeValidationFailed, "unsupported OIDC provider", 400)
+		}
 	}
 
-	// Add state parameter
+	// Store state in cache for validation (10 minutes TTL)
+	stateData := OIDCState{
+		Provider:  provider,
+		Timestamp: time.Now(),
+	}
+	stateKey := fmt.Sprintf("oidc:state:%s", state)
+	if err := s.cacheService.Set(ctx, stateKey, stateData, 10*time.Minute); err != nil {
+		return "", domain.NewDomainError(domain.ErrCodeInternalError, "failed to store state", 500)
+	}
+
+	// Generate auth URL
 	authURL := config.Config.AuthCodeURL(state, oauth2.AccessTypeOnline)
 	return authURL, nil
 }
 
 // ExchangeCode exchanges authorization code for access token and user info
 func (s *OIDCService) ExchangeCode(ctx context.Context, provider, code, state string) (*domain.User, string, error) {
-	config, exists := s.configs[provider]
-	if !exists {
-		return nil, "", domain.NewDomainError(domain.ErrCodeValidationFailed, "unsupported OIDC provider", 400)
+	var config *OIDCConfig
+	var userProvider *domain.OIDCProvider
+	var providerType string
+
+	// Try to parse provider as UUID (user-registered provider)
+	if providerID, err := uuid.Parse(provider); err == nil {
+		// User-registered provider
+		userProvider, err = s.oidcProviderRepo.GetByID(providerID)
+		if err != nil {
+			return nil, "", domain.NewDomainError(domain.ErrCodeInternalError, "failed to get user provider", 500)
+		}
+		if userProvider == nil {
+			return nil, "", domain.NewDomainError(domain.ErrCodeNotFound, "OIDC provider not found", 404)
+		}
+		if !userProvider.Enabled {
+			return nil, "", domain.NewDomainError(domain.ErrCodeValidationFailed, "OIDC provider is disabled", 400)
+		}
+
+		// Create OAuth2 config from user provider
+		config, err = s.createConfigFromProvider(userProvider)
+		if err != nil {
+			return nil, "", domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to create config: %v", err), 500)
+		}
+		providerType = userProvider.ProviderType
+	} else {
+		// System provider
+		var exists bool
+		config, exists = s.configs[provider]
+		if !exists {
+			return nil, "", domain.NewDomainError(domain.ErrCodeValidationFailed, "unsupported OIDC provider", 400)
+		}
+		providerType = provider
+	}
+
+	// Validate state parameter
+	if err := s.validateState(ctx, state, providerType); err != nil {
+		return nil, "", err
 	}
 
 	// Exchange code for token
@@ -89,13 +173,13 @@ func (s *OIDCService) ExchangeCode(ctx context.Context, provider, code, state st
 	}
 
 	// Get user info from provider
-	userInfo, err := s.getUserInfo(provider, token)
+	userInfo, err := s.getUserInfoFromProvider(providerType, token, userProvider)
 	if err != nil {
 		return nil, "", domain.NewDomainError(domain.ErrCodeInternalError, "failed to get user info", 500)
 	}
 
 	// Check if user exists
-	user, err := s.userRepo.GetByOIDC(provider, userInfo.ID)
+	user, err := s.userRepo.GetByOIDC(providerType, userInfo.ID)
 	if err != nil {
 		return nil, "", domain.NewDomainError(domain.ErrCodeInternalError, "failed to check existing user", 500)
 	}
@@ -105,7 +189,7 @@ func (s *OIDCService) ExchangeCode(ctx context.Context, provider, code, state st
 		user = &domain.User{
 			Username:     userInfo.Username,
 			Email:        userInfo.Email,
-			OIDCProvider: provider,
+			OIDCProvider: providerType,
 			OIDCSubject:  userInfo.ID,
 			Active:       true,
 		}
@@ -120,9 +204,11 @@ func (s *OIDCService) ExchangeCode(ctx context.Context, provider, code, state st
 			Action:   domain.ActionUserRegister,
 			Resource: "POST /api/v1/auth/oidc/login",
 			Details: map[string]interface{}{
-				"provider": provider,
-				"username": user.Username,
-				"email":    user.Email,
+				"provider":      providerType,
+				"provider_id":   provider,
+				"user_provider": userProvider != nil,
+				"username":      user.Username,
+				"email":         user.Email,
 			},
 		})
 	}
@@ -139,30 +225,95 @@ func (s *OIDCService) ExchangeCode(ctx context.Context, provider, code, state st
 		Action:   domain.ActionOIDCLogin,
 		Resource: "POST /api/v1/auth/oidc/login",
 		Details: map[string]interface{}{
-			"provider": provider,
+			"provider":      providerType,
+			"provider_id":   provider,
+			"user_provider": userProvider != nil,
 		},
 	})
+
+	// Delete state after successful exchange (prevent reuse)
+	stateKey := fmt.Sprintf("oidc:state:%s", state)
+	_ = s.cacheService.Delete(ctx, stateKey)
 
 	return user, jwtToken, nil
 }
 
-// getUserInfo fetches user information from the OIDC provider
-func (s *OIDCService) getUserInfo(provider string, token *oauth2.Token) (*OIDCUserInfo, error) {
-	client := s.configs[provider].Config.Client(context.Background(), token)
+// validateState validates the OIDC state parameter
+func (s *OIDCService) validateState(ctx context.Context, state, provider string) error {
+	stateKey := fmt.Sprintf("oidc:state:%s", state)
 
-	var userInfo OIDCUserInfo
+	// Get state from cache
+	value, err := s.cacheService.Get(ctx, stateKey)
+	if err != nil {
+		return domain.NewDomainError(domain.ErrCodeUnauthorized, "invalid or expired state parameter", 401)
+	}
+
+	// Type assert to OIDCState
+	stateData, ok := value.(OIDCState)
+	if !ok {
+		// Try to unmarshal if it's stored as map
+		if stateMap, ok := value.(map[string]interface{}); ok {
+			stateData = OIDCState{
+				Provider:  stateMap["provider"].(string),
+				Timestamp: stateMap["timestamp"].(time.Time),
+			}
+		} else {
+			return domain.NewDomainError(domain.ErrCodeUnauthorized, "invalid state data format", 401)
+		}
+	}
+
+	// Validate provider matches
+	if stateData.Provider != provider {
+		return domain.NewDomainError(domain.ErrCodeUnauthorized, "state provider mismatch", 401)
+	}
+
+	// Validate state is not too old (should be within 10 minutes)
+	if time.Since(stateData.Timestamp) > 10*time.Minute {
+		_ = s.cacheService.Delete(ctx, stateKey)
+		return domain.NewDomainError(domain.ErrCodeUnauthorized, "state parameter expired", 401)
+	}
+
+	return nil
+}
+
+// getUserInfoFromProvider fetches user information from the OIDC provider
+func (s *OIDCService) getUserInfoFromProvider(providerType string, token *oauth2.Token, userProvider *domain.OIDCProvider) (*OIDCUserInfo, error) {
+	var client *http.Client
 	var apiURL string
 
-	switch provider {
-	case "google":
-		apiURL = "https://www.googleapis.com/oauth2/v2/userinfo"
-	case "github":
-		apiURL = "https://api.github.com/user"
-	case "azure":
-		apiURL = "https://graph.microsoft.com/v1.0/me"
-	default:
-		return nil, fmt.Errorf("unsupported provider: %s", provider)
+	if userProvider != nil && userProvider.IsCustomProvider() {
+		// Custom provider - use user-provided endpoint
+		if userProvider.UserInfoURL == "" {
+			return nil, fmt.Errorf("user_info_url is required for custom providers")
+		}
+		apiURL = userProvider.UserInfoURL
+		// Create OAuth2 client with custom config
+		config, err := s.createConfigFromProvider(userProvider)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create config: %w", err)
+		}
+		client = config.Config.Client(context.Background(), token)
+	} else {
+		// System provider - use predefined endpoints
+		config, exists := s.configs[providerType]
+		if !exists {
+			return nil, fmt.Errorf("unsupported provider: %s", providerType)
+		}
+		client = config.Config.Client(context.Background(), token)
+
+		switch providerType {
+		case "google":
+			apiURL = "https://www.googleapis.com/oauth2/v2/userinfo"
+		case "github":
+			apiURL = "https://api.github.com/user"
+		case "azure", "microsoft":
+			apiURL = "https://graph.microsoft.com/v1.0/me"
+		default:
+			return nil, fmt.Errorf("unsupported provider: %s", providerType)
+		}
 	}
+
+	var userInfo OIDCUserInfo
 
 	resp, err := client.Get(apiURL)
 	if err != nil {
@@ -179,6 +330,63 @@ func (s *OIDCService) getUserInfo(provider string, token *oauth2.Token) (*OIDCUs
 	}
 
 	return &userInfo, nil
+}
+
+// createConfigFromProvider creates an OAuth2 config from a user-registered OIDC provider
+func (s *OIDCService) createConfigFromProvider(provider *domain.OIDCProvider) (*OIDCConfig, error) {
+	// Parse scopes
+	var scopes []string
+	if provider.Scopes != "" {
+		scopes = []string{}
+		scopeParts := strings.Split(provider.Scopes, ",")
+		for _, part := range scopeParts {
+			scope := strings.TrimSpace(part)
+			if scope != "" {
+				scopes = append(scopes, scope)
+			}
+		}
+	}
+
+	var endpoint oauth2.Endpoint
+
+	if provider.IsCustomProvider() {
+		// Custom provider - use custom endpoints
+		if provider.AuthURL == "" || provider.TokenURL == "" {
+			return nil, fmt.Errorf("auth_url and token_url are required for custom providers")
+		}
+		endpoint = oauth2.Endpoint{
+			AuthURL:  provider.AuthURL,
+			TokenURL: provider.TokenURL,
+		}
+	} else {
+		// System provider - use predefined endpoints
+		switch provider.ProviderType {
+		case "google":
+			endpoint = google.Endpoint
+		case "github":
+			endpoint = github.Endpoint
+		case "azure", "microsoft":
+			endpoint = microsoft.AzureADEndpoint("common")
+		default:
+			return nil, fmt.Errorf("unsupported provider type: %s", provider.ProviderType)
+		}
+	}
+
+	oauthConfig := &oauth2.Config{
+		ClientID:     provider.ClientID,
+		ClientSecret: provider.ClientSecret,
+		RedirectURL:  provider.RedirectURL,
+		Scopes:       scopes,
+		Endpoint:     endpoint,
+	}
+
+	return &OIDCConfig{
+		ClientID:     provider.ClientID,
+		ClientSecret: provider.ClientSecret,
+		RedirectURL:  provider.RedirectURL,
+		Scopes:       scopes,
+		Config:       oauthConfig,
+	}, nil
 }
 
 // EndSession initiates OIDC logout by calling the provider's end_session_endpoint

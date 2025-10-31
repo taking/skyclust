@@ -12,6 +12,7 @@ type ContainerInterface interface {
 	GetVMRepository() domain.VMRepository
 	GetCredentialRepository() domain.CredentialRepository
 	GetAuditLogRepository() domain.AuditLogRepository
+	GetOIDCProviderRepository() domain.OIDCProviderRepository
 
 	// Service interfaces
 	GetUserService() domain.UserService
@@ -50,12 +51,14 @@ type ContainerInterface interface {
 
 // RepositoryContainer holds repository dependencies
 type RepositoryContainer struct {
-	UserRepository         domain.UserRepository
-	WorkspaceRepository    domain.WorkspaceRepository
-	VMRepository           domain.VMRepository
-	CredentialRepository   domain.CredentialRepository
-	AuditLogRepository     domain.AuditLogRepository
-	NotificationRepository domain.NotificationRepository
+	UserRepository                    domain.UserRepository
+	WorkspaceRepository               domain.WorkspaceRepository
+	VMRepository                      domain.VMRepository
+	CredentialRepository              domain.CredentialRepository
+	AuditLogRepository                domain.AuditLogRepository
+	NotificationRepository            domain.NotificationRepository
+	NotificationPreferencesRepository domain.NotificationPreferencesRepository
+	OIDCProviderRepository           domain.OIDCProviderRepository
 }
 
 // ServiceContainer holds service dependencies

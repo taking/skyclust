@@ -12,6 +12,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/nats-io/nats.go"
 	"go.uber.org/zap"
+    "skyclust/internal/domain"
+    "skyclust/internal/shared/handlers"
 )
 
 // Error definitions
@@ -20,7 +22,8 @@ var (
 )
 
 type SSEHandler struct {
-	logger     *zap.Logger
+    *handlers.BaseHandler
+    logger     *zap.Logger
 	natsConn   *nats.Conn
 	clients    map[string]*SSEClient
 	clientsMux sync.RWMutex
@@ -43,7 +46,8 @@ type SSEClient struct {
 
 func NewSSEHandler(logger *zap.Logger, natsConn *nats.Conn) *SSEHandler {
 	handler := &SSEHandler{
-		logger:   logger,
+        BaseHandler: handlers.NewBaseHandler("sse"),
+        logger:      logger,
 		natsConn: natsConn,
 		clients:  make(map[string]*SSEClient),
 	}
@@ -90,12 +94,22 @@ func (h *SSEHandler) setupNATSSubscriptions() {
 }
 
 func (h *SSEHandler) HandleSSE(c *gin.Context) {
+    handler := h.Compose(
+        h.handleSSECore(),
+        h.StandardCRUDDecorators("handle_sse")...,
+    )
+
+    handler(c)
+}
+
+func (h *SSEHandler) handleSSECore() handlers.HandlerFunc {
+    return func(c *gin.Context) {
 	// 사용자 ID 추출 (JWT에서)
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
-		return
-	}
+        userID, exists := c.Get("user_id")
+        if !exists {
+            h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "User not authenticated", 401), "handle_sse")
+            return
+        }
 
 	// SSE 헤더 설정
 	c.Header("Content-Type", "text/event-stream")
@@ -107,12 +121,12 @@ func (h *SSEHandler) HandleSSE(c *gin.Context) {
 	// 클라이언트 ID 생성
 	clientID := fmt.Sprintf("%s-%d", userID, time.Now().UnixNano())
 
-	// Flusher 확인
-	flusher, ok := c.Writer.(http.Flusher)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "SSE not supported"})
-		return
-	}
+        // Flusher 확인
+        flusher, ok := c.Writer.(http.Flusher)
+        if !ok {
+            h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "SSE not supported", 500), "handle_sse")
+            return
+        }
 
 	// 컨텍스트 생성
 	ctx, cancel := context.WithCancel(c.Request.Context())
@@ -135,7 +149,7 @@ func (h *SSEHandler) HandleSSE(c *gin.Context) {
 	h.clients[clientID] = client
 	h.clientsMux.Unlock()
 
-	h.logger.Info("SSE client connected", zap.String("client_id", clientID), zap.String("user_id", userID.(string)))
+        h.LogInfo(c, "SSE client connected", zap.String("client_id", clientID), zap.String("user_id", userID.(string)))
 
 	// 연결 확인 메시지 전송
 	h.sendToClient(client, "connected", map[string]interface{}{
@@ -143,15 +157,16 @@ func (h *SSEHandler) HandleSSE(c *gin.Context) {
 		"timestamp": time.Now().Unix(),
 	})
 
-	// 클라이언트가 연결을 유지하는 동안 대기
-	<-ctx.Done()
+        // 클라이언트가 연결을 유지하는 동안 대기
+        <-ctx.Done()
 
 	// 클라이언트 정리
 	h.clientsMux.Lock()
 	delete(h.clients, clientID)
 	h.clientsMux.Unlock()
 
-	h.logger.Info("SSE client disconnected", zap.String("client_id", clientID))
+        h.LogInfo(c, "SSE client disconnected", zap.String("client_id", clientID))
+    }
 }
 
 func (h *SSEHandler) sendToClient(client *SSEClient, eventType string, data interface{}) {

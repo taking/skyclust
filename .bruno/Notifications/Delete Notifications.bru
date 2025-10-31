@@ -1,0 +1,45 @@
+meta {
+  name: Delete Notifications
+  type: http
+  seq: 34
+}
+
+delete {
+  url: {{baseUrl}}/api/{{apiVersion}}/notifications
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "notification_ids": [
+      "{{notificationId}}"
+    ]
+  }
+}
+
+headers {
+  Content-Type: application/json
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains deleted count", function() {
+    expect(res.getBody()).to.have.property('deleted_count');
+    expect(res.getBody()).to.have.property('notification_ids');
+  });
+  
+  test("Deleted count matches notification IDs length", function() {
+    const deletedCount = res.getBody().deleted_count;
+    const notificationIds = res.getBody().notification_ids;
+    expect(deletedCount).to.equal(notificationIds.length);
+  });
+}
+

@@ -20,10 +20,32 @@ auth:bearer {
 
 body:json {
   {
-    "username": "testuser",
-    "email": "test4@example.com",
+    "username": "createUser",
+    "email": "createUser@example.com",
     "password": "password123"
   }
+}
+
+script:post-response {
+  bru.setEnvVar("userId", res.body.data.user.id);
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response contains user data", function() {
+    expect(res.getBody()).to.have.property('user');
+    expect(res.getBody()).to.have.property('token');
+  });
+  
+  test("User has required fields", function() {
+    const user = res.getBody().user;
+    expect(user).to.have.property('id');
+    expect(user).to.have.property('username');
+    expect(user).to.have.property('email');
+  });
 }
 
 docs {
@@ -83,22 +105,4 @@ docs {
   - 관리자 권한이 필요합니다
   - 생성된 사용자는 자동으로 활성화됩니다
   - 이메일과 사용자명은 고유해야 합니다
-}
-
-tests {
-  test("Status code is 201", function() {
-    expect(res.getStatus()).to.equal(201);
-  });
-  
-  test("Response contains user data", function() {
-    expect(res.getBody()).to.have.property('user');
-    expect(res.getBody()).to.have.property('token');
-  });
-  
-  test("User has required fields", function() {
-    const user = res.getBody().user;
-    expect(user).to.have.property('id');
-    expect(user).to.have.property('username');
-    expect(user).to.have.property('email');
-  });
 }

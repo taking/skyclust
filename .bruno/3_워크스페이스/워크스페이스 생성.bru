@@ -20,13 +20,31 @@ auth:bearer {
 
 body:json {
   {
-    "name": "Test Workspace",
+    "name": "Create Workspace",
     "description": "A test workspace for API testing"
   }
 }
 
 script:post-response {
-  bru.setEnvVar("workspaceId", res.body.data.workspace.id);
+  bru.setEnvVar("workspaceId", res.body.data.id);
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response contains workspace data", function() {
+    expect(res.getBody()).to.have.property('id');
+    expect(res.getBody()).to.have.property('name');
+    expect(res.getBody()).to.have.property('description');
+  });
+  
+  test("Workspace has required fields", function() {
+    const workspace = res.getBody();
+    expect(workspace.name).to.equal('Test Workspace');
+    expect(workspace.description).to.equal('A test workspace for API testing');
+  });
 }
 
 docs {
@@ -83,22 +101,4 @@ docs {
   - 워크스페이스 이름은 고유해야 합니다
   - 생성자는 자동으로 워크스페이스 소유자가 됩니다
   - 워크스페이스는 생성 즉시 활성화됩니다
-}
-
-tests {
-  test("Status code is 201", function() {
-    expect(res.getStatus()).to.equal(201);
-  });
-  
-  test("Response contains workspace data", function() {
-    expect(res.getBody()).to.have.property('id');
-    expect(res.getBody()).to.have.property('name');
-    expect(res.getBody()).to.have.property('description');
-  });
-  
-  test("Workspace has required fields", function() {
-    const workspace = res.getBody();
-    expect(workspace.name).to.equal('Test Workspace');
-    expect(workspace.description).to.equal('A test workspace for API testing');
-  });
 }

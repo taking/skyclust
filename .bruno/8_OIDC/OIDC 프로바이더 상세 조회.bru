@@ -1,0 +1,134 @@
+meta {
+  name: OIDC 프로바이더 상세 조회
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/oidc/providers/{{providerId}}
+  body: none
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains provider details", function() {
+    const body = res.getBody();
+    expect(body.data).to.have.property('id');
+    expect(body.data).to.have.property('name');
+    expect(body.data).to.have.property('provider_type');
+    expect(body.data).to.have.property('client_id');
+    expect(body.data).to.have.property('redirect_url');
+    expect(body.data).to.have.property('enabled');
+  });
+  
+  test("Provider ID matches", function() {
+    expect(res.getBody().data.id).to.equal('{{providerId}}');
+  });
+  
+  test("Client ID is present", function() {
+    const clientId = res.getBody().data.client_id;
+    expect(clientId).to.be.a('string');
+    expect(clientId.length).to.be.greaterThan(0);
+  });
+}
+
+docs {
+  # OIDC 프로바이더 상세 조회
+  
+  ## 기능
+  특정 OIDC 프로바이더의 상세 정보를 조회합니다. `client_id`를 포함한 모든 설정 정보를 확인할 수 있습니다.
+  
+  ## 파라미터
+  
+  ### providerId (경로)
+  - 프로바이더 ID
+  - **타입**: `string` (UUID)
+  - **설명**: 조회할 프로바이더의 ID입니다.
+  
+  ## 반환 데이터
+  
+  ### id (string)
+  - 프로바이더 ID (UUID)
+  
+  ### name (string)
+  - 프로바이더 이름
+  
+  ### provider_type (string)
+  - 프로바이더 타입
+  
+  ### client_id (string)
+  - OAuth Client ID
+  - **보안 주의**: 이 정보는 노출될 수 있습니다.
+  
+  ### redirect_url (string)
+  - 리디렉션 URL
+  
+  ### auth_url (string, 선택)
+  - 인증 URL (커스텀 프로바이더용)
+  
+  ### token_url (string, 선택)
+  - 토큰 교환 URL (커스텀 프로바이더용)
+  
+  ### user_info_url (string, 선택)
+  - 사용자 정보 URL (커스텀 프로바이더용)
+  
+  ### scopes (string, 선택)
+  - OAuth Scopes
+  
+  ### enabled (boolean)
+  - 활성화 여부
+  
+  ### created_at (string)
+  - 생성 시간
+  
+  ### updated_at (string)
+  - 수정 시간
+  
+  ## 권한
+  
+  - 본인이 등록한 프로바이더만 조회할 수 있습니다.
+  - 다른 사용자의 프로바이더를 조회하려고 하면 403 Forbidden 에러가 반환됩니다.
+  
+  ## 사용 예시
+  
+  ```
+  GET /api/v1/oidc/providers/123e4567-e89b-12d3-a456-426614174000
+  ```
+  
+  ### 응답 예시
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "name": "My Google Account",
+      "provider_type": "google",
+      "client_id": "123456789.apps.googleusercontent.com",
+      "redirect_url": "http://localhost:8080/api/v1/auth/oidc/google/callback",
+      "scopes": "openid,profile,email",
+      "enabled": true,
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    },
+    "message": "OIDC provider retrieved successfully"
+  }
+  ```
+  
+  ## 주의사항
+  
+  - `client_secret`은 보안상의 이유로 반환되지 않습니다.
+  - 수정하려면 `PUT /api/v1/oidc/providers/:id` 엔드포인트를 사용하세요.
+}
+
