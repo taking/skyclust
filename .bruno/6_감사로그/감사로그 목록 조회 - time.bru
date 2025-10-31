@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/admin/audit?start_time=2025-10-01T00:00:00Z&end_time=2025-10-31T23:59:59Z
+  url: {{baseUrl}}/api/{{apiVersion}}/admin/audit-logs?start_time=2025-10-01T00:00:00Z&end_time=2025-10-31T23:59:59Z
   body: none
   auth: bearer
 }
@@ -85,21 +85,21 @@ docs {
   
   ### 액션으로 필터링
   ```
-  GET /api/v1/admin/audit?action=user_login&limit=50&offset=0
+  GET /api/v1/admin/audit-logs?action=user_login&limit=50&offset=0
   ```
   
   ### 사용자 ID로 필터링
   ```
-  GET /api/v1/admin/audit?user_id=83973f6b-5d90-4e4e-9cf6-09e33f685a32&limit=50
+  GET /api/v1/admin/audit-logs?user_id=83973f6b-5d90-4e4e-9cf6-09e33f685a32&limit=50
   ```
   
   ### 날짜 범위로 필터링
   ```
-  GET /api/v1/admin/audit?start_time=2025-10-01T00:00:00Z&end_time=2025-10-31T23:59:59Z
+  GET /api/v1/admin/audit-logs?start_time=2025-10-01T00:00:00Z&end_time=2025-10-31T23:59:59Z
   ```
   
   ### 액션 + 날짜 범위 조합
   ```
-  GET /api/v1/admin/audit?action=user_login&start_time=2025-10-01T00:00:00Z&end_time=2025-10-31T23:59:59Z
+  GET /api/v1/admin/audit-logs?action=user_login&start_time=2025-10-01T00:00:00Z&end_time=2025-10-31T23:59:59Z
   ```
 }

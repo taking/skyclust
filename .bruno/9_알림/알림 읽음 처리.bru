@@ -1,0 +1,70 @@
+meta {
+  name: 알림 읽음 처리
+  type: http
+  seq: 3
+}
+
+patch {
+  url: {{baseUrl}}/api/{{apiVersion}}/notifications/{{notificationId}}
+  body: json
+  auth: bearer
+}
+
+body:json {
+  {
+    "read": true
+  }
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains updated notification", function() {
+    expect(res.getBody()).to.have.property('id');
+    expect(res.getBody()).to.have.property('read');
+  });
+  
+  test("Notification is marked as read", function() {
+    expect(res.getBody().read).to.be.true;
+  });
+}
+
+docs {
+  # 알림 읽음 처리
+  
+  특정 알림을 읽음으로 표시합니다. (RESTful: PATCH /notifications/:id)
+  
+  ## 요청 본문
+  
+  ### read (필수)
+  - 읽음 상태
+  - **타입**: `boolean`
+  - **값**: `true` (읽음으로 표시), `false` (읽지 않음으로 표시)
+  
+  ## 반환 데이터
+  
+  ### id (string)
+  - 알림 ID
+  
+  ### read (boolean)
+  - 읽음 상태
+  
+  ## 사용 예시
+  
+  ```
+  PATCH /api/v1/notifications/123e4567-e89b-12d3-a456-426614174000
+  {
+    "read": true
+  }
+  ```
+}

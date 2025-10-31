@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/oidc-providers
+  url: {{baseUrl}}/api/{{apiVersion}}/oidc/providers/types
   body: none
   auth: none
 }
@@ -57,7 +57,7 @@ docs {
   ## 사용 예시
   
   ```
-  GET /api/v1/oidc-providers
+  GET /api/v1/oidc/providers/types
   ```
   
   ### 응답 예시
@@ -78,7 +78,7 @@ docs {
   
   ## 관련 엔드포인트
   
-  - **시스템 프로바이더 타입**: `GET /api/v1/oidc-providers` (이 엔드포인트, 공개)
+  - **시스템 프로바이더 타입**: `GET /api/v1/oidc/providers/types` (이 엔드포인트, 공개)
   - **사용자 등록 프로바이더**: `GET /api/v1/oidc/providers` (인증 필요)
 }
 

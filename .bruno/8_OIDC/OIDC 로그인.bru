@@ -5,7 +5,7 @@ meta {
 }
 
 post {
-  url: {{baseUrl}}/api/{{apiVersion}}/auth/oidc/login
+  url: {{baseUrl}}/api/{{apiVersion}}/auth/oidc/sessions
   body: json
   auth: none
 }
@@ -23,8 +23,8 @@ headers {
 }
 
 tests {
-  test("Status code is 200", function() {
-    expect(res.getStatus()).to.equal(200);
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
   });
   
   test("Response contains user and token", function() {
@@ -46,7 +46,7 @@ tests {
     expect(token.length).to.be.greaterThan(0);
   });
   
-  test("Login successful message", function() {
+  test("Session created message", function() {
     expect(res.getBody().message).to.include('successful');
   });
 }
@@ -55,7 +55,9 @@ docs {
   # OIDC 로그인
   
   ## 기능
-  OIDC 프로바이더에서 받은 인증 코드를 사용하여 로그인합니다. 콜백 URL 대신 POST 요청으로 로그인을 처리할 때 사용합니다.
+  OIDC 프로바이더에서 받은 인증 코드를 사용하여 세션을 생성합니다. (RESTful: POST /auth/oidc/sessions)
+  
+  콜백 URL 대신 POST 요청으로 로그인을 처리할 때 사용합니다.
   
   ## 요청 본문
   
@@ -90,7 +92,7 @@ docs {
   ## 사용 예시
   
   ```json
-  POST /api/v1/auth/oidc/login
+  POST /api/v1/auth/oidc/sessions
   {
     "provider": "google",
     "code": "4/0Aean...",
@@ -119,7 +121,7 @@ docs {
   ## 콜백 URL과의 차이
   
   - **콜백 URL** (`GET /auth/oidc/{provider}/callback`): 브라우저 리디렉션에 적합
-  - **로그인 엔드포인트** (`POST /auth/oidc/login`): 클라이언트 애플리케이션에서 직접 호출
+  - **세션 생성 엔드포인트** (`POST /auth/oidc/sessions`): 클라이언트 애플리케이션에서 직접 호출
   
   ## 주의사항
   

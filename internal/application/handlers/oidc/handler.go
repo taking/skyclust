@@ -141,14 +141,15 @@ func (h *Handler) Callback(c *gin.Context) {
 	}, "Authentication successful")
 }
 
-// Login handles OIDC login
-func (h *Handler) Login(c *gin.Context) {
+// CreateSession handles OIDC session creation (POST /auth/oidc/sessions)
+// RESTful: Create a new OIDC session
+func (h *Handler) CreateSession(c *gin.Context) {
 	// Start performance tracking
-	defer h.TrackRequest(c, "oidc_login", 200)
+	defer h.TrackRequest(c, "oidc_create_session", 201)
 
 	// Log operation start
-	h.LogInfo(c, "Processing OIDC login",
-		zap.String("operation", "oidc_login"))
+	h.LogInfo(c, "Creating OIDC session",
+		zap.String("operation", "oidc_create_session"))
 
 	var req struct {
 		Provider string `json:"provider" binding:"required"`
@@ -157,84 +158,120 @@ func (h *Handler) Login(c *gin.Context) {
 	}
 
 	if err := h.ValidateRequest(c, &req); err != nil {
-		h.HandleError(c, err, "oidc_callback")
+		h.HandleError(c, err, "oidc_create_session")
 		return
 	}
 
 	// Log business event
-	h.LogBusinessEvent(c, "oidc_login_attempted", "", "", map[string]interface{}{
+	h.LogBusinessEvent(c, "oidc_session_creation_attempted", "", "", map[string]interface{}{
 		"provider": req.Provider,
 		"state":    req.State,
 	})
 
 	user, token, err := h.oidcService.ExchangeCode(c.Request.Context(), req.Provider, req.Code, req.State)
 	if err != nil {
-		h.LogError(c, err, "Failed to process OIDC login")
-		h.HandleError(c, err, "oidc_login")
+		h.LogError(c, err, "Failed to create OIDC session")
+		h.HandleError(c, err, "oidc_create_session")
 		return
 	}
 
-	// Log successful login
-	h.LogBusinessEvent(c, "oidc_login_successful", user.ID.String(), "", map[string]interface{}{
+	// Log successful session creation
+	h.LogBusinessEvent(c, "oidc_session_created", user.ID.String(), "", map[string]interface{}{
 		"provider": req.Provider,
 		"user_id":  user.ID.String(),
 	})
 
-	h.LogInfo(c, "OIDC login successful",
+	h.LogInfo(c, "OIDC session created successfully",
 		zap.String("provider", req.Provider),
 		zap.String("user_id", user.ID.String()))
 
-	h.OK(c, gin.H{
+	h.Created(c, gin.H{
 		"user":  user,
 		"token": token,
-	}, "Login successful")
+	}, "Session created successfully")
 }
 
-// Logout handles OIDC logout
-func (h *Handler) Logout(c *gin.Context) {
+// DeleteSession handles OIDC session deletion (DELETE /auth/oidc/sessions/me)
+// RESTful: Delete current OIDC session
+func (h *Handler) DeleteSession(c *gin.Context) {
+	// Start performance tracking
+	defer h.TrackRequest(c, "oidc_delete_session", 200)
+
+	// Log operation start
+	h.LogInfo(c, "Deleting OIDC session",
+		zap.String("operation", "oidc_delete_session"))
+
 	var req struct {
-		UserID                string `json:"user_id" binding:"required"`
 		Provider              string `json:"provider" binding:"required"`
 		IDToken               string `json:"id_token" binding:"required"`
 		PostLogoutRedirectURI string `json:"post_logout_redirect_uri"`
 	}
 
 	if err := h.ValidateRequest(c, &req); err != nil {
-		h.HandleError(c, err, "logout")
+		h.HandleError(c, err, "oidc_delete_session")
 		return
 	}
 
-	// Parse user ID
-	userID, err := uuid.Parse(req.UserID)
+	// Get user ID from context (set by auth middleware)
+	userID := h.extractUserIDFromContext(c)
+	if userID == uuid.Nil {
+		return
+	}
+
+	// Log business event
+	h.LogBusinessEvent(c, "oidc_session_deletion_attempted", userID.String(), "", map[string]interface{}{
+		"provider": req.Provider,
+	})
+
+	err := h.oidcService.EndSession(c.Request.Context(), userID, req.Provider, req.IDToken, req.PostLogoutRedirectURI)
 	if err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid user ID format", 400), "logout")
+		h.LogError(c, err, "Failed to delete OIDC session")
+		h.HandleError(c, err, "oidc_delete_session")
 		return
 	}
 
-	err = h.oidcService.EndSession(c.Request.Context(), userID, req.Provider, req.IDToken, req.PostLogoutRedirectURI)
-	if err != nil {
-		h.HandleError(c, err, "logout")
-		return
-	}
+	// Log successful session deletion
+	h.LogBusinessEvent(c, "oidc_session_deleted", userID.String(), "", map[string]interface{}{
+		"provider": req.Provider,
+	})
 
-	h.OK(c, gin.H{"message": "Logout successful"}, "Logout successful")
+	h.LogInfo(c, "OIDC session deleted successfully",
+		zap.String("provider", req.Provider),
+		zap.String("user_id", userID.String()))
+
+	h.OK(c, gin.H{
+		"message": "Session terminated successfully",
+	}, "Session deleted successfully")
 }
 
-// GetLogoutURL returns the OAuth logout URL
+// GetLogoutURL returns the OAuth logout URL (GET /auth/oidc/:provider/logout-url)
+// RESTful: Get logout URL for a provider
 func (h *Handler) GetLogoutURL(c *gin.Context) {
+	// Start performance tracking
+	defer h.TrackRequest(c, "oidc_get_logout_url", 200)
+
 	provider := c.Param("provider")
 	postLogoutRedirectURI := c.Query("post_logout_redirect_uri")
 
 	if provider == "" {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Provider is required", 400), "get_logout_url")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Provider is required", 400), "oidc_get_logout_url")
 		return
 	}
 
+	// Log operation start
+	h.LogInfo(c, "Getting OIDC logout URL",
+		zap.String("operation", "oidc_get_logout_url"),
+		zap.String("provider", provider))
+
 	logoutURL, err := h.oidcService.GetLogoutURL(c.Request.Context(), provider, postLogoutRedirectURI)
 	if err != nil {
-		h.HandleError(c, err, "get_logout_url")
+		h.LogError(c, err, "Failed to get OIDC logout URL")
+		h.HandleError(c, err, "oidc_get_logout_url")
 		return
 	}
+
+	h.LogInfo(c, "OIDC logout URL generated successfully",
+		zap.String("provider", provider))
 
 	h.OK(c, gin.H{
 		"logout_url": logoutURL,

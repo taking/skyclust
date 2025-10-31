@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/admin/audit/export?format=csv&action=user_login&start_time=2025-01-01T00:00:00Z&end_time=2025-12-31T23:59:59Z&limit=10000
+  url: {{baseUrl}}/api/{{apiVersion}}/admin/audit-logs/export?format=csv&action=user_login&start_time=2025-01-01T00:00:00Z&end_time=2025-12-31T23:59:59Z&limit=10000
   body: none
   auth: bearer
 }
@@ -80,7 +80,9 @@ docs {
   # 감사로그 내보내기
   
   ## 기능
-  감사 로그를 다양한 형식(JSON, CSV)으로 내보냅니다. 필터를 사용하여 특정 조건의 로그만 내보낼 수 있으며, 최대 10,000개의 레코드를 내보낼 수 있습니다.
+  감사 로그를 다양한 형식(JSON, CSV)으로 내보냅니다. (RESTful: GET /admin/audit-logs/export)
+  
+  필터를 사용하여 특정 조건의 로그만 내보낼 수 있으며, 최대 10,000개의 레코드를 내보낼 수 있습니다.
   
   ## 파라미터
   
@@ -166,27 +168,27 @@ docs {
   
   ### 기본 JSON 내보내기 (최근 1000개)
   ```
-  GET /api/v1/admin/audit/export?format=json&limit=1000
+  GET /api/v1/admin/audit-logs/export?format=json&limit=1000
   ```
   
   ### CSV 형식으로 내보내기
   ```
-  GET /api/v1/admin/audit/export?format=csv&limit=5000
+  GET /api/v1/admin/audit-logs/export?format=csv&limit=5000
   ```
   
   ### 액션 필터링
   ```
-  GET /api/v1/admin/audit/export?format=json&action=user_login&limit=1000
+  GET /api/v1/admin/audit-logs/export?format=json&action=user_login&limit=1000
   ```
   
   ### 날짜 범위 필터링
   ```
-  GET /api/v1/admin/audit/export?format=json&start_time=2025-01-01T00:00:00Z&end_time=2025-01-31T23:59:59Z
+  GET /api/v1/admin/audit-logs/export?format=json&start_time=2025-01-01T00:00:00Z&end_time=2025-01-31T23:59:59Z
   ```
   
   ### 복합 필터
   ```
-  GET /api/v1/admin/audit/export?format=csv&action=workspace_create&start_time=2025-01-01T00:00:00Z&end_time=2025-01-31T23:59:59Z&limit=10000
+  GET /api/v1/admin/audit-logs/export?format=csv&action=workspace_create&start_time=2025-01-01T00:00:00Z&end_time=2025-01-31T23:59:59Z&limit=10000
   ```
   
   ## 주의사항

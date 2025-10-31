@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/admin/audit/stats
+  url: {{baseUrl}}/api/{{apiVersion}}/admin/audit-logs?aggregate=stats
   body: none
   auth: bearer
 }
@@ -83,7 +83,9 @@ docs {
   # 감사로그 통계 조회
   
   ## 기능
-  감사 로그의 통계 정보를 조회합니다. 전체 이벤트 수, 고유 사용자 수, 상위 액션, 상위 리소스, 일별 이벤트 추이를 반환합니다.
+  감사 로그의 통계 정보를 조회합니다. (RESTful: GET /admin/audit-logs?aggregate=stats)
+  
+  전체 이벤트 수, 고유 사용자 수, 상위 액션, 상위 리소스, 일별 이벤트 추이를 반환합니다.
   
   ## 필터 파라미터 (선택사항)
   
@@ -118,11 +120,11 @@ docs {
   
   ### 전체 통계 조회
   ```
-  GET /api/v1/admin/audit/stats
+  GET /api/v1/admin/audit-logs?aggregate=stats
   ```
   
   ### 특정 기간 통계 조회
   ```
-  GET /api/v1/admin/audit/stats?start_time=2025-10-01T00:00:00Z&end_time=2025-10-31T23:59:59Z
+  GET /api/v1/admin/audit-logs?aggregate=stats&start_time=2025-10-01T00:00:00Z&end_time=2025-10-31T23:59:59Z
   ```
 }

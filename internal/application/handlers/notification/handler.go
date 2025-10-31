@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // Handler handles notification management operations using improved patterns
@@ -105,18 +106,19 @@ func (h *Handler) getNotificationHandler() handlers.HandlerFunc {
 	}
 }
 
-// MarkAsRead marks a notification as read using decorator pattern
-func (h *Handler) MarkAsRead(c *gin.Context) {
+// UpdateNotification updates a notification (RESTful: PATCH /notifications/:id)
+// Supports updating read status via request body: {"read": true/false}
+func (h *Handler) UpdateNotification(c *gin.Context) {
 	handler := h.Compose(
-		h.markAsReadHandler(),
-		h.StandardCRUDDecorators("mark_as_read")...,
+		h.updateNotificationHandler(),
+		h.StandardCRUDDecorators("update_notification")...,
 	)
 
 	handler(c)
 }
 
-// markAsReadHandler is the core business logic for marking a notification as read
-func (h *Handler) markAsReadHandler() handlers.HandlerFunc {
+// updateNotificationHandler is the core business logic for updating a notification
+func (h *Handler) updateNotificationHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := h.extractUserID(c)
 		notificationID := h.parseNotificationID(c)
@@ -125,56 +127,181 @@ func (h *Handler) markAsReadHandler() handlers.HandlerFunc {
 			return
 		}
 
-	h.logNotificationMarkAsReadAttempt(c, userID, notificationID)
+		// Parse request body
+		var req UpdateNotificationRequest
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "update_notification")
+			return
+		}
 
-	err := h.notificationService.MarkAsRead(
-		c.Request.Context(),
-		userID.String(),
-		notificationID.String(),
-	)
-	if err != nil {
-		h.HandleError(c, err, "mark_as_read")
-		return
-	}
+		// If no read status provided, default to read=true for backward compatibility
+		readStatus := true
+		if req.Read != nil {
+			readStatus = *req.Read
+		}
 
-	h.logNotificationMarkAsReadSuccess(c, userID, notificationID)
-	h.OK(c, gin.H{
-		"id":   notificationID.String(),
-		"read": true,
-	}, "Notification marked as read")
+		// Get existing notification
+		notification, err := h.notificationService.GetNotification(
+			c.Request.Context(),
+			userID.String(),
+			notificationID.String(),
+		)
+		if err != nil {
+			h.HandleError(c, err, "update_notification")
+			return
+		}
+
+		// Update read status
+		notification.IsRead = readStatus
+		if readStatus {
+			now := time.Now()
+			notification.ReadAt = &now
+		} else {
+			notification.ReadAt = nil
+		}
+
+		// Update notification
+		err = h.notificationService.UpdateNotification(
+			c.Request.Context(),
+			notification,
+		)
+		if err != nil {
+			h.HandleError(c, err, "update_notification")
+			return
+		}
+
+		h.logNotificationUpdateSuccess(c, userID, notificationID, readStatus)
+		h.OK(c, gin.H{
+			"id":   notificationID.String(),
+			"read": readStatus,
+		}, "Notification updated successfully")
 	}
 }
 
-// MarkAllAsRead marks all notifications as read using decorator pattern
-func (h *Handler) MarkAllAsRead(c *gin.Context) {
+// UpdateNotifications updates notifications in bulk (RESTful: PATCH /notifications)
+// Supports bulk read status update via request body: {"read": true/false, "notification_ids": [...]}
+func (h *Handler) UpdateNotifications(c *gin.Context) {
 	handler := h.Compose(
-		h.markAllAsReadHandler(),
-		h.StandardCRUDDecorators("mark_all_as_read")...,
+		h.updateNotificationsHandler(),
+		h.StandardCRUDDecorators("update_notifications")...,
 	)
 
 	handler(c)
 }
 
-// markAllAsReadHandler is the core business logic for marking all notifications as read
-func (h *Handler) markAllAsReadHandler() handlers.HandlerFunc {
+// updateNotificationsHandler is the core business logic for updating multiple notifications
+func (h *Handler) updateNotificationsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := h.extractUserID(c)
 
-	h.logMarkAllAsReadAttempt(c, userID)
+		// Parse request body
+		var req UpdateNotificationsRequest
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "update_notifications")
+			return
+		}
 
-	err := h.notificationService.MarkAllAsRead(
-		c.Request.Context(),
-		userID.String(),
-	)
-	if err != nil {
-		h.HandleError(c, err, "mark_all_as_read")
-		return
-	}
+		// If no read status provided, default to read=true for backward compatibility
+		readStatus := true
+		if req.Read != nil {
+			readStatus = *req.Read
+		}
 
-	h.logMarkAllAsReadSuccess(c, userID)
-	h.OK(c, gin.H{
-		"message": "All notifications marked as read",
-	}, "All notifications marked as read")
+		updatedCount := int64(0)
+
+		// If specific notification IDs provided, update only those
+		if len(req.NotificationIDs) > 0 {
+			now := time.Now()
+			for _, notificationID := range req.NotificationIDs {
+				notification, err := h.notificationService.GetNotification(
+					c.Request.Context(),
+					userID.String(),
+					notificationID,
+				)
+				if err != nil {
+					// Skip invalid IDs, continue with others
+					h.LogWarn(c, "Failed to get notification for bulk update",
+						zap.String("notification_id", notificationID),
+						zap.Error(err))
+					continue
+				}
+
+				notification.IsRead = readStatus
+				if readStatus {
+					notification.ReadAt = &now
+				} else {
+					notification.ReadAt = nil
+				}
+
+				err = h.notificationService.UpdateNotification(
+					c.Request.Context(),
+					notification,
+				)
+				if err != nil {
+					h.LogWarn(c, "Failed to update notification in bulk update",
+						zap.String("notification_id", notificationID),
+						zap.Error(err))
+					continue
+				}
+				updatedCount++
+			}
+		} else {
+			// Update all notifications for the user
+			if readStatus {
+				// Use service method for marking all as read (more efficient)
+				err := h.notificationService.MarkAllAsRead(
+					c.Request.Context(),
+					userID.String(),
+				)
+				if err != nil {
+					h.HandleError(c, err, "update_notifications")
+					return
+				}
+				// Get stats to determine updated count
+				stats, err := h.notificationService.GetNotificationStats(
+					c.Request.Context(),
+					userID.String(),
+				)
+				if err == nil {
+					updatedCount = int64(stats.UnreadNotifications)
+				}
+			} else {
+				// Mark all as unread - need to update each notification
+				notifications, total, err := h.notificationService.GetNotifications(
+					c.Request.Context(),
+					userID.String(),
+					1000, // Get a large batch
+					0,
+					false,
+					"",
+					"",
+				)
+				if err != nil {
+					h.HandleError(c, err, "update_notifications")
+					return
+				}
+
+				// Update all notifications to unread
+				for _, notification := range notifications {
+					notification.IsRead = false
+					notification.ReadAt = nil
+					err = h.notificationService.UpdateNotification(
+						c.Request.Context(),
+						notification,
+					)
+					if err == nil {
+						updatedCount++
+					}
+				}
+				updatedCount = int64(total) // Use total from query
+			}
+		}
+
+		h.logNotificationsUpdateSuccess(c, userID, updatedCount, readStatus)
+		h.OK(c, gin.H{
+			"updated_count": updatedCount,
+			"read":          readStatus,
+		}, "Notifications updated successfully")
 	}
 }
 
@@ -631,6 +758,20 @@ func (h *Handler) logMarkAllAsReadAttempt(c *gin.Context, userID uuid.UUID) {
 func (h *Handler) logMarkAllAsReadSuccess(c *gin.Context, userID uuid.UUID) {
 	h.LogBusinessEvent(c, "all_notifications_marked_as_read", userID.String(), "", map[string]interface{}{
 		"operation": "mark_all_as_read",
+	})
+}
+
+func (h *Handler) logNotificationUpdateSuccess(c *gin.Context, userID uuid.UUID, notificationID uuid.UUID, readStatus bool) {
+	h.LogBusinessEvent(c, "notification_updated", userID.String(), notificationID.String(), map[string]interface{}{
+		"notification_id": notificationID.String(),
+		"read":           readStatus,
+	})
+}
+
+func (h *Handler) logNotificationsUpdateSuccess(c *gin.Context, userID uuid.UUID, updatedCount int64, readStatus bool) {
+	h.LogBusinessEvent(c, "notifications_updated", userID.String(), "", map[string]interface{}{
+		"updated_count": updatedCount,
+		"read":           readStatus,
 	})
 }
 

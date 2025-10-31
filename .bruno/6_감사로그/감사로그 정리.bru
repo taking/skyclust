@@ -4,8 +4,8 @@ meta {
   seq: 9
 }
 
-post {
-  url: {{baseUrl}}/api/{{apiVersion}}/admin/audit/cleanup?retention_days=90
+delete {
+  url: {{baseUrl}}/api/{{apiVersion}}/admin/audit-logs?retention_days=90
   body: none
   auth: bearer
 }
@@ -51,7 +51,9 @@ docs {
   # 감사로그 정리
   
   ## 기능
-  지정된 보관 기간보다 오래된 감사 로그를 삭제합니다. 보관 기간(retention_days)보다 오래된 로그만 삭제되며, 삭제된 로그 수를 반환합니다.
+  지정된 보관 기간보다 오래된 감사 로그를 삭제합니다. (RESTful: DELETE /admin/audit-logs?retention_days=90)
+  
+  보관 기간(retention_days)보다 오래된 로그만 삭제되며, 삭제된 로그 수를 반환합니다.
   
   ## 파라미터
   
@@ -77,17 +79,17 @@ docs {
   
   ### 기본 보관 기간 (90일)
   ```
-  POST /api/v1/admin/audit/cleanup?retention_days=90
+  DELETE /api/v1/admin/audit-logs?retention_days=90
   ```
   
   ### 사용자 정의 보관 기간
   ```
-  POST /api/v1/admin/audit/cleanup?retention_days=180
+  DELETE /api/v1/admin/audit-logs?retention_days=180
   ```
   
   ### 짧은 보관 기간 (30일)
   ```
-  POST /api/v1/admin/audit/cleanup?retention_days=30
+  DELETE /api/v1/admin/audit-logs?retention_days=30
   ```
   
   ## 주의사항

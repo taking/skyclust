@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/aws/kubernetes/clusters/{{clusterName}}/nodegroups/{{nodeGroupName}}?credential_id={{aws_credentialsId}}&region=ap-northeast-3
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/kubernetes/clusters/{{clusterName}}/node-groups/{{nodeGroupName}}?credential_id={{aws_credentialsId}}&region=ap-northeast-3
   body: none
   auth: bearer
 }
@@ -54,7 +54,7 @@ docs {
   
   ### 요청 정보
   - **Method**: `GET`
-  - **URL**: `/api/v1/aws/kubernetes/clusters/{clusterName}/nodegroups/{nodeGroupName}`
+  - **URL**: `/api/v1/aws/kubernetes/clusters/{clusterName}/node-groups/{nodeGroupName}`
   - **인증**: Bearer Token 필요
   
   ### 쿼리 파라미터

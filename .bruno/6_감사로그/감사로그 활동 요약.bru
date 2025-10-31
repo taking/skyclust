@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/admin/audit/summary
+  url: {{baseUrl}}/api/{{apiVersion}}/admin/audit-logs?format=summary
   body: none
   auth: bearer
 }
@@ -67,7 +67,9 @@ docs {
   # 감사로그 활동 요약
   
   ## 기능
-  감사 로그의 활동 요약 정보를 조회합니다. 전체 이벤트 수, 고유 사용자 수, 가장 활발한 사용자, 상위 액션, 보안 이벤트 수, 에러 이벤트 수를 반환합니다.
+  감사 로그의 활동 요약 정보를 조회합니다. (RESTful: GET /admin/audit-logs?format=summary)
+  
+  전체 이벤트 수, 고유 사용자 수, 가장 활발한 사용자, 상위 액션, 보안 이벤트 수, 에러 이벤트 수를 반환합니다.
   
   ## 필터 파라미터 (선택사항)
   
@@ -104,12 +106,12 @@ docs {
   
   ### 최근 30일 요약 (기본값)
   ```
-  GET /api/v1/admin/audit/summary
+  GET /api/v1/admin/audit-logs?format=summary
   ```
   
   ### 특정 기간 요약
   ```
-  GET /api/v1/admin/audit/summary?start_time=2025-10-01T00:00:00Z&end_time=2025-10-31T23:59:59Z
+  GET /api/v1/admin/audit-logs?format=summary&start_time=2025-10-01T00:00:00Z&end_time=2025-10-31T23:59:59Z
   ```
   
   ## /stats와의 차이점

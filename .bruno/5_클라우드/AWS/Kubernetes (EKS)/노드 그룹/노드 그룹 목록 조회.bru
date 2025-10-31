@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/aws/kubernetes/clusters/{{clusterName}}/nodegroups?credential_id={{aws_credentialsId}}&region=ap-northeast-3
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/kubernetes/clusters/{{clusterName}}/node-groups?credential_id={{aws_credentialsId}}&region=ap-northeast-3
   body: none
   auth: bearer
 }
@@ -133,7 +133,7 @@ docs {
   ## 사용 예시
   
   ```bash
-  GET /api/v1/aws/kubernetes/clusters/skyclust-test-cluster/nodegroups?credential_id=123&region=ap-northeast-3
+  GET /api/v1/aws/kubernetes/clusters/skyclust-test-cluster/node-groups?credential_id=123&region=ap-northeast-3
   Authorization: Bearer your-jwt-token
   ```
   

@@ -1,7 +1,7 @@
 meta {
-  name: Send Test Notification
+  name: 테스트 알림 발송
   type: http
-  seq: 36
+  seq: 10
 }
 
 post {
@@ -14,9 +14,6 @@ auth:bearer {
   token: {{token}}
 }
 
-headers {
-  
-}
 
 tests {
   test("Status code is 200", function() {
@@ -41,3 +38,28 @@ tests {
   });
 }
 
+docs {
+  # 테스트 알림 발송
+  
+  테스트 알림을 발송합니다. 개발 및 디버깅용입니다.
+  
+  ## 반환 데이터
+  
+  ### message (string)
+  - 성공 메시지
+  
+  ### notification (object)
+  - 생성된 테스트 알림 정보
+  - `id`: 알림 ID
+  - `title`: 알림 제목 ("Test Notification")
+  - `message`: 알림 메시지 ("This is a test notification")
+  - `type`: 알림 타입 ("info")
+  - `category`: 카테고리 ("system")
+  - `priority`: 우선순위 ("low")
+  - `created_at`: 생성 시간
+  
+  ## 주의사항
+  
+  - 이 엔드포인트는 개발 및 테스트 목적으로만 사용해야 합니다.
+  - 실제 사용자에게 전송되는 알림이 아닌 테스트용 알림입니다.
+}

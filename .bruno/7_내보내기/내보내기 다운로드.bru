@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/exports/{{exportId}}/download
+  url: {{baseUrl}}/api/{{apiVersion}}/exports/{{exportId}}/file
   body: none
   auth: bearer
 }
@@ -69,7 +69,7 @@ docs {
   # 내보내기 다운로드
   
   ## 기능
-  완료된 내보내기 작업의 결과 파일을 다운로드합니다.
+  완료된 내보내기 작업의 결과 파일을 다운로드합니다. (RESTful: GET /exports/:id/file)
   
   ## 파라미터
   
@@ -113,7 +113,7 @@ docs {
   
   ### JSON 형식 내보내기 다운로드
   ```
-  GET /api/v1/exports/123e4567-e89b-12d3-a456-426614174000/download
+  GET /api/v1/exports/123e4567-e89b-12d3-a456-426614174000/file
   ```
   
   **응답 헤더:**
@@ -125,7 +125,7 @@ docs {
   
   ### CSV 형식 내보내기 다운로드
   ```
-  GET /api/v1/exports/123e4567-e89b-12d3-a456-426614174000/download
+  GET /api/v1/exports/123e4567-e89b-12d3-a456-426614174000/file
   ```
   
   **응답 헤더:**

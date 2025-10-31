@@ -10,19 +10,27 @@ import (
 func SetupRoutes(router *gin.RouterGroup, oidcService domain.OIDCService) {
 	oidcHandler := NewHandler(oidcService)
 
-	router.GET("/:provider", oidcHandler.GetAuthURL)
-	router.GET("/:provider/callback", oidcHandler.Callback)
-	router.POST("/login", oidcHandler.Login)
-	router.POST("/logout", oidcHandler.Logout)
-	router.GET("/logout/url", oidcHandler.GetLogoutURL)
+	// Public OIDC routes
+	router.GET("/:provider", oidcHandler.GetAuthURL)              // GET /api/v1/auth/oidc/:provider
+	router.GET("/:provider/callback", oidcHandler.Callback)       // GET /api/v1/auth/oidc/:provider/callback
+	router.GET("/:provider/logout-url", oidcHandler.GetLogoutURL) // GET /api/v1/auth/oidc/:provider/logout-url
+
+	// Session management (RESTful)
+	sessionsGroup := router.Group("/sessions")
+	{
+		sessionsGroup.POST("", oidcHandler.CreateSession)      // POST /api/v1/auth/oidc/sessions (create session)
+		sessionsGroup.DELETE("/me", oidcHandler.DeleteSession) // DELETE /api/v1/auth/oidc/sessions/me (delete current session)
+	}
 }
 
-// SetupProviderRoutes sets up public OIDC provider routes (list available providers)
+// SetupProviderRoutes sets up public OIDC provider routes (list available provider types)
+// router is scoped to /api/v1/oidc/providers
 func SetupProviderRoutes(router *gin.RouterGroup, oidcService domain.OIDCService) {
 	oidcHandler := NewHandler(oidcService)
 
-	// Public OIDC provider routes (list available providers)
-	router.GET("", oidcHandler.GetProviders) // GET /api/v1/oidc-providers
+	// Public OIDC provider type routes
+	// GET /api/v1/oidc/providers/types - Get available provider types
+	router.GET("/types", oidcHandler.GetProviders)
 }
 
 // SetupUserProviderRoutes sets up user OIDC provider management routes (protected, needs auth)

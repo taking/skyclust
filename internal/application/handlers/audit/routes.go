@@ -10,11 +10,10 @@ import (
 func SetupRoutes(router *gin.RouterGroup, auditLogService domain.AuditLogService) {
 	auditHandler := NewHandler(auditLogService)
 
-	// Audit log management
-	router.GET("/", auditHandler.GetAuditLogs)              // GET /api/v1/admin/audit
-	router.GET("/stats", auditHandler.GetAuditStats)        // GET /api/v1/admin/audit/stats
-	router.GET("/summary", auditHandler.GetAuditLogSummary) // GET /api/v1/admin/audit/summary
-	router.GET("/:id", auditHandler.GetAuditLog)            // GET /api/v1/admin/audit/:id
-	router.GET("/export", auditHandler.ExportAuditLogs)     // GET /api/v1/admin/audit/export
-	router.POST("/cleanup", auditHandler.CleanupAuditLogs)  // POST /api/v1/admin/audit/cleanup
+	// Audit log management (RESTful)
+	// Base path: /api/v1/admin/audit-logs
+	router.GET("", auditHandler.GetAuditLogs)          // GET /api/v1/admin/audit-logs (with query params: aggregate=stats, format=summary)
+	router.GET("/:id", auditHandler.GetAuditLog)        // GET /api/v1/admin/audit-logs/:id
+	router.GET("/export", auditHandler.ExportAuditLogs) // GET /api/v1/admin/audit-logs/export
+	router.DELETE("", auditHandler.CleanupAuditLogs)    // DELETE /api/v1/admin/audit-logs?retention_days=90
 }

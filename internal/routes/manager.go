@@ -77,11 +77,12 @@ func (rm *RouteManager) setupPublicRoutes(router *gin.Engine) {
 		rm.setupPublicAuthRoutes(authGroup)
 
 		// OIDC routes (public)
-		oidcGroup := v1Public.Group("/auth/oidc")
-		rm.setupOIDCRoutes(oidcGroup)
+		oidcAuthGroup := v1Public.Group("/auth/oidc")
+		rm.setupOIDCRoutes(oidcAuthGroup)
 
-		// OIDC providers (public - list available providers)
-		oidcProvidersGroup := v1Public.Group("/oidc-providers")
+		// OIDC providers (public - list available provider types)
+		oidcGroup := v1Public.Group("/oidc")
+		oidcProvidersGroup := oidcGroup.Group("/providers")
 		rm.setupOIDCProvidersRoutes(oidcProvidersGroup)
 
 		// System monitoring routes (no authentication required)
@@ -117,7 +118,7 @@ func (rm *RouteManager) setupProtectedRoutes(router *gin.Engine) {
 		// Provider-specific routes (RESTful)
 		rm.setupProviderSpecificRoutes(v1Protected)
 
-		// Cost analysis routes
+		// Cost analysis routes (keep hyphenated name for single-word resource)
 		costAnalysisGroup := v1Protected.Group("/cost-analysis")
 		rm.setupCostAnalysisRoutes(costAnalysisGroup)
 
@@ -156,8 +157,8 @@ func (rm *RouteManager) setupAdminRoutes(router *gin.Engine) {
 		systemGroup := v1Admin.Group("/system")
 		rm.setupSystemRoutes(systemGroup)
 
-		// Audit log routes
-		auditGroup := v1Admin.Group("/audit")
+		// Audit log routes (RESTful: /audit-logs)
+		auditGroup := v1Admin.Group("/audit-logs")
 		rm.setupAuditRoutes(auditGroup)
 
 		// Permission management routes
@@ -182,13 +183,20 @@ func (rm *RouteManager) setupPublicAuthRoutes(router *gin.RouterGroup) {
 
 // setupProtectedAuthRoutes sets up protected authentication routes
 func (rm *RouteManager) setupProtectedAuthRoutes(router *gin.RouterGroup) {
-	// Protected routes only - logout and me
+	// Protected routes only - sessions and me
 	if authService := rm.container.GetAuthService(); authService != nil {
 		if userService := rm.container.GetUserService(); userService != nil {
 			if rbacService := rm.container.GetRBACService(); rbacService != nil {
 				authHandler := auth.NewHandler(authService, userService, rbacService)
-				router.POST("/logout", authHandler.Logout)
-				router.GET("/me", authHandler.Me)
+				
+				// Session management (RESTful)
+				sessionsGroup := router.Group("/sessions")
+				{
+					sessionsGroup.GET("/me", authHandler.GetSession)    // GET /api/v1/auth/sessions/me
+					sessionsGroup.DELETE("/me", authHandler.Logout)      // DELETE /api/v1/auth/sessions/me
+				}
+				
+				router.GET("/me", authHandler.Me) // GET /api/v1/auth/me
 			}
 		}
 	}

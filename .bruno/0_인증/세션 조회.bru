@@ -1,0 +1,82 @@
+meta {
+  name: 세션 조회
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/auth/sessions/me
+  body: none
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains user information", function() {
+    const body = res.getBody();
+    expect(body.data).to.have.property('user_id');
+    expect(body.data).to.have.property('username');
+    expect(body.data).to.have.property('email');
+    expect(body.data).to.have.property('roles');
+    expect(body.data).to.have.property('active');
+  });
+  
+  test("User ID is valid UUID", function() {
+    const userId = res.getBody().data.user_id;
+    expect(userId).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+  });
+  
+  test("Roles is an array", function() {
+    const roles = res.getBody().data.roles;
+    expect(roles).to.be.an('array');
+  });
+}
+
+docs {
+  # 세션 조회
+  
+  현재 인증된 세션 정보를 조회합니다. (RESTful: GET /auth/sessions/me)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "user_id": "123e4567-e89b-12d3-a456-426614174000",
+      "username": "john.doe",
+      "email": "john.doe@example.com",
+      "roles": ["user", "admin"],
+      "active": true
+    },
+    "message": "Session retrieved successfully",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
+  }
+  ```
+  
+  ## 사용 예시
+  
+  ```bash
+  GET /api/v1/auth/sessions/me
+  Authorization: Bearer your-jwt-token
+  ```
+  
+  ## 주의사항
+  
+  - 인증이 필요합니다 (`Authorization: Bearer {token}` 헤더).
+  - 현재 로그인한 사용자의 세션 정보만 조회 가능합니다.
+  - 토큰이 유효하지 않으면 401 Unauthorized가 반환됩니다.
+}
+

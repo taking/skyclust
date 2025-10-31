@@ -27,9 +27,24 @@ func NewHandler(auditLogService domain.AuditLogService) *Handler {
 }
 
 // GetAuditLogs retrieves audit logs with filtering
+// Supports query parameters: aggregate (stats), format (summary), and filtering params
 func (h *Handler) GetAuditLogs(c *gin.Context) {
 	// Start performance tracking
 	defer h.TrackRequest(c, "get_audit_logs", 200)
+
+	// Check for aggregate query (stats)
+	aggregate := c.Query("aggregate")
+	if aggregate == "stats" {
+		h.GetAuditStats(c)
+		return
+	}
+
+	// Check for format query (summary)
+	format := c.Query("format")
+	if format == "summary" {
+		h.GetAuditLogSummary(c)
+		return
+	}
 
 	// Log operation start
 	h.LogInfo(c, "Getting audit logs",
@@ -188,6 +203,7 @@ func (h *Handler) GetAuditLog(c *gin.Context) {
 }
 
 // GetAuditStats retrieves audit log statistics
+// Called via GET /audit-logs?aggregate=stats
 func (h *Handler) GetAuditStats(c *gin.Context) {
 	// Start performance tracking
 	defer h.TrackRequest(c, "get_audit_stats", 200)
@@ -215,6 +231,7 @@ func (h *Handler) GetAuditStats(c *gin.Context) {
 }
 
 // GetAuditLogSummary retrieves audit log summary
+// Called via GET /audit-logs?format=summary
 func (h *Handler) GetAuditLogSummary(c *gin.Context) {
 	// Start performance tracking
 	defer h.TrackRequest(c, "get_audit_summary", 200)

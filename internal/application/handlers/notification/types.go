@@ -22,14 +22,20 @@ type NotificationListResponse struct {
 	UnreadCount   int64                   `json:"unread_count"`
 }
 
-// MarkAsReadRequest represents a mark as read request
-type MarkAsReadRequest struct {
-	NotificationIDs []string `json:"notification_ids" validate:"required,min=1"`
+// UpdateNotificationRequest represents an update notification request (RESTful)
+type UpdateNotificationRequest struct {
+	Read *bool `json:"read,omitempty"` // true to mark as read, false to mark as unread
 }
 
-// MarkAllAsReadResponse represents a mark all as read response
-type MarkAllAsReadResponse struct {
-	MarkedCount int64 `json:"marked_count"`
+// UpdateNotificationsRequest represents a bulk update notifications request (RESTful)
+type UpdateNotificationsRequest struct {
+	Read            *bool     `json:"read,omitempty"`             // true to mark as read, false to mark as unread
+	NotificationIDs []string  `json:"notification_ids,omitempty"` // Optional: specific notification IDs to update. If not provided, updates all.
+}
+
+// UpdateNotificationsResponse represents a bulk update notifications response
+type UpdateNotificationsResponse struct {
+	UpdatedCount int64 `json:"updated_count"`
 }
 
 // NotificationPreferencesResponse represents user notification preferences

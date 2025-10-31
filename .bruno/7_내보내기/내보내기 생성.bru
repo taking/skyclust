@@ -28,7 +28,7 @@ body:json {
 }
 
 script:post-response {
-  bru.setEnvVar("exportId", res.body.data.export_id);
+  bru.setEnvVar("exportId", res.body.data.id);
 }
 
 tests {

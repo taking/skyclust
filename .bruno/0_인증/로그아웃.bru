@@ -4,8 +4,8 @@ meta {
   seq: 4
 }
 
-post {
-  url: {{baseUrl}}/api/{{apiVersion}}/auth/logout
+delete {
+  url: {{baseUrl}}/api/{{apiVersion}}/auth/sessions/me
   body: none
   auth: bearer
 }
@@ -21,7 +21,7 @@ auth:bearer {
 docs {
   # 사용자 로그아웃
   
-  현재 세션을 종료하고 JWT 토큰을 무효화합니다.
+  현재 세션을 종료하고 JWT 토큰을 무효화합니다. (RESTful: DELETE /auth/sessions/me)
   
   ## Response
   
@@ -37,7 +37,7 @@ docs {
   ## 사용 예시
   
   ```bash
-  POST /api/v1/auth/logout
+  DELETE /api/v1/auth/sessions/me
   Authorization: Bearer your-jwt-token
   ```
   

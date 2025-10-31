@@ -1,0 +1,93 @@
+meta {
+  name: 알림 설정 업데이트
+  type: http
+  seq: 8
+}
+
+put {
+  url: {{baseUrl}}/api/{{apiVersion}}/notifications/preferences
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "email_enabled": true,
+    "push_enabled": true,
+    "browser_enabled": true,
+    "in_app_enabled": true,
+    "system_notifications": true,
+    "vm_notifications": true,
+    "cost_notifications": true,
+    "security_notifications": true,
+    "low_priority_enabled": true,
+    "medium_priority_enabled": true,
+    "high_priority_enabled": true,
+    "urgent_priority_enabled": true,
+    "quiet_hours_start": "22:00",
+    "quiet_hours_end": "08:00",
+    "timezone": "Asia/Seoul"
+  }
+}
+
+headers {
+  Content-Type: application/json
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains updated preferences", function() {
+    expect(res.getBody()).to.have.property('email_enabled');
+    expect(res.getBody()).to.have.property('push_enabled');
+    expect(res.getBody()).to.have.property('browser_enabled');
+    expect(res.getBody()).to.have.property('in_app_enabled');
+  });
+  
+  test("Email preference is updated", function() {
+    expect(res.getBody().email_enabled).to.be.true;
+  });
+}
+
+docs {
+  # 알림 설정 업데이트
+  
+  사용자의 알림 설정을 업데이트합니다.
+  
+  ## 요청 본문
+  
+  모든 필드는 선택 사항이며, 제공된 필드만 업데이트됩니다.
+  
+  ### 채널 설정 (선택)
+  - `email_enabled`: 이메일 알림 활성화 여부 (`boolean`)
+  - `push_enabled`: 푸시 알림 활성화 여부 (`boolean`)
+  - `browser_enabled`: 브라우저 알림 활성화 여부 (`boolean`)
+  - `in_app_enabled`: 인앱 알림 활성화 여부 (`boolean`)
+  
+  ### 카테고리별 설정 (선택)
+  - `system_notifications`: 시스템 알림 (`boolean`)
+  - `vm_notifications`: VM 관련 알림 (`boolean`)
+  - `cost_notifications`: 비용 관련 알림 (`boolean`)
+  - `security_notifications`: 보안 관련 알림 (`boolean`)
+  
+  ### 우선순위별 설정 (선택)
+  - `low_priority_enabled`: 낮은 우선순위 알림 (`boolean`)
+  - `medium_priority_enabled`: 보통 우선순위 알림 (`boolean`)
+  - `high_priority_enabled`: 높은 우선순위 알림 (`boolean`)
+  - `urgent_priority_enabled`: 긴급 우선순위 알림 (`boolean`)
+  
+  ### 시간 설정 (선택)
+  - `quiet_hours_start`: 조용한 시간 시작 (`string`, HH:MM 형식)
+  - `quiet_hours_end`: 조용한 시간 종료 (`string`, HH:MM 형식)
+  - `timezone`: 타임존 (`string`, 예: Asia/Seoul)
+  
+  ## 반환 데이터
+  
+  업데이트된 알림 설정 객체를 반환합니다.
+}

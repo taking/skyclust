@@ -354,18 +354,19 @@ func (h *Handler) getExportStatusHandler() handlers.HandlerFunc {
 	}
 }
 
-// DownloadExport handles export download using decorator pattern
-func (h *Handler) DownloadExport(c *gin.Context) {
+// GetExportFile handles export file download (RESTful: GET /exports/:id/file)
+// This replaces GET /exports/:id/download
+func (h *Handler) GetExportFile(c *gin.Context) {
 	handler := h.Compose(
-		h.downloadExportHandler(),
-		h.StandardCRUDDecorators("download_export")...,
+		h.getExportFileHandler(),
+		h.StandardCRUDDecorators("get_export_file")...,
 	)
 
 	handler(c)
 }
 
-// downloadExportHandler is the core business logic for downloading export
-func (h *Handler) downloadExportHandler() handlers.HandlerFunc {
+// getExportFileHandler is the core business logic for getting export file
+func (h *Handler) getExportFileHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := h.extractUserID(c)
 		if userID == uuid.Nil {
@@ -377,24 +378,24 @@ func (h *Handler) downloadExportHandler() handlers.HandlerFunc {
 			return
 		}
 
-		h.logDownloadExportRequest(c, userID, exportID)
+		h.logGetExportFileRequest(c, userID, exportID)
 
 		// Retrieve export from storage
 		item, exists := h.exportStorage.Get(exportID)
 		if !exists {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Export not found", 404), "download_export")
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "Export not found", 404), "get_export_file")
 			return
 		}
 
 		// Verify ownership
 		if item.UserID != userID.String() {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeForbidden, "You don't have access to this export", 403), "download_export")
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeForbidden, "You don't have access to this export", 403), "get_export_file")
 			return
 		}
 
 		// Check if export is completed
 		if item.Status != "completed" {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("Export is not ready for download. Current status: %s", item.Status), 400), "download_export")
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("Export is not ready for download. Current status: %s", item.Status), 400), "get_export_file")
 			return
 		}
 
@@ -402,7 +403,7 @@ func (h *Handler) downloadExportHandler() handlers.HandlerFunc {
 		if len(item.Data) == 0 {
 			// In a real implementation, you would retrieve the actual export data
 			// For now, we'll return an error indicating data is not available
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "Export data not available. Please regenerate the export.", 500), "download_export")
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "Export data not available. Please regenerate the export.", 500), "get_export_file")
 			return
 		}
 
@@ -546,8 +547,8 @@ func (h *Handler) logExportStatusRequest(c *gin.Context, userID uuid.UUID, expor
 	})
 }
 
-func (h *Handler) logDownloadExportRequest(c *gin.Context, userID uuid.UUID, exportID string) {
-	h.LogBusinessEvent(c, "export_download_requested", userID.String(), exportID, map[string]interface{}{
+func (h *Handler) logGetExportFileRequest(c *gin.Context, userID uuid.UUID, exportID string) {
+	h.LogBusinessEvent(c, "export_file_requested", userID.String(), exportID, map[string]interface{}{
 		"export_id": exportID,
 	})
 }

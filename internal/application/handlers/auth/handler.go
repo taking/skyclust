@@ -123,11 +123,23 @@ func (h *Handler) loginHandler(req struct {
 	}
 }
 
-// Logout handles user logout requests using decorator pattern
+// Logout handles user logout requests (DELETE /auth/sessions/me)
+// RESTful: Delete current session
 func (h *Handler) Logout(c *gin.Context) {
 	handler := h.Compose(
 		h.logoutHandler(),
-		h.StandardCRUDDecorators("logout")...,
+		h.StandardCRUDDecorators("delete_session")...,
+	)
+
+	handler(c)
+}
+
+// GetSession handles getting current session info (GET /auth/sessions/me)
+// RESTful: Get current session
+func (h *Handler) GetSession(c *gin.Context) {
+	handler := h.Compose(
+		h.getSessionHandler(),
+		h.StandardCRUDDecorators("get_session")...,
 	)
 
 	handler(c)
@@ -142,18 +154,59 @@ func (h *Handler) logoutHandler() handlers.HandlerFunc {
 		h.logUserLogoutAttempt(c, userID)
 
 		if h.authService == nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeServiceUnavailable, "Authentication service is not available", 503), "logout")
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeServiceUnavailable, "Authentication service is not available", 503), "delete_session")
 			return
 		}
 
 		err := h.authService.Logout(userID, token)
 		if err != nil {
-			h.HandleError(c, err, "logout")
+			h.HandleError(c, err, "delete_session")
 			return
 		}
 
 		h.logUserLogoutSuccess(c, userID)
-		h.OK(c, nil, readability.SuccessMsgLogoutSuccess)
+		h.OK(c, gin.H{
+			"message": "Session terminated successfully",
+		}, readability.SuccessMsgLogoutSuccess)
+	}
+}
+
+// getSessionHandler is the core business logic for getting current session
+func (h *Handler) getSessionHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := h.extractUserID(c)
+		token := h.extractBearerToken(c)
+
+		// Validate token
+		if h.authService == nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeServiceUnavailable, "Authentication service is not available", 503), "get_session")
+			return
+		}
+
+		user, err := h.authService.ValidateToken(token)
+		if err != nil {
+			h.HandleError(c, err, "get_session")
+			return
+		}
+
+		// Get user roles
+		var roles []string
+		if h.rbacService != nil {
+			userRoles, err := h.rbacService.GetUserRoles(userID)
+			if err == nil {
+				for _, role := range userRoles {
+					roles = append(roles, string(role))
+				}
+			}
+		}
+
+		h.OK(c, gin.H{
+			"user_id":  user.ID.String(),
+			"username": user.Username,
+			"email":    user.Email,
+			"roles":    roles,
+			"active":   user.IsActive(),
+		}, "Session retrieved successfully")
 	}
 }
 
