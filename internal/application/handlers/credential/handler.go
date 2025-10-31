@@ -48,9 +48,16 @@ func (h *Handler) createCredentialHandler(req domain.CreateCredentialRequest) ha
 		req = h.extractValidatedRequest(c)
 		userID := h.extractUserID(c)
 
+		// Parse workspace ID from request
+		workspaceID, err := uuid.Parse(req.WorkspaceID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid workspace ID format", 400), "create_credential")
+			return
+		}
+
 		h.logCredentialCreationAttempt(c, userID, req)
 
-		credential, err := h.credentialService.CreateCredential(c.Request.Context(), userID, req)
+		credential, err := h.credentialService.CreateCredential(c.Request.Context(), workspaceID, userID, req)
 		if err != nil {
 			h.HandleError(c, err, "create_credential")
 			return
@@ -75,9 +82,23 @@ func (h *Handler) GetCredentials(c *gin.Context) {
 func (h *Handler) getCredentialsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := h.extractUserID(c)
+
+		// Get workspace ID from query parameter
+		workspaceIDStr := c.Query("workspace_id")
+		if workspaceIDStr == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "workspace_id is required", 400), "get_credentials")
+			return
+		}
+
+		workspaceID, err := uuid.Parse(workspaceIDStr)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid workspace ID format", 400), "get_credentials")
+			return
+		}
+
 		h.logCredentialsRequest(c, userID)
 
-		credentials, err := h.credentialService.GetCredentials(c.Request.Context(), userID)
+		credentials, err := h.credentialService.GetCredentials(c.Request.Context(), workspaceID)
 		if err != nil {
 			h.HandleError(c, err, "get_credentials")
 			return
@@ -103,9 +124,22 @@ func (h *Handler) getCredentialHandler() handlers.HandlerFunc {
 		credentialID := h.parseCredentialID(c)
 		userID := h.extractUserID(c)
 
+		// Get workspace ID from query parameter
+		workspaceIDStr := c.Query("workspace_id")
+		if workspaceIDStr == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "workspace_id is required", 400), "get_credential")
+			return
+		}
+
+		workspaceID, err := uuid.Parse(workspaceIDStr)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid workspace ID format", 400), "get_credential")
+			return
+		}
+
 		h.logCredentialRequest(c, userID, credentialID)
 
-		credential, err := h.findCredentialByID(c, userID, credentialID)
+		credential, err := h.credentialService.GetCredentialByID(c.Request.Context(), workspaceID, credentialID)
 		if err != nil {
 			h.HandleError(c, err, "get_credential")
 			return
@@ -134,9 +168,22 @@ func (h *Handler) updateCredentialHandler(req domain.UpdateCredentialRequest) ha
 		req = h.extractValidatedUpdateRequest(c)
 		userID := h.extractUserID(c)
 
+		// Get workspace ID from query parameter
+		workspaceIDStr := c.Query("workspace_id")
+		if workspaceIDStr == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "workspace_id is required", 400), "update_credential")
+			return
+		}
+
+		workspaceID, err := uuid.Parse(workspaceIDStr)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid workspace ID format", 400), "update_credential")
+			return
+		}
+
 		h.logCredentialUpdateAttempt(c, userID, credentialID)
 
-		credential, err := h.credentialService.UpdateCredential(c.Request.Context(), userID, credentialID, req)
+		credential, err := h.credentialService.UpdateCredential(c.Request.Context(), workspaceID, credentialID, req)
 		if err != nil {
 			h.HandleError(c, err, "update_credential")
 			return
@@ -163,9 +210,22 @@ func (h *Handler) deleteCredentialHandler() handlers.HandlerFunc {
 		credentialID := h.parseCredentialID(c)
 		userID := h.extractUserID(c)
 
+		// Get workspace ID from query parameter
+		workspaceIDStr := c.Query("workspace_id")
+		if workspaceIDStr == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "workspace_id is required", 400), "delete_credential")
+			return
+		}
+
+		workspaceID, err := uuid.Parse(workspaceIDStr)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid workspace ID format", 400), "delete_credential")
+			return
+		}
+
 		h.logCredentialDeletionAttempt(c, userID, credentialID)
 
-		err := h.credentialService.DeleteCredential(c.Request.Context(), userID, credentialID)
+		err = h.credentialService.DeleteCredential(c.Request.Context(), workspaceID, credentialID)
 		if err != nil {
 			h.HandleError(c, err, "delete_credential")
 			return
@@ -228,9 +288,17 @@ func (h *Handler) createCredentialFromFileHandler() handlers.HandlerFunc {
 		}
 
 		req := h.buildCredentialRequest(formData, credentialData)
+
+		// Parse workspace ID from form data
+		workspaceID, err := uuid.Parse(formData["workspace_id"])
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid workspace ID format", 400), "create_credential_from_file")
+			return
+		}
+
 		h.logCredentialFromFileCreationAttempt(c, userID, formData)
 
-		credential, err := h.credentialService.CreateCredential(c.Request.Context(), userID, req)
+		credential, err := h.credentialService.CreateCredential(c.Request.Context(), workspaceID, userID, req)
 		if err != nil {
 			h.HandleError(c, err, "create_credential_from_file")
 			return
@@ -257,9 +325,22 @@ func (h *Handler) getCredentialsByProviderHandler() handlers.HandlerFunc {
 		provider := h.extractProviderParam(c)
 		userID := h.extractUserID(c)
 
+		// Get workspace ID from query parameter
+		workspaceIDStr := c.Query("workspace_id")
+		if workspaceIDStr == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "workspace_id is required", 400), "get_credentials_by_provider")
+			return
+		}
+
+		workspaceID, err := uuid.Parse(workspaceIDStr)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid workspace ID format", 400), "get_credentials_by_provider")
+			return
+		}
+
 		h.logCredentialsByProviderRequest(c, userID, provider)
 
-		credentials, err := h.credentialService.GetCredentials(c.Request.Context(), userID)
+		credentials, err := h.credentialService.GetCredentials(c.Request.Context(), workspaceID)
 		if err != nil {
 			h.HandleError(c, err, "get_credentials_by_provider")
 			return
@@ -336,21 +417,6 @@ func (h *Handler) extractProviderParam(c *gin.Context) string {
 	return provider
 }
 
-func (h *Handler) findCredentialByID(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID) (*domain.Credential, error) {
-	credentials, err := h.credentialService.GetCredentials(c.Request.Context(), userID)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, cred := range credentials {
-		if cred.ID == credentialID {
-			return cred, nil
-		}
-	}
-
-	return nil, domain.NewDomainError(domain.ErrCodeNotFound, "Credential not found", 404)
-}
-
 func (h *Handler) filterCredentialsByProvider(credentials []*domain.Credential, provider string) []*domain.Credential {
 	var filteredCredentials []*domain.Credential
 	for _, cred := range credentials {
@@ -364,14 +430,16 @@ func (h *Handler) filterCredentialsByProvider(credentials []*domain.Credential, 
 func (h *Handler) parseFormData(c *gin.Context) (map[string]string, error) {
 	name := c.PostForm("name")
 	provider := c.PostForm("provider")
+	workspaceID := c.PostForm("workspace_id")
 
-	if name == "" || provider == "" {
-		return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "name and provider are required", 400)
+	if name == "" || provider == "" || workspaceID == "" {
+		return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "name, provider, and workspace_id are required", 400)
 	}
 
 	return map[string]string{
-		"name":     name,
-		"provider": provider,
+		"name":         name,
+		"provider":     provider,
+		"workspace_id": workspaceID,
 	}, nil
 }
 
@@ -458,9 +526,10 @@ func (h *Handler) parseJSONContent(fileContent []byte) (map[string]interface{}, 
 
 func (h *Handler) buildCredentialRequest(formData map[string]string, credentialData map[string]interface{}) domain.CreateCredentialRequest {
 	return domain.CreateCredentialRequest{
-		Name:     formData["name"],
-		Provider: formData["provider"],
-		Data:     credentialData,
+		WorkspaceID: formData["workspace_id"],
+		Name:        formData["name"],
+		Provider:    formData["provider"],
+		Data:        credentialData,
 	}
 }
 

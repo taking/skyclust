@@ -1,35 +1,66 @@
 meta {
-  name: Get Cost Analysis
+  name: 비용 요약 조회
   type: http
-  seq: 23
+  seq: 1
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/cost-analysis?period=30d&workspace_id={{workspaceId}}
+  url: {{baseUrl}}/api/{{apiVersion}}/cost-analysis/workspaces/{{workspaceId}}/summary?period=30d
   body: none
   auth: bearer
+}
+
+docs {
+  # 비용 요약 조회
+  
+  워크스페이스의 비용 요약 정보를 조회합니다.
+  
+  ## Parameters
+  - `workspaceId` (path): 워크스페이스 ID
+  - `period` (query, optional): 기간 (7d, 30d, 90d, 1y), 기본값: 30d
+  
+  ## Response
+  - `total_cost`: 총 비용
+  - `currency`: 통화 (USD)
+  - `period`: 기간
+  - `start_date`: 시작 날짜
+  - `end_date`: 종료 날짜
+  - `by_provider`: 프로바이더별 비용 집계
+    - AWS: EC2, EKS 등의 서비스 비용
+    - GCP: Compute, GKE 등의 서비스 비용
+  
+  ## 비용 계산 방식
+  
+  - **VM 비용**: Workspace에 할당된 VM의 실제 비용 (AWS Cost Explorer API, GCP Billing API 사용)
+  - **서비스별 세분화**: 
+    - AWS: EC2, EKS 등
+    - GCP: Compute, GKE 등
+  - **리소스 타입**: vm, cluster, node_group, node_pool
+  - **Provider별 빌링**: 각 Provider의 Credential을 사용하여 실제 비용 조회
+  
+  ## 비용 데이터 구조
+  
+  각 비용 항목은 다음 정보를 포함합니다:
+  - `service`: 서비스명 (EC2, EKS, Compute, GKE 등)
+  - `resource_type`: 리소스 타입 (vm, cluster, node_group, node_pool)
+  - `provider`: 클라우드 제공자 (aws, gcp)
+  - `region`: 리전
 }
 
 auth:bearer {
   token: {{token}}
 }
 
-
 tests {
   test("Status code is 200", function() {
     expect(res.getStatus()).to.equal(200);
   });
   
-  test("Response contains cost data", function() {
-    expect(res.getBody()).to.have.property('total_cost');
-    expect(res.getBody()).to.have.property('currency');
-    expect(res.getBody()).to.have.property('period');
-  });
-  
-  test("Cost analysis has required fields", function() {
-    const costData = res.getBody();
-    expect(costData).to.have.property('by_service');
-    expect(costData).to.have.property('by_provider');
-    expect(costData).to.have.property('daily_costs');
+  test("Response contains cost summary data", function() {
+    const body = res.getBody();
+    expect(body.data).to.have.property('total_cost');
+    expect(body.data).to.have.property('currency');
+    expect(body.data).to.have.property('period');
+    expect(body.data).to.have.property('by_provider');
   });
 }

@@ -1,0 +1,54 @@
+meta {
+  name: 비용 예측 조회
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/cost-analysis/workspaces/{{workspaceId}}/predictions?days=30
+  body: none
+  auth: bearer
+}
+
+docs {
+  # 비용 예측 조회
+  
+  워크스페이스의 향후 비용을 예측합니다. 최근 30일의 실제 비용 데이터를 기반으로 선형 회귀 분석을 사용하여 예측합니다.
+  
+  ## Parameters
+  - `workspaceId` (path): 워크스페이스 ID
+  - `days` (query, optional): 예측 일수 (1-365), 기본값: 30
+  
+  ## Response
+  - `predictions`: 예측 데이터 배열
+    - `date`: 예측 날짜
+    - `predicted`: 예측 비용
+    - `confidence`: 신뢰도 (0-1)
+    - `lower_bound`: 하한선
+    - `upper_bound`: 상한선
+  
+  ## 비용 데이터 소스
+  
+  예측은 다음 리소스의 실제 비용 데이터를 기반으로 합니다:
+  - **VM**: EC2, Compute Engine 등
+  - **Kubernetes**: EKS, GKE 클러스터 (향후 확장)
+  - **Node Groups/Pools**: 노드 그룹/풀 비용 (향후 확장)
+  
+  실제 비용은 AWS Cost Explorer API 및 GCP Billing API를 통해 조회되며, 실패 시 VM 사양 기반 추정 비용을 사용합니다.
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains predictions", function() {
+    const body = res.getBody();
+    expect(body.data).to.have.property('predictions');
+    expect(body.data.predictions).to.be.an('array');
+  });
+}

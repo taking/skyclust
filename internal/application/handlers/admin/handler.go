@@ -364,50 +364,10 @@ func (h *Handler) calculatePagination(total int64, limit, page int) gin.H {
 	}
 }
 
-func (h *Handler) parseUserID(c *gin.Context) uuid.UUID {
-	userIDStr := c.Param("id")
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid user ID format", 400), "parse_user_id")
-		return uuid.Nil
-	}
-	return userID
-}
-
 // Logging helper methods
 
 func (h *Handler) logAdminUsersRequest(c *gin.Context) {
 	h.LogBusinessEvent(c, "admin_users_requested", "", "", map[string]interface{}{
 		"operation": "get_users",
-	})
-}
-
-func (h *Handler) logAdminUserRequest(c *gin.Context, userID uuid.UUID) {
-	h.LogBusinessEvent(c, "admin_user_requested", "", userID.String(), map[string]interface{}{
-		"user_id": userID.String(),
-	})
-}
-
-func (h *Handler) logAdminUserUpdateAttempt(c *gin.Context, userID uuid.UUID) {
-	h.LogBusinessEvent(c, "admin_user_update_attempted", "", userID.String(), map[string]interface{}{
-		"user_id": userID.String(),
-	})
-}
-
-func (h *Handler) logAdminUserUpdateSuccess(c *gin.Context, userID uuid.UUID) {
-	h.LogBusinessEvent(c, "admin_user_updated", "", userID.String(), map[string]interface{}{
-		"user_id": userID.String(),
-	})
-}
-
-func (h *Handler) logAdminUserDeletionAttempt(c *gin.Context, userID uuid.UUID) {
-	h.LogBusinessEvent(c, "admin_user_deletion_attempted", "", userID.String(), map[string]interface{}{
-		"user_id": userID.String(),
-	})
-}
-
-func (h *Handler) logAdminUserDeletionSuccess(c *gin.Context, userID uuid.UUID) {
-	h.LogBusinessEvent(c, "admin_user_deleted", "", userID.String(), map[string]interface{}{
-		"user_id": userID.String(),
 	})
 }

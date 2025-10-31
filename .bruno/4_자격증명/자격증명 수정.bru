@@ -5,7 +5,7 @@ meta {
 }
 
 put {
-  url: {{baseUrl}}/api/{{apiVersion}}/credentials/{{credentialsId}}
+  url: {{baseUrl}}/api/{{apiVersion}}/credentials/{{credentialsId}}?workspace_id={{workspaceId}}
   body: json
   auth: bearer
 }

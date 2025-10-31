@@ -10,47 +10,65 @@ import (
 // Credential represents a cloud provider credential
 type Credential struct {
 	ID            uuid.UUID              `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
-	UserID        uuid.UUID              `json:"user_id" gorm:"type:uuid;not null;index"`
+	WorkspaceID   uuid.UUID              `json:"workspace_id" gorm:"type:uuid;not null;index"`
 	Provider      string                 `json:"provider" gorm:"not null;size:20;index"` // aws, gcp, openstack, azure
 	Name          string                 `json:"name" gorm:"not null;size:100"`
 	EncryptedData []byte                 `json:"-" gorm:"type:bytea;not null"` // 암호화된 자격증명 데이터
 	IsActive      bool                   `json:"is_active" gorm:"default:true"`
 	MaskedData    map[string]interface{} `json:"masked_data,omitempty" gorm:"-"` // 마스킹된 데이터 (응답 전용)
+	CreatedBy     uuid.UUID              `json:"created_by" gorm:"type:uuid;not null;index"` // 생성한 사용자
 	CreatedAt     time.Time              `json:"created_at"`
 	UpdatedAt     time.Time              `json:"updated_at"`
 	DeletedAt     *time.Time             `json:"-" gorm:"index"`
 
 	// Relationships
-	User *User `json:"user,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+	Workspace *Workspace `json:"workspace,omitempty" gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
 }
 
 // CredentialRepository defines the interface for credential data operations
 type CredentialRepository interface {
 	Create(credential *Credential) error
 	GetByID(id uuid.UUID) (*Credential, error)
-	GetByUserID(userID uuid.UUID) ([]*Credential, error)
-	GetByUserIDAndProvider(userID uuid.UUID, provider string) ([]*Credential, error)
+	GetByWorkspaceID(workspaceID uuid.UUID) ([]*Credential, error)
+	GetByWorkspaceIDAndProvider(workspaceID uuid.UUID, provider string) ([]*Credential, error)
 	Update(credential *Credential) error
 	Delete(id uuid.UUID) error
+	DeleteByWorkspaceID(workspaceID uuid.UUID) error
+	// Deprecated: Use GetByWorkspaceID instead
+	GetByUserID(userID uuid.UUID) ([]*Credential, error)
+	// Deprecated: Use GetByWorkspaceIDAndProvider instead
+	GetByUserIDAndProvider(userID uuid.UUID, provider string) ([]*Credential, error)
+	// Deprecated: Use DeleteByWorkspaceID instead
 	DeleteByUserID(userID uuid.UUID) error
 }
 
 // CredentialService defines the interface for credential business logic
 type CredentialService interface {
-	CreateCredential(ctx context.Context, userID uuid.UUID, req CreateCredentialRequest) (*Credential, error)
-	GetCredentials(ctx context.Context, userID uuid.UUID) ([]*Credential, error)
-	GetCredentialByID(ctx context.Context, userID, credentialID uuid.UUID) (*Credential, error)
-	UpdateCredential(ctx context.Context, userID, credentialID uuid.UUID, req UpdateCredentialRequest) (*Credential, error)
-	DeleteCredential(ctx context.Context, userID, credentialID uuid.UUID) error
+	CreateCredential(ctx context.Context, workspaceID, createdBy uuid.UUID, req CreateCredentialRequest) (*Credential, error)
+	GetCredentials(ctx context.Context, workspaceID uuid.UUID) ([]*Credential, error)
+	GetCredentialByID(ctx context.Context, workspaceID, credentialID uuid.UUID) (*Credential, error)
+	UpdateCredential(ctx context.Context, workspaceID, credentialID uuid.UUID, req UpdateCredentialRequest) (*Credential, error)
+	DeleteCredential(ctx context.Context, workspaceID, credentialID uuid.UUID) error
 	EncryptCredentialData(ctx context.Context, data map[string]interface{}) ([]byte, error)
 	DecryptCredentialData(ctx context.Context, encryptedData []byte) (map[string]interface{}, error)
+	// Deprecated: Use CreateCredential with workspaceID instead
+	CreateCredentialByUser(ctx context.Context, userID uuid.UUID, req CreateCredentialRequest) (*Credential, error)
+	// Deprecated: Use GetCredentials with workspaceID instead
+	GetCredentialsByUser(ctx context.Context, userID uuid.UUID) ([]*Credential, error)
+	// Deprecated: Use GetCredentialByID with workspaceID instead
+	GetCredentialByIDAndUser(ctx context.Context, userID, credentialID uuid.UUID) (*Credential, error)
+	// Deprecated: Use UpdateCredential with workspaceID instead
+	UpdateCredentialByUser(ctx context.Context, userID, credentialID uuid.UUID, req UpdateCredentialRequest) (*Credential, error)
+	// Deprecated: Use DeleteCredential with workspaceID instead
+	DeleteCredentialByUser(ctx context.Context, userID, credentialID uuid.UUID) error
 }
 
 // CreateCredentialRequest represents the request to create a credential
 type CreateCredentialRequest struct {
-	Provider string                 `json:"provider" validate:"required,oneof=aws gcp openstack azure"`
-	Name     string                 `json:"name" validate:"required,min=1,max=100"`
-	Data     map[string]interface{} `json:"data" validate:"required"`
+	WorkspaceID string                 `json:"workspace_id" validate:"required,uuid"`
+	Provider    string                 `json:"provider" validate:"required,oneof=aws gcp openstack azure"`
+	Name        string                 `json:"name" validate:"required,min=1,max=100"`
+	Data        map[string]interface{} `json:"data" validate:"required"`
 }
 
 // UpdateCredentialRequest represents the request to update a credential

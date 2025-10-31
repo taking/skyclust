@@ -203,7 +203,8 @@ func VMDeletedEvent(vmID string, name string, workspaceID string, provider strin
 func CredentialCreatedEvent(credential *Credential) DomainEvent {
 	return NewDomainEvent(EventCredentialCreated, map[string]interface{}{
 		"credential_id": credential.ID,
-		"user_id":       credential.UserID.String(),
+		"workspace_id":  credential.WorkspaceID.String(),
+		"created_by":    credential.CreatedBy.String(),
 		"provider":      credential.Provider,
 	})
 }
@@ -212,7 +213,8 @@ func CredentialCreatedEvent(credential *Credential) DomainEvent {
 func CredentialUpdatedEvent(credential *Credential, changes map[string]interface{}) DomainEvent {
 	data := map[string]interface{}{
 		"credential_id": credential.ID,
-		"user_id":       credential.UserID.String(),
+		"workspace_id":  credential.WorkspaceID.String(),
+		"created_by":    credential.CreatedBy.String(),
 		"provider":      credential.Provider,
 	}
 

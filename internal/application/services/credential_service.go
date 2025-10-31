@@ -35,8 +35,8 @@ func NewCredentialService(
 	}
 }
 
-// CreateCredential creates a new credential
-func (s *credentialService) CreateCredential(ctx context.Context, userID uuid.UUID, req domain.CreateCredentialRequest) (*domain.Credential, error) {
+// CreateCredential creates a new credential (Workspace-based)
+func (s *credentialService) CreateCredential(ctx context.Context, workspaceID, createdBy uuid.UUID, req domain.CreateCredentialRequest) (*domain.Credential, error) {
 	// Validate provider
 	if !s.isValidProvider(req.Provider) {
 		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "unsupported provider", 400)
@@ -62,7 +62,8 @@ func (s *credentialService) CreateCredential(ctx context.Context, userID uuid.UU
 
 	// Create credential
 	credential := &domain.Credential{
-		UserID:        userID,
+		WorkspaceID:   workspaceID,
+		CreatedBy:     createdBy,
 		Provider:      req.Provider,
 		Name:          req.Name,
 		EncryptedData: encryptedData,
@@ -75,11 +76,12 @@ func (s *credentialService) CreateCredential(ctx context.Context, userID uuid.UU
 
 	// Log credential creation
 	_ = s.auditLogRepo.Create(&domain.AuditLog{
-		UserID:   userID,
+		UserID:   createdBy,
 		Action:   domain.ActionCredentialCreate,
 		Resource: "POST /api/v1/credentials",
 		Details: map[string]interface{}{
 			"credential_id": credential.ID,
+			"workspace_id":  workspaceID,
 			"provider":      credential.Provider,
 			"name":          credential.Name,
 		},
@@ -87,13 +89,50 @@ func (s *credentialService) CreateCredential(ctx context.Context, userID uuid.UU
 
 	// TODO: Trigger plugin activation
 	// This would be called by the plugin activation service
-	// s.pluginActivationService.OnCredentialCreated(userID, credential.Provider)
+	// s.pluginActivationService.OnCredentialCreated(workspaceID, credential.Provider)
 
 	return credential, nil
 }
 
-// GetCredentials retrieves all credentials for a user
-func (s *credentialService) GetCredentials(ctx context.Context, userID uuid.UUID) ([]*domain.Credential, error) {
+// Deprecated: Use CreateCredential with workspaceID instead
+// CreateCredentialByUser creates a new credential (User-based - deprecated)
+func (s *credentialService) CreateCredentialByUser(ctx context.Context, userID uuid.UUID, req domain.CreateCredentialRequest) (*domain.Credential, error) {
+	// For backward compatibility, we need to find a workspace for the user
+	// This is a temporary solution - in production, credentials should always be workspace-based
+	// We'll create a default workspace or use the user's primary workspace
+	// For now, return an error indicating this method is deprecated
+	return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "CreateCredentialByUser is deprecated. Use CreateCredential with workspaceID instead", 400)
+}
+
+// GetCredentials retrieves all credentials for a workspace
+func (s *credentialService) GetCredentials(ctx context.Context, workspaceID uuid.UUID) ([]*domain.Credential, error) {
+	credentials, err := s.credentialRepo.GetByWorkspaceID(workspaceID)
+	if err != nil {
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, "failed to get credentials", 500)
+	}
+
+	// Decrypt and mask credential data for each credential
+	for _, credential := range credentials {
+		decryptedData, err := s.DecryptCredentialData(ctx, credential.EncryptedData)
+		if err != nil {
+			// Log error but don't fail the request, just skip masking
+			logger.DefaultLogger.GetLogger().Warn("Failed to decrypt credential for masking",
+				zap.String("credential_id", credential.ID.String()),
+				zap.Error(err))
+			continue
+		}
+
+		// Add masked data to credential
+		credential.MaskedData = domain.MaskCredentialData(decryptedData)
+	}
+
+	return credentials, nil
+}
+
+// Deprecated: Use GetCredentials with workspaceID instead
+// GetCredentialsByUser retrieves all credentials for a user (deprecated)
+func (s *credentialService) GetCredentialsByUser(ctx context.Context, userID uuid.UUID) ([]*domain.Credential, error) {
+	// For backward compatibility, search by created_by
 	credentials, err := s.credentialRepo.GetByUserID(userID)
 	if err != nil {
 		return nil, domain.NewDomainError(domain.ErrCodeInternalError, "failed to get credentials", 500)
@@ -117,8 +156,8 @@ func (s *credentialService) GetCredentials(ctx context.Context, userID uuid.UUID
 	return credentials, nil
 }
 
-// GetCredentialByID retrieves a specific credential by ID
-func (s *credentialService) GetCredentialByID(ctx context.Context, userID, credentialID uuid.UUID) (*domain.Credential, error) {
+// GetCredentialByID retrieves a specific credential by ID (Workspace-based)
+func (s *credentialService) GetCredentialByID(ctx context.Context, workspaceID, credentialID uuid.UUID) (*domain.Credential, error) {
 	credential, err := s.credentialRepo.GetByID(credentialID)
 	if err != nil {
 		return nil, domain.NewDomainError(domain.ErrCodeInternalError, "failed to get credential", 500)
@@ -127,18 +166,37 @@ func (s *credentialService) GetCredentialByID(ctx context.Context, userID, crede
 		return nil, domain.NewDomainError(domain.ErrCodeNotFound, "credential not found", 404)
 	}
 
-	// Check if credential belongs to user
-	if credential.UserID != userID {
+	// Check if credential belongs to workspace
+	if credential.WorkspaceID != workspaceID {
 		return nil, domain.NewDomainError(domain.ErrCodeForbidden, "access denied", 403)
 	}
 
 	return credential, nil
 }
 
-// UpdateCredential updates a credential
-func (s *credentialService) UpdateCredential(ctx context.Context, userID, credentialID uuid.UUID, req domain.UpdateCredentialRequest) (*domain.Credential, error) {
+// Deprecated: Use GetCredentialByID with workspaceID instead
+// GetCredentialByIDAndUser retrieves a specific credential by ID (User-based - deprecated)
+func (s *credentialService) GetCredentialByIDAndUser(ctx context.Context, userID, credentialID uuid.UUID) (*domain.Credential, error) {
+	credential, err := s.credentialRepo.GetByID(credentialID)
+	if err != nil {
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, "failed to get credential", 500)
+	}
+	if credential == nil {
+		return nil, domain.NewDomainError(domain.ErrCodeNotFound, "credential not found", 404)
+	}
+
+	// Check if credential was created by user (for backward compatibility)
+	if credential.CreatedBy != userID {
+		return nil, domain.NewDomainError(domain.ErrCodeForbidden, "access denied", 403)
+	}
+
+	return credential, nil
+}
+
+// UpdateCredential updates a credential (Workspace-based)
+func (s *credentialService) UpdateCredential(ctx context.Context, workspaceID, credentialID uuid.UUID, req domain.UpdateCredentialRequest) (*domain.Credential, error) {
 	// Get existing credential
-	credential, err := s.GetCredentialByID(ctx, userID, credentialID)
+	credential, err := s.GetCredentialByID(ctx, workspaceID, credentialID)
 	if err != nil {
 		return nil, err
 	}
@@ -169,11 +227,12 @@ func (s *credentialService) UpdateCredential(ctx context.Context, userID, creden
 
 	// Log credential update
 	_ = s.auditLogRepo.Create(&domain.AuditLog{
-		UserID:   userID,
+		UserID:   credential.CreatedBy,
 		Action:   domain.ActionCredentialUpdate,
 		Resource: "PUT /api/v1/credentials/" + credentialID.String(),
 		Details: map[string]interface{}{
 			"credential_id": credential.ID,
+			"workspace_id":  workspaceID,
 			"provider":      credential.Provider,
 		},
 	})
@@ -181,10 +240,23 @@ func (s *credentialService) UpdateCredential(ctx context.Context, userID, creden
 	return credential, nil
 }
 
-// DeleteCredential deletes a credential
-func (s *credentialService) DeleteCredential(ctx context.Context, userID, credentialID uuid.UUID) error {
-	// Check if credential exists and belongs to user
-	credential, err := s.GetCredentialByID(ctx, userID, credentialID)
+// Deprecated: Use UpdateCredential with workspaceID instead
+// UpdateCredentialByUser updates a credential (User-based - deprecated)
+func (s *credentialService) UpdateCredentialByUser(ctx context.Context, userID, credentialID uuid.UUID, req domain.UpdateCredentialRequest) (*domain.Credential, error) {
+	// For backward compatibility, get credential by user
+	credential, err := s.GetCredentialByIDAndUser(ctx, userID, credentialID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update using workspace ID
+	return s.UpdateCredential(ctx, credential.WorkspaceID, credentialID, req)
+}
+
+// DeleteCredential deletes a credential (Workspace-based)
+func (s *credentialService) DeleteCredential(ctx context.Context, workspaceID, credentialID uuid.UUID) error {
+	// Check if credential exists and belongs to workspace
+	credential, err := s.GetCredentialByID(ctx, workspaceID, credentialID)
 	if err != nil {
 		return err
 	}
@@ -196,16 +268,30 @@ func (s *credentialService) DeleteCredential(ctx context.Context, userID, creden
 
 	// Log credential deletion
 	_ = s.auditLogRepo.Create(&domain.AuditLog{
-		UserID:   userID,
+		UserID:   credential.CreatedBy,
 		Action:   domain.ActionCredentialDelete,
 		Resource: "DELETE /api/v1/credentials/" + credentialID.String(),
 		Details: map[string]interface{}{
 			"credential_id": credential.ID,
+			"workspace_id":  workspaceID,
 			"provider":      credential.Provider,
 		},
 	})
 
 	return nil
+}
+
+// Deprecated: Use DeleteCredential with workspaceID instead
+// DeleteCredentialByUser deletes a credential (User-based - deprecated)
+func (s *credentialService) DeleteCredentialByUser(ctx context.Context, userID, credentialID uuid.UUID) error {
+	// For backward compatibility, get credential by user
+	credential, err := s.GetCredentialByIDAndUser(ctx, userID, credentialID)
+	if err != nil {
+		return err
+	}
+
+	// Delete using workspace ID
+	return s.DeleteCredential(ctx, credential.WorkspaceID, credentialID)
 }
 
 // EncryptCredentialData encrypts credential data

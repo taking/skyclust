@@ -1,12 +1,14 @@
 package cost_analysis
 
 import (
+	service "skyclust/internal/application/services"
+
 	"github.com/gin-gonic/gin"
 )
 
 // SetupRoutes sets up cost analysis routes
-func SetupRoutes(router *gin.RouterGroup) {
-	costAnalysisHandler := NewHandler()
+func SetupRoutes(router *gin.RouterGroup, costAnalysisService *service.CostAnalysisService) {
+	costAnalysisHandler := NewHandler(costAnalysisService)
 
 	// Workspace-specific cost analysis
 	router.GET("/workspaces/:workspaceId/summary", costAnalysisHandler.GetCostSummary)

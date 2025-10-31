@@ -92,8 +92,9 @@ func (h *BaseHandler) GetCredentialFromRequest(c *gin.Context, credentialService
 		return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "invalid credential ID format", 400)
 	}
 
-	// 4. Get credential from service
-	credential, err := credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
+	// 4. Get credential by ID (workspace validation will be done by the service)
+	// Note: This method uses credential ID only - workspace_id should be added in future
+	credential, err := credentialService.GetCredentialByIDAndUser(c.Request.Context(), userID, credentialUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -150,8 +151,9 @@ func (h *BaseHandler) GetCredentialFromBody(c *gin.Context, credentialService do
 		return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "invalid credential ID format", 400)
 	}
 
-	// 4. Get credential from service
-	credential, err := credentialService.GetCredentialByID(c.Request.Context(), userID, credentialUUID)
+	// 4. Get credential by ID (workspace validation will be done by the service)
+	// Note: This method uses credential ID only - workspace_id should be added in future
+	credential, err := credentialService.GetCredentialByIDAndUser(c.Request.Context(), userID, credentialUUID)
 	if err != nil {
 		return nil, err
 	}

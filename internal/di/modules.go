@@ -251,6 +251,7 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 		repos.CredentialRepository,
 		repos.WorkspaceRepository,
 		repos.AuditLogRepository,
+		credentialService,
 	)
 	logger.Info("Cost Analysis service created")
 

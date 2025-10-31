@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/credentials
+  url: {{baseUrl}}/api/{{apiVersion}}/credentials?workspace_id={{workspaceId}}
   body: none
   auth: bearer
 }
@@ -91,7 +91,7 @@ docs {
   ## 사용 예시
   
   ```bash
-  GET /api/v1/credentials
+  GET /api/v1/credentials?workspace_id=123e4567-e89b-12d3-a456-426614174000
   Authorization: Bearer your-jwt-token
   ```
   

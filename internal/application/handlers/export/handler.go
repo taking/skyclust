@@ -459,15 +459,6 @@ func (h *Handler) extractUserID(c *gin.Context) uuid.UUID {
 	}
 }
 
-func (h *Handler) extractValidatedRequest(c *gin.Context) gin.H {
-	var req gin.H
-	if err := h.ValidateRequest(c, &req); err != nil {
-		h.HandleError(c, err, "export_data")
-		return gin.H{}
-	}
-	return req
-}
-
 func (h *Handler) parseExportID(c *gin.Context) string {
 	exportID := c.Param("id")
 	if exportID == "" {

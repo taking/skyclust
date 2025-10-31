@@ -737,30 +737,6 @@ func (h *Handler) logNotificationRequest(c *gin.Context, userID uuid.UUID, notif
 	})
 }
 
-func (h *Handler) logNotificationMarkAsReadAttempt(c *gin.Context, userID uuid.UUID, notificationID uuid.UUID) {
-	h.LogBusinessEvent(c, "notification_mark_as_read_attempted", userID.String(), notificationID.String(), map[string]interface{}{
-		"notification_id": notificationID.String(),
-	})
-}
-
-func (h *Handler) logNotificationMarkAsReadSuccess(c *gin.Context, userID uuid.UUID, notificationID uuid.UUID) {
-	h.LogBusinessEvent(c, "notification_marked_as_read", userID.String(), notificationID.String(), map[string]interface{}{
-		"notification_id": notificationID.String(),
-	})
-}
-
-func (h *Handler) logMarkAllAsReadAttempt(c *gin.Context, userID uuid.UUID) {
-	h.LogBusinessEvent(c, "mark_all_as_read_attempted", userID.String(), "", map[string]interface{}{
-		"operation": "mark_all_as_read",
-	})
-}
-
-func (h *Handler) logMarkAllAsReadSuccess(c *gin.Context, userID uuid.UUID) {
-	h.LogBusinessEvent(c, "all_notifications_marked_as_read", userID.String(), "", map[string]interface{}{
-		"operation": "mark_all_as_read",
-	})
-}
-
 func (h *Handler) logNotificationUpdateSuccess(c *gin.Context, userID uuid.UUID, notificationID uuid.UUID, readStatus bool) {
 	h.LogBusinessEvent(c, "notification_updated", userID.String(), notificationID.String(), map[string]interface{}{
 		"notification_id": notificationID.String(),

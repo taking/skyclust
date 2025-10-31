@@ -222,16 +222,6 @@ func (s *SystemMonitoringService) checkRedisStatus() gin.H {
 	}
 }
 
-// checkPluginStatus checks provider manager status
-func (s *SystemMonitoringService) checkPluginStatus() gin.H {
-	return gin.H{
-		"healthy": true,
-		"status":  "gRPC",
-		"type":    "gRPC Provider Manager",
-		"note":    "Use /api/v1/providers for details",
-	}
-}
-
 // checkAuthServiceStatus checks authentication service status
 func (s *SystemMonitoringService) checkAuthServiceStatus() gin.H {
 	// Measure response time for consistency
@@ -594,15 +584,5 @@ func (s *SystemMonitoringService) checkRedisDependency() gin.H {
 		"healthy":          true,
 		"status":           "connected",
 		"response_time_ms": float64(responseTime.Nanoseconds()) / 1e6,
-	}
-}
-
-// checkPluginDependencies checks provider dependencies
-func (s *SystemMonitoringService) checkPluginDependencies() gin.H {
-	return gin.H{
-		"healthy": true,
-		"status":  "gRPC",
-		"type":    "gRPC Provider Manager",
-		"note":    "Providers are managed via gRPC",
 	}
 }

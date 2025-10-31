@@ -1,0 +1,70 @@
+meta {
+  name: 비용 비교 조회
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/cost-analysis/workspaces/{{workspaceId}}/comparison?current_period=30d&compare_period=30d
+  body: none
+  auth: bearer
+}
+
+docs {
+  # 비용 비교 조회
+  
+  두 기간의 비용을 비교합니다. 현재 기간과 비교 기간의 비용 차이를 분석합니다.
+  
+  ## Parameters
+  - `workspaceId` (path): 워크스페이스 ID
+  - `current_period` (query, optional): 현재 기간 (7d, 30d, 90d, 1y), 기본값: 30d
+  - `compare_period` (query, optional): 비교 기간 (7d, 30d, 90d, 1y), 기본값: 30d
+  
+  ## Response
+  - `comparison`: 비교 데이터
+    - `current_period`: 현재 기간 정보
+      - `period`: 기간
+      - `cost`: 비용
+    - `previous_period`: 이전 기간 정보
+      - `period`: 기간
+      - `cost`: 비용
+    - `comparison`: 비교 지표
+      - `cost_change`: 비용 변화량 (현재 - 이전)
+      - `percentage_change`: 변화율 (%)
+  
+  ## 비교 기준
+  
+  - **현재 기간**: 최근 N일 (current_period)
+  - **비교 기간**: 현재 기간 이전 N일 (compare_period)
+  
+  예: current_period=30d, compare_period=30d
+  - 현재: 최근 30일
+  - 비교: 그 이전 30일
+  
+  ## 비용 계산
+  
+  각 기간의 비용은 다음을 포함합니다:
+  - **VM 비용**: Workspace의 모든 VM
+  - **Provider별 집계**: AWS, GCP 등 각 Provider별 비용
+  - **서비스별 세분화**: EC2, EKS, Compute, GKE 등
+  
+  실제 비용은 AWS Cost Explorer API 및 GCP Billing API를 통해 조회되며, 실패 시 추정 비용을 사용합니다.
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains comparison data", function() {
+    const body = res.getBody();
+    expect(body.data).to.have.property('comparison');
+    expect(body.data.comparison).to.have.property('current_period');
+    expect(body.data.comparison).to.have.property('previous_period');
+    expect(body.data.comparison).to.have.property('comparison');
+  });
+}

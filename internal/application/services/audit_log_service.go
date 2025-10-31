@@ -14,7 +14,6 @@ import (
 // auditLogService implements the audit log business logic
 type auditLogService struct {
 	auditLogRepo domain.AuditLogRepository
-	db           interface{} // For direct queries if needed
 }
 
 // NewAuditLogService creates a new audit log service
@@ -207,7 +206,9 @@ func (s *auditLogService) ExportAuditLogs(filters domain.AuditLogFilters, format
 			var buf strings.Builder
 			writer := csv.NewWriter(&buf)
 			header := []string{"ID", "User ID", "Action", "Resource", "IP Address", "User Agent", "Details", "Created At"}
-			writer.Write(header)
+			if err := writer.Write(header); err != nil {
+				return nil, fmt.Errorf("failed to write CSV header: %w", err)
+			}
 			writer.Flush()
 			return []byte(buf.String()), nil
 		case "json":
@@ -247,7 +248,7 @@ func (s *auditLogService) exportAuditLogsToCSV(logs []*domain.AuditLog) ([]byte,
 	for _, log := range logs {
 		// Convert details map to JSON string
 		detailsStr := ""
-		if log.Details != nil && len(log.Details) > 0 {
+		if len(log.Details) > 0 {
 			if detailsJSON, err := json.Marshal(log.Details); err == nil {
 				detailsStr = string(detailsJSON)
 			}

@@ -62,14 +62,16 @@ func (GormToken) TableName() string {
 // Note: This is a special case as GormCredentials has different structure than domain.Credential
 func (g *GormCredentials) ToCredentials() *domain.Credential {
 	credID, _ := uuid.Parse(g.ID)
+	workspaceID, _ := uuid.Parse(g.WorkspaceID)
 
 	return &domain.Credential{
 		ID:            credID,
-		UserID:        uuid.Nil, // GormCredentials doesn't have UserID, it's workspace-based
+		WorkspaceID:   workspaceID,
 		Provider:      g.Provider,
 		Name:          g.Metadata["name"], // Extract name from metadata
 		EncryptedData: g.Encrypted,
 		IsActive:      true, // Default value
+		CreatedBy:     uuid.Nil, // CreatedBy is not stored in GormCredentials, use Nil as default
 		CreatedAt:     g.CreatedAt,
 		UpdatedAt:     g.UpdatedAt,
 	}

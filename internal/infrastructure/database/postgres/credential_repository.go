@@ -40,25 +40,64 @@ func (r *credentialRepository) GetByID(id uuid.UUID) (*domain.Credential, error)
 	return &credential, nil
 }
 
-// GetByUserID retrieves all credentials for a user
-func (r *credentialRepository) GetByUserID(userID uuid.UUID) ([]*domain.Credential, error) {
+// GetByWorkspaceID retrieves all credentials for a workspace
+func (r *credentialRepository) GetByWorkspaceID(workspaceID uuid.UUID) ([]*domain.Credential, error) {
 	var credentials []*domain.Credential
-	if err := r.db.Where("user_id = ? AND deleted_at IS NULL", userID).
+	if err := r.db.Where("workspace_id = ? AND deleted_at IS NULL", workspaceID).
 		Order("created_at DESC").
 		Find(&credentials).Error; err != nil {
-		logger.Errorf("Failed to get credentials by user ID: %v", err)
+		logger.Errorf("Failed to get credentials by workspace ID: %v", err)
 		return nil, err
 	}
 	return credentials, nil
 }
 
-// GetByUserIDAndProvider retrieves credentials for a user and provider
-func (r *credentialRepository) GetByUserIDAndProvider(userID uuid.UUID, provider string) ([]*domain.Credential, error) {
+// GetByWorkspaceIDAndProvider retrieves credentials for a workspace and provider
+func (r *credentialRepository) GetByWorkspaceIDAndProvider(workspaceID uuid.UUID, provider string) ([]*domain.Credential, error) {
 	var credentials []*domain.Credential
-	if err := r.db.Where("user_id = ? AND provider = ? AND deleted_at IS NULL", userID, provider).
+	if err := r.db.Where("workspace_id = ? AND provider = ? AND deleted_at IS NULL", workspaceID, provider).
 		Order("created_at DESC").
 		Find(&credentials).Error; err != nil {
-		logger.Errorf("Failed to get credentials by user ID and provider: %v", err)
+		logger.Errorf("Failed to get credentials by workspace ID and provider: %v", err)
+		return nil, err
+	}
+	return credentials, nil
+}
+
+// DeleteByWorkspaceID soft deletes all credentials for a workspace
+func (r *credentialRepository) DeleteByWorkspaceID(workspaceID uuid.UUID) error {
+	if err := r.db.Where("workspace_id = ?", workspaceID).Delete(&domain.Credential{}).Error; err != nil {
+		logger.Errorf("Failed to delete credentials by workspace ID: %v", err)
+		return err
+	}
+	return nil
+}
+
+// Deprecated: Use GetByWorkspaceID instead
+// GetByUserID retrieves all credentials for a user (deprecated - kept for backward compatibility)
+func (r *credentialRepository) GetByUserID(userID uuid.UUID) ([]*domain.Credential, error) {
+	// Legacy: This method is deprecated but kept for backward compatibility
+	// It now searches by created_by instead of user_id
+	var credentials []*domain.Credential
+	if err := r.db.Where("created_by = ? AND deleted_at IS NULL", userID).
+		Order("created_at DESC").
+		Find(&credentials).Error; err != nil {
+		logger.Errorf("Failed to get credentials by user ID (deprecated): %v", err)
+		return nil, err
+	}
+	return credentials, nil
+}
+
+// Deprecated: Use GetByWorkspaceIDAndProvider instead
+// GetByUserIDAndProvider retrieves credentials for a user and provider (deprecated - kept for backward compatibility)
+func (r *credentialRepository) GetByUserIDAndProvider(userID uuid.UUID, provider string) ([]*domain.Credential, error) {
+	// Legacy: This method is deprecated but kept for backward compatibility
+	// It now searches by created_by instead of user_id
+	var credentials []*domain.Credential
+	if err := r.db.Where("created_by = ? AND provider = ? AND deleted_at IS NULL", userID, provider).
+		Order("created_at DESC").
+		Find(&credentials).Error; err != nil {
+		logger.Errorf("Failed to get credentials by user ID and provider (deprecated): %v", err)
 		return nil, err
 	}
 	return credentials, nil
@@ -82,10 +121,13 @@ func (r *credentialRepository) Delete(id uuid.UUID) error {
 	return nil
 }
 
-// DeleteByUserID soft deletes all credentials for a user
+// Deprecated: Use DeleteByWorkspaceID instead
+// DeleteByUserID soft deletes all credentials for a user (deprecated - kept for backward compatibility)
 func (r *credentialRepository) DeleteByUserID(userID uuid.UUID) error {
-	if err := r.db.Where("user_id = ?", userID).Delete(&domain.Credential{}).Error; err != nil {
-		logger.Errorf("Failed to delete credentials by user ID: %v", err)
+	// Legacy: This method is deprecated but kept for backward compatibility
+	// It now deletes by created_by instead of user_id
+	if err := r.db.Where("created_by = ?", userID).Delete(&domain.Credential{}).Error; err != nil {
+		logger.Errorf("Failed to delete credentials by user ID (deprecated): %v", err)
 		return err
 	}
 	return nil

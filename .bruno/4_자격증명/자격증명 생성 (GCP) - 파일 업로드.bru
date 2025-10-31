@@ -15,6 +15,7 @@ auth:bearer {
 }
 
 body:multipart-form {
+  workspace_id: {{workspaceId}}
   name: GCP Production
   provider: gcp
   file: @file()
@@ -53,6 +54,7 @@ docs {
   
   ## Request Body (multipart/form-data)
   
+  - `workspace_id`: 워크스페이스 ID (UUID)
   - `name`: 자격증명 이름 (예: "GCP Production")
   - `provider`: 클라우드 제공자 (예: "gcp")
   - `file`: GCP 서비스 계정 JSON 파일

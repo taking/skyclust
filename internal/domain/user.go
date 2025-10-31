@@ -21,7 +21,7 @@ type User struct {
 	DeletedAt    *time.Time `json:"-" gorm:"index"`
 
 	// Relationships
-	Credentials []Credential `json:"credentials,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+	// Note: Credentials are now workspace-based, not user-based
 	AuditLogs   []AuditLog   `json:"audit_logs,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 	UserRoles   []UserRole   `json:"user_roles,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 }

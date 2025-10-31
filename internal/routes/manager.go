@@ -370,7 +370,18 @@ func (rm *RouteManager) setupNCPRoutes(router *gin.RouterGroup) {
 
 // setupCostAnalysisRoutes sets up cost analysis routes
 func (rm *RouteManager) setupCostAnalysisRoutes(router *gin.RouterGroup) {
-	cost_analysis.SetupRoutes(router)
+	costAnalysisService := rm.container.GetCostAnalysisService()
+	if costAnalysisService == nil {
+		rm.logger.Warn("CostAnalysisService not available, cost analysis routes will not be set up")
+		return
+	}
+
+	// Type assert to *service.CostAnalysisService
+	if svc, ok := costAnalysisService.(*service.CostAnalysisService); ok {
+		cost_analysis.SetupRoutes(router, svc)
+	} else {
+		rm.logger.Warn("CostAnalysisService type assertion failed, cost analysis routes will not be set up")
+	}
 }
 
 // setupNotificationRoutes sets up notification routes
