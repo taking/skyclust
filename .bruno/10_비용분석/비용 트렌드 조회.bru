@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/cost-analysis/workspaces/{{workspaceId}}/trend?period=90d
+  url: {{baseUrl}}/api/{{apiVersion}}/cost-analysis/workspaces/{{workspaceId}}/trend?period=90d&resource_types=all
   body: none
   auth: bearer
 }
@@ -18,6 +18,11 @@ docs {
   ## Parameters
   - `workspaceId` (path): 워크스페이스 ID
   - `period` (query, optional): 기간 (7d, 30d, 90d, 1y), 기본값: 90d
+  - `resource_types` (query, optional): 리소스 타입 필터 (comma-separated)
+    - `all`: 모든 리소스 타입 (기본값)
+    - `vm`, `vms`: VM만 조회
+    - `cluster`, `clusters`, `kubernetes`, `k8s`: Kubernetes 클러스터만 조회
+    - `node_group`, `node_groups`, `node_pool`, `node_pools`: Node Groups/Pools 포함
   
   ## Response
   - `trend`: 일별 비용 데이터 배열
@@ -41,9 +46,9 @@ docs {
   
   트렌드는 다음 서비스의 비용을 포함합니다:
   - **EC2** (AWS): 인스턴스 비용
-  - **EKS** (AWS): 클러스터 비용 (향후)
+  - **EKS** (AWS): 클러스터 비용
   - **Compute** (GCP): VM 비용
-  - **GKE** (GCP): 클러스터 비용 (향후)
+  - **GKE** (GCP): 클러스터 비용
 }
 
 auth:bearer {

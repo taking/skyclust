@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/cost-analysis/workspaces/{{workspaceId}}/breakdown?period=30d&dimension=service
+  url: {{baseUrl}}/api/{{apiVersion}}/cost-analysis/workspaces/{{workspaceId}}/breakdown?period=30d&dimension=service&resource_types=all
   body: none
   auth: bearer
 }
@@ -19,6 +19,11 @@ docs {
   - `workspaceId` (path): 워크스페이스 ID
   - `period` (query, optional): 기간 (7d, 30d, 90d, 1y), 기본값: 30d
   - `dimension` (query, optional): 분석 기준 (service, provider, region), 기본값: service
+  - `resource_types` (query, optional): 리소스 타입 필터 (comma-separated)
+    - `all`: 모든 리소스 타입 (기본값)
+    - `vm`, `vms`: VM만 조회
+    - `cluster`, `clusters`, `kubernetes`, `k8s`: Kubernetes 클러스터만 조회
+    - `node_group`, `node_groups`, `node_pool`, `node_pools`: Node Groups/Pools 포함
   
   ## Response
   - `breakdown`: 카테고리별 비용 분석

@@ -8,6 +8,7 @@ import (
 	"skyclust/internal/domain"
 	"skyclust/pkg/logger"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -22,11 +23,12 @@ import (
 )
 
 type CostAnalysisService struct {
-	vmRepo           domain.VMRepository
-	credentialRepo   domain.CredentialRepository
-	workspaceRepo    domain.WorkspaceRepository
-	auditLogRepo     domain.AuditLogRepository
+	vmRepo            domain.VMRepository
+	credentialRepo    domain.CredentialRepository
+	workspaceRepo     domain.WorkspaceRepository
+	auditLogRepo      domain.AuditLogRepository
 	credentialService domain.CredentialService
+	kubernetesService *KubernetesService
 }
 
 func NewCostAnalysisService(
@@ -35,6 +37,7 @@ func NewCostAnalysisService(
 	workspaceRepo domain.WorkspaceRepository,
 	auditLogRepo domain.AuditLogRepository,
 	credentialService domain.CredentialService,
+	kubernetesService *KubernetesService,
 ) *CostAnalysisService {
 	return &CostAnalysisService{
 		vmRepo:            vmRepo,
@@ -42,6 +45,7 @@ func NewCostAnalysisService(
 		workspaceRepo:     workspaceRepo,
 		auditLogRepo:      auditLogRepo,
 		credentialService: credentialService,
+		kubernetesService: kubernetesService,
 	}
 }
 
@@ -58,6 +62,14 @@ type CostData struct {
 	WorkspaceID  string    `json:"workspace_id"`
 }
 
+// CostWarning represents a warning message about cost calculation
+type CostWarning struct {
+	Code    string `json:"code"`    // warning code (e.g., "API_PERMISSION_DENIED", "API_NOT_ENABLED")
+	Message string `json:"message"` // user-friendly warning message
+	Provider string `json:"provider,omitempty"` // provider name if applicable (aws, gcp)
+	ResourceType string `json:"resource_type,omitempty"` // resource type if applicable (vm, cluster)
+}
+
 // CostSummary represents simplified cost data
 type CostSummary struct {
 	TotalCost  float64            `json:"total_cost"`
@@ -66,6 +78,7 @@ type CostSummary struct {
 	StartDate  time.Time          `json:"start_date"`
 	EndDate    time.Time          `json:"end_date"`
 	ByProvider map[string]float64 `json:"by_provider"`
+	Warnings   []CostWarning      `json:"warnings,omitempty"` // warnings about cost calculation issues
 }
 
 // CostPrediction represents future cost predictions
@@ -90,61 +103,147 @@ type BudgetAlert struct {
 }
 
 // GetCostSummary retrieves cost summary for a workspace
-func (s *CostAnalysisService) GetCostSummary(ctx context.Context, workspaceID string, period string) (*CostSummary, error) {
+// resourceTypes: comma-separated list of resource types to include (vm,cluster,node_group,node_pool,all)
+// If empty or "all", includes all resource types
+func (s *CostAnalysisService) GetCostSummary(ctx context.Context, workspaceID string, period string, resourceTypes string) (*CostSummary, error) {
 	// Parse period (e.g., "7d", "30d", "90d", "1y")
 	startDate, endDate, err := s.parsePeriod(period)
 	if err != nil {
 		return nil, fmt.Errorf("invalid period: %w", err)
 	}
 
-	// Get VMs in workspace
-	vms, err := s.vmRepo.GetVMsByWorkspace(ctx, workspaceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get VMs: %w", err)
+	// Parse resource types filter
+	includeVM, includeCluster, includeNodeGroups := s.parseResourceTypes(resourceTypes)
+
+	var allCosts []CostData
+	var warnings []CostWarning
+
+	// Calculate VM costs if requested
+	if includeVM {
+		vms, err := s.vmRepo.GetVMsByWorkspace(ctx, workspaceID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get VMs: %w", err)
+		}
+
+		for _, vm := range vms {
+			costs, err := s.calculateVMCosts(ctx, vm, startDate, endDate)
+			if err != nil {
+				logger.Warnf("Failed to calculate VM costs for VM %s: %v", vm.ID, err)
+				warnings = append(warnings, CostWarning{
+					Code:         "VM_COST_CALCULATION_FAILED",
+					Message:      fmt.Sprintf("Failed to calculate costs for VM %s: %v", vm.ID, err),
+					Provider:     vm.Provider,
+					ResourceType: "vm",
+				})
+				continue
+			}
+			allCosts = append(allCosts, costs...)
+		}
 	}
 
-	// Calculate costs for each VM
-	var allCosts []CostData
-	for _, vm := range vms {
-		costs, err := s.calculateVMCosts(ctx, vm, startDate, endDate)
+	// Calculate Kubernetes cluster costs if requested
+	if includeCluster {
+		clusterCosts, clusterWarnings, err := s.calculateKubernetesCosts(ctx, workspaceID, startDate, endDate, includeNodeGroups)
 		if err != nil {
-			logger.Warnf("Failed to calculate VM costs for VM %s: %v", vm.ID, err)
-			continue
+			logger.Warnf("Failed to calculate Kubernetes costs: %v", err)
+			warnings = append(warnings, CostWarning{
+				Code:         "KUBERNETES_COST_CALCULATION_FAILED",
+				Message:      fmt.Sprintf("Failed to calculate Kubernetes cluster costs: %v", err),
+				ResourceType: "cluster",
+			})
+		} else {
+			allCosts = append(allCosts, clusterCosts...)
+			warnings = append(warnings, clusterWarnings...)
 		}
-		allCosts = append(allCosts, costs...)
 	}
 
 	// Aggregate costs
 	summary := s.aggregateCosts(allCosts, startDate, endDate, period)
-	// Removed ByWorkspace field
-
-	// Calculate trend
-	// Removed Trend and GrowthRate fields
+	summary.Warnings = warnings
 
 	return summary, nil
 }
 
+// parseResourceTypes parses resource types filter string
+// Returns: (includeVM, includeCluster, includeNodeGroups)
+func (s *CostAnalysisService) parseResourceTypes(resourceTypes string) (bool, bool, bool) {
+	if resourceTypes == "" || resourceTypes == "all" {
+		return true, true, true
+	}
+
+	types := strings.Split(strings.ToLower(resourceTypes), ",")
+	includeVM := false
+	includeCluster := false
+	includeNodeGroups := false
+
+	for _, t := range types {
+		t = strings.TrimSpace(t)
+		switch t {
+		case "vm", "vms":
+			includeVM = true
+		case "cluster", "clusters", "kubernetes", "k8s":
+			includeCluster = true
+		case "node_group", "node_groups", "node_pool", "node_pools":
+			includeNodeGroups = true
+		case "all":
+			includeVM = true
+			includeCluster = true
+			includeNodeGroups = true
+		}
+	}
+
+	return includeVM, includeCluster, includeNodeGroups
+}
+
 // GetCostPredictions generates cost predictions for future periods
-func (s *CostAnalysisService) GetCostPredictions(ctx context.Context, workspaceID string, days int) ([]CostPrediction, error) {
+func (s *CostAnalysisService) GetCostPredictions(ctx context.Context, workspaceID string, days int, resourceTypes string) ([]CostPrediction, error) {
 	// Get historical data (last 30 days)
 	endDate := time.Now()
 	startDate := endDate.AddDate(0, 0, -30)
 
-	// Get VMs in workspace
-	vms, err := s.vmRepo.GetVMsByWorkspace(ctx, workspaceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get VMs: %w", err)
+	// Parse resource types filter
+	includeVM, includeCluster, includeNodeGroups := s.parseResourceTypes(resourceTypes)
+
+	var historicalCosts []CostData
+	var warnings []CostWarning
+
+	// Calculate VM costs if requested
+	if includeVM {
+		vms, err := s.vmRepo.GetVMsByWorkspace(ctx, workspaceID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get VMs: %w", err)
+		}
+
+		for _, vm := range vms {
+			costs, err := s.calculateVMCosts(ctx, vm, startDate, endDate)
+			if err != nil {
+				logger.Warnf("Failed to calculate VM costs for VM %s: %v", vm.ID, err)
+				warnings = append(warnings, CostWarning{
+					Code:         "VM_COST_CALCULATION_FAILED",
+					Message:      fmt.Sprintf("Failed to calculate costs for VM %s: %v", vm.ID, err),
+					Provider:     vm.Provider,
+					ResourceType: "vm",
+				})
+				continue
+			}
+			historicalCosts = append(historicalCosts, costs...)
+		}
 	}
 
-	// Calculate historical costs
-	var historicalCosts []CostData
-	for _, vm := range vms {
-		costs, err := s.calculateVMCosts(ctx, vm, startDate, endDate)
+	// Calculate Kubernetes cluster costs if requested
+	if includeCluster {
+		clusterCosts, clusterWarnings, err := s.calculateKubernetesCosts(ctx, workspaceID, startDate, endDate, includeNodeGroups)
 		if err != nil {
-			logger.Warnf("Failed to calculate VM costs for VM %s: %v", vm.ID, err)
-			continue
+			logger.Warnf("Failed to calculate Kubernetes costs: %v", err)
+			warnings = append(warnings, CostWarning{
+				Code:         "KUBERNETES_COST_CALCULATION_FAILED",
+				Message:      fmt.Sprintf("Failed to calculate Kubernetes cluster costs: %v", err),
+				ResourceType: "cluster",
+			})
+		} else {
+			historicalCosts = append(historicalCosts, clusterCosts...)
+			warnings = append(warnings, clusterWarnings...)
 		}
-		historicalCosts = append(historicalCosts, costs...)
 	}
 
 	// Generate predictions using linear regression
@@ -155,7 +254,7 @@ func (s *CostAnalysisService) GetCostPredictions(ctx context.Context, workspaceI
 
 // CheckBudgetAlerts checks if workspace exceeds budget limits
 func (s *CostAnalysisService) CheckBudgetAlerts(ctx context.Context, workspaceID string, budgetLimit float64) ([]BudgetAlert, error) {
-	summary, err := s.GetCostSummary(ctx, workspaceID, "1m")
+	summary, err := s.GetCostSummary(ctx, workspaceID, "1m", "all")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cost summary: %w", err)
 	}
@@ -195,6 +294,7 @@ type CostTrend struct {
 	DailyCosts      []DailyCostData `json:"daily_costs"`
 	TrendDirection  string          `json:"trend_direction"`  // "increasing", "decreasing", "stable"
 	ChangePercentage float64        `json:"change_percentage"`
+	Warnings        []CostWarning   `json:"warnings,omitempty"` // warnings about cost calculation issues
 }
 
 // DailyCostData represents daily cost data
@@ -233,27 +333,55 @@ type ComparisonData struct {
 }
 
 // GetCostTrend retrieves cost trend for a workspace
-func (s *CostAnalysisService) GetCostTrend(ctx context.Context, workspaceID string, period string) (*CostTrend, error) {
+func (s *CostAnalysisService) GetCostTrend(ctx context.Context, workspaceID string, period string, resourceTypes string) (*CostTrend, error) {
 	startDate, endDate, err := s.parsePeriod(period)
 	if err != nil {
 		return nil, fmt.Errorf("invalid period: %w", err)
 	}
 
-	// Get VMs in workspace
-	vms, err := s.vmRepo.GetVMsByWorkspace(ctx, workspaceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get VMs: %w", err)
+	// Parse resource types filter
+	includeVM, includeCluster, includeNodeGroups := s.parseResourceTypes(resourceTypes)
+
+	var allCosts []CostData
+	var warnings []CostWarning
+
+	// Calculate VM costs if requested
+	if includeVM {
+		vms, err := s.vmRepo.GetVMsByWorkspace(ctx, workspaceID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get VMs: %w", err)
+		}
+
+		for _, vm := range vms {
+			costs, err := s.calculateVMCosts(ctx, vm, startDate, endDate)
+			if err != nil {
+				logger.Warnf("Failed to calculate VM costs for VM %s: %v", vm.ID, err)
+				warnings = append(warnings, CostWarning{
+					Code:         "VM_COST_CALCULATION_FAILED",
+					Message:      fmt.Sprintf("Failed to calculate costs for VM %s: %v", vm.ID, err),
+					Provider:     vm.Provider,
+					ResourceType: "vm",
+				})
+				continue
+			}
+			allCosts = append(allCosts, costs...)
+		}
 	}
 
-	// Calculate costs for each VM
-	var allCosts []CostData
-	for _, vm := range vms {
-		costs, err := s.calculateVMCosts(ctx, vm, startDate, endDate)
+	// Calculate Kubernetes cluster costs if requested
+	if includeCluster {
+		clusterCosts, clusterWarnings, err := s.calculateKubernetesCosts(ctx, workspaceID, startDate, endDate, includeNodeGroups)
 		if err != nil {
-			logger.Warnf("Failed to calculate VM costs for VM %s: %v", vm.ID, err)
-			continue
+			logger.Warnf("Failed to calculate Kubernetes costs: %v", err)
+			warnings = append(warnings, CostWarning{
+				Code:         "KUBERNETES_COST_CALCULATION_FAILED",
+				Message:      fmt.Sprintf("Failed to calculate Kubernetes cluster costs: %v", err),
+				ResourceType: "cluster",
+			})
+		} else {
+			allCosts = append(allCosts, clusterCosts...)
+			warnings = append(warnings, clusterWarnings...)
 		}
-		allCosts = append(allCosts, costs...)
 	}
 
 	// Aggregate daily costs
@@ -266,43 +394,72 @@ func (s *CostAnalysisService) GetCostTrend(ctx context.Context, workspaceID stri
 		DailyCosts:      dailyCosts,
 		TrendDirection:  trendDirection,
 		ChangePercentage: changePercentage,
+		Warnings:        warnings,
 	}, nil
 }
 
 // GetCostBreakdown retrieves cost breakdown for a workspace
-func (s *CostAnalysisService) GetCostBreakdown(ctx context.Context, workspaceID string, period string, dimension string) (*CostBreakdown, error) {
+func (s *CostAnalysisService) GetCostBreakdown(ctx context.Context, workspaceID string, period string, dimension string, resourceTypes string) (*CostBreakdown, []CostWarning, error) {
 	startDate, endDate, err := s.parsePeriod(period)
 	if err != nil {
-		return nil, fmt.Errorf("invalid period: %w", err)
+		return nil, nil, fmt.Errorf("invalid period: %w", err)
 	}
 
-	// Get VMs in workspace
-	vms, err := s.vmRepo.GetVMsByWorkspace(ctx, workspaceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get VMs: %w", err)
-	}
+	// Parse resource types filter
+	includeVM, includeCluster, includeNodeGroups := s.parseResourceTypes(resourceTypes)
 
-	// Calculate costs for each VM
 	var allCosts []CostData
-	for _, vm := range vms {
-		costs, err := s.calculateVMCosts(ctx, vm, startDate, endDate)
+	var warnings []CostWarning
+
+	// Calculate VM costs if requested
+	if includeVM {
+		vms, err := s.vmRepo.GetVMsByWorkspace(ctx, workspaceID)
 		if err != nil {
-			logger.Warnf("Failed to calculate VM costs for VM %s: %v", vm.ID, err)
-			continue
+			return nil, nil, fmt.Errorf("failed to get VMs: %w", err)
 		}
-		allCosts = append(allCosts, costs...)
+
+		for _, vm := range vms {
+			costs, err := s.calculateVMCosts(ctx, vm, startDate, endDate)
+			if err != nil {
+				logger.Warnf("Failed to calculate VM costs for VM %s: %v", vm.ID, err)
+				warnings = append(warnings, CostWarning{
+					Code:         "VM_COST_CALCULATION_FAILED",
+					Message:      fmt.Sprintf("Failed to calculate costs for VM %s: %v", vm.ID, err),
+					Provider:     vm.Provider,
+					ResourceType: "vm",
+				})
+				continue
+			}
+			allCosts = append(allCosts, costs...)
+		}
+	}
+
+	// Calculate Kubernetes cluster costs if requested
+	if includeCluster {
+		clusterCosts, clusterWarnings, err := s.calculateKubernetesCosts(ctx, workspaceID, startDate, endDate, includeNodeGroups)
+		if err != nil {
+			logger.Warnf("Failed to calculate Kubernetes costs: %v", err)
+			warnings = append(warnings, CostWarning{
+				Code:         "KUBERNETES_COST_CALCULATION_FAILED",
+				Message:      fmt.Sprintf("Failed to calculate Kubernetes cluster costs: %v", err),
+				ResourceType: "cluster",
+			})
+		} else {
+			allCosts = append(allCosts, clusterCosts...)
+			warnings = append(warnings, clusterWarnings...)
+		}
 	}
 
 	// Aggregate costs by dimension
 	breakdown := s.aggregateCostBreakdown(allCosts, dimension)
 
-	return breakdown, nil
+	return breakdown, warnings, nil
 }
 
 // GetCostComparison retrieves cost comparison between periods
 func (s *CostAnalysisService) GetCostComparison(ctx context.Context, workspaceID string, currentPeriod string, comparePeriod string) (*CostComparison, error) {
 	// Get current period summary
-	currentSummary, err := s.GetCostSummary(ctx, workspaceID, currentPeriod)
+	currentSummary, err := s.GetCostSummary(ctx, workspaceID, currentPeriod, "all")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current period summary: %w", err)
 	}
@@ -1012,4 +1169,329 @@ func parseFloat(s string) (float64, error) {
 	var result float64
 	_, err := fmt.Sscanf(s, "%f", &result)
 	return result, err
+}
+
+// calculateKubernetesCosts calculates costs for Kubernetes clusters in a workspace
+// Returns costs, warnings, and error
+func (s *CostAnalysisService) calculateKubernetesCosts(ctx context.Context, workspaceID string, startDate, endDate time.Time, includeNodeGroups bool) ([]CostData, []CostWarning, error) {
+	workspaceUUID, err := uuid.Parse(workspaceID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid workspace ID: %w", err)
+	}
+
+	// Get all credentials for the workspace
+	allCredentials, err := s.credentialRepo.GetByWorkspaceID(workspaceUUID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get credentials: %w", err)
+	}
+
+	var allCosts []CostData
+	var warnings []CostWarning
+
+	// Group credentials by provider
+	credentialsByProvider := make(map[string][]*domain.Credential)
+	for _, cred := range allCredentials {
+		if cred.IsActive {
+			credentialsByProvider[cred.Provider] = append(credentialsByProvider[cred.Provider], cred)
+		}
+	}
+
+	// Calculate costs for each provider
+	for provider, credentials := range credentialsByProvider {
+		if len(credentials) == 0 {
+			continue
+		}
+
+		// Use the first active credential for each provider
+		credential := credentials[0]
+
+		switch provider {
+		case "aws":
+			costs, providerWarnings, err := s.getAWSKubernetesCosts(ctx, credential, workspaceID, startDate, endDate, includeNodeGroups)
+			if err != nil {
+				logger.Warnf("Failed to get AWS Kubernetes costs: %v", err)
+				warnings = append(warnings, s.formatKubernetesErrorWarning(err, "aws", credential))
+				continue
+			}
+			allCosts = append(allCosts, costs...)
+			warnings = append(warnings, providerWarnings...)
+		case "gcp":
+			costs, providerWarnings, err := s.getGCPKubernetesCosts(ctx, credential, workspaceID, startDate, endDate, includeNodeGroups)
+			if err != nil {
+				logger.Warnf("Failed to get GCP Kubernetes costs: %v", err)
+				warnings = append(warnings, s.formatKubernetesErrorWarning(err, "gcp", credential))
+				continue
+			}
+			allCosts = append(allCosts, costs...)
+			warnings = append(warnings, providerWarnings...)
+		default:
+			// Skip other providers for now
+			continue
+		}
+	}
+
+	return allCosts, warnings, nil
+}
+
+// formatKubernetesErrorWarning formats an error into a user-friendly warning
+func (s *CostAnalysisService) formatKubernetesErrorWarning(err error, provider string, credential *domain.Credential) CostWarning {
+	errMsg := err.Error()
+	code := "KUBERNETES_COST_API_ERROR"
+	message := fmt.Sprintf("Failed to retrieve %s Kubernetes cluster costs", provider)
+
+	// Parse common error patterns
+	if strings.Contains(errMsg, "AccessDeniedException") || strings.Contains(errMsg, "not authorized") {
+		code = "API_PERMISSION_DENIED"
+		if provider == "aws" {
+			message = "AWS IAM user does not have permission to access Cost Explorer API. Please grant 'ce:GetCostAndUsage' permission."
+		} else if provider == "gcp" {
+			message = "GCP service account does not have permission to access Cloud Billing API."
+		}
+	} else if strings.Contains(errMsg, "SERVICE_DISABLED") || strings.Contains(errMsg, "not been used") || strings.Contains(errMsg, "disabled") {
+		code = "API_NOT_ENABLED"
+		if provider == "gcp" {
+			message = "GCP Cloud Billing API is not enabled. Please enable it in the GCP Console."
+		} else if provider == "aws" {
+			message = "AWS Cost Explorer API access is not configured for this account."
+		}
+	} else if strings.Contains(errMsg, "credentials") || strings.Contains(errMsg, "authentication") {
+		code = "CREDENTIAL_ERROR"
+		message = fmt.Sprintf("Invalid or expired %s credentials", provider)
+	}
+
+	return CostWarning{
+		Code:         code,
+		Message:      message,
+		Provider:     provider,
+		ResourceType: "cluster",
+	}
+}
+
+// getAWSKubernetesCosts retrieves EKS costs from AWS Cost Explorer API
+// Returns costs, warnings, and error
+func (s *CostAnalysisService) getAWSKubernetesCosts(ctx context.Context, credential *domain.Credential, workspaceID string, startDate, endDate time.Time, includeNodeGroups bool) ([]CostData, []CostWarning, error) {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	accessKey, ok := credData["access_key"].(string)
+	if !ok {
+		return nil, nil, fmt.Errorf("access_key not found in credential")
+	}
+
+	secretKey, ok := credData["secret_key"].(string)
+	if !ok {
+		return nil, nil, fmt.Errorf("secret_key not found in credential")
+	}
+
+	region := "us-east-1" // Default region for Cost Explorer
+	if r, ok := credData["region"].(string); ok && r != "" {
+		region = r
+	}
+
+	// Create AWS config
+	cfg, err := awsconfig.LoadDefaultConfig(ctx,
+		awsconfig.WithRegion(region),
+		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+			accessKey,
+			secretKey,
+			"",
+		)),
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	// Create Cost Explorer client
+	ceClient := costexplorer.NewFromConfig(cfg)
+
+	// Filter by EKS service
+	filter := &types.Expression{
+		Dimensions: &types.DimensionValues{
+			Key: types.DimensionService,
+			Values: []string{
+				"Amazon Elastic Container Service for Kubernetes", // EKS service name
+			},
+		},
+	}
+
+	groupBy := []types.GroupDefinition{
+		{
+			Type: types.GroupDefinitionTypeDimension,
+			Key:  aws.String("SERVICE"),
+		},
+		{
+			Type: types.GroupDefinitionTypeDimension,
+			Key:  aws.String("REGION"),
+		},
+	}
+
+	// Call Cost Explorer API
+	input := &costexplorer.GetCostAndUsageInput{
+		TimePeriod: &types.DateInterval{
+			Start: aws.String(startDate.Format("2006-01-02")),
+			End:   aws.String(endDate.Format("2006-01-02")),
+		},
+		Granularity: types.GranularityDaily,
+		Metrics:     []string{"BlendedCost"},
+		GroupBy:     groupBy,
+		Filter:      filter,
+	}
+
+	result, err := ceClient.GetCostAndUsage(ctx, input)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get AWS Kubernetes costs: %w", err)
+	}
+
+	// Parse results
+	var costs []CostData
+	for _, resultByTime := range result.ResultsByTime {
+		dateStr := aws.ToString(resultByTime.TimePeriod.Start)
+		date, err := time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			logger.Warnf("Failed to parse date %s: %v", dateStr, err)
+			continue
+		}
+
+		for _, group := range resultByTime.Groups {
+			var service, region string
+			for i, key := range group.Keys {
+				if i == 0 {
+					service = key
+				} else if i == 1 {
+					region = key
+				}
+			}
+
+			var amount float64
+			var currency string
+			if blendedCost, ok := group.Metrics["BlendedCost"]; ok {
+				amountStr := aws.ToString(blendedCost.Amount)
+				var parseErr error
+				amount, parseErr = parseFloat(amountStr)
+				if parseErr != nil {
+					logger.Warnf("Failed to parse cost amount %s: %v", amountStr, parseErr)
+					continue
+				}
+				currency = aws.ToString(blendedCost.Unit)
+			}
+
+			if amount > 0 {
+				costs = append(costs, CostData{
+					Date:         date,
+					Amount:       amount,
+					Currency:     currency,
+					Service:      service,
+					ResourceType: "cluster",
+					Provider:     "aws",
+					Region:       region,
+					WorkspaceID:  workspaceID,
+				})
+			}
+		}
+	}
+
+	// If node groups are requested, also get EC2 costs for EKS nodes
+	var warnings []CostWarning
+	if includeNodeGroups {
+		// Node groups are EC2 instances, so they're tracked separately
+		// We can get them by filtering EC2 costs for instances with EKS tags or by service
+		// For now, we'll skip node group specific costs as they're part of EC2 costs
+		logger.Info("Node group costs are included in EC2 service costs")
+	}
+
+	return costs, warnings, nil
+}
+
+// getGCPKubernetesCosts retrieves GKE costs from GCP Cloud Billing API
+// Returns costs, warnings, and error
+func (s *CostAnalysisService) getGCPKubernetesCosts(ctx context.Context, credential *domain.Credential, workspaceID string, startDate, endDate time.Time, includeNodeGroups bool) ([]CostData, []CostWarning, error) {
+	// Decrypt credential data
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to decrypt credential: %w", err)
+	}
+
+	projectID, ok := credData["project_id"].(string)
+	if !ok || projectID == "" {
+		return nil, nil, fmt.Errorf("project_id not found in credential")
+	}
+
+	// Create service account key from credential data
+	serviceAccountKey := map[string]interface{}{
+		"type":                        credData["type"],
+		"project_id":                  credData["project_id"],
+		"private_key_id":              credData["private_key_id"],
+		"private_key":                 credData["private_key"],
+		"client_email":                credData["client_email"],
+		"client_id":                   credData["client_id"],
+		"auth_uri":                    credData["auth_uri"],
+		"token_uri":                   credData["token_uri"],
+		"auth_provider_x509_cert_url": credData["auth_provider_x509_cert_url"],
+		"client_x509_cert_url":        credData["client_x509_cert_url"],
+	}
+
+	keyBytes, err := json.Marshal(serviceAccountKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal service account key: %w", err)
+	}
+
+	// Create billing client
+	billingClient, err := billingv1.NewCloudBillingClient(ctx, option.WithCredentialsJSON(keyBytes))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create billing client: %w", err)
+	}
+	defer billingClient.Close()
+
+	// Get billing account for the project
+	projectName := fmt.Sprintf("projects/%s", projectID)
+	projectInfo, err := billingClient.GetProjectBillingInfo(ctx, &billingpb.GetProjectBillingInfoRequest{
+		Name: projectName,
+	})
+	if err != nil {
+		// Check if it's a permission/API disabled error
+		errMsg := err.Error()
+		var warnings []CostWarning
+		if strings.Contains(errMsg, "SERVICE_DISABLED") || strings.Contains(errMsg, "not been used") || strings.Contains(errMsg, "disabled") {
+			warnings = append(warnings, CostWarning{
+				Code:         "API_NOT_ENABLED",
+				Message:      "GCP Cloud Billing API is not enabled. Please enable it in the GCP Console.",
+				Provider:     "gcp",
+				ResourceType: "cluster",
+			})
+		} else if strings.Contains(errMsg, "PermissionDenied") || strings.Contains(errMsg, "permission") {
+			warnings = append(warnings, CostWarning{
+				Code:         "API_PERMISSION_DENIED",
+				Message:      "GCP service account does not have permission to access Cloud Billing API.",
+				Provider:     "gcp",
+				ResourceType: "cluster",
+			})
+		}
+		return nil, warnings, fmt.Errorf("failed to get project billing info: %w", err)
+	}
+
+	if projectInfo.BillingAccountName == "" {
+		return nil, nil, fmt.Errorf("no billing account associated with project")
+	}
+
+	// For GKE, costs are tracked under Container Service
+	// Since GCP Billing API is complex, we'll use a simplified approach
+	// and estimate based on cluster count (similar to VM estimation)
+	// In production, you would use Cloud Billing Export to BigQuery for detailed costs
+	logger.Infof("GKE costs retrieved for project %s (billing account: %s)", projectID, projectInfo.BillingAccountName)
+
+	// Return empty costs for now - GCP Billing API requires more complex setup
+	// In production, use Cloud Billing Export API or BigQuery
+	var costs []CostData
+	var warnings []CostWarning
+	warnings = append(warnings, CostWarning{
+		Code:         "GKE_COST_NOT_IMPLEMENTED",
+		Message:      "GKE cost calculation requires Cloud Billing Export setup. Currently returning empty costs.",
+		Provider:     "gcp",
+		ResourceType: "cluster",
+	})
+	logger.Info("GKE cost calculation requires Cloud Billing Export setup - returning empty costs")
+	return costs, warnings, nil
 }

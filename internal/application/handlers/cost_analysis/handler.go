@@ -45,8 +45,11 @@ func (h *Handler) getCostSummaryHandler() handlers.HandlerFunc {
 		// Get period from query parameter (default: 30d)
 		period := c.DefaultQuery("period", "30d")
 
+		// Get resource types from query parameter (default: all)
+		resourceTypes := c.DefaultQuery("resource_types", "all")
+
 		// Get cost summary from service
-		summary, err := h.costAnalysisService.GetCostSummary(c.Request.Context(), workspaceID, period)
+		summary, err := h.costAnalysisService.GetCostSummary(c.Request.Context(), workspaceID, period, resourceTypes)
 		if err != nil {
 			h.HandleError(c, err, "get_cost_summary")
 			return
@@ -61,6 +64,11 @@ func (h *Handler) getCostSummaryHandler() handlers.HandlerFunc {
 			"start_date":   summary.StartDate,
 			"end_date":     summary.EndDate,
 			"by_provider":  summary.ByProvider,
+		}
+
+		// Include warnings if any
+		if len(summary.Warnings) > 0 {
+			response["warnings"] = summary.Warnings
 		}
 
 		h.OK(c, response, "Cost summary retrieved successfully")
@@ -97,8 +105,11 @@ func (h *Handler) getCostPredictionsHandler() handlers.HandlerFunc {
 			days = parsedDays
 		}
 
+		// Get resource types from query parameter (default: all)
+		resourceTypes := c.DefaultQuery("resource_types", "all")
+
 		// Get cost predictions from service
-		predictions, err := h.costAnalysisService.GetCostPredictions(c.Request.Context(), workspaceID, days)
+		predictions, err := h.costAnalysisService.GetCostPredictions(c.Request.Context(), workspaceID, days, resourceTypes)
 		if err != nil {
 			h.HandleError(c, err, "get_cost_predictions")
 			return
@@ -191,15 +202,18 @@ func (h *Handler) getCostTrendHandler() handlers.HandlerFunc {
 		// Get period from query parameter (default: 90d)
 		period := c.DefaultQuery("period", "90d")
 
+		// Get resource types from query parameter (default: all)
+		resourceTypes := c.DefaultQuery("resource_types", "all")
+
 		// Get cost summary to calculate trend
-		summary, err := h.costAnalysisService.GetCostSummary(c.Request.Context(), workspaceID, period)
+		summary, err := h.costAnalysisService.GetCostSummary(c.Request.Context(), workspaceID, period, resourceTypes)
 		if err != nil {
 			h.HandleError(c, err, "get_cost_trend")
 			return
 		}
 
 		// Get cost trend from service
-		trend, err := h.costAnalysisService.GetCostTrend(c.Request.Context(), workspaceID, period)
+		trend, err := h.costAnalysisService.GetCostTrend(c.Request.Context(), workspaceID, period, resourceTypes)
 		if err != nil {
 			h.HandleError(c, err, "get_cost_trend")
 			return
@@ -216,6 +230,11 @@ func (h *Handler) getCostTrendHandler() handlers.HandlerFunc {
 			"period":            summary.Period,
 			"start_date":        summary.StartDate,
 			"end_date":          summary.EndDate,
+		}
+
+		// Include warnings if any
+		if len(trend.Warnings) > 0 {
+			response["warnings"] = trend.Warnings
 		}
 
 		h.OK(c, response, "Cost trend retrieved successfully")
@@ -247,8 +266,11 @@ func (h *Handler) getCostBreakdownHandler() handlers.HandlerFunc {
 		// Get dimension from query parameter (default: service)
 		dimension := c.DefaultQuery("dimension", "service")
 
+		// Get resource types from query parameter (default: all)
+		resourceTypes := c.DefaultQuery("resource_types", "all")
+
 		// Get cost breakdown from service
-		breakdown, err := h.costAnalysisService.GetCostBreakdown(c.Request.Context(), workspaceID, period, dimension)
+		breakdown, warnings, err := h.costAnalysisService.GetCostBreakdown(c.Request.Context(), workspaceID, period, dimension, resourceTypes)
 		if err != nil {
 			h.HandleError(c, err, "get_cost_breakdown")
 			return
@@ -258,6 +280,11 @@ func (h *Handler) getCostBreakdownHandler() handlers.HandlerFunc {
 		response := gin.H{
 			"workspace_id": workspaceID,
 			"breakdown":    breakdown,
+		}
+
+		// Include warnings if any
+		if len(warnings) > 0 {
+			response["warnings"] = warnings
 		}
 
 		h.OK(c, response, "Cost breakdown retrieved successfully")

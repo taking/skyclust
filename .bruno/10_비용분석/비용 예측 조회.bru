@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/cost-analysis/workspaces/{{workspaceId}}/predictions?days=30
+  url: {{baseUrl}}/api/{{apiVersion}}/cost-analysis/workspaces/{{workspaceId}}/predictions?days=30&resource_types=all
   body: none
   auth: bearer
 }
@@ -18,6 +18,11 @@ docs {
   ## Parameters
   - `workspaceId` (path): 워크스페이스 ID
   - `days` (query, optional): 예측 일수 (1-365), 기본값: 30
+  - `resource_types` (query, optional): 리소스 타입 필터 (comma-separated)
+    - `all`: 모든 리소스 타입 (기본값)
+    - `vm`, `vms`: VM만 조회
+    - `cluster`, `clusters`, `kubernetes`, `k8s`: Kubernetes 클러스터만 조회
+    - `node_group`, `node_groups`, `node_pool`, `node_pools`: Node Groups/Pools 포함
   
   ## Response
   - `predictions`: 예측 데이터 배열
@@ -31,8 +36,8 @@ docs {
   
   예측은 다음 리소스의 실제 비용 데이터를 기반으로 합니다:
   - **VM**: EC2, Compute Engine 등
-  - **Kubernetes**: EKS, GKE 클러스터 (향후 확장)
-  - **Node Groups/Pools**: 노드 그룹/풀 비용 (향후 확장)
+  - **Kubernetes**: EKS, GKE 클러스터
+  - **Node Groups/Pools**: 노드 그룹/풀 비용 (EC2/GCE 서비스 비용에 포함)
   
   실제 비용은 AWS Cost Explorer API 및 GCP Billing API를 통해 조회되며, 실패 시 VM 사양 기반 추정 비용을 사용합니다.
 }

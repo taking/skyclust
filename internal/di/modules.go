@@ -252,6 +252,7 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 		repos.WorkspaceRepository,
 		repos.AuditLogRepository,
 		credentialService,
+		k8sService, // Inject KubernetesService for cluster cost calculation
 	)
 	logger.Info("Cost Analysis service created")
 
