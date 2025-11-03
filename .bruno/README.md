@@ -61,7 +61,7 @@
 - `apiVersion`: v1
 
 ### Production
-- `baseUrl`: https://api.skyclust.com
+- `baseUrl`: http://localhost:8080
 - `apiVersion`: v1
 
 ## 📝 사용 예시

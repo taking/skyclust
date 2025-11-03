@@ -156,9 +156,9 @@ func (h *Handler) ListNodes(c *gin.Context)
 └── PUT    /:nodepool/scale       # 노드풀 스케일링
 ```
 
-#### **노드그룹 관리 (4개)**
+#### **노드그룹 관리 (4개) - node-groups (kebab-case)**
 ```
-/api/v1/aws/kubernetes/clusters/:name/nodegroups/
+/api/v1/aws/kubernetes/clusters/:name/node-groups/
 ├── POST   /                      # 노드그룹 생성
 ├── GET    /                      # 노드그룹 목록 조회
 ├── GET    /:nodegroup            # 노드그룹 상세 조회

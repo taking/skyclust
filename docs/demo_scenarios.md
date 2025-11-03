@@ -12,13 +12,14 @@ AWS EKS와 GCP GKE 클러스터를 동시에 생성하여 멀티 클라우드 �
 
 ### **실행 단계**
 
-#### **1단계: 자격증명 등록**
+#### **1단계: 자격증명 등록 (워크스페이스 기반)**
 ```bash
 # AWS 자격증명 등록
 curl -X POST http://localhost:8080/api/v1/credentials \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $JWT_TOKEN" \
   -d '{
+    "workspace_id": "workspace-uuid",
     "name": "AWS Production",
     "provider": "aws",
     "data": {
@@ -33,6 +34,7 @@ curl -X POST http://localhost:8080/api/v1/credentials \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $JWT_TOKEN" \
   -d '{
+    "workspace_id": "workspace-uuid",
     "name": "GCP Production",
     "provider": "gcp",
     "data": {
@@ -423,8 +425,9 @@ curl -X DELETE "http://localhost:8080/api/v1/gcp/network/vpcs/skyclust-gcp-vpc?c
 
 ### **비즈니스 가치**
 - **운영 효율성**: 수동 작업 90% 감소
-- **비용 절감**: 클라우드 리소스 최적화로 20% 비용 절약
+- **비용 절감**: AWS Cost Explorer, GCP Cloud Billing API 통합으로 정확한 비용 분석 및 20% 비용 절약
 - **개발 생산성**: 인프라 관리 시간 80% 단축
+- **워크스페이스 격리**: 멀티 테넌트 환경에서 완전한 자원 격리
 
 ---
 

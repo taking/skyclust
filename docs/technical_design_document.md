@@ -124,17 +124,19 @@ type User struct {
 }
 ```
 
-#### **Credential Entity**
+#### **Credential Entity (Workspace 기반)**
 ```go
 type Credential struct {
-    ID            uuid.UUID `gorm:"type:uuid;primary_key"`
-    UserID        uuid.UUID `gorm:"not null"`
-    Provider      string    `gorm:"not null"` // aws, gcp, azure
-    Name          string    `gorm:"not null"`
-    EncryptedData []byte    `gorm:"type:bytea;not null"`
-    IsActive      bool      `gorm:"default:true"`
-    CreatedAt     time.Time
-    UpdatedAt     time.Time
+    ID            uuid.UUID  `gorm:"type:uuid;primary_key"`
+    WorkspaceID    uuid.UUID  `gorm:"type:uuid;not null"`
+    CreatedBy      uuid.UUID  `gorm:"type:uuid;not null"`
+    Provider       string     `gorm:"not null"` // aws, gcp, azure, ncp
+    Name           string     `gorm:"not null"`
+    EncryptedData  []byte     `gorm:"type:bytea;not null"`
+    IsActive       bool       `gorm:"default:true"`
+    CreatedAt      time.Time
+    UpdatedAt      time.Time
+    DeletedAt      *time.Time `gorm:"index"`
 }
 ```
 
@@ -532,6 +534,160 @@ func (s *KubernetesService) CreateClusterWithNetworking(ctx context.Context, cre
     
     // 클러스터 생성
     return s.CreateCluster(ctx, credential, req)
+}
+```
+
+---
+
+## 💰 **비용 분석 시스템**
+
+### **비용 분석 아키텍처**
+
+#### **CostAnalysisService 구조**
+```go
+type CostAnalysisService struct {
+    vmRepo            domain.VMRepository
+    credentialRepo    domain.CredentialRepository
+    workspaceRepo     domain.WorkspaceRepository
+    auditLogRepo      domain.AuditLogRepository
+    credentialService domain.CredentialService
+    kubernetesService *KubernetesService
+}
+```
+
+### **지원 기능**
+
+#### **비용 데이터 소스**
+1. **AWS Cost Explorer API**: 실제 AWS 비용 데이터
+2. **GCP Cloud Billing API**: 실제 GCP 비용 데이터
+3. **추정 비용**: API 접근 불가 시 VM 사양 기반 추정
+
+#### **리소스 타입 지원**
+- **VM 비용**: EC2, Compute Engine 등
+- **Kubernetes 클러스터 비용**: EKS, GKE
+- **노드 그룹/풀 비용**: EKS 노드 그룹, GKE 노드 풀
+
+#### **비용 분석 기능**
+- **비용 요약**: 기간별 총 비용 및 프로바이더별 분석
+- **비용 예측**: 선형 회귀를 사용한 미래 비용 예측
+- **비용 트렌드**: 전반기 대비 후반기 변화율 분석
+- **비용 세부 분석**: 서비스, 프로바이더, 리전별 세부 분석
+- **비용 비교**: 현재 기간과 이전 기간 비교
+- **예산 알림**: 예산 초과 및 경고 알림
+
+#### **리소스 타입 필터링**
+```go
+// resource_types 쿼리 파라미터
+- "all": 모든 리소스 (기본값)
+- "vm": VM만
+- "cluster": Kubernetes 클러스터만
+- "vm,cluster": VM과 클러스터 함께
+```
+
+### **비용 계산 흐름**
+
+#### **VM 비용 계산**
+```go
+func (s *CostAnalysisService) calculateVMCosts(ctx context.Context, vm *domain.VM, startDate, endDate time.Time) ([]CostData, error) {
+    // 1. 워크스페이스의 자격증명 조회
+    credentials, err := s.credentialRepo.GetByWorkspaceIDAndProvider(workspaceUUID, vm.Provider)
+    
+    // 2. 프로바이더별 API 호출
+    switch vm.Provider {
+    case "aws":
+        return s.getAWSCosts(ctx, credential, vm, startDate, endDate)
+    case "gcp":
+        return s.getGCPCosts(ctx, credential, vm, startDate, endDate)
+    default:
+        // 3. API 실패 시 추정 비용 사용
+        return s.calculateEstimatedCosts(vm, startDate, endDate)
+    }
+}
+```
+
+#### **Kubernetes 비용 계산**
+```go
+func (s *CostAnalysisService) calculateKubernetesCosts(ctx context.Context, workspaceID string, startDate, endDate time.Time, includeNodeGroups bool) ([]CostData, []CostWarning, error) {
+    // 1. 워크스페이스의 모든 자격증명 조회
+    allCredentials, err := s.credentialRepo.GetByWorkspaceID(workspaceUUID)
+    
+    // 2. 프로바이더별로 그룹화
+    // 3. AWS: EKS 비용 (Cost Explorer API)
+    // 4. GCP: GKE 비용 (Cloud Billing API, BigQuery Export 권장)
+    // 5. 경고 정보 반환
+}
+```
+
+### **경고 시스템**
+
+#### **CostWarning 구조**
+```go
+type CostWarning struct {
+    Code         string `json:"code"`    // API_PERMISSION_DENIED, API_NOT_ENABLED 등
+    Message      string `json:"message"` // 사용자 친화적 메시지
+    Provider     string `json:"provider,omitempty"`
+    ResourceType string `json:"resource_type,omitempty"`
+}
+```
+
+#### **주요 경고 코드**
+- `API_PERMISSION_DENIED`: 클라우드 API 권한 부족
+- `API_NOT_ENABLED`: 클라우드 API 미활성화
+- `VM_COST_CALCULATION_FAILED`: VM 비용 계산 실패
+- `KUBERNETES_COST_CALCULATION_FAILED`: Kubernetes 비용 계산 실패
+- `CREDENTIAL_ERROR`: 자격증명 오류
+- `GKE_COST_NOT_IMPLEMENTED`: GKE 비용 계산 미구현 (BigQuery Export 필요)
+
+### **API 통합**
+
+#### **AWS Cost Explorer**
+```go
+func (s *CostAnalysisService) getAWSCosts(ctx context.Context, credential *domain.Credential, vm *domain.VM, startDate, endDate time.Time) ([]CostData, error) {
+    ceClient := costexplorer.NewFromConfig(cfg)
+    
+    input := &costexplorer.GetCostAndUsageInput{
+        TimePeriod: &types.DateInterval{
+            Start: aws.String(startDate.Format("2006-01-02")),
+            End:   aws.String(endDate.Format("2006-01-02")),
+        },
+        Granularity: types.GranularityDaily,
+        Metrics:     []string{"BlendedCost"},
+        GroupBy:     []types.GroupDefinition{...},
+        Filter:      &types.Expression{...},
+    }
+    
+    result, err := ceClient.GetCostAndUsage(ctx, input)
+    // 결과 파싱 및 반환
+}
+```
+
+#### **GCP Cloud Billing**
+```go
+func (s *CostAnalysisService) getGCPCosts(ctx context.Context, credential *domain.Credential, vm *domain.VM, startDate, endDate time.Time) ([]CostData, error) {
+    billingClient, err := billingv1.NewCloudBillingClient(ctx, option.WithCredentialsJSON(keyBytes))
+    
+    projectInfo, err := billingClient.GetProjectBillingInfo(ctx, &billingpb.GetProjectBillingInfoRequest{
+        Name: fmt.Sprintf("projects/%s", projectID),
+    })
+    
+    // GCP는 BigQuery Export를 통한 상세 비용 조회 권장
+}
+```
+
+### **예산 알림**
+
+#### **예산 알림 로직**
+```go
+func (s *CostAnalysisService) CheckBudgetAlerts(ctx context.Context, workspaceID string, budgetLimit float64) ([]BudgetAlert, error) {
+    summary, err := s.GetCostSummary(ctx, workspaceID, "1m", "all")
+    
+    percentage := (summary.TotalCost / budgetLimit) * 100
+    
+    if percentage >= 100 {
+        // Critical: 예산 초과
+    } else if percentage >= 80 {
+        // Warning: 예산 80% 이상
+    }
 }
 ```
 

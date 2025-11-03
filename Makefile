@@ -143,7 +143,7 @@ docker-build: ## Main 서버 Docker 이미지 빌드
 
 docker-run: docker-build ## Docker 컨테이너 실행
 	@echo "$(YELLOW)▶ Running Docker container...$(RESET)"
-	@docker run --rm -p 8081:8081 $(DOCKER_IMAGE):$(DOCKER_TAG)
+	@docker run --rm -p 8081:8080 $(DOCKER_IMAGE):$(DOCKER_TAG)
 
 # ============================================================================
 # Docker Compose Targets
