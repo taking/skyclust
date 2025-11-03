@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { SkipLink } from '@/components/accessibility/skip-link';
 import { LiveRegion } from '@/components/accessibility/live-region';
+import { GlobalKeyboardShortcuts } from '@/components/common/global-keyboard-shortcuts';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -28,6 +29,7 @@ export function Layout({ children }: LayoutProps) {
 
   return (
     <div className="flex h-screen bg-background">
+      <GlobalKeyboardShortcuts />
       <SkipLink href="#main-content">Skip to main content</SkipLink>
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">

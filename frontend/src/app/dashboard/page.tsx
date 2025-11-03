@@ -9,15 +9,43 @@ import { useWorkspaceStore } from '@/store/workspace';
 import { useRouter } from 'next/navigation';
 import { DraggableDashboard } from '@/components/dashboard/draggable-dashboard';
 import { WidgetAddPanel } from '@/components/dashboard/widget-add-panel';
-import { WidgetData, WidgetType, WIDGET_CONFIGS } from '@/lib/widgets';
+import { WidgetConfigDialog } from '@/components/dashboard/widget-config-dialog';
+import { WidgetData, WidgetType, WidgetSize, WIDGET_CONFIGS } from '@/lib/widgets';
 import { Server, Key, Users, Settings, RefreshCw } from 'lucide-react';
 import { RealtimeNotifications } from '@/components/monitoring/realtime-notifications';
+import { workspaceService } from '@/services/workspace';
+import { useQuery } from '@tanstack/react-query';
+import { WorkspaceRequired } from '@/components/common/workspace-required';
 
 export default function DashboardPage() {
-  const { currentWorkspace } = useWorkspaceStore();
+  const { currentWorkspace, setCurrentWorkspace, workspaces, setWorkspaces } = useWorkspaceStore();
   const router = useRouter();
   const [widgets, setWidgets] = useState<WidgetData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [configuringWidget, setConfiguringWidget] = useState<WidgetData | null>(null);
+
+  // Fetch workspaces
+  const { data: fetchedWorkspaces = [], isLoading: isLoadingWorkspaces } = useQuery({
+    queryKey: ['workspaces'],
+    queryFn: workspaceService.getWorkspaces,
+    retry: 3,
+    retryDelay: 1000,
+  });
+
+  // Auto-select first workspace if available and none is selected
+  useEffect(() => {
+    if (!isLoadingWorkspaces && fetchedWorkspaces.length > 0) {
+      setWorkspaces(fetchedWorkspaces);
+      
+      // If no workspace is selected, select the first one
+      if (!currentWorkspace) {
+        setCurrentWorkspace(fetchedWorkspaces[0]);
+      }
+    } else if (!isLoadingWorkspaces && fetchedWorkspaces.length === 0) {
+      // No workspaces available, set empty array
+      setWorkspaces([]);
+    }
+  }, [fetchedWorkspaces, isLoadingWorkspaces, currentWorkspace, setCurrentWorkspace, setWorkspaces]);
 
   // Load default widgets on mount
   useEffect(() => {
@@ -100,8 +128,24 @@ export default function DashboardPage() {
   };
 
   const handleWidgetConfigure = (widgetId: string) => {
-    // TODO: Implement widget configuration
-    console.log('Configure widget:', widgetId);
+    const widget = widgets.find(w => w.id === widgetId);
+    if (widget) {
+      setConfiguringWidget(widget);
+    }
+  };
+
+  const handleWidgetResize = (widgetId: string, size: WidgetSize) => {
+    setWidgets(widgets.map(w => 
+      w.id === widgetId ? { ...w, size } : w
+    ));
+  };
+
+  const handleWidgetSave = (widgetId: string, updates: { size?: WidgetSize; title?: string; config?: Record<string, unknown> }) => {
+    setWidgets(widgets.map(w => 
+      w.id === widgetId 
+        ? { ...w, ...updates, lastUpdated: new Date().toISOString() }
+        : w
+    ));
   };
 
   const handleResetDashboard = () => {
@@ -142,25 +186,8 @@ export default function DashboardPage() {
     }
   };
 
-  if (!currentWorkspace) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">
-              No Workspace Selected
-            </h2>
-            <p className="text-gray-600 mb-6">
-              Please select or create a workspace to get started.
-            </p>
-            <Button onClick={() => router.push('/workspaces')}>
-              Manage Workspaces
-            </Button>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
+  // WorkspaceRequired component handles the no-workspace case
+  // So we can remove this check here
 
   if (isLoading) {
     return (
@@ -176,14 +203,15 @@ export default function DashboardPage() {
   }
 
   return (
-    <Layout>
-      <div className="space-y-6">
+    <WorkspaceRequired allowAutoSelect={true}>
+      <Layout>
+        <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
             <p className="text-gray-600">
-              Welcome to {currentWorkspace.name} workspace
+              {currentWorkspace ? `Welcome to ${currentWorkspace.name} workspace` : 'Welcome to your workspace'}
             </p>
           </div>
           <div className="flex items-center space-x-2">
@@ -285,6 +313,14 @@ export default function DashboardPage() {
                   onWidgetsChange={handleWidgetsChange}
                   onWidgetRemove={handleWidgetRemove}
                   onWidgetConfigure={handleWidgetConfigure}
+                  onWidgetResize={handleWidgetResize}
+                />
+                
+                <WidgetConfigDialog
+                  widget={configuringWidget}
+                  open={!!configuringWidget}
+                  onOpenChange={(open) => !open && setConfiguringWidget(null)}
+                  onSave={handleWidgetSave}
                 />
               </div>
               <div className="lg:col-span-1">
@@ -295,5 +331,6 @@ export default function DashboardPage() {
         </div>
       </div>
     </Layout>
+    </WorkspaceRequired>
   );
 }

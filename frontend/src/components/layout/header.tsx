@@ -17,6 +17,8 @@ import { MobileNav } from './mobile-nav';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { ScreenReaderOnly } from '@/components/accessibility/screen-reader-only';
 import { getActionAriaLabel } from '@/lib/accessibility';
+import { KeyboardShortcutsHelp } from '@/components/common/keyboard-shortcuts-help';
+import { KeyboardShortcut } from '@/hooks/useKeyboardShortcuts';
 
 export function Header() {
   const { user, logout } = useAuthStore();
@@ -39,6 +41,9 @@ export function Header() {
         </div>
 
         <div className="flex items-center space-x-4">
+          <KeyboardShortcutsHelp 
+            shortcuts={(typeof window !== 'undefined' && (window as any).__keyboardShortcuts) || []}
+          />
           <ThemeToggle />
           {user ? (
             <DropdownMenu>

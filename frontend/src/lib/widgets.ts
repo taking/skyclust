@@ -17,7 +17,9 @@ export type WidgetType =
   | 'quick-actions'
   | 'alerts'
   | 'performance-metrics'
-  | 'region-distribution';
+  | 'region-distribution'
+  | 'kubernetes-status'
+  | 'network-status';
 
 export type WidgetSize = 'small' | 'medium' | 'large' | 'xlarge';
 
@@ -112,6 +114,26 @@ export const WIDGET_CONFIGS: Record<WidgetType, WidgetConfig> = {
     maxSize: 'large',
     category: 'overview',
     icon: 'MapPin',
+  },
+  'kubernetes-status': {
+    type: 'kubernetes-status',
+    title: 'Kubernetes Clusters',
+    description: 'Kubernetes cluster status and overview',
+    defaultSize: 'medium',
+    minSize: 'small',
+    maxSize: 'large',
+    category: 'overview',
+    icon: 'Container',
+  },
+  'network-status': {
+    type: 'network-status',
+    title: 'Network Resources',
+    description: 'VPC, Subnet, and Security Group overview',
+    defaultSize: 'medium',
+    minSize: 'small',
+    maxSize: 'large',
+    category: 'overview',
+    icon: 'Network',
   },
 };
 

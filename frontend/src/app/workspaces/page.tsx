@@ -15,7 +15,7 @@ import * as z from 'zod';
 import { workspaceService } from '@/services/workspace';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useRouter } from 'next/navigation';
-import { Plus, Users, Calendar, Trash2 } from 'lucide-react';
+import { Plus, Users, Calendar, Trash2, Home } from 'lucide-react';
 import { CreateWorkspaceForm, Workspace } from '@/lib/types';
 import { useRequireAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
@@ -135,58 +135,64 @@ export default function WorkspacesPage() {
             <h1 className="text-3xl font-bold text-gray-900">Workspaces</h1>
             <p className="text-gray-600">Manage your workspaces and collaborate with your team</p>
           </div>
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Create Workspace
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create New Workspace</DialogTitle>
-                <DialogDescription>
-                  Create a new workspace to organize your cloud resources and collaborate with your team.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSubmit(handleCreateWorkspace)} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Workspace Name</Label>
-                  <Input
-                    id="name"
-                    placeholder="Enter workspace name"
-                    {...register('name')}
-                  />
-                  {errors.name && (
-                    <p className="text-sm text-red-600">{errors.name.message}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    placeholder="Enter workspace description"
-                    {...register('description')}
-                  />
-                  {errors.description && (
-                    <p className="text-sm text-red-600">{errors.description.message}</p>
-                  )}
-                </div>
-                <div className="flex justify-end space-x-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsCreateDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={createWorkspaceMutation.isPending}>
-                    {createWorkspaceMutation.isPending ? 'Creating...' : 'Create'}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <div className="flex items-center space-x-2">
+            <Button variant="outline" onClick={() => router.push('/dashboard')}>
+              <Home className="mr-2 h-4 w-4" />
+              Home
+            </Button>
+            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Workspace
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create New Workspace</DialogTitle>
+                  <DialogDescription>
+                    Create a new workspace to organize your cloud resources and collaborate with your team.
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleSubmit(handleCreateWorkspace)} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Workspace Name</Label>
+                    <Input
+                      id="name"
+                      placeholder="Enter workspace name"
+                      {...register('name')}
+                    />
+                    {errors.name && (
+                      <p className="text-sm text-red-600">{errors.name.message}</p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="description">Description</Label>
+                    <Textarea
+                      id="description"
+                      placeholder="Enter workspace description"
+                      {...register('description')}
+                    />
+                    {errors.description && (
+                      <p className="text-sm text-red-600">{errors.description.message}</p>
+                    )}
+                  </div>
+                  <div className="flex justify-end space-x-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsCreateDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={createWorkspaceMutation.isPending}>
+                      {createWorkspaceMutation.isPending ? 'Creating...' : 'Create'}
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         {workspaces.length === 0 ? (

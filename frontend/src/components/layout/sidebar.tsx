@@ -10,6 +10,8 @@ import {
   Settings,
   Users,
   Plus,
+  Container,
+  Network,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScreenReaderOnly } from '@/components/accessibility/screen-reader-only';
@@ -18,6 +20,8 @@ import { getActionAriaLabel } from '@/lib/accessibility';
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: Home },
   { name: 'VMs', href: '/vms', icon: Server },
+  { name: 'Kubernetes', href: '/kubernetes', icon: Container },
+  { name: 'Networks', href: '/networks', icon: Network },
   { name: 'Credentials', href: '/credentials', icon: Key },
   { name: 'Workspaces', href: '/workspaces', icon: Users },
   { name: 'Profile', href: '/profile', icon: Settings },

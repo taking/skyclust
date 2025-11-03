@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { authService } from '@/services/auth';
 import { useToast } from '@/hooks/useToast';
 import { useRequireAuth } from '@/hooks/useAuth';
+import { WorkspaceRequired } from '@/components/common/workspace-required';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -169,8 +170,9 @@ export default function ProfilePage() {
   }
 
   return (
-    <Layout>
-      <div className="space-y-6">
+    <WorkspaceRequired>
+      <Layout>
+        <div className="space-y-6">
         {/* Header */}
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Profile Settings</h1>
@@ -468,5 +470,6 @@ export default function ProfilePage() {
         </Tabs>
       </div>
     </Layout>
+    </WorkspaceRequired>
   );
 }

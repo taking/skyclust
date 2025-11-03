@@ -16,12 +16,14 @@ import * as z from 'zod';
 import { credentialService } from '@/services/credential';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useRouter } from 'next/navigation';
-import { Plus, Key, Trash2, Edit, Eye, EyeOff } from 'lucide-react';
+import { Plus, Key, Trash2, Edit, Eye, EyeOff, Home } from 'lucide-react';
 import { CreateCredentialForm } from '@/lib/types';
+import { WorkspaceRequired } from '@/components/common/workspace-required';
 
 const createCredentialSchema = z.object({
+  name: z.string().optional(),
   provider: z.string().min(1, 'Provider is required'),
-  credentials: z.record(z.string(), z.string()),
+  credentials: z.record(z.string(), z.unknown()),
 });
 
 export default function CredentialsPage() {
@@ -29,6 +31,7 @@ export default function CredentialsPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingCredential, setEditingCredential] = useState<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [showCredentials, setShowCredentials] = useState<Record<string, boolean>>({});
+  const [gcpInputMode, setGcpInputMode] = useState<'json' | 'file'>('json');
   const { currentWorkspace } = useWorkspaceStore();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -47,11 +50,14 @@ export default function CredentialsPage() {
   const selectedProvider = watch('provider');
 
   // Fetch credentials
-  const { data: credentials = [], isLoading } = useQuery({
+  const { data: credentialsData, isLoading } = useQuery({
     queryKey: ['credentials', currentWorkspace?.id],
     queryFn: () => currentWorkspace ? credentialService.getCredentials(currentWorkspace.id) : Promise.resolve([]),
     enabled: !!currentWorkspace,
   });
+
+  // Ensure credentials is always an array
+  const credentials = Array.isArray(credentialsData) ? credentialsData : [];
 
   // Create credential mutation
   const createCredentialMutation = useMutation({
@@ -60,6 +66,19 @@ export default function CredentialsPage() {
       queryClient.invalidateQueries({ queryKey: ['credentials', currentWorkspace?.id] });
       setIsCreateDialogOpen(false);
       reset();
+      setGcpInputMode('json');
+    },
+  });
+
+  // Create credential from file mutation (for GCP)
+  const createCredentialFromFileMutation = useMutation({
+    mutationFn: ({ workspaceId, name, provider, file }: { workspaceId: string; name: string; provider: string; file: File }) =>
+      credentialService.createCredentialFromFile(workspaceId, name, provider, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['credentials', currentWorkspace?.id] });
+      setIsCreateDialogOpen(false);
+      reset();
+      setGcpInputMode('json');
     },
   });
 
@@ -83,12 +102,37 @@ export default function CredentialsPage() {
     },
   });
 
-  const handleCreateCredential = (data: CreateCredentialForm) => {
+  const handleCreateCredential = async (data: CreateCredentialForm) => {
     if (!currentWorkspace) return;
-    createCredentialMutation.mutate({
-      ...data,
+    
+    // Handle GCP file upload
+    if (data.provider === 'gcp' && gcpInputMode === 'file') {
+      const file = (data.credentials as any)?._file as File; // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (!file) {
+        alert('Please select a GCP service account JSON file');
+        return;
+      }
+      
+      createCredentialFromFileMutation.mutate({
+        workspaceId: currentWorkspace.id,
+        name: data.name || 'GCP Production',
+        provider: 'gcp',
+        file,
+      });
+      return;
+    }
+    
+    // Transform credentials object to data field (remove _file if present)
+    const credentials = { ...data.credentials };
+    delete (credentials as any)._file; // eslint-disable-line @typescript-eslint/no-explicit-any
+    
+    const requestData = {
       workspace_id: currentWorkspace.id,
-    } as any); // eslint-disable-line @typescript-eslint/no-explicit-any
+      name: data.name || `${data.provider.toUpperCase()} Credential`,
+      provider: data.provider,
+      data: credentials || {},
+    };
+    createCredentialMutation.mutate(requestData as any); // eslint-disable-line @typescript-eslint/no-explicit-any
   };
 
   const handleEditCredential = (credential: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -164,166 +208,305 @@ export default function CredentialsPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-2 text-gray-600">Loading credentials...</p>
+      <WorkspaceRequired>
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+            <p className="mt-2 text-gray-600">Loading credentials...</p>
+          </div>
         </div>
-      </div>
+      </WorkspaceRequired>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col space-y-4 md:flex-row md:justify-between md:items-center md:space-y-0 mb-6 md:mb-8">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Credentials</h1>
-            <p className="text-sm md:text-base text-gray-600">
-              Manage cloud provider credentials for {currentWorkspace.name}
-            </p>
-          </div>
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="w-full md:w-auto">
-                <Plus className="mr-2 h-4 w-4" />
-                Add Credentials
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Add New Credentials</DialogTitle>
-                <DialogDescription>
-                  Add credentials for a cloud provider to enable VM management.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSubmit(handleCreateCredential)} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="provider">Provider</Label>
-                  <Select onValueChange={(value) => setValue('provider', value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select provider" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="aws">AWS</SelectItem>
-                      <SelectItem value="gcp">Google Cloud</SelectItem>
-                      <SelectItem value="azure">Azure</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {errors.provider && (
-                    <p className="text-sm text-red-600">{errors.provider.message}</p>
-                  )}
-                </div>
-                
-                {selectedProvider && (
-                  <div className="space-y-4">
-                    <div className="text-sm text-gray-600">
-                      Enter your {selectedProvider.toUpperCase()} credentials:
-                    </div>
-                    
-                    {selectedProvider === 'aws' && (
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="access_key">Access Key ID</Label>
-                          <Input
-                            id="access_key"
-                            placeholder="AKIA..."
-                            {...register('credentials.access_key')}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="secret_key">Secret Access Key</Label>
-                          <Input
-                            id="secret_key"
-                            type="password"
-                            placeholder="Enter secret key"
-                            {...register('credentials.secret_key')}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="region">Region</Label>
-                          <Input
-                            id="region"
-                            placeholder="us-east-1"
-                            {...register('credentials.region')}
-                          />
-                        </div>
-                      </div>
-                    )}
-                    
-                    {selectedProvider === 'gcp' && (
+    <WorkspaceRequired>
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col space-y-4 md:flex-row md:justify-between md:items-center md:space-y-0 mb-6 md:mb-8">
+              <div>
+                <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Credentials</h1>
+                <p className="text-sm md:text-base text-gray-600">
+                  {currentWorkspace ? `Manage cloud provider credentials for ${currentWorkspace.name}` : 'Manage cloud provider credentials'}
+                </p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button variant="outline" onClick={() => router.push('/dashboard')}>
+                  <Home className="mr-2 h-4 w-4" />
+                  Home
+                </Button>
+                <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="w-full md:w-auto">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Credentials
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle>Add New Credentials</DialogTitle>
+                      <DialogDescription>
+                        Add credentials for a cloud provider to enable VM management.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleSubmit(handleCreateCredential)} className="space-y-4">
                       <div className="space-y-2">
-                        <Label htmlFor="project_id">Project ID</Label>
+                        <Label htmlFor="name">Name</Label>
                         <Input
-                          id="project_id"
-                          placeholder="my-project-123"
-                          {...register('credentials.project_id')}
-                        />
-                        <Label htmlFor="credentials_file">Service Account Key (JSON)</Label>
-                        <Input
-                          id="credentials_file"
-                          placeholder="Path to credentials file"
-                          {...register('credentials.credentials_file')}
+                          id="name"
+                          placeholder="e.g., AWS Production"
+                          {...register('name')}
                         />
                       </div>
-                    )}
-                    
-                    {selectedProvider === 'azure' && (
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="subscription_id">Subscription ID</Label>
-                          <Input
-                            id="subscription_id"
-                            placeholder="12345678-1234-1234-1234-123456789012"
-                            {...register('credentials.subscription_id')}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="client_id">Client ID</Label>
-                          <Input
-                            id="client_id"
-                            placeholder="12345678-1234-1234-1234-123456789012"
-                            {...register('credentials.client_id')}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="client_secret">Client Secret</Label>
-                          <Input
-                            id="client_secret"
-                            type="password"
-                            placeholder="Enter client secret"
-                            {...register('credentials.client_secret')}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="tenant_id">Tenant ID</Label>
-                          <Input
-                            id="tenant_id"
-                            placeholder="12345678-1234-1234-1234-123456789012"
-                            {...register('credentials.tenant_id')}
-                          />
-                        </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="provider">Provider</Label>
+                        <Select onValueChange={(value) => setValue('provider', value)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select provider" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="aws">AWS</SelectItem>
+                            <SelectItem value="gcp">Google Cloud</SelectItem>
+                            <SelectItem value="azure">Azure</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {errors.provider && (
+                          <p className="text-sm text-red-600">{errors.provider.message}</p>
+                        )}
                       </div>
-                    )}
-                  </div>
-                )}
-                
-                <div className="flex justify-end space-x-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsCreateDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={createCredentialMutation.isPending}>
-                    {createCredentialMutation.isPending ? 'Adding...' : 'Add Credentials'}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
+                      
+                      {selectedProvider && (
+                        <div className="space-y-4">
+                          <div className="text-sm text-gray-600">
+                            Enter your {selectedProvider.toUpperCase()} credentials:
+                          </div>
+                          
+                          {selectedProvider === 'aws' && (
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="access_key">Access Key ID *</Label>
+                                <Input
+                                  id="access_key"
+                                  placeholder="AKIA..."
+                                  {...register('credentials.access_key')}
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="secret_key">Secret Access Key *</Label>
+                                <Input
+                                  id="secret_key"
+                                  type="password"
+                                  placeholder="Enter secret key"
+                                  {...register('credentials.secret_key')}
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="region">Region</Label>
+                                <Input
+                                  id="region"
+                                  placeholder="us-east-1"
+                                  {...register('credentials.region')}
+                                />
+                              </div>
+                            </div>
+                          )}
+                          
+                          {selectedProvider === 'gcp' && (
+                            <div className="space-y-4">
+                              <div className="flex items-center space-x-4">
+                                <Button
+                                  type="button"
+                                  variant={gcpInputMode === 'json' ? 'default' : 'outline'}
+                                  onClick={() => setGcpInputMode('json')}
+                                >
+                                  JSON Input
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant={gcpInputMode === 'file' ? 'default' : 'outline'}
+                                  onClick={() => setGcpInputMode('file')}
+                                >
+                                  File Upload
+                                </Button>
+                              </div>
+                              
+                              {gcpInputMode === 'json' ? (
+                                <>
+                                  <div className="text-sm font-medium">GCP Service Account JSON Fields:</div>
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                      <Label htmlFor="type">Type *</Label>
+                                      <Input
+                                        id="type"
+                                        placeholder="service_account"
+                                        defaultValue="service_account"
+                                        {...register('credentials.type')}
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label htmlFor="project_id">Project ID *</Label>
+                                      <Input
+                                        id="project_id"
+                                        placeholder="my-project-123"
+                                        {...register('credentials.project_id')}
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label htmlFor="private_key_id">Private Key ID *</Label>
+                                      <Input
+                                        id="private_key_id"
+                                        placeholder="Enter private key ID"
+                                        {...register('credentials.private_key_id')}
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label htmlFor="private_key">Private Key *</Label>
+                                      <Input
+                                        id="private_key"
+                                        type="password"
+                                        placeholder="-----BEGIN PRIVATE KEY-----"
+                                        {...register('credentials.private_key')}
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label htmlFor="client_email">Client Email *</Label>
+                                      <Input
+                                        id="client_email"
+                                        type="email"
+                                        placeholder="service-account@project.iam.gserviceaccount.com"
+                                        {...register('credentials.client_email')}
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label htmlFor="client_id">Client ID *</Label>
+                                      <Input
+                                        id="client_id"
+                                        placeholder="Enter client ID"
+                                        {...register('credentials.client_id')}
+                                      />
+                                    </div>
+                                    <div className="space-y-2 col-span-2">
+                                      <Label htmlFor="auth_uri">Auth URI</Label>
+                                      <Input
+                                        id="auth_uri"
+                                        defaultValue="https://accounts.google.com/o/oauth2/auth"
+                                        {...register('credentials.auth_uri')}
+                                      />
+                                    </div>
+                                    <div className="space-y-2 col-span-2">
+                                      <Label htmlFor="token_uri">Token URI</Label>
+                                      <Input
+                                        id="token_uri"
+                                        defaultValue="https://oauth2.googleapis.com/token"
+                                        {...register('credentials.token_uri')}
+                                      />
+                                    </div>
+                                    <div className="space-y-2 col-span-2">
+                                      <Label htmlFor="auth_provider_x509_cert_url">Auth Provider X509 Cert URL</Label>
+                                      <Input
+                                        id="auth_provider_x509_cert_url"
+                                        defaultValue="https://www.googleapis.com/oauth2/v1/certs"
+                                        {...register('credentials.auth_provider_x509_cert_url')}
+                                      />
+                                    </div>
+                                    <div className="space-y-2 col-span-2">
+                                      <Label htmlFor="client_x509_cert_url">Client X509 Cert URL</Label>
+                                      <Input
+                                        id="client_x509_cert_url"
+                                        placeholder="Enter client x509 cert URL"
+                                        {...register('credentials.client_x509_cert_url')}
+                                      />
+                                    </div>
+                                    <div className="space-y-2 col-span-2">
+                                      <Label htmlFor="universe_domain">Universe Domain</Label>
+                                      <Input
+                                        id="universe_domain"
+                                        defaultValue="googleapis.com"
+                                        {...register('credentials.universe_domain')}
+                                      />
+                                    </div>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="space-y-2">
+                                  <Label htmlFor="gcp_file">Service Account JSON File *</Label>
+                                  <Input
+                                    id="gcp_file"
+                                    type="file"
+                                    accept=".json"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (file) {
+                                        setValue('credentials._file', file as any); // eslint-disable-line @typescript-eslint/no-explicit-any
+                                      }
+                                    }}
+                                  />
+                                  <p className="text-sm text-gray-500">
+                                    Upload your GCP service account JSON file
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
+                          {selectedProvider === 'azure' && (
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="subscription_id">Subscription ID</Label>
+                                <Input
+                                  id="subscription_id"
+                                  placeholder="12345678-1234-1234-1234-123456789012"
+                                  {...register('credentials.subscription_id')}
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="client_id">Client ID</Label>
+                                <Input
+                                  id="client_id"
+                                  placeholder="12345678-1234-1234-1234-123456789012"
+                                  {...register('credentials.client_id')}
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="client_secret">Client Secret</Label>
+                                <Input
+                                  id="client_secret"
+                                  type="password"
+                                  placeholder="Enter client secret"
+                                  {...register('credentials.client_secret')}
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="tenant_id">Tenant ID</Label>
+                                <Input
+                                  id="tenant_id"
+                                  placeholder="12345678-1234-1234-1234-123456789012"
+                                  {...register('credentials.tenant_id')}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      <div className="flex justify-end space-x-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setIsCreateDialogOpen(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button type="submit" disabled={createCredentialMutation.isPending || createCredentialFromFileMutation.isPending}>
+                          {(createCredentialMutation.isPending || createCredentialFromFileMutation.isPending) ? 'Adding...' : 'Add Credentials'}
+                        </Button>
+                      </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
 
         {credentials.length === 0 ? (
           <div className="text-center py-8 md:py-12">
@@ -488,7 +671,8 @@ export default function CredentialsPage() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
-    </div>
+    </WorkspaceRequired>
   );
 }

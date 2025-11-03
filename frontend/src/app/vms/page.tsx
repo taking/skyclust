@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import * as React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 // import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,12 +20,22 @@ import * as z from 'zod';
 import { vmService } from '@/services/vm';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useRouter } from 'next/navigation';
-import { Plus, Server, Play, Square, Trash2, ExternalLink } from 'lucide-react';
+import { Plus, Server, Play, Square, Trash2, ExternalLink, CheckCircle2, XCircle, ArrowUp, ArrowDown } from 'lucide-react';
 import { CreateVMForm } from '@/lib/types';
 import { ScreenReaderOnly } from '@/components/accessibility/screen-reader-only';
 import { LiveRegion } from '@/components/accessibility/live-region';
 import { getStatusAriaLabel, getActionAriaLabel, getLiveRegionMessage } from '@/lib/accessibility';
 import { useToast } from '@/hooks/useToast';
+import { cn } from '@/lib/utils';
+import { useAdvancedFiltering } from '@/hooks/useAdvancedFiltering';
+import { FilterPresetsManager } from '@/components/common/filter-presets-manager';
+import { MultiSortIndicator } from '@/components/common/multi-sort-indicator';
+import { multiSort, getSortIndicator } from '@/utils/sort-utils';
+import { VM } from '@/lib/types';
+import { useKeyboardShortcuts, commonShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { WorkspaceRequired } from '@/components/common/workspace-required';
+import { credentialService } from '@/services/credential';
+import { Credential } from '@/lib/types';
 
 const createVMSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -36,29 +47,66 @@ const createVMSchema = z.object({
 
 export default function VMsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [filters, setFilters] = useState<FilterValue>({});
   const [liveMessage, setLiveMessage] = useState('');
+  
+  // Advanced filtering with presets
+  const {
+    filters: advancedFilters,
+    sortConfig,
+    presets,
+    updateFilter,
+    setAllFilters,
+    clearFilters,
+    savePreset,
+    loadPreset,
+    deletePreset,
+    toggleSort,
+    clearSort,
+  } = useAdvancedFiltering<VM>({
+    storageKey: 'vms-page',
+    defaultFilters: {},
+    defaultSort: [],
+  });
+  
+  // Keep local filters state for FilterPanel compatibility
+  const [filters, setFilters] = useState<FilterValue>(advancedFilters as FilterValue);
   const { currentWorkspace } = useWorkspaceStore();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { success: showSuccess, error: showError } = useToast();
 
+  // Keyboard shortcuts
+  useKeyboardShortcuts([
+    commonShortcuts.newResource(() => setIsCreateDialogOpen(true)),
+    commonShortcuts.escape(() => setIsCreateDialogOpen(false)),
+  ]);
+
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, touchedFields },
     reset,
     setValue,
     // watch,
   } = useForm<CreateVMForm>({
     resolver: zodResolver(createVMSchema),
+    mode: 'onChange', // Enable real-time validation
   });
 
-  // const selectedProvider = watch('provider');
+  // Fetch credentials for selected workspace
+  const { data: credentials = [] } = useQuery({
+    queryKey: ['credentials', currentWorkspace?.id],
+    queryFn: () => currentWorkspace ? credentialService.getCredentials(currentWorkspace.id) : Promise.resolve([]),
+    enabled: !!currentWorkspace,
+  });
+
+  // Selected credential (provider)
+  const [selectedCredentialId, setSelectedCredentialId] = useState<string>('');
+  const selectedCredential = credentials.find(c => c.id === selectedCredentialId);
 
   // Fetch VMs
   const { data: vms = [], isLoading } = useQuery({
-    queryKey: ['vms', currentWorkspace?.id],
+    queryKey: ['vms', currentWorkspace?.id, selectedCredentialId],
     queryFn: () => currentWorkspace ? vmService.getVMs(currentWorkspace.id) : Promise.resolve([]),
     enabled: !!currentWorkspace,
   });
@@ -111,33 +159,77 @@ export default function VMsPage() {
     },
   ];
 
-  // Apply filters to search results
-  const filteredVMs = searchResults.filter((vm) => {
-    // Status filter
-    if (filters.status && Array.isArray(filters.status) && filters.status.length > 0) {
-      if (!filters.status.includes(vm.status)) return false;
-    }
+  // Sync local filters with advanced filters
+  useEffect(() => {
+    setFilters(advancedFilters as FilterValue);
+  }, [advancedFilters]);
 
-    // Provider filter
-    if (filters.provider && Array.isArray(filters.provider) && filters.provider.length > 0) {
-      if (!filters.provider.includes(vm.provider)) return false;
-    }
+  // Apply filters and sorting to search results
+  const filteredVMs = useMemo(() => {
+    let result = searchResults.filter((vm) => {
+      // Status filter
+      if (filters.status && Array.isArray(filters.status) && filters.status.length > 0) {
+        if (!filters.status.includes(vm.status)) return false;
+      }
 
-    // Region filter
-    if (filters.region && filters.region !== vm.region) {
-      return false;
-    }
+      // Provider filter
+      if (filters.provider && Array.isArray(filters.provider) && filters.provider.length > 0) {
+        if (!filters.provider.includes(vm.provider)) return false;
+      }
 
-    return true;
+      // Region filter
+      if (filters.region && filters.region !== vm.region) {
+        return false;
+      }
+
+      return true;
+    });
+    
+    // Apply multi-sort
+    if (sortConfig.length > 0) {
+      result = multiSort(result, sortConfig, (vm, field) => {
+        switch (field) {
+          case 'name': return vm.name;
+          case 'provider': return vm.provider;
+          case 'status': return vm.status;
+          case 'region': return vm.region;
+          case 'instance_type': return vm.instance_type;
+          case 'created_at': return vm.created_at ? new Date(vm.created_at) : null;
+          default: return null;
+        }
+      });
+    }
+    
+    return result;
+  }, [searchResults, filters, sortConfig]);
+
+  // Apply pagination to filtered VMs
+  const {
+    page,
+    totalPages,
+    paginatedItems: paginatedVMs,
+    setPage,
+    setPageSize: setPaginationPageSize,
+  } = usePagination(filteredVMs, {
+    totalItems: filteredVMs.length,
+    initialPage: 1,
+    initialPageSize: pageSize,
   });
 
   // Create VM mutation
   const createVMMutation = useMutation({
-    mutationFn: vmService.createVM,
+    mutationFn: (data: CreateVMForm) => {
+      if (!currentWorkspace) throw new Error('Workspace not selected');
+      return vmService.createVM({
+        ...data,
+        workspace_id: currentWorkspace.id,
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vms', currentWorkspace?.id] });
       setIsCreateDialogOpen(false);
       reset();
+      setSelectedCredentialId('');
     },
   });
 
@@ -192,13 +284,27 @@ export default function VMsPage() {
 
   const handleStartVM = (vmId: string) => {
     const vm = vms.find(v => v.id === vmId);
+    if (!vm) return;
+
+    // Optimistic update
+    queryClient.setQueryData(['vms', currentWorkspace?.id], (old: typeof vms) => {
+      if (!old) return old;
+      return old.map(v => v.id === vmId ? { ...v, status: 'starting' as const } : v);
+    });
+
     startVMMutation.mutate(vmId, {
       onSuccess: () => {
+        // Invalidate to get fresh data from server
         queryClient.invalidateQueries({ queryKey: ['vms', currentWorkspace?.id] });
         showSuccess('VM started successfully');
         setLiveMessage(getLiveRegionMessage('started', vm?.name || 'VM', true));
       },
       onError: (error) => {
+        // Rollback optimistic update
+        queryClient.setQueryData(['vms', currentWorkspace?.id], (old: typeof vms) => {
+          if (!old) return old;
+          return old.map(v => v.id === vmId ? { ...v, status: vm.status } : v);
+        });
         showError(`Failed to start VM: ${error.message}`);
         setLiveMessage(getLiveRegionMessage('started', vm?.name || 'VM', false));
       },
@@ -207,13 +313,27 @@ export default function VMsPage() {
 
   const handleStopVM = (vmId: string) => {
     const vm = vms.find(v => v.id === vmId);
+    if (!vm) return;
+
+    // Optimistic update
+    queryClient.setQueryData(['vms', currentWorkspace?.id], (old: typeof vms) => {
+      if (!old) return old;
+      return old.map(v => v.id === vmId ? { ...v, status: 'stopping' as const } : v);
+    });
+
     stopVMMutation.mutate(vmId, {
       onSuccess: () => {
+        // Invalidate to get fresh data from server
         queryClient.invalidateQueries({ queryKey: ['vms', currentWorkspace?.id] });
         showSuccess('VM stopped successfully');
         setLiveMessage(getLiveRegionMessage('stopped', vm?.name || 'VM', true));
       },
       onError: (error) => {
+        // Rollback optimistic update
+        queryClient.setQueryData(['vms', currentWorkspace?.id], (old: typeof vms) => {
+          if (!old) return old;
+          return old.map(v => v.id === vmId ? { ...v, status: vm.status } : v);
+        });
         showError(`Failed to stop VM: ${error.message}`);
         setLiveMessage(getLiveRegionMessage('stopped', vm?.name || 'VM', false));
       },
@@ -233,36 +353,31 @@ export default function VMsPage() {
     }
   };
 
-  if (!currentWorkspace) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">
-            No Workspace Selected
-          </h2>
-          <p className="text-gray-600 mb-6">
-            Please select a workspace to manage VMs.
-          </p>
-          <Button onClick={() => router.push('/workspaces')}>
-            Select Workspace
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-2 text-gray-600">Loading VMs...</p>
-        </div>
-      </div>
+      <WorkspaceRequired>
+        <Layout>
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h1 className="text-3xl font-bold">Virtual Machines</h1>
+              <Button disabled>
+                <Plus className="mr-2 h-4 w-4" />
+                Create VM
+              </Button>
+            </div>
+            <Card>
+              <CardContent className="pt-6">
+                <TableSkeleton columns={7} rows={5} />
+              </CardContent>
+            </Card>
+          </div>
+        </Layout>
+      </WorkspaceRequired>
     );
   }
 
   return (
+    <WorkspaceRequired>
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center mb-8">
@@ -288,31 +403,70 @@ export default function VMsPage() {
               </DialogHeader>
               <form onSubmit={handleSubmit(handleCreateVM)} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">VM Name</Label>
-                    <Input
-                      id="name"
-                      placeholder="Enter VM name"
-                      {...register('name')}
-                    />
+                  <div className="space-y-2 relative">
+                    <Label htmlFor="name" className="flex items-center gap-1">
+                      VM Name
+                      <span className="text-red-500">*</span>
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="name"
+                        placeholder="Enter VM name"
+                        {...register('name')}
+                        className={cn(
+                          errors.name && 'border-red-500 focus-visible:ring-red-500',
+                          !errors.name && touchedFields.name && 'border-green-500 focus-visible:ring-green-500',
+                          'pr-10'
+                        )}
+                      />
+                      {errors.name && (
+                        <XCircle className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-red-500 pointer-events-none" aria-hidden="true" />
+                      )}
+                      {!errors.name && touchedFields.name && (
+                        <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-green-500 pointer-events-none" aria-hidden="true" />
+                      )}
+                    </div>
                     {errors.name && (
-                      <p className="text-sm text-red-600">{errors.name.message}</p>
+                      <p className="text-sm text-red-600 flex items-center gap-1">
+                        <XCircle className="h-3 w-3" aria-hidden="true" />
+                        {errors.name.message}
+                      </p>
+                    )}
+                    {!errors.name && touchedFields.name && (
+                      <p className="text-sm text-green-600 flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                        Looks good!
+                      </p>
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="provider">Provider</Label>
-                    <Select onValueChange={(value) => setValue('provider', value)}>
+                    <Label htmlFor="credential">Credential (Provider)</Label>
+                    <Select 
+                      value={selectedCredentialId}
+                      onValueChange={(value) => {
+                        setSelectedCredentialId(value);
+                        const credential = credentials.find(c => c.id === value);
+                        if (credential) {
+                          setValue('provider', credential.provider);
+                        }
+                      }}
+                    >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select provider" />
+                        <SelectValue placeholder="Select credential" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="aws">AWS</SelectItem>
-                        <SelectItem value="gcp">Google Cloud</SelectItem>
-                        <SelectItem value="azure">Azure</SelectItem>
+                        {credentials.map((credential) => (
+                          <SelectItem key={credential.id} value={credential.id}>
+                            {credential.name || `${credential.provider.toUpperCase()} (${credential.id.slice(0, 8)})`}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     {errors.provider && (
                       <p className="text-sm text-red-600">{errors.provider.message}</p>
+                    )}
+                    {credentials.length === 0 && (
+                      <p className="text-sm text-yellow-600">No credentials available. Please create a credential first.</p>
                     )}
                   </div>
                 </div>
@@ -383,12 +537,25 @@ export default function VMsPage() {
                   filterCount={Object.keys(filters).length}
                 />
               </div>
-              <div className="w-full sm:w-auto">
+              <div className="flex items-center gap-2">
+                <FilterPresetsManager
+                  presets={presets}
+                  currentFilters={filters}
+                  onSavePreset={savePreset}
+                  onLoadPreset={loadPreset}
+                  onDeletePreset={deletePreset}
+                />
                 <FilterPanel
                   filters={filterConfigs}
                   values={filters}
-                  onChange={setFilters}
-                  onClear={() => setFilters({})}
+                  onChange={(newFilters) => {
+                    setFilters(newFilters);
+                    setAllFilters(newFilters);
+                  }}
+                  onClear={() => {
+                    setFilters({});
+                    clearFilters();
+                  }}
                   onApply={() => {}}
                   title="Filter VMs"
                   description="Filter VMs by status, provider, and region"
@@ -397,13 +564,28 @@ export default function VMsPage() {
             </div>
           </div>
           
-          {/* Search Results Info */}
-          {isSearching && (
-            <div className="text-sm text-gray-600">
-              Found {filteredVMs.length} VM{filteredVMs.length !== 1 ? 's' : ''} 
-              {searchQuery && ` matching "${searchQuery}"`}
-            </div>
-          )}
+          {/* Search Results Info and Sort */}
+          <div className="flex items-center justify-between">
+            {isSearching && (
+              <div className="text-sm text-gray-600">
+                Found {filteredVMs.length} VM{filteredVMs.length !== 1 ? 's' : ''} 
+                {searchQuery && ` matching "${searchQuery}"`}
+              </div>
+            )}
+            <MultiSortIndicator
+              sortConfig={sortConfig}
+              availableFields={[
+                { value: 'name', label: 'Name' },
+                { value: 'provider', label: 'Provider' },
+                { value: 'status', label: 'Status' },
+                { value: 'region', label: 'Region' },
+                { value: 'instance_type', label: 'Instance Type' },
+                { value: 'created_at', label: 'Created At' },
+              ]}
+              onToggleSort={toggleSort}
+              onClearSort={clearSort}
+            />
+          </div>
         </div>
 
         {filteredVMs.length === 0 ? (
@@ -433,18 +615,84 @@ export default function VMsPage() {
               <Table role="table" aria-label="Virtual machines list">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-[120px]">Name</TableHead>
-                    <TableHead className="hidden sm:table-cell">Provider</TableHead>
-                    <TableHead className="hidden md:table-cell">Type</TableHead>
-                    <TableHead className="hidden lg:table-cell">Region</TableHead>
-                    <TableHead className="min-w-[80px]">Status</TableHead>
+                    <TableHead className="min-w-[120px]">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 -ml-3"
+                        onClick={() => toggleSort('name')}
+                      >
+                        Name
+                        {getSortIndicator('name', sortConfig) === 'asc' && <ArrowUp className="ml-1 h-3 w-3" />}
+                        {getSortIndicator('name', sortConfig) === 'desc' && <ArrowDown className="ml-1 h-3 w-3" />}
+                      </Button>
+                    </TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 -ml-3"
+                        onClick={() => toggleSort('provider')}
+                      >
+                        Provider
+                        {getSortIndicator('provider', sortConfig) === 'asc' && <ArrowUp className="ml-1 h-3 w-3" />}
+                        {getSortIndicator('provider', sortConfig) === 'desc' && <ArrowDown className="ml-1 h-3 w-3" />}
+                      </Button>
+                    </TableHead>
+                    <TableHead className="hidden md:table-cell">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 -ml-3"
+                        onClick={() => toggleSort('instance_type')}
+                      >
+                        Type
+                        {getSortIndicator('instance_type', sortConfig) === 'asc' && <ArrowUp className="ml-1 h-3 w-3" />}
+                        {getSortIndicator('instance_type', sortConfig) === 'desc' && <ArrowDown className="ml-1 h-3 w-3" />}
+                      </Button>
+                    </TableHead>
+                    <TableHead className="hidden lg:table-cell">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 -ml-3"
+                        onClick={() => toggleSort('region')}
+                      >
+                        Region
+                        {getSortIndicator('region', sortConfig) === 'asc' && <ArrowUp className="ml-1 h-3 w-3" />}
+                        {getSortIndicator('region', sortConfig) === 'desc' && <ArrowDown className="ml-1 h-3 w-3" />}
+                      </Button>
+                    </TableHead>
+                    <TableHead className="min-w-[80px]">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 -ml-3"
+                        onClick={() => toggleSort('status')}
+                      >
+                        Status
+                        {getSortIndicator('status', sortConfig) === 'asc' && <ArrowUp className="ml-1 h-3 w-3" />}
+                        {getSortIndicator('status', sortConfig) === 'desc' && <ArrowDown className="ml-1 h-3 w-3" />}
+                      </Button>
+                    </TableHead>
                     <TableHead className="hidden xl:table-cell">IP Address</TableHead>
-                    <TableHead className="hidden lg:table-cell">Created</TableHead>
+                    <TableHead className="hidden lg:table-cell">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 -ml-3"
+                        onClick={() => toggleSort('created_at')}
+                      >
+                        Created
+                        {getSortIndicator('created_at', sortConfig) === 'asc' && <ArrowUp className="ml-1 h-3 w-3" />}
+                        {getSortIndicator('created_at', sortConfig) === 'desc' && <ArrowDown className="ml-1 h-3 w-3" />}
+                      </Button>
+                    </TableHead>
                     <TableHead className="text-right min-w-[100px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredVMs.map((vm) => (
+                  {paginatedVMs.map((vm) => (
                     <TableRow key={vm.id} role="row">
                       <TableCell className="font-medium" role="cell">
                         <div>
@@ -531,11 +779,30 @@ export default function VMsPage() {
                   ))}
                 </TableBody>
               </Table>
+              
+              {/* Pagination */}
+              {filteredVMs.length > 0 && (
+                <div className="border-t mt-4">
+                  <Pagination
+                    total={filteredVMs.length}
+                    page={page}
+                    pageSize={pageSize}
+                    onPageChange={setPage}
+                    onPageSizeChange={(newSize) => {
+                      setPageSize(newSize);
+                      setPaginationPageSize(newSize);
+                    }}
+                    pageSizeOptions={[10, 20, 50, 100]}
+                    showPageSizeSelector={true}
+                  />
+                </div>
+              )}
             </div>
           </div>
         )}
       </div>
       <LiveRegion message={liveMessage} />
     </div>
+    </WorkspaceRequired>
   );
 }

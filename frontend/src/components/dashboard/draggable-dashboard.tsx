@@ -8,26 +8,36 @@ import { CSS } from '@dnd-kit/utilities';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { GripVertical, Settings, X } from 'lucide-react';
-import { WidgetData, WidgetType, WIDGET_CONFIGS, getWidgetSizeClasses } from '@/lib/widgets';
+import { GripVertical, Settings, X, Maximize2, Minimize2 } from 'lucide-react';
+import { WidgetData, WidgetType, WidgetSize, WIDGET_CONFIGS, getWidgetSizeClasses } from '@/lib/widgets';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { VMStatusWidget } from '@/components/widgets/vm-status-widget';
 import { CostChartWidget } from '@/components/widgets/cost-chart-widget';
 import { ResourceUsageWidget } from '@/components/widgets/resource-usage-widget';
+import { KubernetesStatusWidget } from '@/components/widgets/kubernetes-status-widget';
+import { NetworkStatusWidget } from '@/components/widgets/network-status-widget';
 
 interface DraggableDashboardProps {
   widgets: WidgetData[];
   onWidgetsChange: (widgets: WidgetData[]) => void;
   onWidgetRemove: (widgetId: string) => void;
   onWidgetConfigure: (widgetId: string) => void;
+  onWidgetResize?: (widgetId: string, size: WidgetSize) => void;
 }
 
 interface DraggableWidgetProps {
   widget: WidgetData;
   onRemove: (widgetId: string) => void;
   onConfigure: (widgetId: string) => void;
+  onResize?: (widgetId: string, size: WidgetSize) => void;
 }
 
-function DraggableWidget({ widget, onRemove, onConfigure }: DraggableWidgetProps) {
+function DraggableWidget({ widget, onRemove, onConfigure, onResize }: DraggableWidgetProps) {
   const {
     attributes,
     listeners,
@@ -43,6 +53,20 @@ function DraggableWidget({ widget, onRemove, onConfigure }: DraggableWidgetProps
   };
 
   const config = WIDGET_CONFIGS[widget.type];
+  
+  const sizeOptions: WidgetSize[] = ['small', 'medium', 'large', 'xlarge'];
+  const availableSizes = sizeOptions.filter(s => {
+    const index = sizeOptions.indexOf(s);
+    const minIndex = sizeOptions.indexOf(config.minSize);
+    const maxIndex = sizeOptions.indexOf(config.maxSize);
+    return index >= minIndex && index <= maxIndex;
+  });
+
+  const handleSizeChange = (newSize: WidgetSize) => {
+    if (onResize) {
+      onResize(widget.id, newSize);
+    }
+  };
 
   const renderWidget = () => {
     switch (widget.type) {
@@ -52,6 +76,10 @@ function DraggableWidget({ widget, onRemove, onConfigure }: DraggableWidgetProps
         return <CostChartWidget />;
       case 'resource-usage':
         return <ResourceUsageWidget />;
+      case 'kubernetes-status':
+        return <KubernetesStatusWidget />;
+      case 'network-status':
+        return <NetworkStatusWidget />;
       default:
         return (
           <div className="flex items-center justify-center h-32 text-gray-500">
@@ -86,14 +114,39 @@ function DraggableWidget({ widget, onRemove, onConfigure }: DraggableWidgetProps
               </div>
             </div>
             <div className="flex items-center space-x-1">
-              <Badge variant="outline" className="text-xs">
-                {widget.size}
-              </Badge>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    aria-label="Resize widget"
+                  >
+                    {widget.size === 'xlarge' || widget.size === 'large' ? (
+                      <Minimize2 className="h-3 w-3" />
+                    ) : (
+                      <Maximize2 className="h-3 w-3" />
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {availableSizes.map((size) => (
+                    <DropdownMenuItem
+                      key={size}
+                      onClick={() => handleSizeChange(size)}
+                      className={widget.size === size ? 'bg-accent' : ''}
+                    >
+                      {size.charAt(0).toUpperCase() + size.slice(1)}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => onConfigure(widget.id)}
                 className="h-6 w-6 p-0"
+                aria-label="Configure widget"
               >
                 <Settings className="h-3 w-3" />
               </Button>
@@ -102,6 +155,7 @@ function DraggableWidget({ widget, onRemove, onConfigure }: DraggableWidgetProps
                 size="sm"
                 onClick={() => onRemove(widget.id)}
                 className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                aria-label="Remove widget"
               >
                 <X className="h-3 w-3" />
               </Button>
@@ -121,6 +175,7 @@ export function DraggableDashboard({
   onWidgetsChange,
   onWidgetRemove,
   onWidgetConfigure,
+  onWidgetResize,
 }: DraggableDashboardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -158,6 +213,7 @@ export function DraggableDashboard({
               widget={widget}
               onRemove={onWidgetRemove}
               onConfigure={onWidgetConfigure}
+              onResize={onWidgetResize}
             />
           ))}
         </SortableContext>
