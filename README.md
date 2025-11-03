@@ -120,7 +120,7 @@ npm install
 
 3. **환경 변수 설정:**
 ```bash
-cp .env.example .env
+cp .env.sample .env
 # .env 파일 편집
 ```
 

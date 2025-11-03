@@ -179,13 +179,6 @@ type LogoutService interface {
 	CleanupExpiredTokens(ctx context.Context) error
 }
 
-// PluginActivationService defines the interface for plugin activation
-type PluginActivationService interface {
-	ActivatePlugin(ctx context.Context, userID uuid.UUID, provider string) error
-	DeactivatePlugin(ctx context.Context, userID uuid.UUID, provider string) error
-	GetActivePlugins(ctx context.Context, userID uuid.UUID) ([]string, error)
-}
-
 // EventService defines the interface for event operations
 type EventService interface {
 	Publish(ctx context.Context, eventType string, data interface{}) error

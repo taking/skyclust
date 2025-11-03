@@ -87,10 +87,6 @@ func (s *credentialService) CreateCredential(ctx context.Context, workspaceID, c
 		},
 	})
 
-	// TODO: Trigger plugin activation
-	// This would be called by the plugin activation service
-	// s.pluginActivationService.OnCredentialCreated(workspaceID, credential.Provider)
-
 	return credential, nil
 }
 

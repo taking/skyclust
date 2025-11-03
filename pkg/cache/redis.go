@@ -189,25 +189,39 @@ func (r *RedisService) ClearExpired() error {
 	// But we can clean up any keys that might have been missed
 	ctx := context.Background()
 
-	// Get all keys
-	keys, err := r.client.Keys(ctx, "*").Result()
-	if err != nil {
-		return fmt.Errorf("failed to get keys: %w", err)
-	}
+	// Use SCAN instead of KEYS to avoid blocking Redis
+	// SCAN iterates through keys incrementally without blocking
+	cursor := uint64(0)
+	pattern := "*"
+	scanCount := int64(100) // Process 100 keys per iteration
 
-	// Check TTL for each key and remove if expired
-	for _, key := range keys {
-		ttl, err := r.client.TTL(ctx, key).Result()
+	for {
+		var keys []string
+		var err error
+		keys, cursor, err = r.client.Scan(ctx, cursor, pattern, scanCount).Result()
 		if err != nil {
-			continue
+			return fmt.Errorf("failed to scan keys: %w", err)
 		}
-		if ttl == -1 { // Key exists but has no expiration
-			continue
+
+		// Check TTL for each key and remove if expired
+		for _, key := range keys {
+			ttl, err := r.client.TTL(ctx, key).Result()
+			if err != nil {
+				continue
+			}
+			if ttl == -1 { // Key exists but has no expiration
+				continue
+			}
+			if ttl == -2 { // Key doesn't exist (shouldn't happen)
+				continue
+			}
+			// Key has TTL, Redis will handle expiration automatically
 		}
-		if ttl == -2 { // Key doesn't exist (shouldn't happen)
-			continue
+
+		// If cursor is 0, we've iterated through all keys
+		if cursor == 0 {
+			break
 		}
-		// Key has TTL, Redis will handle expiration automatically
 	}
 
 	return nil
@@ -217,9 +231,15 @@ func (r *RedisService) ClearExpired() error {
 func (r *RedisService) GetPerformanceStats() (*CacheStats, error) {
 	ctx := context.Background()
 
-	// Parse basic stats (simplified)
+	// Use DBSIZE instead of KEYS to get key count efficiently (O(1) operation)
+	// This avoids blocking Redis by scanning the entire keyspace
+	dbSize, err := r.client.DBSize(ctx).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database size: %w", err)
+	}
+
 	stats := &CacheStats{
-		Keys: int64(len(r.client.Keys(ctx, "*").Val())),
+		Keys: dbSize,
 	}
 
 	// Parse hits and misses from Redis info

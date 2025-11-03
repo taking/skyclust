@@ -29,33 +29,6 @@ nats:
   url: "nats://localhost:4222"
   cluster: "cmp-cluster"
 
-plugins:
-  directory: "plugins"
-
-providers:
-  aws:
-    access_key: "your-aws-access-key"
-    secret_key: "your-aws-secret-key"
-    region: "ap-northeast-2"
-  
-  gcp:
-    project_id: "your-gcp-project-id"
-    credentials_file: "/path/to/credentials.json"
-    region: "us-central1"
-
-  openstack:
-    auth_url: "http://your-openstack:5000/v3"
-    username: "your-username"
-    password: "your-password"
-    project_id: "your-project-id"
-    region: "RegionOne"
-
-  proxmox:
-    host: "https://your-proxmox-host:8006"
-    username: "your-username"
-    password: "your-password"
-    realm: "pve"
-
 logging:
   level: "debug"
   format: "json"

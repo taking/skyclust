@@ -24,7 +24,6 @@ type SystemMetrics struct {
 	MemoryUsage MemoryUsage    `json:"memory_usage"`
 	Performance Performance    `json:"performance"`
 	Database    DatabaseStatus `json:"database"`
-	Plugins     PluginStatus   `json:"plugins"`
 }
 
 // MemoryUsage represents memory usage metrics
@@ -50,13 +49,6 @@ type DatabaseStatus struct {
 	Healthy      bool    `json:"healthy"`
 	Status       string  `json:"status"`
 	ResponseTime float64 `json:"response_time_ms,omitempty"`
-}
-
-// PluginStatus represents plugin status
-type PluginStatus struct {
-	TotalPlugins   int      `json:"total_plugins"`
-	HealthyPlugins int      `json:"healthy_plugins"`
-	Plugins        []string `json:"plugins"`
 }
 
 // HealthCheckResponse represents a health check response

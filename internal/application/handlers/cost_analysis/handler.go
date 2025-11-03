@@ -109,7 +109,7 @@ func (h *Handler) getCostPredictionsHandler() handlers.HandlerFunc {
 		resourceTypes := c.DefaultQuery("resource_types", "all")
 
 		// Get cost predictions from service
-		predictions, err := h.costAnalysisService.GetCostPredictions(c.Request.Context(), workspaceID, days, resourceTypes)
+		predictions, warnings, err := h.costAnalysisService.GetCostPredictions(c.Request.Context(), workspaceID, days, resourceTypes)
 		if err != nil {
 			h.HandleError(c, err, "get_cost_predictions")
 			return
@@ -119,6 +119,11 @@ func (h *Handler) getCostPredictionsHandler() handlers.HandlerFunc {
 		response := gin.H{
 			"workspace_id": workspaceID,
 			"predictions":  predictions,
+		}
+
+		// Include warnings if any
+		if len(warnings) > 0 {
+			response["warnings"] = warnings
 		}
 
 		h.OK(c, response, "Cost predictions retrieved successfully")

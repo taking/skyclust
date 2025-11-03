@@ -28,9 +28,6 @@ WORKDIR /app
 # Copy the binary from builder stage
 COPY --from=builder /app/cmp-server .
 
-# Copy plugins directory
-COPY plugins/ ./plugins/
-
 # Copy config directory
 COPY configs/ ./configs/
 

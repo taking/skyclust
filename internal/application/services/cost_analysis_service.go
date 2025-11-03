@@ -196,7 +196,7 @@ func (s *CostAnalysisService) parseResourceTypes(resourceTypes string) (bool, bo
 }
 
 // GetCostPredictions generates cost predictions for future periods
-func (s *CostAnalysisService) GetCostPredictions(ctx context.Context, workspaceID string, days int, resourceTypes string) ([]CostPrediction, error) {
+func (s *CostAnalysisService) GetCostPredictions(ctx context.Context, workspaceID string, days int, resourceTypes string) ([]CostPrediction, []CostWarning, error) {
 	// Get historical data (last 30 days)
 	endDate := time.Now()
 	startDate := endDate.AddDate(0, 0, -30)
@@ -211,7 +211,7 @@ func (s *CostAnalysisService) GetCostPredictions(ctx context.Context, workspaceI
 	if includeVM {
 		vms, err := s.vmRepo.GetVMsByWorkspace(ctx, workspaceID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get VMs: %w", err)
+			return nil, nil, fmt.Errorf("failed to get VMs: %w", err)
 		}
 
 		for _, vm := range vms {
@@ -249,7 +249,7 @@ func (s *CostAnalysisService) GetCostPredictions(ctx context.Context, workspaceI
 	// Generate predictions using linear regression
 	predictions := s.generatePredictions(historicalCosts, days)
 
-	return predictions, nil
+	return predictions, warnings, nil
 }
 
 // CheckBudgetAlerts checks if workspace exceeds budget limits

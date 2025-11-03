@@ -39,7 +39,6 @@ services:
       - CMP_ENV=production
       - CMP_NATS_URL=nats://nats:4222
       - CMP_REDIS_HOST=redis
-      - CMP_PLUGINS_DIR=/app/plugins
     ports:
       - "8080:8080"
     depends_on:
@@ -50,7 +49,6 @@ services:
     networks:
       - cmp-network
     volumes:
-      - ./plugins:/app/plugins:ro
       - ./configs:/app/configs:ro
     restart: unless-stopped
     healthcheck:

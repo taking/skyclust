@@ -41,9 +41,6 @@ type Config struct {
 
 	// Redis Configuration
 	Redis RedisConfig `json:"redis" yaml:"redis"`
-
-	// Plugin Configuration
-	Plugins PluginsConfig `json:"plugins" yaml:"plugins"`
 }
 
 // ServerConfig holds server configuration
@@ -124,11 +121,6 @@ type RedisConfig struct {
 	Password string `json:"password"`
 	DB       int    `json:"db"`
 	PoolSize int    `json:"pool_size"`
-}
-
-// PluginsConfig holds plugins configuration
-type PluginsConfig struct {
-	Directory string `json:"directory"`
 }
 
 // EnvMapping defines environment variable mapping
