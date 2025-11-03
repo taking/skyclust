@@ -3,20 +3,17 @@ package oidc
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
 // Handler handles OIDC authentication requests
 type Handler struct {
 	*handlers.BaseHandler
-	oidcService       domain.OIDCService
-	oidcProviderRepo  domain.OIDCProviderRepository
+	oidcService domain.OIDCService
 }
 
 // NewHandler creates a new OIDC handler
@@ -25,11 +22,6 @@ func NewHandler(oidcService domain.OIDCService) *Handler {
 		BaseHandler: handlers.NewBaseHandler("oidc"),
 		oidcService: oidcService,
 	}
-}
-
-// SetOIDCProviderRepository sets the OIDC provider repository (for dependency injection)
-func (h *Handler) SetOIDCProviderRepository(repo domain.OIDCProviderRepository) {
-	h.oidcProviderRepo = repo
 }
 
 // GetAuthURL returns the OAuth authorization URL
@@ -213,8 +205,9 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 	}
 
 	// Get user ID from context (set by auth middleware)
-	userID := h.extractUserIDFromContext(c)
-	if userID == uuid.Nil {
+	userID, err := h.ExtractUserIDFromContext(c)
+	if err != nil {
+		h.HandleError(c, err, "oidc_delete_session")
 		return
 	}
 
@@ -223,7 +216,7 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 		"provider": req.Provider,
 	})
 
-	err := h.oidcService.EndSession(c.Request.Context(), userID, req.Provider, req.IDToken, req.PostLogoutRedirectURI)
+	err = h.oidcService.EndSession(c.Request.Context(), userID, req.Provider, req.IDToken, req.PostLogoutRedirectURI)
 	if err != nil {
 		h.LogError(c, err, "Failed to delete OIDC session")
 		h.HandleError(c, err, "oidc_delete_session")
@@ -315,8 +308,9 @@ func (h *Handler) CreateProvider(c *gin.Context) {
 	h.LogInfo(c, "Creating OIDC provider",
 		zap.String("operation", "create_oidc_provider"))
 
-	userID := h.extractUserIDFromContext(c)
-	if userID == uuid.Nil {
+	userID, err := h.ExtractUserIDFromContext(c)
+	if err != nil {
+		h.HandleError(c, err, "oidc_delete_session")
 		return
 	}
 
@@ -326,25 +320,8 @@ func (h *Handler) CreateProvider(c *gin.Context) {
 		return
 	}
 
-	if h.oidcProviderRepo == nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "OIDC provider repository not initialized", 500), "create_oidc_provider")
-		return
-	}
-
-	// Check if provider name already exists for this user
-	existing, err := h.oidcProviderRepo.GetByUserIDAndName(userID, req.Name)
-	if err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "failed to check existing provider", 500), "create_oidc_provider")
-		return
-	}
-	if existing != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeValidationFailed, "provider with this name already exists", 400), "create_oidc_provider")
-		return
-	}
-
-	// Create provider (encryption is handled in repository)
+	// Create provider domain object
 	provider := &domain.OIDCProvider{
-		UserID:       userID,
 		Name:         req.Name,
 		ProviderType: req.ProviderType,
 		ClientID:     req.ClientID,
@@ -357,8 +334,10 @@ func (h *Handler) CreateProvider(c *gin.Context) {
 		Enabled:      req.Enabled,
 	}
 
-	if err := h.oidcProviderRepo.Create(provider); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to create provider: %v", err), 500), "create_oidc_provider")
+	// Create provider via service
+	provider, err = h.oidcService.CreateProvider(c.Request.Context(), userID, provider)
+	if err != nil {
+		h.HandleError(c, err, "create_oidc_provider")
 		return
 	}
 
@@ -374,11 +353,11 @@ func (h *Handler) CreateProvider(c *gin.Context) {
 		zap.String("provider_name", provider.Name))
 
 	h.Created(c, gin.H{
-		"id":           provider.ID.String(),
-		"name":         provider.Name,
+		"id":            provider.ID.String(),
+		"name":          provider.Name,
 		"provider_type": provider.ProviderType,
-		"enabled":      provider.Enabled,
-		"created_at":   provider.CreatedAt,
+		"enabled":       provider.Enabled,
+		"created_at":    provider.CreatedAt,
 	}, "OIDC provider created successfully")
 }
 
@@ -391,21 +370,17 @@ func (h *Handler) GetUserProviders(c *gin.Context) {
 	h.LogInfo(c, "Getting user OIDC providers",
 		zap.String("operation", "get_user_oidc_providers"))
 
-	userID := h.extractUserIDFromContext(c)
-	if userID == uuid.Nil {
-		return
-	}
-
-	if h.oidcProviderRepo == nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "OIDC provider repository not initialized", 500), "get_user_oidc_providers")
-		return
-	}
-
-	providers, err := h.oidcProviderRepo.GetByUserID(userID)
+	userID, err := h.ExtractUserIDFromContext(c)
 	if err != nil {
-		h.LogError(c, err, "Failed to get user OIDC providers from repository",
+		h.HandleError(c, err, "get_user_oidc_providers")
+		return
+	}
+
+	providers, err := h.oidcService.GetUserProviders(c.Request.Context(), userID)
+	if err != nil {
+		h.LogError(c, err, "Failed to get user OIDC providers",
 			zap.String("user_id", userID.String()))
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to get providers: %v", err), 500), "get_user_oidc_providers")
+		h.HandleError(c, err, "get_user_oidc_providers")
 		return
 	}
 
@@ -413,13 +388,13 @@ func (h *Handler) GetUserProviders(c *gin.Context) {
 	response := make([]gin.H, 0, len(providers))
 	for _, p := range providers {
 		response = append(response, gin.H{
-			"id":           p.ID.String(),
-			"name":         p.Name,
+			"id":            p.ID.String(),
+			"name":          p.Name,
 			"provider_type": p.ProviderType,
-			"redirect_url": p.RedirectURL,
-			"enabled":      p.Enabled,
-			"created_at":   p.CreatedAt,
-			"updated_at":   p.UpdatedAt,
+			"redirect_url":  p.RedirectURL,
+			"enabled":       p.Enabled,
+			"created_at":    p.CreatedAt,
+			"updated_at":    p.UpdatedAt,
 		})
 	}
 
@@ -441,52 +416,37 @@ func (h *Handler) GetProvider(c *gin.Context) {
 	h.LogInfo(c, "Getting OIDC provider",
 		zap.String("operation", "get_oidc_provider"))
 
-	userID := h.extractUserIDFromContext(c)
-	if userID == uuid.Nil {
-		return
-	}
-
-	providerIDStr := c.Param("id")
-	providerID, err := uuid.Parse(providerIDStr)
+	userID, err := h.ExtractUserIDFromContext(c)
 	if err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "invalid provider ID", 400), "get_oidc_provider")
+		h.HandleError(c, err, "oidc_delete_session")
 		return
 	}
 
-	if h.oidcProviderRepo == nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "OIDC provider repository not initialized", 500), "get_oidc_provider")
-		return
-	}
-
-	provider, err := h.oidcProviderRepo.GetByID(providerID)
+	providerID, err := h.ExtractPathParam(c, "id")
 	if err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "failed to get provider", 500), "get_oidc_provider")
-		return
-	}
-	if provider == nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "provider not found", 404), "get_oidc_provider")
+		h.HandleError(c, err, "get_oidc_provider")
 		return
 	}
 
-	// Verify ownership
-	if provider.UserID != userID {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeForbidden, "you don't have access to this provider", 403), "get_oidc_provider")
+	provider, err := h.oidcService.GetProvider(c.Request.Context(), userID, providerID)
+	if err != nil {
+		h.HandleError(c, err, "get_oidc_provider")
 		return
 	}
 
 	h.OK(c, gin.H{
-		"id":           provider.ID.String(),
-		"name":         provider.Name,
+		"id":            provider.ID.String(),
+		"name":          provider.Name,
 		"provider_type": provider.ProviderType,
-		"client_id":    provider.ClientID,
-		"redirect_url": provider.RedirectURL,
-		"auth_url":     provider.AuthURL,
-		"token_url":    provider.TokenURL,
+		"client_id":     provider.ClientID,
+		"redirect_url":  provider.RedirectURL,
+		"auth_url":      provider.AuthURL,
+		"token_url":     provider.TokenURL,
 		"user_info_url": provider.UserInfoURL,
-		"scopes":       provider.Scopes,
-		"enabled":      provider.Enabled,
-		"created_at":   provider.CreatedAt,
-		"updated_at":   provider.UpdatedAt,
+		"scopes":        provider.Scopes,
+		"enabled":       provider.Enabled,
+		"created_at":    provider.CreatedAt,
+		"updated_at":    provider.UpdatedAt,
 	}, "OIDC provider retrieved successfully")
 }
 
@@ -499,36 +459,15 @@ func (h *Handler) UpdateProvider(c *gin.Context) {
 	h.LogInfo(c, "Updating OIDC provider",
 		zap.String("operation", "update_oidc_provider"))
 
-	userID := h.extractUserIDFromContext(c)
-	if userID == uuid.Nil {
-		return
-	}
-
-	providerIDStr := c.Param("id")
-	providerID, err := uuid.Parse(providerIDStr)
+	userID, err := h.ExtractUserIDFromContext(c)
 	if err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "invalid provider ID", 400), "update_oidc_provider")
+		h.HandleError(c, err, "oidc_delete_session")
 		return
 	}
 
-	if h.oidcProviderRepo == nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "OIDC provider repository not initialized", 500), "update_oidc_provider")
-		return
-	}
-
-	provider, err := h.oidcProviderRepo.GetByID(providerID)
+	providerID, err := h.ExtractPathParam(c, "id")
 	if err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "failed to get provider", 500), "update_oidc_provider")
-		return
-	}
-	if provider == nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "provider not found", 404), "update_oidc_provider")
-		return
-	}
-
-	// Verify ownership
-	if provider.UserID != userID {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeForbidden, "you don't have access to this provider", 403), "update_oidc_provider")
+		h.HandleError(c, err, "update_oidc_provider")
 		return
 	}
 
@@ -538,48 +477,24 @@ func (h *Handler) UpdateProvider(c *gin.Context) {
 		return
 	}
 
-	// Check name uniqueness if name is being updated
-	if req.Name != "" && req.Name != provider.Name {
-		existing, err := h.oidcProviderRepo.GetByUserIDAndName(userID, req.Name)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "failed to check existing provider", 500), "update_oidc_provider")
-			return
-		}
-		if existing != nil && existing.ID != provider.ID {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeValidationFailed, "provider with this name already exists", 400), "update_oidc_provider")
-			return
-		}
-		provider.Name = req.Name
-	}
-
-	// Update fields (encryption is handled in repository)
-	if req.ClientID != "" {
-		provider.ClientID = req.ClientID
-	}
-	if req.ClientSecret != "" {
-		provider.ClientSecret = req.ClientSecret // Will be encrypted in repository
-	}
-	if req.RedirectURL != "" {
-		provider.RedirectURL = req.RedirectURL
-	}
-	if req.AuthURL != "" {
-		provider.AuthURL = req.AuthURL
-	}
-	if req.TokenURL != "" {
-		provider.TokenURL = req.TokenURL
-	}
-	if req.UserInfoURL != "" {
-		provider.UserInfoURL = req.UserInfoURL
-	}
-	if req.Scopes != "" {
-		provider.Scopes = req.Scopes
+	// Create update request domain object
+	updateProvider := &domain.OIDCProvider{
+		Name:         req.Name,
+		ClientID:     req.ClientID,
+		ClientSecret: req.ClientSecret, // Will be encrypted in repository
+		RedirectURL:  req.RedirectURL,
+		AuthURL:      req.AuthURL,
+		TokenURL:     req.TokenURL,
+		UserInfoURL:  req.UserInfoURL,
+		Scopes:       req.Scopes,
 	}
 	if req.Enabled != nil {
-		provider.Enabled = *req.Enabled
+		updateProvider.Enabled = *req.Enabled
 	}
 
-	if err := h.oidcProviderRepo.Update(provider); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to update provider: %v", err), 500), "update_oidc_provider")
+	provider, err := h.oidcService.UpdateProvider(c.Request.Context(), userID, providerID, updateProvider)
+	if err != nil {
+		h.HandleError(c, err, "update_oidc_provider")
 		return
 	}
 
@@ -592,11 +507,11 @@ func (h *Handler) UpdateProvider(c *gin.Context) {
 		zap.String("provider_id", provider.ID.String()))
 
 	h.OK(c, gin.H{
-		"id":           provider.ID.String(),
-		"name":         provider.Name,
+		"id":            provider.ID.String(),
+		"name":          provider.Name,
 		"provider_type": provider.ProviderType,
-		"enabled":      provider.Enabled,
-		"updated_at":   provider.UpdatedAt,
+		"enabled":       provider.Enabled,
+		"updated_at":    provider.UpdatedAt,
 	}, "OIDC provider updated successfully")
 }
 
@@ -609,41 +524,20 @@ func (h *Handler) DeleteProvider(c *gin.Context) {
 	h.LogInfo(c, "Deleting OIDC provider",
 		zap.String("operation", "delete_oidc_provider"))
 
-	userID := h.extractUserIDFromContext(c)
-	if userID == uuid.Nil {
-		return
-	}
-
-	providerIDStr := c.Param("id")
-	providerID, err := uuid.Parse(providerIDStr)
+	userID, err := h.ExtractUserIDFromContext(c)
 	if err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "invalid provider ID", 400), "delete_oidc_provider")
+		h.HandleError(c, err, "delete_oidc_provider")
 		return
 	}
 
-	if h.oidcProviderRepo == nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "OIDC provider repository not initialized", 500), "delete_oidc_provider")
-		return
-	}
-
-	provider, err := h.oidcProviderRepo.GetByID(providerID)
+	providerID, err := h.ExtractPathParam(c, "id")
 	if err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "failed to get provider", 500), "delete_oidc_provider")
-		return
-	}
-	if provider == nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "provider not found", 404), "delete_oidc_provider")
+		h.HandleError(c, err, "delete_oidc_provider")
 		return
 	}
 
-	// Verify ownership
-	if provider.UserID != userID {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeForbidden, "you don't have access to this provider", 403), "delete_oidc_provider")
-		return
-	}
-
-	if err := h.oidcProviderRepo.Delete(providerID); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "failed to delete provider", 500), "delete_oidc_provider")
+	if err := h.oidcService.DeleteProvider(c.Request.Context(), userID, providerID); err != nil {
+		h.HandleError(c, err, "delete_oidc_provider")
 		return
 	}
 
@@ -658,29 +552,4 @@ func (h *Handler) DeleteProvider(c *gin.Context) {
 	h.OK(c, gin.H{
 		"message": "OIDC provider deleted successfully",
 	}, "OIDC provider deleted successfully")
-}
-
-// extractUserIDFromContext extracts user ID from context
-func (h *Handler) extractUserIDFromContext(c *gin.Context) uuid.UUID {
-	userIDValue, exists := c.Get("user_id")
-	if !exists {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "User not authenticated", 401), "extract_user_id")
-		return uuid.Nil
-	}
-
-	// Convert to uuid.UUID (handle both string and uuid.UUID types)
-	switch v := userIDValue.(type) {
-	case uuid.UUID:
-		return v
-	case string:
-		parsedUserID, err := uuid.Parse(v)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID format", 401), "extract_user_id")
-			return uuid.Nil
-		}
-		return parsedUserID
-	default:
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID type", 401), "extract_user_id")
-		return uuid.Nil
-	}
 }

@@ -1,7 +1,7 @@
 package kubernetes
 
 import (
-	service "skyclust/internal/application/services"
+	kubernetesservice "skyclust/internal/application/services/kubernetes"
 	"skyclust/internal/domain"
 
 	"github.com/gin-gonic/gin"
@@ -9,7 +9,7 @@ import (
 
 // SetupRoutes sets up Kubernetes routes for a specific provider
 // provider: "aws", "gcp", "azure", "ncp"
-func SetupRoutes(router *gin.RouterGroup, k8sService *service.KubernetesService, credentialService domain.CredentialService, provider string) {
+func SetupRoutes(router *gin.RouterGroup, k8sService *kubernetesservice.Service, credentialService domain.CredentialService, provider string) {
 	handler := NewHandler(k8sService, credentialService, provider)
 
 	// Cluster management

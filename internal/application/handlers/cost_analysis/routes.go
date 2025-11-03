@@ -1,13 +1,13 @@
 package cost_analysis
 
 import (
-	service "skyclust/internal/application/services"
+	costanalysisservice "skyclust/internal/application/services/cost_analysis"
 
 	"github.com/gin-gonic/gin"
 )
 
 // SetupRoutes sets up cost analysis routes
-func SetupRoutes(router *gin.RouterGroup, costAnalysisService *service.CostAnalysisService) {
+func SetupRoutes(router *gin.RouterGroup, costAnalysisService *costanalysisservice.Service) {
 	costAnalysisHandler := NewHandler(costAnalysisService)
 
 	// Workspace-specific cost analysis

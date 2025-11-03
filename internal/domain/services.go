@@ -7,7 +7,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// DomainService provides core business logic that doesn't belong to a specific entity
+// DomainService provides core business logic that doesn't belong to a specific entity.
+// This service contains cross-cutting business rules that involve multiple domain entities.
+// Note: Currently, application services use repositories directly. This service is available
+// for future use when complex business rules spanning multiple entities are needed.
 type DomainService struct {
 	userRepo      UserRepository
 	workspaceRepo WorkspaceRepository
@@ -30,7 +33,10 @@ func NewDomainService(
 	}
 }
 
-// UserDomainService provides user-specific business logic
+// UserDomainService provides user-specific business logic.
+// This service encapsulates business rules specific to user operations.
+// Note: Currently, application services use repositories directly. This service is available
+// for future use when complex user-related business rules are needed.
 type UserDomainService struct {
 	*DomainService
 }
@@ -79,7 +85,10 @@ func (s *UserDomainService) ValidateUserAccess(ctx context.Context, userID uuid.
 	return userID == resourceUserID || userRole == AdminRoleType
 }
 
-// WorkspaceDomainService provides workspace-specific business logic
+// WorkspaceDomainService provides workspace-specific business logic.
+// This service encapsulates business rules specific to workspace operations.
+// Note: Currently, application services use repositories directly. This service is available
+// for future use when complex workspace-related business rules are needed.
 type WorkspaceDomainService struct {
 	*DomainService
 }
@@ -171,7 +180,10 @@ func (s *WorkspaceDomainService) ValidateWorkspaceAccess(ctx context.Context, us
 	return userID == workspaceOwnerID, nil
 }
 
-// VMDomainService provides VM-specific business logic
+// VMDomainService provides VM-specific business logic.
+// This service encapsulates business rules specific to VM operations.
+// Note: Currently, application services use repositories directly. This service is available
+// for future use when complex VM-related business rules are needed.
 type VMDomainService struct {
 	*DomainService
 }
@@ -271,7 +283,10 @@ func (s *VMDomainService) ValidateVMAccess(ctx context.Context, userID uuid.UUID
 	return userID == workspaceOwnerID, nil
 }
 
-// BusinessRuleService provides general business rules
+// BusinessRuleService provides general business rules that apply across multiple resource types.
+// This service validates access and ownership rules for various resources (users, workspaces, VMs).
+// Note: Currently, application services handle access control directly. This service is available
+// for future use when unified business rule validation is needed.
 type BusinessRuleService struct {
 	*DomainService
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"mime/multipart"
+	service "skyclust/internal/application/services"
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
 	"skyclust/internal/shared/readability"
@@ -45,8 +46,17 @@ func (h *Handler) CreateCredential(c *gin.Context) {
 // createCredentialHandler is the core business logic for credential creation
 func (h *Handler) createCredentialHandler(req domain.CreateCredentialRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		req = h.extractValidatedRequest(c)
-		userID := h.extractUserID(c)
+		var req domain.CreateCredentialRequest
+		if err := h.ExtractValidatedRequest(c, &req); err != nil {
+			h.HandleError(c, err, "create_credential")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "create_credential")
+			return
+		}
 
 		// Parse workspace ID from request
 		workspaceID, err := uuid.Parse(req.WorkspaceID)
@@ -81,12 +91,16 @@ func (h *Handler) GetCredentials(c *gin.Context) {
 // getCredentialsHandler is the core business logic for getting credentials
 func (h *Handler) getCredentialsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_credentials")
+			return
+		}
 
 		// Get workspace ID from query parameter
-		workspaceIDStr := c.Query("workspace_id")
-		if workspaceIDStr == "" {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "workspace_id is required", 400), "get_credentials")
+		workspaceIDStr, err := h.ExtractRequiredQueryParam(c, "workspace_id")
+		if err != nil {
+			h.HandleError(c, err, "get_credentials")
 			return
 		}
 
@@ -121,13 +135,22 @@ func (h *Handler) GetCredential(c *gin.Context) {
 // getCredentialHandler is the core business logic for getting a single credential
 func (h *Handler) getCredentialHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		credentialID := h.parseCredentialID(c)
-		userID := h.extractUserID(c)
+		credentialID, err := h.ExtractPathParam(c, "id")
+		if err != nil {
+			h.HandleError(c, err, "get_credential")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_credential")
+			return
+		}
 
 		// Get workspace ID from query parameter
-		workspaceIDStr := c.Query("workspace_id")
-		if workspaceIDStr == "" {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "workspace_id is required", 400), "get_credential")
+		workspaceIDStr, err := h.ExtractRequiredQueryParam(c, "workspace_id")
+		if err != nil {
+			h.HandleError(c, err, "get_credential")
 			return
 		}
 
@@ -164,14 +187,28 @@ func (h *Handler) UpdateCredential(c *gin.Context) {
 // updateCredentialHandler is the core business logic for updating credentials
 func (h *Handler) updateCredentialHandler(req domain.UpdateCredentialRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		credentialID := h.parseCredentialID(c)
-		req = h.extractValidatedUpdateRequest(c)
-		userID := h.extractUserID(c)
+		credentialID, err := h.ExtractPathParam(c, "id")
+		if err != nil {
+			h.HandleError(c, err, "update_credential")
+			return
+		}
+
+		var req domain.UpdateCredentialRequest
+		if err := h.ExtractValidatedRequest(c, &req); err != nil {
+			h.HandleError(c, err, "update_credential")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "update_credential")
+			return
+		}
 
 		// Get workspace ID from query parameter
-		workspaceIDStr := c.Query("workspace_id")
-		if workspaceIDStr == "" {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "workspace_id is required", 400), "update_credential")
+		workspaceIDStr, err := h.ExtractRequiredQueryParam(c, "workspace_id")
+		if err != nil {
+			h.HandleError(c, err, "update_credential")
 			return
 		}
 
@@ -207,13 +244,22 @@ func (h *Handler) DeleteCredential(c *gin.Context) {
 // deleteCredentialHandler is the core business logic for deleting credentials
 func (h *Handler) deleteCredentialHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		credentialID := h.parseCredentialID(c)
-		userID := h.extractUserID(c)
+		credentialID, err := h.ExtractPathParam(c, "id")
+		if err != nil {
+			h.HandleError(c, err, "delete_credential")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "delete_credential")
+			return
+		}
 
 		// Get workspace ID from query parameter
-		workspaceIDStr := c.Query("workspace_id")
-		if workspaceIDStr == "" {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "workspace_id is required", 400), "delete_credential")
+		workspaceIDStr, err := h.ExtractRequiredQueryParam(c, "workspace_id")
+		if err != nil {
+			h.HandleError(c, err, "delete_credential")
 			return
 		}
 
@@ -249,10 +295,14 @@ func (h *Handler) CreateCredentialFromFile(c *gin.Context) {
 // createCredentialFromFileHandler is the core business logic for creating credentials from file
 func (h *Handler) createCredentialFromFileHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "create_credential_from_file")
+			return
+		}
 
 		// Ensure multipart form is parsed (needed for file uploads)
-		if err := c.Request.ParseMultipartForm(32 << 20); err != nil { // 32MB max
+		if err := c.Request.ParseMultipartForm(service.MaxMultipartFormSize); err != nil {
 			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Failed to parse multipart form: "+err.Error(), 400), "create_credential_from_file")
 			return
 		}
@@ -323,12 +373,16 @@ func (h *Handler) GetCredentialsByProvider(c *gin.Context) {
 func (h *Handler) getCredentialsByProviderHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		provider := h.extractProviderParam(c)
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_credentials_by_provider")
+			return
+		}
 
 		// Get workspace ID from query parameter
-		workspaceIDStr := c.Query("workspace_id")
-		if workspaceIDStr == "" {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "workspace_id is required", 400), "get_credentials_by_provider")
+		workspaceIDStr, err := h.ExtractRequiredQueryParam(c, "workspace_id")
+		if err != nil {
+			h.HandleError(c, err, "get_credentials_by_provider")
 			return
 		}
 
@@ -355,58 +409,6 @@ func (h *Handler) getCredentialsByProviderHandler() handlers.HandlerFunc {
 }
 
 // Helper methods for better readability
-
-func (h *Handler) extractValidatedRequest(c *gin.Context) domain.CreateCredentialRequest {
-	var req domain.CreateCredentialRequest
-	if err := h.ValidateRequest(c, &req); err != nil {
-		h.HandleError(c, err, "create_credential")
-		return domain.CreateCredentialRequest{}
-	}
-	return req
-}
-
-func (h *Handler) extractValidatedUpdateRequest(c *gin.Context) domain.UpdateCredentialRequest {
-	var req domain.UpdateCredentialRequest
-	if err := h.ValidateRequest(c, &req); err != nil {
-		h.HandleError(c, err, "update_credential")
-		return domain.UpdateCredentialRequest{}
-	}
-	return req
-}
-
-func (h *Handler) extractUserID(c *gin.Context) uuid.UUID {
-	userIDValue, exists := c.Get("user_id")
-	if !exists {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "User not authenticated", 401), "extract_user_id")
-		return uuid.Nil
-	}
-
-	// Convert to uuid.UUID (handle both string and uuid.UUID types)
-	switch v := userIDValue.(type) {
-	case uuid.UUID:
-		return v
-	case string:
-		parsedUserID, err := uuid.Parse(v)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID format", 401), "extract_user_id")
-			return uuid.Nil
-		}
-		return parsedUserID
-	default:
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID type", 401), "extract_user_id")
-		return uuid.Nil
-	}
-}
-
-func (h *Handler) parseCredentialID(c *gin.Context) uuid.UUID {
-	credentialIDStr := c.Param("id")
-	credentialID, err := uuid.Parse(credentialIDStr)
-	if err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid credential ID format", 400), "parse_credential_id")
-		return uuid.Nil
-	}
-	return credentialID
-}
 
 func (h *Handler) extractProviderParam(c *gin.Context) string {
 	provider := c.Param("provider")

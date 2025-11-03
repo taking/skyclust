@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"skyclust/internal/domain"
+	"skyclust/internal/shared/logging"
 	"skyclust/internal/shared/responses"
 	"skyclust/pkg/auth"
 	"skyclust/pkg/logger"
@@ -19,7 +20,7 @@ type BaseHandler struct {
 	logger             *zap.Logger
 	tokenExtractor     *auth.TokenExtractor
 	performanceTracker *PerformanceTracker
-	requestLogger      *RequestLogger
+	requestLogger      *logging.RequestLogger
 	auditLogger        *AuditLogger
 	validationRules    *ValidationRules
 }
@@ -30,7 +31,7 @@ func NewBaseHandler(handlerName string) *BaseHandler {
 		logger:             logger.DefaultLogger.GetLogger(),
 		tokenExtractor:     auth.NewTokenExtractor(),
 		performanceTracker: NewPerformanceTracker(handlerName),
-		requestLogger:      NewRequestLogger(nil),
+		requestLogger:      logging.NewRequestLogger(nil),
 		auditLogger:        NewAuditLogger(nil),
 		validationRules:    NewValidationRules(),
 	}
@@ -238,29 +239,26 @@ func (h *BaseHandler) HandleError(c *gin.Context, err error, operation string) {
 	h.LogError(c, err, "Handler error occurred",
 		zap.String("operation", operation))
 
-	// Handle domain errors
+	// Handle domain errors (primary mechanism)
 	if domain.IsDomainError(err) {
 		domainErr := domain.GetDomainError(err)
 		responses.DomainError(c, domainErr)
 		return
 	}
 
-	// Handle different error types
-	switch err {
-	case domain.ErrUserNotFound, domain.ErrWorkspaceNotFound, domain.ErrVMNotFound, domain.ErrCredentialNotFound:
-		responses.NotFound(c, "Resource not found")
-	case domain.ErrUserAlreadyExists, domain.ErrWorkspaceExists, domain.ErrVMAlreadyExists:
-		responses.Conflict(c, "Resource already exists")
-	case domain.ErrInvalidCredentials:
-		responses.Unauthorized(c, "Invalid credentials")
-	default:
-		responses.InternalServerError(c, "An unexpected error occurred")
-	}
+	// Fallback for non-domain errors (should be rare, mostly for external library errors)
+	// These will be logged but not exposed to client with full details
+	h.logger.Error("Unexpected non-domain error",
+		zap.Error(err),
+		zap.String("operation", operation),
+		zap.String("path", c.Request.URL.Path),
+		zap.String("method", c.Request.Method))
+	responses.InternalServerError(c, "An unexpected error occurred")
 }
 
 // LogBusinessEvent logs a business event
 func (h *BaseHandler) LogBusinessEvent(c *gin.Context, eventType, userID, resourceID string, details map[string]interface{}) {
-	LogBusinessEvent(c, eventType, userID, resourceID, details)
+	logging.LogBusinessEvent(c, eventType, userID, resourceID, details)
 }
 
 // LogAuditEvent logs an audit event
@@ -383,22 +381,167 @@ func (h *BaseHandler) ParseUUID(c *gin.Context, paramName string) (uuid.UUID, er
 	return id, nil
 }
 
-// ParsePaginationParams parses pagination parameters from query
+// ParsePaginationParams parses pagination parameters from query (page/limit based)
+// Returns limit and offset for backward compatibility
+// Supports both page/limit (preferred) and limit/offset (backward compatibility)
 func (h *BaseHandler) ParsePaginationParams(c *gin.Context) (limit, offset int) {
+	// Support both page/limit and limit/offset for backward compatibility
+	// Prefer page/limit as it's more standard
+	pageStr := c.Query("page")
 	limitStr := c.DefaultQuery("limit", "10")
-	offsetStr := c.DefaultQuery("offset", "0")
+	offsetStr := c.Query("offset")
 
+	// Parse limit
 	limit, err := strconv.Atoi(limitStr)
 	if err != nil || limit < 1 {
 		limit = 10
 	}
+	if limit > 100 {
+		limit = 100 // Maximum limit
+	}
 
-	offset, err = strconv.Atoi(offsetStr)
-	if err != nil || offset < 0 {
+	// If offset is explicitly provided, use it
+	if offsetStr != "" {
+		offset, err = strconv.Atoi(offsetStr)
+		if err != nil || offset < 0 {
+			offset = 0
+		}
+		return limit, offset
+	}
+
+	// Otherwise, calculate offset from page
+	if pageStr != "" {
+		page, err := strconv.Atoi(pageStr)
+		if err != nil || page < 1 {
+			page = 1
+		}
+		offset = (page - 1) * limit
+	} else {
 		offset = 0
 	}
 
 	return limit, offset
+}
+
+// ParsePageLimitParams parses pagination parameters and returns page/limit
+func (h *BaseHandler) ParsePageLimitParams(c *gin.Context) (page, limit int) {
+	pageStr := c.Query("page")
+	limitStr := c.DefaultQuery("limit", "10")
+
+	// Parse page
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+
+	// Parse limit
+	limit, err = strconv.Atoi(limitStr)
+	if err != nil || limit < 1 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100 // Maximum limit
+	}
+
+	return page, limit
+}
+
+// CalculatePaginationMeta calculates pagination metadata from total count
+func (h *BaseHandler) CalculatePaginationMeta(total int64, page, limit int) map[string]interface{} {
+	totalPages := int((total + int64(limit) - 1) / int64(limit))
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
+	return map[string]interface{}{
+		"page":        page,
+		"limit":       limit,
+		"total":       total,
+		"total_pages": totalPages,
+		"has_next":    page < totalPages,
+		"has_prev":    page > 1,
+	}
+}
+
+// ExtractUserIDFromContext extracts user ID from context (set by AuthMiddleware)
+// Returns error if user ID is not found or invalid
+func (h *BaseHandler) ExtractUserIDFromContext(c *gin.Context) (uuid.UUID, error) {
+	userIDValue, exists := c.Get("user_id")
+	if !exists {
+		// Fallback: try to get from token if not in context
+		userID, err := h.GetUserIDFromToken(c)
+		if err != nil {
+			return uuid.Nil, domain.NewDomainError(domain.ErrCodeUnauthorized, "User not authenticated", 401)
+		}
+		return userID, nil
+	}
+
+	// Convert to uuid.UUID
+	switch v := userIDValue.(type) {
+	case uuid.UUID:
+		return v, nil
+	case string:
+		parsedUserID, err := uuid.Parse(v)
+		if err != nil {
+			return uuid.Nil, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID format", 401)
+		}
+		return parsedUserID, nil
+	default:
+		return uuid.Nil, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID type", 401)
+	}
+}
+
+// ExtractValidatedRequest extracts and validates request from JSON body
+// Validates using Gin binding and custom Validate() method if available
+func (h *BaseHandler) ExtractValidatedRequest(c *gin.Context, req interface{}) error {
+	if err := c.ShouldBindJSON(req); err != nil {
+		h.LogWarn(c, "Request validation failed",
+			zap.Error(err),
+			zap.String("content_type", c.GetHeader("Content-Type")))
+		return domain.NewDomainError(domain.ErrCodeValidationFailed, "Request validation failed", 400)
+	}
+
+	// Additional validation using custom Validate() method if available
+	if reqStruct, ok := req.(interface{ Validate() error }); ok {
+		if validateErr := reqStruct.Validate(); validateErr != nil {
+			h.LogWarn(c, "Request custom validation failed",
+				zap.Error(validateErr))
+			return domain.NewDomainError(domain.ErrCodeValidationFailed, validateErr.Error(), 400)
+		}
+	}
+
+	return nil
+}
+
+// ExtractPathParam extracts and validates path parameter as UUID
+func (h *BaseHandler) ExtractPathParam(c *gin.Context, paramName string) (uuid.UUID, error) {
+	param := c.Param(paramName)
+	if param == "" {
+		return uuid.Nil, domain.NewDomainError(domain.ErrCodeBadRequest, paramName+" is required", 400)
+	}
+
+	id, err := uuid.Parse(param)
+	if err != nil {
+		return uuid.Nil, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid "+paramName+" format", 400)
+	}
+	return id, nil
+}
+
+// ExtractQueryParam extracts query parameter with optional default value
+func (h *BaseHandler) ExtractQueryParam(c *gin.Context, paramName, defaultValue string) string {
+	if defaultValue != "" {
+		return c.DefaultQuery(paramName, defaultValue)
+	}
+	return c.Query(paramName)
+}
+
+// ExtractRequiredQueryParam extracts required query parameter
+func (h *BaseHandler) ExtractRequiredQueryParam(c *gin.Context, paramName string) (string, error) {
+	param := c.Query(paramName)
+	if param == "" {
+		return "", domain.NewDomainError(domain.ErrCodeBadRequest, paramName+" is required", 400)
+	}
+	return param, nil
 }
 
 // CheckPermission checks if user has permission to access resource

@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 	"skyclust/internal/application/handlers/admin"
 	"skyclust/internal/application/handlers/audit"
 	"skyclust/internal/application/handlers/auth"
@@ -14,13 +16,13 @@ import (
 	"skyclust/internal/application/handlers/sse"
 	"skyclust/internal/application/handlers/system"
 	"skyclust/internal/application/handlers/workspace"
-	service "skyclust/internal/application/services"
+	costanalysisservice "skyclust/internal/application/services/cost_analysis"
+	exportservice "skyclust/internal/application/services/export"
+	kubernetesservice "skyclust/internal/application/services/kubernetes"
+	networkservice "skyclust/internal/application/services/network"
 	"skyclust/internal/di"
 	"skyclust/pkg/config"
 	"skyclust/pkg/middleware"
-
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 )
 
 // RouteManager manages all API routes with centralized configuration
@@ -50,10 +52,8 @@ func NewRouteManager(
 func (rm *RouteManager) SetupAllRoutes(router *gin.Engine) {
 	// Setup public routes (no authentication required)
 	rm.setupPublicRoutes(router)
-
 	// Setup protected routes (authentication required)
 	rm.setupProtectedRoutes(router)
-
 	// Setup admin routes (admin privileges required)
 	rm.setupAdminRoutes(router)
 }
@@ -68,23 +68,19 @@ func (rm *RouteManager) setupPublicRoutes(router *gin.Engine) {
 			"timestamp": "2025-10-28T11:13:34.246963+09:00",
 		})
 	})
-
 	// API v1 public routes
 	v1Public := router.Group("/api/v1")
 	{
 		// Authentication routes (public) - register and login
 		authGroup := v1Public.Group("/auth")
 		rm.setupPublicAuthRoutes(authGroup)
-
 		// OIDC routes (public)
 		oidcAuthGroup := v1Public.Group("/auth/oidc")
 		rm.setupOIDCRoutes(oidcAuthGroup)
-
 		// OIDC providers (public - list available provider types)
 		oidcGroup := v1Public.Group("/oidc")
 		oidcProvidersGroup := oidcGroup.Group("/providers")
 		rm.setupOIDCProvidersRoutes(oidcProvidersGroup)
-
 		// System monitoring routes (no authentication required)
 		systemGroup := v1Public.Group("/system")
 		rm.setupSystemRoutes(systemGroup)
@@ -95,45 +91,35 @@ func (rm *RouteManager) setupPublicRoutes(router *gin.Engine) {
 func (rm *RouteManager) setupProtectedRoutes(router *gin.Engine) {
 	// API v1 protected routes
 	v1Protected := router.Group("/api/v1")
-
 	// Apply authentication middleware to all protected routes
 	v1Protected.Use(rm.middleware.AuthMiddleware())
 	{
 		// Authentication routes (protected) - logout and profile
 		authGroup := v1Protected.Group("/auth")
 		rm.setupProtectedAuthRoutes(authGroup)
-
 		// User management routes
 		usersGroup := v1Protected.Group("/users")
 		rm.setupUserRoutes(usersGroup)
-
 		// Credential management routes
 		credentialsGroup := v1Protected.Group("/credentials")
 		rm.setupCredentialRoutes(credentialsGroup)
-
 		// Workspace management routes
 		workspacesGroup := v1Protected.Group("/workspaces")
 		rm.setupWorkspaceRoutes(workspacesGroup)
-
 		// Provider-specific routes (RESTful)
 		rm.setupProviderSpecificRoutes(v1Protected)
-
 		// Cost analysis routes (keep hyphenated name for single-word resource)
 		costAnalysisGroup := v1Protected.Group("/cost-analysis")
 		rm.setupCostAnalysisRoutes(costAnalysisGroup)
-
 		// Notification routes
 		notificationsGroup := v1Protected.Group("/notifications")
 		rm.setupNotificationRoutes(notificationsGroup)
-
 		// Export routes
 		exportsGroup := v1Protected.Group("/exports")
 		rm.setupExportRoutes(exportsGroup)
-
 		// SSE routes
 		sseGroup := v1Protected.Group("/sse")
 		rm.setupSSERoutes(sseGroup)
-
 		// OIDC provider management routes (protected)
 		oidcProviderGroup := v1Protected.Group("/oidc")
 		rm.setupUserOIDCProviderRoutes(oidcProviderGroup)
@@ -144,7 +130,6 @@ func (rm *RouteManager) setupProtectedRoutes(router *gin.Engine) {
 func (rm *RouteManager) setupAdminRoutes(router *gin.Engine) {
 	// API v1 admin routes
 	v1Admin := router.Group("/api/v1/admin")
-
 	// Apply admin middleware to all admin routes
 	// TODO: Implement AdminMiddleware
 	// v1Admin.Use(rm.middleware.AdminMiddleware())
@@ -152,15 +137,12 @@ func (rm *RouteManager) setupAdminRoutes(router *gin.Engine) {
 		// Admin user management routes
 		adminUsersGroup := v1Admin.Group("/users")
 		rm.setupAdminUserRoutes(adminUsersGroup)
-
 		// System management routes
 		systemGroup := v1Admin.Group("/system")
 		rm.setupSystemRoutes(systemGroup)
-
 		// Audit log routes (RESTful: /audit-logs)
 		auditGroup := v1Admin.Group("/audit-logs")
 		rm.setupAuditRoutes(auditGroup)
-
 		// Permission management routes
 		permissionsGroup := v1Admin.Group("/permissions")
 		rm.setupPermissionRoutes(permissionsGroup)
@@ -188,14 +170,12 @@ func (rm *RouteManager) setupProtectedAuthRoutes(router *gin.RouterGroup) {
 		if userService := rm.container.GetUserService(); userService != nil {
 			if rbacService := rm.container.GetRBACService(); rbacService != nil {
 				authHandler := auth.NewHandler(authService, userService, rbacService)
-				
 				// Session management (RESTful)
 				sessionsGroup := router.Group("/sessions")
 				{
-					sessionsGroup.GET("/me", authHandler.GetSession)    // GET /api/v1/auth/sessions/me
-					sessionsGroup.DELETE("/me", authHandler.Logout)      // DELETE /api/v1/auth/sessions/me
+					sessionsGroup.GET("/me", authHandler.GetSession) // GET /api/v1/auth/sessions/me
+					sessionsGroup.DELETE("/me", authHandler.Logout)  // DELETE /api/v1/auth/sessions/me
 				}
-				
 				router.GET("/me", authHandler.Me) // GET /api/v1/auth/me
 			}
 		}
@@ -220,9 +200,7 @@ func (rm *RouteManager) setupOIDCProvidersRoutes(router *gin.RouterGroup) {
 // setupUserOIDCProviderRoutes sets up user OIDC provider management routes (protected)
 func (rm *RouteManager) setupUserOIDCProviderRoutes(router *gin.RouterGroup) {
 	if oidcService := rm.container.GetOIDCService(); oidcService != nil {
-		if oidcProviderRepo := rm.container.GetOIDCProviderRepository(); oidcProviderRepo != nil {
-			oidc.SetupUserProviderRoutes(router, oidcService, oidcProviderRepo)
-		}
+		oidc.SetupUserProviderRoutes(router, oidcService)
 	}
 }
 
@@ -258,15 +236,12 @@ func (rm *RouteManager) setupProviderSpecificRoutes(router *gin.RouterGroup) {
 	// AWS-specific routes
 	awsGroup := router.Group("/aws")
 	rm.setupAWSRoutes(awsGroup)
-
 	// GCP-specific routes
 	gcpGroup := router.Group("/gcp")
 	rm.setupGCPRoutes(gcpGroup)
-
 	// Azure-specific routes
 	azureGroup := router.Group("/azure")
 	rm.setupAzureRoutes(azureGroup)
-
 	// NCP (Naver Cloud Platform) routes
 	ncpGroup := router.Group("/ncp")
 	rm.setupNCPRoutes(ncpGroup)
@@ -278,7 +253,7 @@ func (rm *RouteManager) setupAWSRoutes(router *gin.RouterGroup) {
 	k8sGroup := router.Group("/kubernetes")
 	if k8sService := rm.container.GetKubernetesService(); k8sService != nil {
 		rm.logger.Info("Kubernetes service found, setting up routes")
-		if k8s, ok := k8sService.(*service.KubernetesService); ok {
+		if k8s, ok := k8sService.(*kubernetesservice.Service); ok {
 			rm.logger.Info("Kubernetes service type assertion successful, setting up AWS routes")
 			kubernetes.SetupRoutes(k8sGroup, k8s, rm.container.GetCredentialService(), "aws")
 		} else {
@@ -287,15 +262,13 @@ func (rm *RouteManager) setupAWSRoutes(router *gin.RouterGroup) {
 	} else {
 		rm.logger.Warn("Kubernetes service is nil")
 	}
-
 	// Network resources (VPC, Subnet, Security Group)
 	networkGroup := router.Group("/network")
 	if networkService := rm.container.GetNetworkService(); networkService != nil {
-		if networkSvc, ok := networkService.(*service.NetworkService); ok {
+		if networkSvc, ok := networkService.(*networkservice.Service); ok {
 			network.SetupRoutes(networkGroup, networkSvc, rm.container.GetCredentialService(), "aws")
 		}
 	}
-
 	// TODO: Add more AWS-specific services
 	// - EC2
 	// - RDS
@@ -309,7 +282,7 @@ func (rm *RouteManager) setupGCPRoutes(router *gin.RouterGroup) {
 	k8sGroup := router.Group("/kubernetes")
 	if k8sService := rm.container.GetKubernetesService(); k8sService != nil {
 		rm.logger.Info("Kubernetes service found, setting up GCP routes")
-		if k8s, ok := k8sService.(*service.KubernetesService); ok {
+		if k8s, ok := k8sService.(*kubernetesservice.Service); ok {
 			rm.logger.Info("Kubernetes service type assertion successful, setting up GCP routes")
 			kubernetes.SetupGCPRoutes(k8sGroup, k8s, rm.container.GetCredentialService())
 		} else {
@@ -318,15 +291,13 @@ func (rm *RouteManager) setupGCPRoutes(router *gin.RouterGroup) {
 	} else {
 		rm.logger.Warn("Kubernetes service is nil for GCP")
 	}
-
 	// Network resources (VPC, Subnet, Security Group)
 	networkGroup := router.Group("/network")
 	if networkService := rm.container.GetNetworkService(); networkService != nil {
-		if networkSvc, ok := networkService.(*service.NetworkService); ok {
+		if networkSvc, ok := networkService.(*networkservice.Service); ok {
 			network.SetupGCPRoutes(networkGroup, networkSvc, rm.container.GetCredentialService(), rm.logger)
 		}
 	}
-
 	// TODO: Add more GCP-specific services
 	// - Compute Engine
 	// - Cloud SQL
@@ -339,11 +310,10 @@ func (rm *RouteManager) setupAzureRoutes(router *gin.RouterGroup) {
 	// Kubernetes (AKS)
 	k8sGroup := router.Group("/kubernetes")
 	if k8sService := rm.container.GetKubernetesService(); k8sService != nil {
-		if k8s, ok := k8sService.(*service.KubernetesService); ok {
+		if k8s, ok := k8sService.(*kubernetesservice.Service); ok {
 			kubernetes.SetupRoutes(k8sGroup, k8s, rm.container.GetCredentialService(), "azure")
 		}
 	}
-
 	// TODO: Add more Azure-specific services
 	// - Virtual Machines
 	// - SQL Database
@@ -356,11 +326,10 @@ func (rm *RouteManager) setupNCPRoutes(router *gin.RouterGroup) {
 	// Kubernetes (NKS - Naver Kubernetes Service)
 	k8sGroup := router.Group("/kubernetes")
 	if k8sService := rm.container.GetKubernetesService(); k8sService != nil {
-		if k8s, ok := k8sService.(*service.KubernetesService); ok {
+		if k8s, ok := k8sService.(*kubernetesservice.Service); ok {
 			kubernetes.SetupRoutes(k8sGroup, k8s, rm.container.GetCredentialService(), "ncp")
 		}
 	}
-
 	// TODO: Add more NCP-specific services
 	// - Server
 	// - Cloud DB
@@ -375,9 +344,8 @@ func (rm *RouteManager) setupCostAnalysisRoutes(router *gin.RouterGroup) {
 		rm.logger.Warn("CostAnalysisService not available, cost analysis routes will not be set up")
 		return
 	}
-
-	// Type assert to *service.CostAnalysisService
-	if svc, ok := costAnalysisService.(*service.CostAnalysisService); ok {
+	// Type assert to *costanalysisservice.Service
+	if svc, ok := costAnalysisService.(*costanalysisservice.Service); ok {
 		cost_analysis.SetupRoutes(router, svc)
 	} else {
 		rm.logger.Warn("CostAnalysisService type assertion failed, cost analysis routes will not be set up")
@@ -396,7 +364,7 @@ func (rm *RouteManager) setupExportRoutes(router *gin.RouterGroup) {
 	exportHandler := export.NewHandler()
 	// Inject ExportService from container
 	if exportService := rm.container.GetExportService(); exportService != nil {
-		if svc, ok := exportService.(*service.ExportService); ok {
+		if svc, ok := exportService.(*exportservice.Service); ok {
 			exportHandler.SetExportService(svc)
 		}
 	}

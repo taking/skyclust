@@ -35,9 +35,8 @@ func SetupProviderRoutes(router *gin.RouterGroup, oidcService domain.OIDCService
 
 // SetupUserProviderRoutes sets up user OIDC provider management routes (protected, needs auth)
 // Note: router is already scoped to /api/v1/oidc, so paths are relative to that
-func SetupUserProviderRoutes(router *gin.RouterGroup, oidcService domain.OIDCService, providerRepo domain.OIDCProviderRepository) {
+func SetupUserProviderRoutes(router *gin.RouterGroup, oidcService domain.OIDCService) {
 	oidcHandler := NewHandler(oidcService)
-	oidcHandler.SetOIDCProviderRepository(providerRepo)
 
 	// User OIDC provider management routes
 	// Final paths: /api/v1/oidc/providers

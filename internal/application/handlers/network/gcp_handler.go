@@ -1,8 +1,7 @@
 package network
 
 import (
-	"skyclust/internal/application/dto"
-	service "skyclust/internal/application/services"
+	networkservice "skyclust/internal/application/services/network"
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
 
@@ -13,13 +12,13 @@ import (
 // GCPHandler handles GCP network resource HTTP requests
 type GCPHandler struct {
 	*handlers.BaseHandler
-	networkService    *service.NetworkService
+	networkService    *networkservice.Service
 	credentialService domain.CredentialService
 	logger            *zap.Logger
 }
 
 // NewGCPHandler creates a new GCP network handler
-func NewGCPHandler(networkService *service.NetworkService, credentialService domain.CredentialService, logger *zap.Logger) *GCPHandler {
+func NewGCPHandler(networkService *networkservice.Service, credentialService domain.CredentialService, logger *zap.Logger) *GCPHandler {
 	return &GCPHandler{
 		BaseHandler:       handlers.NewBaseHandler("gcp-network"),
 		networkService:    networkService,
@@ -40,7 +39,7 @@ func (h *GCPHandler) ListGCPVPCs(c *gin.Context) {
 	}
 
 	// Create request (no region needed for VPC - Global resource)
-	req := dto.ListVPCsRequest{
+	req := networkservice.ListVPCsRequest{
 		CredentialID: credential.ID.String(),
 		Region:       "", // VPC is Global, no region needed
 	}
@@ -76,7 +75,7 @@ func (h *GCPHandler) ListGCPSubnets(c *gin.Context) {
 	// Note: VPC is a Global resource, so region is optional
 
 	// Create request
-	req := dto.ListSubnetsRequest{
+	req := networkservice.ListSubnetsRequest{
 		CredentialID: credential.ID.String(),
 		VPCID:        vpcID,
 		Region:       region,
@@ -113,7 +112,7 @@ func (h *GCPHandler) ListGCPSecurityGroups(c *gin.Context) {
 	// Note: VPC is a Global resource, so region is optional
 
 	// Create request
-	req := dto.ListSecurityGroupsRequest{
+	req := networkservice.ListSecurityGroupsRequest{
 		CredentialID: credential.ID.String(),
 		VPCID:        vpcID,
 		Region:       region,
@@ -150,7 +149,7 @@ func (h *GCPHandler) GetGCPVPC(c *gin.Context) {
 	// Note: VPC is a Global resource, so region is optional
 
 	// Create request
-	req := dto.GetVPCRequest{
+	req := networkservice.GetVPCRequest{
 		CredentialID: credential.ID.String(),
 		VPCID:        vpcName, // Using vpcName as VPCID for service call
 		Region:       region,
@@ -169,7 +168,7 @@ func (h *GCPHandler) GetGCPVPC(c *gin.Context) {
 // CreateGCPVPC handles VPC creation requests for GCP
 func (h *GCPHandler) CreateGCPVPC(c *gin.Context) {
 	// Parse request body
-	var req dto.CreateVPCRequest
+	var req networkservice.CreateVPCRequest
 	if err := h.ValidateRequest(c, &req); err != nil {
 		h.HandleError(c, err, "create_vpc")
 		return
@@ -209,7 +208,7 @@ func (h *GCPHandler) UpdateGCPVPC(c *gin.Context) {
 	}
 
 	// Parse request body
-	var req dto.UpdateVPCRequest
+	var req networkservice.UpdateVPCRequest
 	if err := h.ValidateRequest(c, &req); err != nil {
 		h.HandleError(c, err, "update_vpc")
 		return
@@ -250,7 +249,7 @@ func (h *GCPHandler) DeleteGCPVPC(c *gin.Context) {
 	// Note: VPC is a Global resource, so region is optional
 
 	// Create delete request
-	req := dto.DeleteVPCRequest{
+	req := networkservice.DeleteVPCRequest{
 		CredentialID: credential.ID.String(),
 		VPCID:        vpcName, // Using vpcName as VPCID for service call
 		Region:       region,
@@ -287,7 +286,7 @@ func (h *GCPHandler) GetGCPSubnet(c *gin.Context) {
 	// Note: VPC is a Global resource, so region is optional
 
 	// Create request
-	req := dto.GetSubnetRequest{
+	req := networkservice.GetSubnetRequest{
 		CredentialID: credential.ID.String(),
 		SubnetID:     subnetID,
 		Region:       region,
@@ -306,7 +305,7 @@ func (h *GCPHandler) GetGCPSubnet(c *gin.Context) {
 // CreateGCPSubnet handles subnet creation requests for GCP
 func (h *GCPHandler) CreateGCPSubnet(c *gin.Context) {
 	// Parse request body
-	var req dto.CreateSubnetRequest
+	var req networkservice.CreateSubnetRequest
 	if err := h.ValidateRequest(c, &req); err != nil {
 		h.HandleError(c, err, "create_subnet")
 		return
@@ -346,7 +345,7 @@ func (h *GCPHandler) UpdateGCPSubnet(c *gin.Context) {
 	}
 
 	// Parse request body
-	var req dto.UpdateSubnetRequest
+	var req networkservice.UpdateSubnetRequest
 	if err := h.ValidateRequest(c, &req); err != nil {
 		h.HandleError(c, err, "update_subnet")
 		return
@@ -387,7 +386,7 @@ func (h *GCPHandler) DeleteGCPSubnet(c *gin.Context) {
 	// Note: VPC is a Global resource, so region is optional
 
 	// Create delete request
-	req := dto.DeleteSubnetRequest{
+	req := networkservice.DeleteSubnetRequest{
 		CredentialID: credential.ID.String(),
 		SubnetID:     subnetID,
 		Region:       region,
@@ -424,7 +423,7 @@ func (h *GCPHandler) GetGCPSecurityGroup(c *gin.Context) {
 	// Note: VPC is a Global resource, so region is optional
 
 	// Create request
-	req := dto.GetSecurityGroupRequest{
+	req := networkservice.GetSecurityGroupRequest{
 		CredentialID:    credential.ID.String(),
 		SecurityGroupID: securityGroupID,
 		Region:          region,
@@ -443,7 +442,7 @@ func (h *GCPHandler) GetGCPSecurityGroup(c *gin.Context) {
 // CreateGCPSecurityGroup handles security group creation requests for GCP
 func (h *GCPHandler) CreateGCPSecurityGroup(c *gin.Context) {
 	// Parse request body
-	var req dto.CreateSecurityGroupRequest
+	var req networkservice.CreateSecurityGroupRequest
 	if err := h.ValidateRequest(c, &req); err != nil {
 		h.HandleError(c, err, "create_security_group")
 		return
@@ -483,7 +482,7 @@ func (h *GCPHandler) UpdateGCPSecurityGroup(c *gin.Context) {
 	}
 
 	// Parse request body
-	var req dto.UpdateSecurityGroupRequest
+	var req networkservice.UpdateSecurityGroupRequest
 	if err := h.ValidateRequest(c, &req); err != nil {
 		h.HandleError(c, err, "update_security_group")
 		return
@@ -524,7 +523,7 @@ func (h *GCPHandler) DeleteGCPSecurityGroup(c *gin.Context) {
 	// Note: VPC is a Global resource, so region is optional
 
 	// Create delete request
-	req := dto.DeleteSecurityGroupRequest{
+	req := networkservice.DeleteSecurityGroupRequest{
 		CredentialID:    credential.ID.String(),
 		SecurityGroupID: securityGroupID,
 		Region:          region,
@@ -543,7 +542,7 @@ func (h *GCPHandler) DeleteGCPSecurityGroup(c *gin.Context) {
 // AddGCPSecurityGroupRule adds a rule to a GCP security group
 func (h *GCPHandler) AddGCPSecurityGroupRule(c *gin.Context) {
 	// Parse request
-	var req dto.AddSecurityGroupRuleRequest
+	var req networkservice.AddSecurityGroupRuleRequest
 	if err := h.ValidateRequest(c, &req); err != nil {
 		h.HandleError(c, err, "add_security_group_rule")
 		return
@@ -569,7 +568,7 @@ func (h *GCPHandler) AddGCPSecurityGroupRule(c *gin.Context) {
 // RemoveGCPSecurityGroupRule removes a rule from a GCP security group
 func (h *GCPHandler) RemoveGCPSecurityGroupRule(c *gin.Context) {
 	// Parse request
-	var req dto.RemoveSecurityGroupRuleRequest
+	var req networkservice.RemoveSecurityGroupRuleRequest
 	if err := h.ValidateRequest(c, &req); err != nil {
 		h.HandleError(c, err, "remove_security_group_rule")
 		return
@@ -595,7 +594,7 @@ func (h *GCPHandler) RemoveGCPSecurityGroupRule(c *gin.Context) {
 // UpdateGCPSecurityGroupRules updates all rules for a GCP security group
 func (h *GCPHandler) UpdateGCPSecurityGroupRules(c *gin.Context) {
 	// Parse request
-	var req dto.UpdateSecurityGroupRulesRequest
+	var req networkservice.UpdateSecurityGroupRulesRequest
 	if err := h.ValidateRequest(c, &req); err != nil {
 		h.HandleError(c, err, "update_security_group_rules")
 		return
@@ -635,7 +634,7 @@ func (h *GCPHandler) RemoveGCPFirewallRule(c *gin.Context) {
 	}
 
 	// Parse request body
-	var req dto.RemoveFirewallRuleRequest
+	var req networkservice.RemoveFirewallRuleRequest
 	if err := h.ValidateRequest(c, &req); err != nil {
 		h.HandleError(c, err, "remove_firewall_rule")
 		return
@@ -680,7 +679,7 @@ func (h *GCPHandler) AddGCPFirewallRule(c *gin.Context) {
 	}
 
 	// Parse request body
-	var req dto.AddFirewallRuleRequest
+	var req networkservice.AddFirewallRuleRequest
 	if err := h.ValidateRequest(c, &req); err != nil {
 		h.HandleError(c, err, "add_firewall_rule")
 		return

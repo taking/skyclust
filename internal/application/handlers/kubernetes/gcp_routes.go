@@ -1,14 +1,14 @@
 package kubernetes
 
 import (
-	service "skyclust/internal/application/services"
+	kubernetesservice "skyclust/internal/application/services/kubernetes"
 	"skyclust/internal/domain"
 
 	"github.com/gin-gonic/gin"
 )
 
 // SetupGCPRoutes sets up GCP GKE-specific routes
-func SetupGCPRoutes(router *gin.RouterGroup, k8sService *service.KubernetesService, credentialService domain.CredentialService) {
+func SetupGCPRoutes(router *gin.RouterGroup, k8sService *kubernetesservice.Service, credentialService domain.CredentialService) {
 	handler := NewGCPHandler(k8sService, credentialService)
 
 	// GKE Cluster management

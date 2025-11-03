@@ -47,6 +47,7 @@ Thumbs.db
 
 # Build artifacts
 main
+server
 *.exe
 *.so
 *.dylib

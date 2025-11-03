@@ -3,7 +3,7 @@ package cost_analysis
 import (
 	"strconv"
 	"skyclust/internal/domain"
-	service "skyclust/internal/application/services"
+	costanalysisservice "skyclust/internal/application/services/cost_analysis"
 	"skyclust/internal/shared/handlers"
 
 	"github.com/gin-gonic/gin"
@@ -12,11 +12,11 @@ import (
 // Handler handles cost analysis operations
 type Handler struct {
 	*handlers.BaseHandler
-	costAnalysisService *service.CostAnalysisService
+	costAnalysisService *costanalysisservice.Service
 }
 
 // NewHandler creates a new cost analysis handler
-func NewHandler(costAnalysisService *service.CostAnalysisService) *Handler {
+func NewHandler(costAnalysisService *costanalysisservice.Service) *Handler {
 	return &Handler{
 		BaseHandler:         handlers.NewBaseHandler("cost_analysis"),
 		costAnalysisService: costAnalysisService,
@@ -36,8 +36,8 @@ func (h *Handler) GetCostSummary(c *gin.Context) {
 // getCostSummaryHandler is the core business logic for getting cost summary
 func (h *Handler) getCostSummaryHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		workspaceID := c.Param("workspaceId")
-		if workspaceID == "" {
+		workspaceIDStr := c.Param("workspaceId")
+		if workspaceIDStr == "" {
 			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Workspace ID is required", 400), "get_cost_summary")
 			return
 		}
@@ -49,7 +49,7 @@ func (h *Handler) getCostSummaryHandler() handlers.HandlerFunc {
 		resourceTypes := c.DefaultQuery("resource_types", "all")
 
 		// Get cost summary from service
-		summary, err := h.costAnalysisService.GetCostSummary(c.Request.Context(), workspaceID, period, resourceTypes)
+		summary, err := h.costAnalysisService.GetCostSummary(c.Request.Context(), workspaceIDStr, period, resourceTypes)
 		if err != nil {
 			h.HandleError(c, err, "get_cost_summary")
 			return
@@ -57,7 +57,7 @@ func (h *Handler) getCostSummaryHandler() handlers.HandlerFunc {
 
 		// Convert to response format
 		response := gin.H{
-			"workspace_id": workspaceID,
+			"workspace_id": workspaceIDStr,
 			"total_cost":   summary.TotalCost,
 			"currency":     summary.Currency,
 			"period":       summary.Period,
@@ -160,7 +160,7 @@ func (h *Handler) getBudgetAlertsHandler() handlers.HandlerFunc {
 			budgetLimit = parsedLimit
 		}
 
-		var alerts []service.BudgetAlert
+		var alerts []costanalysisservice.BudgetAlert
 		var err error
 
 		if budgetLimit > 0 {
@@ -172,7 +172,7 @@ func (h *Handler) getBudgetAlertsHandler() handlers.HandlerFunc {
 			}
 		} else {
 			// Return empty alerts if no budget limit provided
-			alerts = []service.BudgetAlert{}
+			alerts = []costanalysisservice.BudgetAlert{}
 		}
 
 		// Convert to response format

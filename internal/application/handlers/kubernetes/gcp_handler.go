@@ -3,8 +3,7 @@ package kubernetes
 import (
 	"net/http"
 
-	"skyclust/internal/application/dto"
-	service "skyclust/internal/application/services"
+	kubernetesservice "skyclust/internal/application/services/kubernetes"
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
 
@@ -14,12 +13,12 @@ import (
 // GCPHandler handles GCP GKE-related HTTP requests
 type GCPHandler struct {
 	*handlers.BaseHandler
-	k8sService        *service.KubernetesService
+	k8sService        *kubernetesservice.Service
 	credentialService domain.CredentialService
 }
 
 // NewGCPHandler creates a new GCP GKE handler
-func NewGCPHandler(k8sService *service.KubernetesService, credentialService domain.CredentialService) *GCPHandler {
+func NewGCPHandler(k8sService *kubernetesservice.Service, credentialService domain.CredentialService) *GCPHandler {
 	return &GCPHandler{
 		BaseHandler:       handlers.NewBaseHandler("gcp-kubernetes"),
 		k8sService:        k8sService,
@@ -30,7 +29,7 @@ func NewGCPHandler(k8sService *service.KubernetesService, credentialService doma
 // CreateGKECluster handles GKE cluster creation
 func (h *GCPHandler) CreateGKECluster(c *gin.Context) {
 	// Parse request
-	var req dto.CreateGKEClusterRequest
+	var req kubernetesservice.CreateGKEClusterRequest
 	if err := h.ValidateRequest(c, &req); err != nil {
 		h.HandleError(c, err, "create_gke_cluster")
 		return
@@ -178,7 +177,7 @@ func (h *GCPHandler) CreateGKENodePool(c *gin.Context) {
 	}
 
 	// Parse request
-	var req dto.CreateNodePoolRequest
+	var req kubernetesservice.CreateNodePoolRequest
 	if err := h.ValidateRequest(c, &req); err != nil {
 		h.HandleError(c, err, "create_gke_node_pool")
 		return
@@ -224,7 +223,7 @@ func (h *GCPHandler) ListGKENodePools(c *gin.Context) {
 	}
 
 	// List node pools
-	req := dto.ListNodeGroupsRequest{
+	req := kubernetesservice.ListNodeGroupsRequest{
 		CredentialID: credential.ID.String(),
 		ClusterName:  clusterName,
 		Region:       region,
@@ -263,7 +262,7 @@ func (h *GCPHandler) GetGKENodePool(c *gin.Context) {
 	}
 
 	// Get node pool
-	req := dto.GetNodeGroupRequest{
+	req := kubernetesservice.GetNodeGroupRequest{
 		CredentialID:  credential.ID.String(),
 		ClusterName:   clusterName,
 		NodeGroupName: nodePoolName,
@@ -308,7 +307,7 @@ func (h *GCPHandler) DeleteGKENodePool(c *gin.Context) {
 	}
 
 	// Delete node pool
-	deleteReq := dto.DeleteNodeGroupRequest{
+	deleteReq := kubernetesservice.DeleteNodeGroupRequest{
 		CredentialID:  credential.ID.String(),
 		ClusterName:   clusterName,
 		NodeGroupName: nodePoolName,
@@ -353,7 +352,7 @@ func (h *GCPHandler) ScaleGKENodePool(c *gin.Context) {
 	}
 
 	// Scale node pool
-	scaleReq := dto.CreateNodePoolRequest{
+	scaleReq := kubernetesservice.CreateNodePoolRequest{
 		CredentialID: credential.ID.String(),
 		ClusterName:  clusterName,
 		NodePoolName: nodePoolName,

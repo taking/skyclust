@@ -58,10 +58,12 @@ func (h *Handler) getUsersHandler() handlers.HandlerFunc {
 			return
 		}
 
-		pagination := h.calculatePagination(total, filters.Limit, filters.Page)
+		// Use standardized pagination metadata
+		paginationMeta := h.CalculatePaginationMeta(total, filters.Page, filters.Limit)
+
 		h.OK(c, gin.H{
 			"users":      users,
-			"pagination": pagination,
+			"pagination": paginationMeta,
 		}, "Users retrieved successfully")
 	}
 }
@@ -350,19 +352,6 @@ func (h *Handler) parseUserFilters(c *gin.Context) domain.UserFilters {
 	}
 }
 
-func (h *Handler) calculatePagination(total int64, limit, page int) gin.H {
-	totalPages := (total + int64(limit) - 1) / int64(limit)
-	offset := (page - 1) * limit
-
-	return gin.H{
-		"total":        total,
-		"limit":        limit,
-		"page":         page,
-		"offset":       offset,
-		"current_page": page,
-		"total_pages":  totalPages,
-	}
-}
 
 // Logging helper methods
 

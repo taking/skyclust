@@ -3,8 +3,7 @@ package kubernetes
 import (
 	"net/http"
 
-	"skyclust/internal/application/dto"
-	service "skyclust/internal/application/services"
+	kubernetesservice "skyclust/internal/application/services/kubernetes"
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
 	"skyclust/internal/shared/readability"
@@ -16,14 +15,14 @@ import (
 // Handler handles Kubernetes-related HTTP requests using improved patterns
 type Handler struct {
 	*handlers.BaseHandler
-	k8sService        *service.KubernetesService
+	k8sService        *kubernetesservice.Service
 	credentialService domain.CredentialService
 	provider          string // "aws", "gcp", "azure", "ncp"
 	readabilityHelper *readability.ReadabilityHelper
 }
 
 // NewHandler creates a new Kubernetes handler for a specific provider
-func NewHandler(k8sService *service.KubernetesService, credentialService domain.CredentialService, provider string) *Handler {
+func NewHandler(k8sService *kubernetesservice.Service, credentialService domain.CredentialService, provider string) *Handler {
 	return &Handler{
 		BaseHandler:       handlers.NewBaseHandler("kubernetes"),
 		k8sService:        k8sService,
@@ -35,7 +34,7 @@ func NewHandler(k8sService *service.KubernetesService, credentialService domain.
 
 // CreateCluster handles EKS cluster creation using decorator pattern
 func (h *Handler) CreateCluster(c *gin.Context) {
-	var req dto.CreateClusterRequest
+	var req kubernetesservice.CreateClusterRequest
 
 	handler := h.Compose(
 		h.createClusterHandler(req),
@@ -46,14 +45,18 @@ func (h *Handler) CreateCluster(c *gin.Context) {
 }
 
 // createClusterHandler is the core business logic for creating a cluster
-func (h *Handler) createClusterHandler(req dto.CreateClusterRequest) handlers.HandlerFunc {
+func (h *Handler) createClusterHandler(req kubernetesservice.CreateClusterRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		var req dto.CreateClusterRequest
+		var req kubernetesservice.CreateClusterRequest
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "create_cluster")
 			return
 		}
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "create_cluster")
+			return
+		}
 
 		h.logClusterCreationAttempt(c, userID, req)
 
@@ -95,7 +98,11 @@ func (h *Handler) listClustersHandler() handlers.HandlerFunc {
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "create_cluster")
+			return
+		}
 		region := c.Query("region")
 
 		h.logClusterListAttempt(c, userID, credential.ID, region)
@@ -131,7 +138,11 @@ func (h *Handler) getClusterHandler() handlers.HandlerFunc {
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "create_cluster")
+			return
+		}
 		clusterName := h.parseClusterName(c)
 		region := h.parseRegion(c)
 
@@ -172,7 +183,11 @@ func (h *Handler) deleteClusterHandler() handlers.HandlerFunc {
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "create_cluster")
+			return
+		}
 		clusterName := h.parseClusterName(c)
 		region := h.parseRegion(c)
 
@@ -212,7 +227,11 @@ func (h *Handler) getKubeconfigHandler() handlers.HandlerFunc {
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "create_cluster")
+			return
+		}
 		clusterName := h.parseClusterName(c)
 		region := h.parseRegion(c)
 
@@ -239,7 +258,7 @@ func (h *Handler) getKubeconfigHandler() handlers.HandlerFunc {
 
 // CreateNodePool handles creating a node pool (node group) for EKS using decorator pattern
 func (h *Handler) CreateNodePool(c *gin.Context) {
-	var req dto.CreateNodePoolRequest
+	var req kubernetesservice.CreateNodePoolRequest
 
 	handler := h.Compose(
 		h.createNodePoolHandler(req),
@@ -250,15 +269,19 @@ func (h *Handler) CreateNodePool(c *gin.Context) {
 }
 
 // createNodePoolHandler is the core business logic for creating a node pool
-func (h *Handler) createNodePoolHandler(req dto.CreateNodePoolRequest) handlers.HandlerFunc {
+func (h *Handler) createNodePoolHandler(req kubernetesservice.CreateNodePoolRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		var req dto.CreateNodePoolRequest
+		var req kubernetesservice.CreateNodePoolRequest
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "create_node_pool")
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "create_cluster")
+			return
+		}
 		clusterName := h.parseClusterName(c)
 
 		if clusterName == "" {
@@ -289,7 +312,7 @@ func (h *Handler) createNodePoolHandler(req dto.CreateNodePoolRequest) handlers.
 
 // CreateNodeGroup handles creating an EKS node group using decorator pattern
 func (h *Handler) CreateNodeGroup(c *gin.Context) {
-	var req dto.CreateNodeGroupRequest
+	var req kubernetesservice.CreateNodeGroupRequest
 
 	handler := h.Compose(
 		h.createNodeGroupHandler(req),
@@ -300,15 +323,19 @@ func (h *Handler) CreateNodeGroup(c *gin.Context) {
 }
 
 // createNodeGroupHandler is the core business logic for creating a node group
-func (h *Handler) createNodeGroupHandler(req dto.CreateNodeGroupRequest) handlers.HandlerFunc {
+func (h *Handler) createNodeGroupHandler(req kubernetesservice.CreateNodeGroupRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		var req dto.CreateNodeGroupRequest
+		var req kubernetesservice.CreateNodeGroupRequest
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "create_node_group")
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "create_cluster")
+			return
+		}
 		clusterName := h.parseClusterName(c)
 
 		if clusterName == "" {
@@ -357,7 +384,11 @@ func (h *Handler) listNodeGroupsHandler() handlers.HandlerFunc {
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "create_cluster")
+			return
+		}
 		clusterName := h.parseClusterName(c)
 		region := h.parseRegion(c)
 
@@ -367,7 +398,7 @@ func (h *Handler) listNodeGroupsHandler() handlers.HandlerFunc {
 
 		h.logNodeGroupsListAttempt(c, userID, clusterName, credential.ID, region)
 
-		req := dto.ListNodeGroupsRequest{
+		req := kubernetesservice.ListNodeGroupsRequest{
 			CredentialID: credential.ID.String(),
 			ClusterName:  clusterName,
 			Region:       region,
@@ -408,7 +439,7 @@ func (h *Handler) GetNodeGroup(c *gin.Context) {
 	}
 
 	// Get node group
-	req := dto.GetNodeGroupRequest{
+	req := kubernetesservice.GetNodeGroupRequest{
 		CredentialID:  credential.ID.String(),
 		ClusterName:   clusterName,
 		NodeGroupName: nodeGroupName,
@@ -453,7 +484,7 @@ func (h *Handler) DeleteNodeGroup(c *gin.Context) {
 	}
 
 	// Delete node group
-	deleteReq := dto.DeleteNodeGroupRequest{
+	deleteReq := kubernetesservice.DeleteNodeGroupRequest{
 		CredentialID:  credential.ID.String(),
 		ClusterName:   clusterName,
 		NodeGroupName: nodeGroupName,
@@ -469,30 +500,6 @@ func (h *Handler) DeleteNodeGroup(c *gin.Context) {
 }
 
 // Helper methods for better readability
-
-func (h *Handler) extractUserID(c *gin.Context) uuid.UUID {
-	userIDValue, exists := c.Get("user_id")
-	if !exists {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "User not authenticated", 401), "extract_user_id")
-		return uuid.Nil
-	}
-	
-	// Convert to uuid.UUID (handle both string and uuid.UUID types)
-	switch v := userIDValue.(type) {
-	case uuid.UUID:
-		return v
-	case string:
-		parsedUserID, err := uuid.Parse(v)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID format", 401), "extract_user_id")
-			return uuid.Nil
-		}
-		return parsedUserID
-	default:
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID type", 401), "extract_user_id")
-		return uuid.Nil
-	}
-}
 
 func (h *Handler) parseClusterName(c *gin.Context) string {
 	clusterName := c.Param("name")
@@ -514,7 +521,7 @@ func (h *Handler) parseRegion(c *gin.Context) string {
 
 // Logging helper methods
 
-func (h *Handler) logClusterCreationAttempt(c *gin.Context, userID uuid.UUID, req dto.CreateClusterRequest) {
+func (h *Handler) logClusterCreationAttempt(c *gin.Context, userID uuid.UUID, req kubernetesservice.CreateClusterRequest) {
 	h.LogBusinessEvent(c, "cluster_creation_attempted", userID.String(), "", map[string]interface{}{
 		"operation":     "create_cluster",
 		"cluster_name":  req.Name,
@@ -595,7 +602,7 @@ func (h *Handler) logKubeconfigGetSuccess(c *gin.Context, userID uuid.UUID, clus
 	})
 }
 
-func (h *Handler) logNodePoolCreationAttempt(c *gin.Context, userID uuid.UUID, clusterName string, req dto.CreateNodePoolRequest) {
+func (h *Handler) logNodePoolCreationAttempt(c *gin.Context, userID uuid.UUID, clusterName string, req kubernetesservice.CreateNodePoolRequest) {
 	h.LogBusinessEvent(c, "node_pool_creation_attempted", userID.String(), clusterName, map[string]interface{}{
 		"operation":      "create_node_pool",
 		"provider":       h.provider,
@@ -611,7 +618,7 @@ func (h *Handler) logNodePoolCreationSuccess(c *gin.Context, userID uuid.UUID, c
 	})
 }
 
-func (h *Handler) logNodeGroupCreationAttempt(c *gin.Context, userID uuid.UUID, clusterName string, req dto.CreateNodeGroupRequest) {
+func (h *Handler) logNodeGroupCreationAttempt(c *gin.Context, userID uuid.UUID, clusterName string, req kubernetesservice.CreateNodeGroupRequest) {
 	h.LogBusinessEvent(c, "node_group_creation_attempted", userID.String(), clusterName, map[string]interface{}{
 		"operation":       "create_node_group",
 		"provider":        h.provider,
@@ -643,4 +650,3 @@ func (h *Handler) logNodeGroupsListSuccess(c *gin.Context, userID uuid.UUID, clu
 		"count":     count,
 	})
 }
-

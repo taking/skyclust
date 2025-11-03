@@ -5,21 +5,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"skyclust/internal/application/services/cost_analysis"
+	kubernetesservice "skyclust/internal/application/services/kubernetes"
 	"skyclust/internal/domain"
+	"skyclust/pkg/cache"
 	"skyclust/pkg/logger"
 	"sort"
 	"strings"
 	"time"
 
+	billingv1 "cloud.google.com/go/billing/apiv1"
+	billingpb "cloud.google.com/go/billing/apiv1/billingpb"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/costexplorer"
 	"github.com/aws/aws-sdk-go-v2/service/costexplorer/types"
-	billingv1 "cloud.google.com/go/billing/apiv1"
-	billingpb "cloud.google.com/go/billing/apiv1/billingpb"
-	"google.golang.org/api/option"
 	"github.com/google/uuid"
+	"google.golang.org/api/option"
 )
 
 type CostAnalysisService struct {
@@ -28,7 +31,8 @@ type CostAnalysisService struct {
 	workspaceRepo     domain.WorkspaceRepository
 	auditLogRepo      domain.AuditLogRepository
 	credentialService domain.CredentialService
-	kubernetesService *KubernetesService
+	kubernetesService *kubernetesservice.Service
+	cache             cache.Cache
 }
 
 func NewCostAnalysisService(
@@ -37,7 +41,8 @@ func NewCostAnalysisService(
 	workspaceRepo domain.WorkspaceRepository,
 	auditLogRepo domain.AuditLogRepository,
 	credentialService domain.CredentialService,
-	kubernetesService *KubernetesService,
+	kubernetesService *kubernetesservice.Service,
+	cache cache.Cache,
 ) *CostAnalysisService {
 	return &CostAnalysisService{
 		vmRepo:            vmRepo,
@@ -46,6 +51,7 @@ func NewCostAnalysisService(
 		auditLogRepo:      auditLogRepo,
 		credentialService: credentialService,
 		kubernetesService: kubernetesService,
+		cache:             cache,
 	}
 }
 
@@ -64,9 +70,9 @@ type CostData struct {
 
 // CostWarning represents a warning message about cost calculation
 type CostWarning struct {
-	Code    string `json:"code"`    // warning code (e.g., "API_PERMISSION_DENIED", "API_NOT_ENABLED")
-	Message string `json:"message"` // user-friendly warning message
-	Provider string `json:"provider,omitempty"` // provider name if applicable (aws, gcp)
+	Code         string `json:"code"`                    // warning code (e.g., "API_PERMISSION_DENIED", "API_NOT_ENABLED")
+	Message      string `json:"message"`                 // user-friendly warning message
+	Provider     string `json:"provider,omitempty"`      // provider name if applicable (aws, gcp)
 	ResourceType string `json:"resource_type,omitempty"` // resource type if applicable (vm, cluster)
 }
 
@@ -106,10 +112,22 @@ type BudgetAlert struct {
 // resourceTypes: comma-separated list of resource types to include (vm,cluster,node_group,node_pool,all)
 // If empty or "all", includes all resource types
 func (s *CostAnalysisService) GetCostSummary(ctx context.Context, workspaceID string, period string, resourceTypes string) (*CostSummary, error) {
+	// Generate cache key
+	cacheKey := fmt.Sprintf("cost_summary:%s:%s:%s", workspaceID, period, resourceTypes)
+
+	// Try to get from cache first
+	if s.cache != nil {
+		var cachedSummary CostSummary
+		if err := s.cache.Get(ctx, cacheKey, &cachedSummary); err == nil {
+			logger.Debugf("Cost summary cache hit for workspace %s, period %s", workspaceID, period)
+			return &cachedSummary, nil
+		}
+	}
+
 	// Parse period (e.g., "7d", "30d", "90d", "1y")
 	startDate, endDate, err := s.parsePeriod(period)
 	if err != nil {
-		return nil, fmt.Errorf("invalid period: %w", err)
+		return nil, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("invalid period: %v", err), 400)
 	}
 
 	// Parse resource types filter
@@ -118,15 +136,38 @@ func (s *CostAnalysisService) GetCostSummary(ctx context.Context, workspaceID st
 	var allCosts []CostData
 	var warnings []CostWarning
 
+	// Optimize: Pre-fetch all credentials for the workspace to avoid N+1 queries (if VM costs are requested)
+	var credentialsByProvider map[string][]*domain.Credential
+	if includeVM {
+		workspaceUUID, err := uuid.Parse(workspaceID)
+		if err != nil {
+			return nil, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("invalid workspace ID: %v", err), 400)
+		}
+
+		allCredentials, err := s.credentialRepo.GetByWorkspaceID(workspaceUUID)
+		if err != nil {
+			logger.Warnf("Failed to get credentials for workspace %s: %v, will use estimated costs", workspaceID, err)
+			allCredentials = []*domain.Credential{}
+		}
+
+		// Group credentials by provider for efficient lookup
+		credentialsByProvider = make(map[string][]*domain.Credential)
+		for _, cred := range allCredentials {
+			if cred.IsActive {
+				credentialsByProvider[cred.Provider] = append(credentialsByProvider[cred.Provider], cred)
+			}
+		}
+	}
+
 	// Calculate VM costs if requested
 	if includeVM {
 		vms, err := s.vmRepo.GetVMsByWorkspace(ctx, workspaceID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get VMs: %w", err)
+			return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to get VMs: %v", err), 500)
 		}
 
 		for _, vm := range vms {
-			costs, err := s.calculateVMCosts(ctx, vm, startDate, endDate)
+			costs, err := s.calculateVMCostsOptimized(ctx, vm, startDate, endDate, credentialsByProvider)
 			if err != nil {
 				logger.Warnf("Failed to calculate VM costs for VM %s: %v", vm.ID, err)
 				warnings = append(warnings, CostWarning{
@@ -160,6 +201,13 @@ func (s *CostAnalysisService) GetCostSummary(ctx context.Context, workspaceID st
 	// Aggregate costs
 	summary := s.aggregateCosts(allCosts, startDate, endDate, period)
 	summary.Warnings = warnings
+
+	// Cache the result
+	if s.cache != nil {
+		if err := s.cache.Set(ctx, cacheKey, summary, cost_analysis.CostAnalysisCacheTTL); err != nil {
+			logger.Warnf("Failed to cache cost summary: %v", err)
+		}
+	}
 
 	return summary, nil
 }
@@ -197,9 +245,22 @@ func (s *CostAnalysisService) parseResourceTypes(resourceTypes string) (bool, bo
 
 // GetCostPredictions generates cost predictions for future periods
 func (s *CostAnalysisService) GetCostPredictions(ctx context.Context, workspaceID string, days int, resourceTypes string) ([]CostPrediction, []CostWarning, error) {
-	// Get historical data (last 30 days)
+	// Generate cache key
+	cacheKey := fmt.Sprintf("cost_predictions:%s:%d:%s", workspaceID, days, resourceTypes)
+
+	// Try to get from cache first
+	if s.cache != nil {
+		var cachedPredictions []CostPrediction
+		if err := s.cache.Get(ctx, cacheKey, &cachedPredictions); err == nil {
+			// For predictions, we also need warnings, but we'll return empty warnings for cached results
+			logger.Debugf("Cost predictions cache hit for workspace %s, days %d", workspaceID, days)
+			return cachedPredictions, []CostWarning{}, nil
+		}
+	}
+
+	// Get historical data
 	endDate := time.Now()
-	startDate := endDate.AddDate(0, 0, -30)
+	startDate := endDate.AddDate(0, 0, -cost_analysis.CostPredictionHistoricalDays)
 
 	// Parse resource types filter
 	includeVM, includeCluster, includeNodeGroups := s.parseResourceTypes(resourceTypes)
@@ -207,15 +268,38 @@ func (s *CostAnalysisService) GetCostPredictions(ctx context.Context, workspaceI
 	var historicalCosts []CostData
 	var warnings []CostWarning
 
+	// Optimize: Pre-fetch all credentials for the workspace to avoid N+1 queries (if VM costs are requested)
+	var credentialsByProvider map[string][]*domain.Credential
+	if includeVM {
+		workspaceUUID, err := uuid.Parse(workspaceID)
+		if err != nil {
+			return nil, nil, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("invalid workspace ID: %v", err), 400)
+		}
+
+		allCredentials, err := s.credentialRepo.GetByWorkspaceID(workspaceUUID)
+		if err != nil {
+			logger.Warnf("Failed to get credentials for workspace %s: %v, will use estimated costs", workspaceID, err)
+			allCredentials = []*domain.Credential{}
+		}
+
+		// Group credentials by provider for efficient lookup
+		credentialsByProvider = make(map[string][]*domain.Credential)
+		for _, cred := range allCredentials {
+			if cred.IsActive {
+				credentialsByProvider[cred.Provider] = append(credentialsByProvider[cred.Provider], cred)
+			}
+		}
+	}
+
 	// Calculate VM costs if requested
 	if includeVM {
 		vms, err := s.vmRepo.GetVMsByWorkspace(ctx, workspaceID)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get VMs: %w", err)
+			return nil, nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to get VMs: %v", err), 500)
 		}
 
 		for _, vm := range vms {
-			costs, err := s.calculateVMCosts(ctx, vm, startDate, endDate)
+			costs, err := s.calculateVMCostsOptimized(ctx, vm, startDate, endDate, credentialsByProvider)
 			if err != nil {
 				logger.Warnf("Failed to calculate VM costs for VM %s: %v", vm.ID, err)
 				warnings = append(warnings, CostWarning{
@@ -249,6 +333,13 @@ func (s *CostAnalysisService) GetCostPredictions(ctx context.Context, workspaceI
 	// Generate predictions using linear regression
 	predictions := s.generatePredictions(historicalCosts, days)
 
+	// Cache the result (TTL: 15 minutes for cost predictions)
+	if s.cache != nil {
+		if err := s.cache.Set(ctx, cacheKey, predictions, cost_analysis.CostAnalysisCacheTTL); err != nil {
+			logger.Warnf("Failed to cache cost predictions: %v", err)
+		}
+	}
+
 	return predictions, warnings, nil
 }
 
@@ -256,7 +347,7 @@ func (s *CostAnalysisService) GetCostPredictions(ctx context.Context, workspaceI
 func (s *CostAnalysisService) CheckBudgetAlerts(ctx context.Context, workspaceID string, budgetLimit float64) ([]BudgetAlert, error) {
 	summary, err := s.GetCostSummary(ctx, workspaceID, "1m", "all")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get cost summary: %w", err)
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to get cost summary: %v", err), 500)
 	}
 
 	var alerts []BudgetAlert
@@ -291,10 +382,10 @@ func (s *CostAnalysisService) CheckBudgetAlerts(ctx context.Context, workspaceID
 
 // CostTrend represents cost trend data
 type CostTrend struct {
-	DailyCosts      []DailyCostData `json:"daily_costs"`
-	TrendDirection  string          `json:"trend_direction"`  // "increasing", "decreasing", "stable"
-	ChangePercentage float64        `json:"change_percentage"`
-	Warnings        []CostWarning   `json:"warnings,omitempty"` // warnings about cost calculation issues
+	DailyCosts       []DailyCostData `json:"daily_costs"`
+	TrendDirection   string          `json:"trend_direction"` // "increasing", "decreasing", "stable"
+	ChangePercentage float64         `json:"change_percentage"`
+	Warnings         []CostWarning   `json:"warnings,omitempty"` // warnings about cost calculation issues
 }
 
 // DailyCostData represents daily cost data
@@ -308,9 +399,9 @@ type CostBreakdown map[string]CategoryBreakdown
 
 // CategoryBreakdown represents breakdown for a category
 type CategoryBreakdown struct {
-	Cost      float64            `json:"cost"`
-	Percentage float64           `json:"percentage"`
-	Services  map[string]float64 `json:"services,omitempty"`
+	Cost       float64            `json:"cost"`
+	Percentage float64            `json:"percentage"`
+	Services   map[string]float64 `json:"services,omitempty"`
 }
 
 // CostComparison represents cost comparison between periods
@@ -334,9 +425,21 @@ type ComparisonData struct {
 
 // GetCostTrend retrieves cost trend for a workspace
 func (s *CostAnalysisService) GetCostTrend(ctx context.Context, workspaceID string, period string, resourceTypes string) (*CostTrend, error) {
+	// Generate cache key
+	cacheKey := fmt.Sprintf("cost_trend:%s:%s:%s", workspaceID, period, resourceTypes)
+
+	// Try to get from cache first
+	if s.cache != nil {
+		var cachedTrend CostTrend
+		if err := s.cache.Get(ctx, cacheKey, &cachedTrend); err == nil {
+			logger.Debugf("Cost trend cache hit for workspace %s, period %s", workspaceID, period)
+			return &cachedTrend, nil
+		}
+	}
+
 	startDate, endDate, err := s.parsePeriod(period)
 	if err != nil {
-		return nil, fmt.Errorf("invalid period: %w", err)
+		return nil, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("invalid period: %v", err), 400)
 	}
 
 	// Parse resource types filter
@@ -349,11 +452,31 @@ func (s *CostAnalysisService) GetCostTrend(ctx context.Context, workspaceID stri
 	if includeVM {
 		vms, err := s.vmRepo.GetVMsByWorkspace(ctx, workspaceID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get VMs: %w", err)
+			return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to get VMs: %v", err), 500)
+		}
+
+		// Optimize: Pre-fetch all credentials for the workspace to avoid N+1 queries
+		workspaceUUID, err := uuid.Parse(workspaceID)
+		if err != nil {
+			return nil, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("invalid workspace ID: %v", err), 400)
+		}
+
+		allCredentials, err := s.credentialRepo.GetByWorkspaceID(workspaceUUID)
+		if err != nil {
+			logger.Warnf("Failed to get credentials for workspace %s: %v, will use estimated costs", workspaceID, err)
+			allCredentials = []*domain.Credential{}
+		}
+
+		// Group credentials by provider for efficient lookup
+		credentialsByProvider := make(map[string][]*domain.Credential)
+		for _, cred := range allCredentials {
+			if cred.IsActive {
+				credentialsByProvider[cred.Provider] = append(credentialsByProvider[cred.Provider], cred)
+			}
 		}
 
 		for _, vm := range vms {
-			costs, err := s.calculateVMCosts(ctx, vm, startDate, endDate)
+			costs, err := s.calculateVMCostsOptimized(ctx, vm, startDate, endDate, credentialsByProvider)
 			if err != nil {
 				logger.Warnf("Failed to calculate VM costs for VM %s: %v", vm.ID, err)
 				warnings = append(warnings, CostWarning{
@@ -390,19 +513,40 @@ func (s *CostAnalysisService) GetCostTrend(ctx context.Context, workspaceID stri
 	// Calculate trend direction and percentage change
 	trendDirection, changePercentage := s.calculateTrendMetrics(dailyCosts)
 
-	return &CostTrend{
-		DailyCosts:      dailyCosts,
-		TrendDirection:  trendDirection,
+	trend := &CostTrend{
+		DailyCosts:       dailyCosts,
+		TrendDirection:   trendDirection,
 		ChangePercentage: changePercentage,
-		Warnings:        warnings,
-	}, nil
+		Warnings:         warnings,
+	}
+
+	// Cache the result (TTL: 15 minutes for cost trend)
+	if s.cache != nil {
+		if err := s.cache.Set(ctx, cacheKey, trend, cost_analysis.CostAnalysisCacheTTL); err != nil {
+			logger.Warnf("Failed to cache cost trend: %v", err)
+		}
+	}
+
+	return trend, nil
 }
 
 // GetCostBreakdown retrieves cost breakdown for a workspace
 func (s *CostAnalysisService) GetCostBreakdown(ctx context.Context, workspaceID string, period string, dimension string, resourceTypes string) (*CostBreakdown, []CostWarning, error) {
+	// Generate cache key
+	cacheKey := fmt.Sprintf("cost_breakdown:%s:%s:%s:%s", workspaceID, period, dimension, resourceTypes)
+
+	// Try to get from cache first
+	if s.cache != nil {
+		var cachedBreakdown CostBreakdown
+		if err := s.cache.Get(ctx, cacheKey, &cachedBreakdown); err == nil {
+			logger.Debugf("Cost breakdown cache hit for workspace %s, period %s, dimension %s", workspaceID, period, dimension)
+			return &cachedBreakdown, []CostWarning{}, nil
+		}
+	}
+
 	startDate, endDate, err := s.parsePeriod(period)
 	if err != nil {
-		return nil, nil, fmt.Errorf("invalid period: %w", err)
+		return nil, nil, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("invalid period: %v", err), 400)
 	}
 
 	// Parse resource types filter
@@ -415,7 +559,7 @@ func (s *CostAnalysisService) GetCostBreakdown(ctx context.Context, workspaceID 
 	if includeVM {
 		vms, err := s.vmRepo.GetVMsByWorkspace(ctx, workspaceID)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get VMs: %w", err)
+			return nil, nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to get VMs: %v", err), 500)
 		}
 
 		for _, vm := range vms {
@@ -453,6 +597,13 @@ func (s *CostAnalysisService) GetCostBreakdown(ctx context.Context, workspaceID 
 	// Aggregate costs by dimension
 	breakdown := s.aggregateCostBreakdown(allCosts, dimension)
 
+	// Cache the result (TTL: 15 minutes for cost breakdown)
+	if s.cache != nil {
+		if err := s.cache.Set(ctx, cacheKey, breakdown, cost_analysis.CostAnalysisCacheTTL); err != nil {
+			logger.Warnf("Failed to cache cost breakdown: %v", err)
+		}
+	}
+
 	return breakdown, warnings, nil
 }
 
@@ -461,7 +612,7 @@ func (s *CostAnalysisService) GetCostComparison(ctx context.Context, workspaceID
 	// Get current period summary
 	currentSummary, err := s.GetCostSummary(ctx, workspaceID, currentPeriod, "all")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get current period summary: %w", err)
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to get current period summary: %v", err), 500)
 	}
 
 	// Calculate compare period dates
@@ -482,19 +633,39 @@ func (s *CostAnalysisService) GetCostComparison(ctx context.Context, workspaceID
 		compareEndDate = now.AddDate(-1, 0, 0)
 		compareStartDate = compareEndDate.AddDate(-1, 0, 0)
 	default:
-		return nil, fmt.Errorf("unsupported compare period: %s", comparePeriod)
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported compare period: %s", comparePeriod), 400)
 	}
 
 	// Get VMs in workspace
 	vms, err := s.vmRepo.GetVMsByWorkspace(ctx, workspaceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get VMs: %w", err)
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to get VMs: %v", err), 500)
+	}
+
+	// Optimize: Pre-fetch all credentials for the workspace to avoid N+1 queries
+	workspaceUUID, err := uuid.Parse(workspaceID)
+	if err != nil {
+		return nil, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("invalid workspace ID: %v", err), 400)
+	}
+
+	allCredentials, err := s.credentialRepo.GetByWorkspaceID(workspaceUUID)
+	if err != nil {
+		logger.Warnf("Failed to get credentials for workspace %s: %v, will use estimated costs", workspaceID, err)
+		allCredentials = []*domain.Credential{}
+	}
+
+	// Group credentials by provider for efficient lookup
+	credentialsByProvider := make(map[string][]*domain.Credential)
+	for _, cred := range allCredentials {
+		if cred.IsActive {
+			credentialsByProvider[cred.Provider] = append(credentialsByProvider[cred.Provider], cred)
+		}
 	}
 
 	// Calculate compare period costs
 	var compareCosts []CostData
 	for _, vm := range vms {
-		costs, err := s.calculateVMCosts(ctx, vm, compareStartDate, compareEndDate)
+		costs, err := s.calculateVMCostsOptimized(ctx, vm, compareStartDate, compareEndDate, credentialsByProvider)
 		if err != nil {
 			logger.Warnf("Failed to calculate VM costs for VM %s: %v", vm.ID, err)
 			continue
@@ -546,15 +717,50 @@ func (s *CostAnalysisService) parsePeriod(period string) (time.Time, time.Time, 
 	case "1y":
 		return now.AddDate(-1, 0, 0), now, nil
 	default:
-		return time.Time{}, time.Time{}, fmt.Errorf("unsupported period: %s", period)
+		return time.Time{}, time.Time{}, domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported period: %s", period), 400)
 	}
 }
 
+// calculateVMCostsOptimized calculates VM costs using pre-fetched credentials (optimized to avoid N+1 queries)
+func (s *CostAnalysisService) calculateVMCostsOptimized(ctx context.Context, vm *domain.VM, startDate, endDate time.Time, credentialsByProvider map[string][]*domain.Credential) ([]CostData, error) {
+	// Get credentials from pre-fetched map
+	credentials, exists := credentialsByProvider[vm.Provider]
+	if !exists || len(credentials) == 0 {
+		logger.Warnf("No credentials found for provider %s in workspace %s, falling back to estimated costs", vm.Provider, vm.WorkspaceID)
+		return s.calculateEstimatedCosts(vm, startDate, endDate)
+	}
+
+	// Use the first active credential
+	var credential *domain.Credential
+	for _, cred := range credentials {
+		if cred.IsActive {
+			credential = cred
+			break
+		}
+	}
+
+	if credential == nil && len(credentials) > 0 {
+		credential = credentials[0]
+	}
+
+	// Get actual costs from cloud provider API
+	switch vm.Provider {
+	case "aws":
+		return s.getAWSCosts(ctx, credential, vm, startDate, endDate)
+	case "gcp":
+		return s.getGCPCosts(ctx, credential, vm, startDate, endDate)
+	default:
+		// For other providers, use estimated costs
+		return s.calculateEstimatedCosts(vm, startDate, endDate)
+	}
+}
+
+// calculateVMCosts calculates VM costs (original method, kept for backward compatibility)
 func (s *CostAnalysisService) calculateVMCosts(ctx context.Context, vm *domain.VM, startDate, endDate time.Time) ([]CostData, error) {
 	// Get credentials for the provider and workspace
 	workspaceUUID, err := uuid.Parse(vm.WorkspaceID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid workspace ID: %w", err)
+		return nil, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("invalid workspace ID: %v", err), 400)
 	}
 
 	credentials, err := s.credentialRepo.GetByWorkspaceIDAndProvider(workspaceUUID, vm.Provider)
@@ -750,10 +956,10 @@ func (s *CostAnalysisService) generatePredictions(historicalCosts []CostData, da
 
 		// Calculate confidence based on historical variance
 		variance := s.calculateVariance(values)
-		confidence := math.Max(0.1, 1.0-(variance/100.0))
+		confidence := math.Max(cost_analysis.MinCostPredictionConfidence, 1.0-(variance/cost_analysis.CostVarianceNormalizationBase))
 
 		// Calculate bounds (simple approach)
-		bound := predictedValue * 0.2 // 20% margin
+		bound := predictedValue * cost_analysis.DefaultCostPredictionMargin
 
 		predictions = append(predictions, CostPrediction{
 			Date:       predictedDate,
@@ -874,7 +1080,7 @@ func (s *CostAnalysisService) aggregateCostBreakdown(costs []CostData, dimension
 		for service, amount := range serviceMap {
 			percentage := (amount / totalCost) * 100
 			breakdown[service] = CategoryBreakdown{
-				Cost:      amount,
+				Cost:       amount,
 				Percentage: percentage,
 			}
 		}
@@ -894,9 +1100,9 @@ func (s *CostAnalysisService) aggregateCostBreakdown(costs []CostData, dimension
 		for provider, amount := range providerMap {
 			percentage := (amount / totalCost) * 100
 			breakdown[provider] = CategoryBreakdown{
-				Cost:      amount,
+				Cost:       amount,
 				Percentage: percentage,
-				Services:  providerServiceMap[provider],
+				Services:   providerServiceMap[provider],
 			}
 		}
 
@@ -909,7 +1115,7 @@ func (s *CostAnalysisService) aggregateCostBreakdown(costs []CostData, dimension
 		for region, amount := range regionMap {
 			percentage := (amount / totalCost) * 100
 			breakdown[region] = CategoryBreakdown{
-				Cost:      amount,
+				Cost:       amount,
 				Percentage: percentage,
 			}
 		}
@@ -924,7 +1130,7 @@ func (s *CostAnalysisService) aggregateCostBreakdown(costs []CostData, dimension
 		for service, amount := range serviceMap {
 			percentage := (amount / totalCost) * 100
 			breakdown[service] = CategoryBreakdown{
-				Cost:      amount,
+				Cost:       amount,
 				Percentage: percentage,
 			}
 		}
@@ -938,18 +1144,18 @@ func (s *CostAnalysisService) getAWSCosts(ctx context.Context, credential *domai
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
 	}
 
 	// Extract AWS credentials
 	accessKey, ok := credData["access_key"].(string)
 	if !ok {
-		return nil, fmt.Errorf("access_key not found in credential")
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "access_key not found in credential", 400)
 	}
 
 	secretKey, ok := credData["secret_key"].(string)
 	if !ok {
-		return nil, fmt.Errorf("secret_key not found in credential")
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "secret_key not found in credential", 400)
 	}
 
 	// Get region from credential or use VM region
@@ -971,7 +1177,7 @@ func (s *CostAnalysisService) getAWSCosts(ctx context.Context, credential *domai
 		)),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to load AWS config: %v", err), 502)
 	}
 
 	// Create Cost Explorer client
@@ -1094,13 +1300,13 @@ func (s *CostAnalysisService) getGCPCosts(ctx context.Context, credential *domai
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt credential: %w", err)
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
 	}
 
 	// Get project ID
 	projectID, ok := credData["project_id"].(string)
 	if !ok || projectID == "" {
-		return nil, fmt.Errorf("project_id not found in credential")
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "project_id not found in credential", 400)
 	}
 
 	// Create service account key from credential data
@@ -1120,13 +1326,13 @@ func (s *CostAnalysisService) getGCPCosts(ctx context.Context, credential *domai
 	// Convert to JSON
 	keyBytes, err := json.Marshal(serviceAccountKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal service account key: %w", err)
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to marshal service account key: %v", err), 500)
 	}
 
 	// Create billing client
 	billingClient, err := billingv1.NewCloudBillingClient(ctx, option.WithCredentialsJSON(keyBytes))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create billing client: %w", err)
+		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create billing client: %v", err), 502)
 	}
 	defer billingClient.Close()
 
@@ -1176,13 +1382,13 @@ func parseFloat(s string) (float64, error) {
 func (s *CostAnalysisService) calculateKubernetesCosts(ctx context.Context, workspaceID string, startDate, endDate time.Time, includeNodeGroups bool) ([]CostData, []CostWarning, error) {
 	workspaceUUID, err := uuid.Parse(workspaceID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("invalid workspace ID: %w", err)
+		return nil, nil, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("invalid workspace ID: %v", err), 400)
 	}
 
 	// Get all credentials for the workspace
 	allCredentials, err := s.credentialRepo.GetByWorkspaceID(workspaceUUID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get credentials: %w", err)
+		return nil, nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to get credentials: %v", err), 500)
 	}
 
 	var allCosts []CostData
@@ -1273,17 +1479,17 @@ func (s *CostAnalysisService) getAWSKubernetesCosts(ctx context.Context, credent
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to decrypt credential: %w", err)
+		return nil, nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
 	}
 
 	accessKey, ok := credData["access_key"].(string)
 	if !ok {
-		return nil, nil, fmt.Errorf("access_key not found in credential")
+		return nil, nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "access_key not found in credential", 400)
 	}
 
 	secretKey, ok := credData["secret_key"].(string)
 	if !ok {
-		return nil, nil, fmt.Errorf("secret_key not found in credential")
+		return nil, nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "secret_key not found in credential", 400)
 	}
 
 	region := "us-east-1" // Default region for Cost Explorer
@@ -1301,7 +1507,7 @@ func (s *CostAnalysisService) getAWSKubernetesCosts(ctx context.Context, credent
 		)),
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to load AWS config: %w", err)
+		return nil, nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to load AWS config: %v", err), 502)
 	}
 
 	// Create Cost Explorer client
@@ -1342,7 +1548,7 @@ func (s *CostAnalysisService) getAWSKubernetesCosts(ctx context.Context, credent
 
 	result, err := ceClient.GetCostAndUsage(ctx, input)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get AWS Kubernetes costs: %w", err)
+		return nil, nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to get AWS Kubernetes costs: %v", err), 502)
 	}
 
 	// Parse results
@@ -1411,12 +1617,12 @@ func (s *CostAnalysisService) getGCPKubernetesCosts(ctx context.Context, credent
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to decrypt credential: %w", err)
+		return nil, nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
 	}
 
 	projectID, ok := credData["project_id"].(string)
 	if !ok || projectID == "" {
-		return nil, nil, fmt.Errorf("project_id not found in credential")
+		return nil, nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "project_id not found in credential", 400)
 	}
 
 	// Create service account key from credential data
@@ -1435,13 +1641,13 @@ func (s *CostAnalysisService) getGCPKubernetesCosts(ctx context.Context, credent
 
 	keyBytes, err := json.Marshal(serviceAccountKey)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal service account key: %w", err)
+		return nil, nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to marshal service account key: %v", err), 500)
 	}
 
 	// Create billing client
 	billingClient, err := billingv1.NewCloudBillingClient(ctx, option.WithCredentialsJSON(keyBytes))
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create billing client: %w", err)
+		return nil, nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create billing client: %v", err), 502)
 	}
 	defer billingClient.Close()
 
@@ -1469,11 +1675,11 @@ func (s *CostAnalysisService) getGCPKubernetesCosts(ctx context.Context, credent
 				ResourceType: "cluster",
 			})
 		}
-		return nil, warnings, fmt.Errorf("failed to get project billing info: %w", err)
+		return nil, warnings, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to get project billing info: %v", err), 502)
 	}
 
 	if projectInfo.BillingAccountName == "" {
-		return nil, nil, fmt.Errorf("no billing account associated with project")
+		return nil, nil, domain.NewDomainError(domain.ErrCodeNotFound, "no billing account associated with project", 404)
 	}
 
 	// For GKE, costs are tracked under Container Service

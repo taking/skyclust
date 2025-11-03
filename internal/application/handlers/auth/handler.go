@@ -55,7 +55,10 @@ func (h *Handler) Register(c *gin.Context) {
 // registerHandler is the core business logic for user registration
 func (h *Handler) registerHandler(req domain.CreateUserRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		req = h.extractValidatedRequest(c)
+		if err := h.ExtractValidatedRequest(c, &req); err != nil {
+			h.HandleError(c, err, "register")
+			return
+		}
 
 		h.logUserRegistrationAttempt(c, req)
 
@@ -97,7 +100,14 @@ func (h *Handler) loginHandler(req struct {
 	Password string `json:"password" binding:"required"`
 }) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		req = h.extractValidatedLoginRequest(c)
+		var req struct {
+			Email    string `json:"email" binding:"required,email"`
+			Password string `json:"password" binding:"required"`
+		}
+		if err := h.ExtractValidatedRequest(c, &req); err != nil {
+			h.HandleError(c, err, "login")
+			return
+		}
 
 		h.logUserLoginAttempt(c, req.Email)
 
@@ -148,8 +158,17 @@ func (h *Handler) GetSession(c *gin.Context) {
 // logoutHandler is the core business logic for user logout
 func (h *Handler) logoutHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := h.extractUserID(c)
-		token := h.extractBearerToken(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "delete_session")
+			return
+		}
+
+		token, err := h.GetBearerTokenFromHeader(c)
+		if err != nil {
+			h.HandleError(c, err, "delete_session")
+			return
+		}
 
 		h.logUserLogoutAttempt(c, userID)
 
@@ -158,7 +177,7 @@ func (h *Handler) logoutHandler() handlers.HandlerFunc {
 			return
 		}
 
-		err := h.authService.Logout(userID, token)
+		err = h.authService.Logout(userID, token)
 		if err != nil {
 			h.HandleError(c, err, "delete_session")
 			return
@@ -174,8 +193,17 @@ func (h *Handler) logoutHandler() handlers.HandlerFunc {
 // getSessionHandler is the core business logic for getting current session
 func (h *Handler) getSessionHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := h.extractUserID(c)
-		token := h.extractBearerToken(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_session")
+			return
+		}
+
+		token, err := h.GetBearerTokenFromHeader(c)
+		if err != nil {
+			h.HandleError(c, err, "get_session")
+			return
+		}
 
 		// Validate token
 		if h.authService == nil {
@@ -223,7 +251,11 @@ func (h *Handler) Me(c *gin.Context) {
 // meHandler is the core business logic for getting current user info
 func (h *Handler) meHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "me")
+			return
+		}
 
 		h.logUserMeRequest(c, userID)
 
@@ -274,11 +306,12 @@ func (h *Handler) GetUsers(c *gin.Context) {
 		return
 	}
 
-	// Parse pagination parameters
-	limit, offset := h.ParsePaginationParams(c)
+	// Parse pagination parameters (page/limit based)
+	page, limit := h.ParsePageLimitParams(c)
 
 	// Get users from service
 	users, total, err := h.userService.GetUsersWithFilters(domain.UserFilters{
+		Page:  page,
 		Limit: limit,
 	})
 	if err != nil {
@@ -312,19 +345,12 @@ func (h *Handler) GetUsers(c *gin.Context) {
 		userResponses = append(userResponses, userResponse)
 	}
 
-	// Calculate pagination info
-	totalPages := (total + int64(limit) - 1) / int64(limit)
-	currentPage := (offset / limit) + 1
+	// Use standardized pagination metadata
+	paginationMeta := h.CalculatePaginationMeta(total, page, limit)
 
 	h.OK(c, gin.H{
-		"users": userResponses,
-		"pagination": gin.H{
-			"total":        total,
-			"limit":        limit,
-			"offset":       offset,
-			"current_page": currentPage,
-			"total_pages":  totalPages,
-		},
+		"users":      userResponses,
+		"pagination": paginationMeta,
 	}, "Users retrieved successfully")
 }
 
@@ -485,66 +511,6 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 }
 
 // Helper methods for better readability
-
-func (h *Handler) extractValidatedRequest(c *gin.Context) domain.CreateUserRequest {
-	var req domain.CreateUserRequest
-	if err := h.ValidateRequest(c, &req); err != nil {
-		h.HandleError(c, err, "register")
-		return domain.CreateUserRequest{}
-	}
-	return req
-}
-
-func (h *Handler) extractValidatedLoginRequest(c *gin.Context) struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required"`
-} {
-	var req struct {
-		Email    string `json:"email" binding:"required,email"`
-		Password string `json:"password" binding:"required"`
-	}
-	if err := h.ValidateRequest(c, &req); err != nil {
-		h.HandleError(c, err, "login")
-		return struct {
-			Email    string `json:"email" binding:"required,email"`
-			Password string `json:"password" binding:"required"`
-		}{}
-	}
-	return req
-}
-
-func (h *Handler) extractUserID(c *gin.Context) uuid.UUID {
-	userIDValue, exists := c.Get("user_id")
-	if !exists {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "User not authenticated", 401), "extract_user_id")
-		return uuid.Nil
-	}
-
-	// Convert to uuid.UUID (handle both string and uuid.UUID types)
-	switch v := userIDValue.(type) {
-	case uuid.UUID:
-		return v
-	case string:
-		parsedUserID, err := uuid.Parse(v)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID format", 401), "extract_user_id")
-			return uuid.Nil
-		}
-		return parsedUserID
-	default:
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID type", 401), "extract_user_id")
-		return uuid.Nil
-	}
-}
-
-func (h *Handler) extractBearerToken(c *gin.Context) string {
-	token, err := h.GetBearerTokenFromHeader(c)
-	if err != nil {
-		h.HandleError(c, err, "extract_bearer_token")
-		return ""
-	}
-	return token
-}
 
 // Logging helper methods
 

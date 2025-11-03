@@ -1,7 +1,7 @@
 package network
 
 import (
-	service "skyclust/internal/application/services"
+	networkservice "skyclust/internal/application/services/network"
 	"skyclust/internal/domain"
 
 	"github.com/gin-gonic/gin"
@@ -9,7 +9,7 @@ import (
 
 // SetupRoutes sets up network resource routes for a specific provider
 // provider: "aws", "gcp", "azure", "ncp"
-func SetupRoutes(router *gin.RouterGroup, networkService *service.NetworkService, credentialService domain.CredentialService, provider string) {
+func SetupRoutes(router *gin.RouterGroup, networkService *networkservice.Service, credentialService domain.CredentialService, provider string) {
 	handler := NewHandler(networkService, credentialService, provider)
 
 	// VPC management

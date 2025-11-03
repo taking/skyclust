@@ -41,7 +41,11 @@ func (h *Handler) GetNotifications(c *gin.Context) {
 // getNotificationsHandler is the core business logic for getting notifications
 func (h *Handler) getNotificationsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_notifications")
+			return
+		}
 		filters := h.parseNotificationFilters(c)
 
 		h.logNotificationsRequest(c, userID, filters)
@@ -61,11 +65,17 @@ func (h *Handler) getNotificationsHandler() handlers.HandlerFunc {
 		}
 
 		responses := h.convertToNotificationResponses(notifications)
-		pagination := h.calculatePagination(total, filters.Limit, filters.Offset)
+
+		// Calculate page from offset for pagination metadata
+		page := (filters.Offset / filters.Limit) + 1
+		if filters.Offset == 0 {
+			page = 1
+		}
+		paginationMeta := h.CalculatePaginationMeta(int64(total), page, filters.Limit)
 
 		h.OK(c, gin.H{
 			"notifications": responses,
-			"pagination":    pagination,
+			"pagination":    paginationMeta,
 		}, "Notifications retrieved successfully")
 	}
 }
@@ -83,26 +93,30 @@ func (h *Handler) GetNotification(c *gin.Context) {
 // getNotificationHandler is the core business logic for getting a notification
 func (h *Handler) getNotificationHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := h.extractUserID(c)
-		notificationID := h.parseNotificationID(c)
-
-		if notificationID == uuid.Nil {
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_notifications")
+			return
+		}
+		notificationID, err := h.ExtractPathParam(c, "id")
+		if err != nil {
+			h.HandleError(c, err, "get_notification")
 			return
 		}
 
-	h.logNotificationRequest(c, userID, notificationID)
+		h.logNotificationRequest(c, userID, notificationID)
 
-	notification, err := h.notificationService.GetNotification(
-		c.Request.Context(),
-		userID.String(),
-		notificationID.String(),
-	)
-	if err != nil {
-		h.HandleError(c, err, "get_notification")
-		return
-	}
+		notification, err := h.notificationService.GetNotification(
+			c.Request.Context(),
+			userID.String(),
+			notificationID.String(),
+		)
+		if err != nil {
+			h.HandleError(c, err, "get_notification")
+			return
+		}
 
-	h.OK(c, notification, "Notification retrieved successfully")
+		h.OK(c, notification, "Notification retrieved successfully")
 	}
 }
 
@@ -120,10 +134,14 @@ func (h *Handler) UpdateNotification(c *gin.Context) {
 // updateNotificationHandler is the core business logic for updating a notification
 func (h *Handler) updateNotificationHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := h.extractUserID(c)
-		notificationID := h.parseNotificationID(c)
-
-		if notificationID == uuid.Nil {
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_notifications")
+			return
+		}
+		notificationID, err := h.ExtractPathParam(c, "id")
+		if err != nil {
+			h.HandleError(c, err, "get_notification")
 			return
 		}
 
@@ -192,7 +210,11 @@ func (h *Handler) UpdateNotifications(c *gin.Context) {
 // updateNotificationsHandler is the core business logic for updating multiple notifications
 func (h *Handler) updateNotificationsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_notifications")
+			return
+		}
 
 		// Parse request body
 		var req UpdateNotificationsRequest
@@ -318,29 +340,33 @@ func (h *Handler) DeleteNotification(c *gin.Context) {
 // deleteNotificationHandler is the core business logic for deleting a notification
 func (h *Handler) deleteNotificationHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := h.extractUserID(c)
-		notificationID := h.parseNotificationID(c)
-
-		if notificationID == uuid.Nil {
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_notifications")
+			return
+		}
+		notificationID, err := h.ExtractPathParam(c, "id")
+		if err != nil {
+			h.HandleError(c, err, "get_notification")
 			return
 		}
 
-	h.logNotificationDeletionAttempt(c, userID, notificationID)
+		h.logNotificationDeletionAttempt(c, userID, notificationID)
 
-	err := h.notificationService.DeleteNotification(
-		c.Request.Context(),
-		userID.String(),
-		notificationID.String(),
-	)
-	if err != nil {
-		h.HandleError(c, err, "delete_notification")
-		return
-	}
+		err = h.notificationService.DeleteNotification(
+			c.Request.Context(),
+			userID.String(),
+			notificationID.String(),
+		)
+		if err != nil {
+			h.HandleError(c, err, "delete_notification")
+			return
+		}
 
-	h.logNotificationDeletionSuccess(c, userID, notificationID)
-	h.OK(c, gin.H{
-		"id": notificationID.String(),
-	}, "Notification deleted successfully")
+		h.logNotificationDeletionSuccess(c, userID, notificationID)
+		h.OK(c, gin.H{
+			"id": notificationID.String(),
+		}, "Notification deleted successfully")
 	}
 }
 
@@ -357,34 +383,38 @@ func (h *Handler) DeleteNotifications(c *gin.Context) {
 // deleteNotificationsHandler is the core business logic for deleting multiple notifications
 func (h *Handler) deleteNotificationsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_notifications")
+			return
+		}
 
-	h.logBulkDeletionAttempt(c, userID)
+		h.logBulkDeletionAttempt(c, userID)
 
-	var req struct {
-		NotificationIDs []string `json:"notification_ids" binding:"required"`
-	}
-	if err := h.ValidateRequest(c, &req); err != nil {
-		h.HandleError(c, err, "delete_notifications")
-		return
-	}
+		var req struct {
+			NotificationIDs []string `json:"notification_ids" binding:"required"`
+		}
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "delete_notifications")
+			return
+		}
 
-	err := h.notificationService.DeleteNotifications(
-		c.Request.Context(),
-		userID.String(),
-		req.NotificationIDs,
-	)
-	if err != nil {
-		h.HandleError(c, err, "delete_notifications")
-		return
-	}
+		err = h.notificationService.DeleteNotifications(
+			c.Request.Context(),
+			userID.String(),
+			req.NotificationIDs,
+		)
+		if err != nil {
+			h.HandleError(c, err, "delete_notifications")
+			return
+		}
 
-	h.logBulkDeletionSuccess(c, userID)
-	h.OK(c, gin.H{
-		"message":            "Notifications deleted successfully",
-		"deleted_count":      len(req.NotificationIDs),
-		"notification_ids":   req.NotificationIDs,
-	}, "Notifications deleted successfully")
+		h.logBulkDeletionSuccess(c, userID)
+		h.OK(c, gin.H{
+			"message":          "Notifications deleted successfully",
+			"deleted_count":    len(req.NotificationIDs),
+			"notification_ids": req.NotificationIDs,
+		}, "Notifications deleted successfully")
 	}
 }
 
@@ -401,20 +431,24 @@ func (h *Handler) GetNotificationPreferences(c *gin.Context) {
 // getNotificationPreferencesHandler is the core business logic for getting notification preferences
 func (h *Handler) getNotificationPreferencesHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_notifications")
+			return
+		}
 
-	h.logPreferencesRequest(c, userID)
+		h.logPreferencesRequest(c, userID)
 
-	preferences, err := h.notificationService.GetNotificationPreferences(
-		c.Request.Context(),
-		userID.String(),
-	)
-	if err != nil {
-		h.HandleError(c, err, "get_notification_preferences")
-		return
-	}
+		preferences, err := h.notificationService.GetNotificationPreferences(
+			c.Request.Context(),
+			userID.String(),
+		)
+		if err != nil {
+			h.HandleError(c, err, "get_notification_preferences")
+			return
+		}
 
-	h.OK(c, preferences, "Notification preferences retrieved successfully")
+		h.OK(c, preferences, "Notification preferences retrieved successfully")
 	}
 }
 
@@ -433,8 +467,17 @@ func (h *Handler) UpdateNotificationPreferences(c *gin.Context) {
 // updateNotificationPreferencesHandler is the core business logic for updating notification preferences
 func (h *Handler) updateNotificationPreferencesHandler(req domain.UpdateNotificationPreferencesRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		req = h.extractValidatedUpdatePreferencesRequest(c)
-		userID := h.extractUserID(c)
+		var req domain.UpdateNotificationPreferencesRequest
+		if err := h.ExtractValidatedRequest(c, &req); err != nil {
+			h.HandleError(c, err, "update_notification_preferences")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_notifications")
+			return
+		}
 
 		h.logPreferencesUpdateAttempt(c, userID, req)
 
@@ -538,20 +581,24 @@ func (h *Handler) GetNotificationStats(c *gin.Context) {
 // getNotificationStatsHandler is the core business logic for getting notification statistics
 func (h *Handler) getNotificationStatsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_notifications")
+			return
+		}
 
-	h.logStatsRequest(c, userID)
+		h.logStatsRequest(c, userID)
 
-	stats, err := h.notificationService.GetNotificationStats(
-		c.Request.Context(),
-		userID.String(),
-	)
-	if err != nil {
-		h.HandleError(c, err, "get_notification_stats")
-		return
-	}
+		stats, err := h.notificationService.GetNotificationStats(
+			c.Request.Context(),
+			userID.String(),
+		)
+		if err != nil {
+			h.HandleError(c, err, "get_notification_stats")
+			return
+		}
 
-	h.OK(c, stats, "Notification statistics retrieved successfully")
+		h.OK(c, stats, "Notification statistics retrieved successfully")
 	}
 }
 
@@ -568,44 +615,48 @@ func (h *Handler) SendTestNotification(c *gin.Context) {
 // sendTestNotificationHandler is the core business logic for sending a test notification
 func (h *Handler) sendTestNotificationHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_notifications")
+			return
+		}
 
-	h.logTestNotificationAttempt(c, userID)
+		h.logTestNotificationAttempt(c, userID)
 
-	// Create test notification
-	testNotification := &domain.Notification{
-		ID:        uuid.New().String(),
-		UserID:    userID.String(),
-		Type:      "info",
-		Title:     "Test Notification",
-		Message:   "This is a test notification",
-		Category:  "system",
-		Priority:  "low",
-		IsRead:    false,
-		CreatedAt: time.Now(),
-	}
+		// Create test notification
+		testNotification := &domain.Notification{
+			ID:        uuid.New().String(),
+			UserID:    userID.String(),
+			Type:      "info",
+			Title:     "Test Notification",
+			Message:   "This is a test notification",
+			Category:  "system",
+			Priority:  "low",
+			IsRead:    false,
+			CreatedAt: time.Now(),
+		}
 
-	err := h.notificationService.SendNotification(
-		c.Request.Context(),
-		userID.String(),
-		testNotification,
-	)
-	if err != nil {
-		h.HandleError(c, err, "send_test_notification")
-		return
-	}
+		err = h.notificationService.SendNotification(
+			c.Request.Context(),
+			userID.String(),
+			testNotification,
+		)
+		if err != nil {
+			h.HandleError(c, err, "send_test_notification")
+			return
+		}
 
-	h.logTestNotificationSuccess(c, userID, gin.H{
-		"id":         testNotification.ID,
-		"title":      testNotification.Title,
-		"message":    testNotification.Message,
-		"type":       testNotification.Type,
-		"created_at": testNotification.CreatedAt,
-	})
-	h.OK(c, gin.H{
-		"message":      "Test notification sent",
-		"notification": testNotification,
-	}, "Test notification sent successfully")
+		h.logTestNotificationSuccess(c, userID, gin.H{
+			"id":         testNotification.ID,
+			"title":      testNotification.Title,
+			"message":    testNotification.Message,
+			"type":       testNotification.Type,
+			"created_at": testNotification.CreatedAt,
+		})
+		h.OK(c, gin.H{
+			"message":      "Test notification sent",
+			"notification": testNotification,
+		}, "Test notification sent successfully")
 	}
 }
 
@@ -617,39 +668,6 @@ type NotificationFilters struct {
 	UnreadOnly bool
 	Category   string
 	Priority   string
-}
-
-func (h *Handler) extractUserID(c *gin.Context) uuid.UUID {
-	userIDValue, exists := c.Get("user_id")
-	if !exists {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "User not authenticated", 401), "extract_user_id")
-		return uuid.Nil
-	}
-	
-	// Convert to uuid.UUID (handle both string and uuid.UUID types)
-	switch v := userIDValue.(type) {
-	case uuid.UUID:
-		return v
-	case string:
-		parsedUserID, err := uuid.Parse(v)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID format", 401), "extract_user_id")
-			return uuid.Nil
-		}
-		return parsedUserID
-	default:
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID type", 401), "extract_user_id")
-		return uuid.Nil
-	}
-}
-
-func (h *Handler) extractValidatedUpdatePreferencesRequest(c *gin.Context) domain.UpdateNotificationPreferencesRequest {
-	var req domain.UpdateNotificationPreferencesRequest
-	if err := h.ValidateRequest(c, &req); err != nil {
-		h.HandleError(c, err, "update_notification_preferences")
-		return domain.UpdateNotificationPreferencesRequest{}
-	}
-	return req
 }
 
 func (h *Handler) parseNotificationFilters(c *gin.Context) NotificationFilters {
@@ -680,19 +698,6 @@ func (h *Handler) parseNotificationFilters(c *gin.Context) NotificationFilters {
 	}
 }
 
-func (h *Handler) calculatePagination(total int, limit, offset int) gin.H {
-	totalPages := (total + limit - 1) / limit
-	currentPage := (offset / limit) + 1
-
-	return gin.H{
-		"total":        total,
-		"limit":        limit,
-		"offset":       offset,
-		"current_page": currentPage,
-		"total_pages":  totalPages,
-	}
-}
-
 func (h *Handler) convertToNotificationResponses(notifications []*domain.Notification) []*NotificationResponse {
 	responses := make([]*NotificationResponse, len(notifications))
 	for i, notification := range notifications {
@@ -709,16 +714,6 @@ func (h *Handler) convertToNotificationResponses(notifications []*domain.Notific
 		}
 	}
 	return responses
-}
-
-func (h *Handler) parseNotificationID(c *gin.Context) uuid.UUID {
-	notificationIDStr := c.Param("id")
-	notificationID, err := uuid.Parse(notificationIDStr)
-	if err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid notification ID format", 400), "parse_notification_id")
-		return uuid.Nil
-	}
-	return notificationID
 }
 
 // Logging helper methods
@@ -740,14 +735,14 @@ func (h *Handler) logNotificationRequest(c *gin.Context, userID uuid.UUID, notif
 func (h *Handler) logNotificationUpdateSuccess(c *gin.Context, userID uuid.UUID, notificationID uuid.UUID, readStatus bool) {
 	h.LogBusinessEvent(c, "notification_updated", userID.String(), notificationID.String(), map[string]interface{}{
 		"notification_id": notificationID.String(),
-		"read":           readStatus,
+		"read":            readStatus,
 	})
 }
 
 func (h *Handler) logNotificationsUpdateSuccess(c *gin.Context, userID uuid.UUID, updatedCount int64, readStatus bool) {
 	h.LogBusinessEvent(c, "notifications_updated", userID.String(), "", map[string]interface{}{
 		"updated_count": updatedCount,
-		"read":           readStatus,
+		"read":          readStatus,
 	})
 }
 

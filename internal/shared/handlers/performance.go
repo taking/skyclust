@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"skyclust/internal/shared/logging"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -39,7 +40,7 @@ func (pt *PerformanceTracker) TrackRequest(c *gin.Context, userID string, status
 	duration := pt.Finish()
 
 	// Log performance metrics
-	LogBusinessEvent(c, pt.operation, userID, "", map[string]interface{}{
+	logging.LogBusinessEvent(c, pt.operation, userID, "", map[string]interface{}{
 		"duration":    duration.String(),
 		"status_code": statusCode,
 	})

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"skyclust/internal/domain"
-	service "skyclust/internal/application/services"
+	exportservice "skyclust/internal/application/services/export"
 	"skyclust/internal/shared/handlers"
 	"skyclust/internal/shared/readability"
 	"sync"
@@ -81,7 +81,7 @@ func (s *ExportStorage) Delete(id string) {
 type Handler struct {
 	*handlers.BaseHandler
 	readabilityHelper *readability.ReadabilityHelper
-	exportService     *service.ExportService
+	exportService     *exportservice.Service
 	exportStorage     *ExportStorage
 }
 
@@ -95,7 +95,7 @@ func NewHandler() *Handler {
 }
 
 // SetExportService sets the export service (for dependency injection)
-func (h *Handler) SetExportService(exportService *service.ExportService) {
+func (h *Handler) SetExportService(exportService *exportservice.Service) {
 	h.exportService = exportService
 }
 
@@ -120,8 +120,9 @@ func (h *Handler) exportDataHandler(req gin.H) handlers.HandlerFunc {
 			return
 		}
 
-		userID := h.extractUserID(c)
-		if userID == uuid.Nil {
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "export_data")
 			return
 		}
 
@@ -157,42 +158,56 @@ func (h *Handler) exportDataHandler(req gin.H) handlers.HandlerFunc {
 		// Process export asynchronously
 		go func() {
 			ctx := context.Background()
-			serviceReq := service.ExportRequest{
-				UserID:      userID.String(),
-				WorkspaceID: exportReq.WorkspaceID,
-				Type:        service.ExportType(exportReq.Type),
-				Format:      service.ExportFormat(exportReq.Format),
-				Filters:     exportReq.Filters,
+			serviceReq := map[string]interface{}{
+				"user_id":      userID.String(),
+				"workspace_id": exportReq.WorkspaceID,
+				"type":          exportReq.Type,
+				"format":        exportReq.Format,
+				"filters":       exportReq.Filters,
 			}
 
 			if exportReq.DateFrom != nil {
-				serviceReq.DateFrom = exportReq.DateFrom
+				serviceReq["date_from"] = exportReq.DateFrom
 			}
 			if exportReq.DateTo != nil {
-				serviceReq.DateTo = exportReq.DateTo
+				serviceReq["date_to"] = exportReq.DateTo
+			}
+
+			// Convert map to ExportRequest
+			exportType := exportservice.ExportType(exportReq.Type)
+			exportFormat := exportservice.ExportFormat(exportReq.Format)
+			serviceExportReq := exportservice.ExportRequest{
+				UserID:      serviceReq["user_id"].(string),
+				WorkspaceID: serviceReq["workspace_id"].(string),
+				Type:        exportType,
+				Format:      exportFormat,
+				Filters:     exportReq.Filters,
+			}
+			if dateFrom, ok := serviceReq["date_from"].(*time.Time); ok {
+				serviceExportReq.DateFrom = dateFrom
+			}
+			if dateTo, ok := serviceReq["date_to"].(*time.Time); ok {
+				serviceExportReq.DateTo = dateTo
 			}
 
 			// Perform export based on type
 			var exportData []byte
-			var result *service.ExportResult
+			var result *exportservice.ExportResult
 			var err error
 
 			if h.exportService == nil {
 				err = fmt.Errorf("export service not initialized")
 			} else {
 				// Call export service methods
-				// Note: ExportService methods create data internally, but don't return it
-				// For now, we'll store the result without actual data
-				// In a real implementation, ExportService would return both result and data
-				switch serviceReq.Type {
-				case service.ExportTypeVMs:
-					result, err = h.exportService.ExportVMs(ctx, serviceReq)
-				case service.ExportTypeWorkspaces:
-					result, err = h.exportService.ExportWorkspaces(ctx, serviceReq)
-				case service.ExportTypeCredentials:
-					result, err = h.exportService.ExportCredentials(ctx, serviceReq)
-				case service.ExportTypeAuditLogs:
-					result, err = h.exportService.ExportAuditLogs(ctx, serviceReq)
+				switch exportType {
+				case exportservice.ExportTypeVMs:
+					result, err = h.exportService.ExportVMs(ctx, serviceExportReq)
+				case exportservice.ExportTypeWorkspaces:
+					result, err = h.exportService.ExportWorkspaces(ctx, serviceExportReq)
+				case exportservice.ExportTypeCredentials:
+					result, err = h.exportService.ExportCredentials(ctx, serviceExportReq)
+				case exportservice.ExportTypeAuditLogs:
+					result, err = h.exportService.ExportAuditLogs(ctx, serviceExportReq)
 				default:
 					err = fmt.Errorf("unsupported export type: %s", exportReq.Type)
 				}
@@ -268,7 +283,11 @@ func (h *Handler) GetExportHistory(c *gin.Context) {
 // getExportHistoryHandler is the core business logic for getting export history
 func (h *Handler) getExportHistoryHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_export_history")
+			return
+		}
 
 		h.logExportHistoryRequest(c, userID)
 
@@ -294,8 +313,9 @@ func (h *Handler) GetExportStatus(c *gin.Context) {
 // getExportStatusHandler is the core business logic for getting export status
 func (h *Handler) getExportStatusHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := h.extractUserID(c)
-		if userID == uuid.Nil {
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "export_data")
 			return
 		}
 
@@ -368,8 +388,9 @@ func (h *Handler) GetExportFile(c *gin.Context) {
 // getExportFileHandler is the core business logic for getting export file
 func (h *Handler) getExportFileHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := h.extractUserID(c)
-		if userID == uuid.Nil {
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "export_data")
 			return
 		}
 
@@ -434,30 +455,6 @@ func (h *Handler) getExportFileHandler() handlers.HandlerFunc {
 }
 
 // Helper methods for better readability
-
-func (h *Handler) extractUserID(c *gin.Context) uuid.UUID {
-	userIDValue, exists := c.Get("user_id")
-	if !exists {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "User not authenticated", 401), "extract_user_id")
-		return uuid.Nil
-	}
-	
-	// Convert to uuid.UUID (handle both string and uuid.UUID types)
-	switch v := userIDValue.(type) {
-	case uuid.UUID:
-		return v
-	case string:
-		parsedUserID, err := uuid.Parse(v)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID format", 401), "extract_user_id")
-			return uuid.Nil
-		}
-		return parsedUserID
-	default:
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID type", 401), "extract_user_id")
-		return uuid.Nil
-	}
-}
 
 func (h *Handler) parseExportID(c *gin.Context) string {
 	exportID := c.Param("id")

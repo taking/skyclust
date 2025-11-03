@@ -22,8 +22,8 @@ type User struct {
 
 	// Relationships
 	// Note: Credentials are now workspace-based, not user-based
-	AuditLogs   []AuditLog   `json:"audit_logs,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
-	UserRoles   []UserRole   `json:"user_roles,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+	AuditLogs []AuditLog `json:"audit_logs,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+	UserRoles []UserRole `json:"user_roles,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 }
 
 // TableName specifies the table name for User
@@ -169,6 +169,13 @@ type OIDCService interface {
 	ExchangeCode(ctx context.Context, provider, code, state string) (*User, string, error)
 	EndSession(ctx context.Context, userID uuid.UUID, provider, idToken, postLogoutRedirectURI string) error
 	GetLogoutURL(ctx context.Context, provider, postLogoutRedirectURI string) (string, error)
+
+	// OIDC Provider management
+	CreateProvider(ctx context.Context, userID uuid.UUID, provider *OIDCProvider) (*OIDCProvider, error)
+	GetUserProviders(ctx context.Context, userID uuid.UUID) ([]*OIDCProvider, error)
+	GetProvider(ctx context.Context, userID uuid.UUID, providerID uuid.UUID) (*OIDCProvider, error)
+	UpdateProvider(ctx context.Context, userID uuid.UUID, providerID uuid.UUID, provider *OIDCProvider) (*OIDCProvider, error)
+	DeleteProvider(ctx context.Context, userID uuid.UUID, providerID uuid.UUID) error
 }
 
 // LogoutService defines the interface for logout operations

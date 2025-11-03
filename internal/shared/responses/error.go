@@ -89,7 +89,7 @@ func (eb *ErrorBuilder) ValidationError(c *gin.Context, errors map[string]string
 	response := APIResponse{
 		Success: false,
 		Error: &Error{
-			Code:    "VALIDATION_ERROR",
+			Code:    string(domain.ErrCodeValidationFailed),
 			Message: "Validation failed",
 		},
 		RequestID: getRequestID(c),

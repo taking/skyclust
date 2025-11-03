@@ -59,6 +59,7 @@ type RepositoryContainer struct {
 	NotificationRepository            domain.NotificationRepository
 	NotificationPreferencesRepository domain.NotificationPreferencesRepository
 	OIDCProviderRepository           domain.OIDCProviderRepository
+	RBACRepository                    domain.RBACRepository
 }
 
 // ServiceContainer holds service dependencies

@@ -45,12 +45,16 @@ func (h *Handler) createWorkspaceHandler(req domain.CreateWorkspaceRequest) hand
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		span := telemetry.SpanFromContext(ctx)
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "create_workspace")
+			return
+		}
 
 		// Extract request from body (JSON binding only, without OwnerID validation)
 		var req domain.CreateWorkspaceRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeValidationFailed, "Request validation failed", 400), "create_workspace")
+		if err := h.ExtractValidatedRequest(c, &req); err != nil {
+			h.HandleError(c, err, "create_workspace")
 			return
 		}
 
@@ -92,11 +96,16 @@ func (h *Handler) getWorkspacesHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		span := telemetry.SpanFromContext(ctx)
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_workspaces")
+			return
+		}
 
 		h.logWorkspacesRequest(c, userID)
 
-		limit, offset := h.ParsePaginationParams(c)
+		// Parse pagination parameters (page/limit based)
+		page, limit := h.ParsePageLimitParams(c)
 
 		workspaces, err := h.workspaceService.GetUserWorkspaces(ctx, userID.String())
 		if err != nil {
@@ -104,16 +113,14 @@ func (h *Handler) getWorkspacesHandler() handlers.HandlerFunc {
 			return
 		}
 
+		// Use standardized pagination metadata
+		total := int64(len(workspaces))
+		paginationMeta := h.CalculatePaginationMeta(total, page, limit)
+
 		h.setTelemetryAttributes(span, userID, "", "", "get_workspaces")
 		h.OK(c, gin.H{
 			"workspaces": workspaces,
-			"pagination": gin.H{
-				"total":        len(workspaces),
-				"limit":        limit,
-				"offset":       offset,
-				"current_page": (offset / limit) + 1,
-				"total_pages":  (len(workspaces) + limit - 1) / limit,
-			},
+			"pagination": paginationMeta,
 		}, "Workspaces retrieved successfully")
 	}
 }
@@ -133,8 +140,16 @@ func (h *Handler) getWorkspaceHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		span := telemetry.SpanFromContext(ctx)
-		workspaceID := h.parseWorkspaceID(c)
-		userID := h.extractUserID(c)
+		workspaceID, err := h.ExtractPathParam(c, "id")
+		if err != nil {
+			h.HandleError(c, err, "get_workspace")
+			return
+		}
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_workspace")
+			return
+		}
 
 		h.logWorkspaceRequest(c, userID, workspaceID)
 
@@ -166,9 +181,21 @@ func (h *Handler) updateWorkspaceHandler(req domain.UpdateWorkspaceRequest) hand
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		span := telemetry.SpanFromContext(ctx)
-		workspaceID := h.parseWorkspaceID(c)
-		req = h.extractValidatedUpdateRequest(c)
-		userID := h.extractUserID(c)
+		workspaceID, err := h.ExtractPathParam(c, "id")
+		if err != nil {
+			h.HandleError(c, err, "update_workspace")
+			return
+		}
+		var req domain.UpdateWorkspaceRequest
+		if err := h.ExtractValidatedRequest(c, &req); err != nil {
+			h.HandleError(c, err, "update_workspace")
+			return
+		}
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "update_workspace")
+			return
+		}
 
 		// Get workspace to check permissions
 		workspace, err := h.workspaceService.GetWorkspace(ctx, workspaceID.String())
@@ -226,12 +253,20 @@ func (h *Handler) deleteWorkspaceHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		span := telemetry.SpanFromContext(ctx)
-		workspaceID := h.parseWorkspaceID(c)
-		userID := h.extractUserID(c)
+		workspaceID, err := h.ExtractPathParam(c, "id")
+		if err != nil {
+			h.HandleError(c, err, "delete_workspace")
+			return
+		}
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "delete_workspace")
+			return
+		}
 
 		h.logWorkspaceDeletionAttempt(c, userID, workspaceID)
 
-		err := h.workspaceService.DeleteWorkspace(ctx, workspaceID.String())
+		err = h.workspaceService.DeleteWorkspace(ctx, workspaceID.String())
 		if err != nil {
 			h.HandleError(c, err, "delete_workspace")
 			return
@@ -244,49 +279,6 @@ func (h *Handler) deleteWorkspaceHandler() handlers.HandlerFunc {
 }
 
 // Helper methods for better readability
-
-func (h *Handler) extractValidatedUpdateRequest(c *gin.Context) domain.UpdateWorkspaceRequest {
-	var req domain.UpdateWorkspaceRequest
-	if err := h.ValidateRequest(c, &req); err != nil {
-		h.HandleError(c, err, "update_workspace")
-		return domain.UpdateWorkspaceRequest{}
-	}
-	return req
-}
-
-func (h *Handler) extractUserID(c *gin.Context) uuid.UUID {
-	userIDValue, exists := c.Get("user_id")
-	if !exists {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "User not authenticated", 401), "extract_user_id")
-		return uuid.Nil
-	}
-	
-	// Convert to uuid.UUID (handle both string and uuid.UUID types)
-	switch v := userIDValue.(type) {
-	case uuid.UUID:
-		return v
-	case string:
-		parsedUserID, err := uuid.Parse(v)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID format", 401), "extract_user_id")
-			return uuid.Nil
-		}
-		return parsedUserID
-	default:
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID type", 401), "extract_user_id")
-		return uuid.Nil
-	}
-}
-
-func (h *Handler) parseWorkspaceID(c *gin.Context) uuid.UUID {
-	workspaceIDStr := c.Param("id")
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid workspace ID format", 400), "parse_workspace_id")
-		return uuid.Nil
-	}
-	return workspaceID
-}
 
 func (h *Handler) setTelemetryAttributes(span telemetry.Span, userID uuid.UUID, workspaceID, workspaceName, action string) {
 	if span != nil {

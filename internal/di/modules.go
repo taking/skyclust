@@ -5,9 +5,27 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
-	service "skyclust/internal/application/services"
+	auditlogservice "skyclust/internal/application/services/audit_log"
+	authservice "skyclust/internal/application/services/auth"
+	cacheservice "skyclust/internal/application/services/cache"
+	cloudproviderservice "skyclust/internal/application/services/cloud_provider"
+	costanalysisservice "skyclust/internal/application/services/cost_analysis"
+	credentialservice "skyclust/internal/application/services/credential"
+	eventservice "skyclust/internal/application/services/event"
+	exportservice "skyclust/internal/application/services/export"
+	kubernetesservice "skyclust/internal/application/services/kubernetes"
+	logoutservice "skyclust/internal/application/services/logout"
+	networkservice "skyclust/internal/application/services/network"
+	notificationservice "skyclust/internal/application/services/notification"
+	oidcservice "skyclust/internal/application/services/oidc"
+	rbacservice "skyclust/internal/application/services/rbac"
+	systemmonitoringservice "skyclust/internal/application/services/system_monitoring"
+	userservice "skyclust/internal/application/services/user"
+	vmservice "skyclust/internal/application/services/vm"
+	workspaceservice "skyclust/internal/application/services/workspace"
 	"skyclust/internal/domain"
 	"skyclust/internal/infrastructure/database/postgres"
+	"skyclust/internal/infrastructure/messaging"
 	"skyclust/pkg/cache"
 	"skyclust/pkg/logger"
 	"skyclust/pkg/security"
@@ -32,6 +50,7 @@ func NewRepositoryModule(db *gorm.DB, redisClient *redis.Client) *RepositoryModu
 	auditLogRepo := postgres.NewAuditLogRepository(db)
 	notificationRepo := postgres.NewNotificationRepository(db)
 	notificationPreferencesRepo := postgres.NewNotificationPreferencesRepository(db)
+	rbacRepo := postgres.NewRBACRepository(db)
 
 	logger.Info("Repository module initialized")
 
@@ -44,7 +63,8 @@ func NewRepositoryModule(db *gorm.DB, redisClient *redis.Client) *RepositoryModu
 			AuditLogRepository:                auditLogRepo,
 			NotificationRepository:            notificationRepo,
 			NotificationPreferencesRepository: notificationPreferencesRepo,
-			OIDCProviderRepository:           nil, // Will be set later after encryptor is available
+			OIDCProviderRepository:            nil, // Will be set later after encryptor is available
+			RBACRepository:                    rbacRepo,
 		},
 	}
 }
@@ -71,81 +91,31 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 		}
 	}
 
-	// Create security hasher
-	logger.Info("Creating security hasher...")
-	// hasher := security.NewHasher() - TODO: Use when implementing services
-	logger.Info("Security hasher created")
-
-	// Initialize TokenBlacklist with Redis client
-	logger.Info("Initializing TokenBlacklist...")
-	if redisClient == nil {
-		logger.Warn("Redis client not available, token blacklisting disabled")
-	}
-
-	// blacklist := cache.NewTokenBlacklist(redisClient) - TODO: Use when implementing services
-	logger.Info("TokenBlacklist created")
-
-	// Create RBAC service (requires database for role/permission management)
-	logger.Info("Creating RBAC service...")
-	logger.Info("RBAC service created")
-
-	// Create Auth service with all dependencies
-	logger.Info("Creating Auth service...")
-	logger.Info("Auth service created")
-
-	// Create Audit Log service first (needed by other services)
-	logger.Info("Creating Audit Log service...")
-	logger.Info("Audit Log service created")
-
-	// Create User service
-	logger.Info("Creating User service...")
-	logger.Info("User service created")
-
-	// Create Credential service
-	// Note: Requires encryption key from config
-	logger.Info("Credential service created")
-
-	// Create Workspace service
-	// Note: Requires messaging bus
-	logger.Info("Workspace service created")
-
-	// Create VM service
-	// Note: Requires cloud provider service and messaging bus
-	logger.Info("VM service created")
-
-	// Create OIDC service
-	logger.Info("OIDC service created")
-
-	// Create Logout service
-	logger.Info("Logout service created")
+	// Note: Security components (hasher, blacklist) are created later after config is available
 
 	// Create System Monitoring service
-	logger.Info("Creating System Monitoring service...")
-	systemMonitoringService := service.NewSystemMonitoringService(
+	systemMonitoringService := systemmonitoringservice.NewService(
 		logger.DefaultLogger.GetLogger(),
-		nil,         // Config will be set later or use defaults
-		redisClient, // Redis client for health checks
+		nil,          // Config will be set later or use defaults
+		config.Cache, // Cache interface for health checks
 	)
-	logger.Info("System Monitoring service created")
-
-	// Create actual services
-	logger.Info("Creating actual services...")
 
 	// Create security components
-	logger.Info("Creating security components...")
 	hasher := security.NewBcryptHasher(12) // Use bcrypt with cost 12
 	encryptor := security.NewAESEncryptor([]byte(config.EncryptionKey))
 	blacklist := cache.NewTokenBlacklist(redisClient)
-	logger.Info("Security components created")
+
+	// Create messaging bus (shared across services)
+	messagingBus := messaging.NewLocalBus()
+
+	// Create EventService (requires messaging bus)
+	eventService := eventservice.NewService(messagingBus)
 
 	// Create RBACService first (needed by AuthService)
-	logger.Info("Creating RBAC service...")
-	rbacService := service.NewRBACService(db)
-	logger.Info("RBAC service created")
+	rbacService := rbacservice.NewService(repos.RBACRepository)
 
 	// Create AuthService
-	logger.Info("Creating Auth service...")
-	authService := service.NewAuthService(
+	authService := authservice.NewService(
 		repos.UserRepository,
 		repos.AuditLogRepository,
 		rbacService,
@@ -154,125 +124,84 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 		config.JWTSecret,
 		config.JWTExpiry,
 	)
-	logger.Info("Auth service created")
 
 	// Create UserService
-	logger.Info("Creating User service...")
-	userService := service.NewUserService(repos.UserRepository, hasher, repos.AuditLogRepository)
-	logger.Info("User service created")
+	userService := userservice.NewService(repos.UserRepository, hasher, repos.AuditLogRepository)
 
 	// Create CredentialService
-	logger.Info("Creating Credential service...")
-	credentialService := service.NewCredentialService(repos.CredentialRepository, repos.AuditLogRepository, encryptor)
-	logger.Info("Credential service created")
+	credentialService := credentialservice.NewService(repos.CredentialRepository, repos.AuditLogRepository, encryptor)
 
 	// Create Kubernetes service
-	logger.Info("Creating Kubernetes service...")
-
-	k8sService := service.NewKubernetesService(credentialService, logger.DefaultLogger.GetLogger())
-
-	logger.Info("Kubernetes service created")
+	k8sService := kubernetesservice.NewService(credentialService, logger.DefaultLogger.GetLogger())
 
 	// Create Network service (after credentialService is created)
-	logger.Info("Creating Network service...")
-	networkService := service.NewNetworkService(credentialService, logger.DefaultLogger.GetLogger())
-	logger.Info("Network service created")
+	networkService := networkservice.NewService(credentialService, logger.DefaultLogger.GetLogger())
 
 	// Create AuditLogService
-	logger.Info("Creating Audit Log service...")
-	auditLogService := service.NewAuditLogService(repos.AuditLogRepository)
-	logger.Info("Audit Log service created")
+	auditLogService := auditlogservice.NewService(repos.AuditLogRepository)
 
 	// Create CacheService for OIDC state storage
-	logger.Info("Creating Cache service...")
-	cacheService := service.NewCacheService(config.Cache)
-	logger.Info("Cache service created")
+	cacheService := cacheservice.NewService(config.Cache)
 
 	// Create OIDCProviderRepository (needs encryptor)
-	logger.Info("Creating OIDC Provider repository...")
 	oidcProviderRepo := postgres.NewOIDCProviderRepository(db, encryptor)
 	repos.OIDCProviderRepository = oidcProviderRepo
-	logger.Info("OIDC Provider repository created")
 
 	// Create OIDCService
-	logger.Info("Creating OIDC service...")
-	oidcService := service.NewOIDCService(repos.UserRepository, repos.AuditLogRepository, authService, cacheService, oidcProviderRepo)
-	logger.Info("OIDC service created")
+	oidcService := oidcservice.NewService(repos.UserRepository, repos.AuditLogRepository, authService, cacheService, oidcProviderRepo)
 
 	// Create WorkspaceService
-	logger.Info("Creating Workspace service...")
-	workspaceService := service.NewWorkspaceService(repos.WorkspaceRepository, repos.UserRepository, nil, repos.AuditLogRepository) // TODO: Add messaging bus
-	logger.Info("Workspace service created")
+	workspaceService := workspaceservice.NewService(repos.WorkspaceRepository, repos.UserRepository, eventService, repos.AuditLogRepository)
 
 	// Create NotificationService
-	logger.Info("Creating Notification service...")
-	notificationService := service.NewNotificationService(
+	notificationService := notificationservice.NewService(
 		logger.DefaultLogger.GetLogger(),
 		repos.NotificationRepository,
 		repos.NotificationPreferencesRepository,
 		repos.AuditLogRepository,
 		repos.UserRepository,
 		repos.WorkspaceRepository,
-		nil, // TODO: Add EventService
+		eventService,
 	)
-	logger.Info("Notification service created")
 
 	// Create CloudProviderService first (needed by VMService)
-	logger.Info("Creating Cloud Provider service...")
-	cloudProviderService := service.NewCloudProviderService()
-	logger.Info("Cloud Provider service created")
+	cloudProviderService := cloudproviderservice.NewService()
 
 	// Create VMService
-	logger.Info("Creating VM service...")
-	vmService := service.NewVMService(
+	vmService := vmservice.NewService(
 		repos.VMRepository,
 		repos.WorkspaceRepository,
 		cloudProviderService,
-		nil, // TODO: Add messaging.Bus
+		eventService,
 		repos.AuditLogRepository,
 	)
-	logger.Info("VM service created")
 
 	// Create ExportService
-	logger.Info("Creating Export service...")
-	exportService := service.NewExportService(
+	exportService := exportservice.NewService(
 		logger.DefaultLogger.GetLogger(),
 		repos.VMRepository,
 		repos.WorkspaceRepository,
 		repos.CredentialRepository,
 		repos.AuditLogRepository,
 	)
-	logger.Info("Export service created")
 
 	// Create CostAnalysisService
-	logger.Info("Creating Cost Analysis service...")
-	costAnalysisService := service.NewCostAnalysisService(
+	costAnalysisService := costanalysisservice.NewService(
 		repos.VMRepository,
 		repos.CredentialRepository,
 		repos.WorkspaceRepository,
 		repos.AuditLogRepository,
 		credentialService,
-		k8sService, // Inject KubernetesService for cluster cost calculation
+		k8sService,   // Inject KubernetesService for cluster cost calculation
+		config.Cache, // Inject cache for cost analysis result caching
 	)
-	logger.Info("Cost Analysis service created")
 
 	// Create LogoutService
-	logger.Info("Creating Logout service...")
-	logoutService := service.NewLogoutService(
+	logoutService := logoutservice.NewService(
 		blacklist,
 		oidcService,
 		repos.AuditLogRepository,
 	)
-	logger.Info("Logout service created")
-
-	logger.Info("All services created successfully")
-
-	// Debug: Check if KubernetesService is properly created
-	if k8sService != nil {
-		logger.Info("KubernetesService is not nil, assigning to container")
-	} else {
-		logger.Warn("KubernetesService is nil!")
-	}
 
 	return &ServiceModule{
 		services: &ServiceContainer{
@@ -292,7 +221,7 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 			ExportService:           exportService,
 			CostAnalysisService:     costAnalysisService,
 			CloudProviderService:    cloudProviderService,
-			BusinessRuleService:     nil, // TODO: Implement BusinessRuleService
+			BusinessRuleService:     nil, // BusinessRuleService is in DomainContainer, not ServiceContainer
 		},
 	}
 }
@@ -330,6 +259,7 @@ func NewDomainModule(repos *RepositoryContainer) *DomainModule {
 	userDomainService := domain.NewUserDomainService(domainService)
 	workspaceDomainService := domain.NewWorkspaceDomainService(domainService)
 	vmDomainService := domain.NewVMDomainService(domainService)
+	businessRuleService := domain.NewBusinessRuleService(domainService)
 
 	return &DomainModule{
 		domain: &DomainContainer{
@@ -337,6 +267,7 @@ func NewDomainModule(repos *RepositoryContainer) *DomainModule {
 			UserDomainService:      userDomainService,
 			WorkspaceDomainService: workspaceDomainService,
 			VMDomainService:        vmDomainService,
+			BusinessRuleService:    businessRuleService,
 		},
 	}
 }
@@ -355,18 +286,14 @@ type InfrastructureModule struct {
 func NewInfrastructureModule(db *gorm.DB, redisClient *redis.Client) *InfrastructureModule {
 	logger.Info("Initializing infrastructure module...")
 
-	// Initialize messaging bus
-	// messagingBus := messaging.NewBus() - TODO: Implement messaging bus
-
-	// Initialize notification service
-	// notificationService := notification.NewService() - TODO: Implement notification service
+	// Note: Messaging bus and notification service are initialized in ServiceModule
+	// as they require application-level dependencies
 
 	logger.Info("Infrastructure module initialized")
 
 	return &InfrastructureModule{
 		infrastructure: &InfrastructureContainer{
-			// MessagingBus:      messagingBus, - TODO: Implement messaging bus
-			// NotificationService: notificationService, - TODO: Implement notification service
+			// Infrastructure-level components can be added here in the future
 		},
 	}
 }

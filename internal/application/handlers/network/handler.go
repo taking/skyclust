@@ -1,8 +1,7 @@
 package network
 
 import (
-	"skyclust/internal/application/dto"
-	service "skyclust/internal/application/services"
+	networkservice "skyclust/internal/application/services/network"
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
 	"skyclust/internal/shared/readability"
@@ -14,14 +13,14 @@ import (
 // Handler handles network resource HTTP requests using improved patterns
 type Handler struct {
 	*handlers.BaseHandler
-	networkService    *service.NetworkService
+	networkService    *networkservice.Service
 	credentialService domain.CredentialService
 	provider          string
 	readabilityHelper *readability.ReadabilityHelper
 }
 
 // NewHandler creates a new network handler
-func NewHandler(networkService *service.NetworkService, credentialService domain.CredentialService, provider string) *Handler {
+func NewHandler(networkService *networkservice.Service, credentialService domain.CredentialService, provider string) *Handler {
 	return &Handler{
 		BaseHandler:       handlers.NewBaseHandler("network"),
 		networkService:    networkService,
@@ -53,7 +52,11 @@ func (h *Handler) listVPCsHandler() handlers.HandlerFunc {
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
 		region := h.parseRegion(c)
 
 		if region == "" {
@@ -62,7 +65,7 @@ func (h *Handler) listVPCsHandler() handlers.HandlerFunc {
 
 		h.logVPCsListAttempt(c, userID, credential.ID, region)
 
-		req := dto.ListVPCsRequest{
+		req := networkservice.ListVPCsRequest{
 			CredentialID: credential.ID.String(),
 			Region:       region,
 		}
@@ -98,7 +101,11 @@ func (h *Handler) listSubnetsHandler() handlers.HandlerFunc {
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
 		vpcID := h.parseVPCID(c)
 		region := h.parseRegion(c)
 
@@ -108,7 +115,7 @@ func (h *Handler) listSubnetsHandler() handlers.HandlerFunc {
 
 		h.logSubnetsListAttempt(c, userID, credential.ID, vpcID, region)
 
-		req := dto.ListSubnetsRequest{
+		req := networkservice.ListSubnetsRequest{
 			CredentialID: credential.ID.String(),
 			VPCID:        vpcID,
 			Region:       region,
@@ -145,7 +152,11 @@ func (h *Handler) listSecurityGroupsHandler() handlers.HandlerFunc {
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
 		vpcID := h.parseVPCID(c)
 		region := h.parseRegion(c)
 
@@ -155,7 +166,7 @@ func (h *Handler) listSecurityGroupsHandler() handlers.HandlerFunc {
 
 		h.logSecurityGroupsListAttempt(c, userID, credential.ID, vpcID, region)
 
-		req := dto.ListSecurityGroupsRequest{
+		req := networkservice.ListSecurityGroupsRequest{
 			CredentialID: credential.ID.String(),
 			VPCID:        vpcID,
 			Region:       region,
@@ -199,10 +210,14 @@ func (h *Handler) getVPCHandler() handlers.HandlerFunc {
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
 		h.logVPCGetAttempt(c, userID, vpcID, credential.ID, region)
 
-		req := dto.GetVPCRequest{
+		req := networkservice.GetVPCRequest{
 			CredentialID: credential.ID.String(),
 			VPCID:        vpcID,
 			Region:       region,
@@ -221,7 +236,7 @@ func (h *Handler) getVPCHandler() handlers.HandlerFunc {
 
 // CreateVPC handles VPC creation requests using decorator pattern
 func (h *Handler) CreateVPC(c *gin.Context) {
-	var req dto.CreateVPCRequest
+	var req networkservice.CreateVPCRequest
 
 	handler := h.Compose(
 		h.createVPCHandler(req),
@@ -232,13 +247,17 @@ func (h *Handler) CreateVPC(c *gin.Context) {
 }
 
 // createVPCHandler is the core business logic for creating a VPC
-func (h *Handler) createVPCHandler(req dto.CreateVPCRequest) handlers.HandlerFunc {
+func (h *Handler) createVPCHandler(req networkservice.CreateVPCRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "create_vpc")
 			return
 		}
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
 
 		h.logVPCCreationAttempt(c, userID, req)
 
@@ -262,7 +281,7 @@ func (h *Handler) createVPCHandler(req dto.CreateVPCRequest) handlers.HandlerFun
 
 // UpdateVPC handles VPC update requests using decorator pattern
 func (h *Handler) UpdateVPC(c *gin.Context) {
-	var req dto.UpdateVPCRequest
+	var req networkservice.UpdateVPCRequest
 
 	handler := h.Compose(
 		h.updateVPCHandler(req),
@@ -273,7 +292,7 @@ func (h *Handler) UpdateVPC(c *gin.Context) {
 }
 
 // updateVPCHandler is the core business logic for updating a VPC
-func (h *Handler) updateVPCHandler(req dto.UpdateVPCRequest) handlers.HandlerFunc {
+func (h *Handler) updateVPCHandler(req networkservice.UpdateVPCRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "update_vpc")
@@ -287,7 +306,11 @@ func (h *Handler) updateVPCHandler(req dto.UpdateVPCRequest) handlers.HandlerFun
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
 		vpcID := h.parseResourceID(c)
 
 		if vpcID == "" {
@@ -329,7 +352,11 @@ func (h *Handler) deleteVPCHandler() handlers.HandlerFunc {
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
 		vpcID := h.parseResourceID(c)
 
 		if vpcID == "" {
@@ -340,7 +367,7 @@ func (h *Handler) deleteVPCHandler() handlers.HandlerFunc {
 
 		region := c.Query("region") // Optional for VPC
 
-		req := dto.DeleteVPCRequest{
+		req := networkservice.DeleteVPCRequest{
 			CredentialID: credential.ID.String(),
 			VPCID:        vpcID,
 			Region:       region,
@@ -376,7 +403,11 @@ func (h *Handler) getSubnetHandler() handlers.HandlerFunc {
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
 		subnetID := h.parseResourceID(c)
 
 		if subnetID == "" {
@@ -391,7 +422,7 @@ func (h *Handler) getSubnetHandler() handlers.HandlerFunc {
 			return
 		}
 
-		req := dto.GetSubnetRequest{
+		req := networkservice.GetSubnetRequest{
 			CredentialID: credential.ID.String(),
 			SubnetID:     subnetID,
 			Region:       region,
@@ -410,7 +441,7 @@ func (h *Handler) getSubnetHandler() handlers.HandlerFunc {
 
 // CreateSubnet handles subnet creation requests using decorator pattern
 func (h *Handler) CreateSubnet(c *gin.Context) {
-	var req dto.CreateSubnetRequest
+	var req networkservice.CreateSubnetRequest
 
 	handler := h.Compose(
 		h.createSubnetHandler(req),
@@ -421,14 +452,18 @@ func (h *Handler) CreateSubnet(c *gin.Context) {
 }
 
 // createSubnetHandler is the core business logic for creating a subnet
-func (h *Handler) createSubnetHandler(req dto.CreateSubnetRequest) handlers.HandlerFunc {
+func (h *Handler) createSubnetHandler(req networkservice.CreateSubnetRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "create_subnet")
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
 
 		h.logSubnetCreationAttempt(c, userID, req)
 
@@ -452,7 +487,7 @@ func (h *Handler) createSubnetHandler(req dto.CreateSubnetRequest) handlers.Hand
 
 // UpdateSubnet handles subnet update requests using decorator pattern
 func (h *Handler) UpdateSubnet(c *gin.Context) {
-	var req dto.UpdateSubnetRequest
+	var req networkservice.UpdateSubnetRequest
 
 	handler := h.Compose(
 		h.updateSubnetHandler(req),
@@ -463,7 +498,7 @@ func (h *Handler) UpdateSubnet(c *gin.Context) {
 }
 
 // updateSubnetHandler is the core business logic for updating a subnet
-func (h *Handler) updateSubnetHandler(req dto.UpdateSubnetRequest) handlers.HandlerFunc {
+func (h *Handler) updateSubnetHandler(req networkservice.UpdateSubnetRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "update_subnet")
@@ -477,7 +512,11 @@ func (h *Handler) updateSubnetHandler(req dto.UpdateSubnetRequest) handlers.Hand
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
 		subnetID := h.parseResourceID(c)
 
 		if subnetID == "" {
@@ -523,7 +562,11 @@ func (h *Handler) deleteSubnetHandler() handlers.HandlerFunc {
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
 		subnetID := h.parseResourceID(c)
 
 		if subnetID == "" {
@@ -538,7 +581,7 @@ func (h *Handler) deleteSubnetHandler() handlers.HandlerFunc {
 			return
 		}
 
-		req := dto.DeleteSubnetRequest{
+		req := networkservice.DeleteSubnetRequest{
 			CredentialID: credential.ID.String(),
 			SubnetID:     subnetID,
 			Region:       region,
@@ -574,7 +617,11 @@ func (h *Handler) getSecurityGroupHandler() handlers.HandlerFunc {
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
 		securityGroupID := h.parseResourceID(c)
 
 		if securityGroupID == "" {
@@ -589,7 +636,7 @@ func (h *Handler) getSecurityGroupHandler() handlers.HandlerFunc {
 			return
 		}
 
-		req := dto.GetSecurityGroupRequest{
+		req := networkservice.GetSecurityGroupRequest{
 			CredentialID:    credential.ID.String(),
 			SecurityGroupID: securityGroupID,
 			Region:          region,
@@ -608,7 +655,7 @@ func (h *Handler) getSecurityGroupHandler() handlers.HandlerFunc {
 
 // CreateSecurityGroup handles security group creation requests using decorator pattern
 func (h *Handler) CreateSecurityGroup(c *gin.Context) {
-	var req dto.CreateSecurityGroupRequest
+	var req networkservice.CreateSecurityGroupRequest
 
 	handler := h.Compose(
 		h.createSecurityGroupHandler(req),
@@ -619,14 +666,18 @@ func (h *Handler) CreateSecurityGroup(c *gin.Context) {
 }
 
 // createSecurityGroupHandler is the core business logic for creating a security group
-func (h *Handler) createSecurityGroupHandler(req dto.CreateSecurityGroupRequest) handlers.HandlerFunc {
+func (h *Handler) createSecurityGroupHandler(req networkservice.CreateSecurityGroupRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "create_security_group")
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
 
 		h.logSecurityGroupCreationAttempt(c, userID, req)
 
@@ -650,7 +701,7 @@ func (h *Handler) createSecurityGroupHandler(req dto.CreateSecurityGroupRequest)
 
 // UpdateSecurityGroup handles security group update requests using decorator pattern
 func (h *Handler) UpdateSecurityGroup(c *gin.Context) {
-	var req dto.UpdateSecurityGroupRequest
+	var req networkservice.UpdateSecurityGroupRequest
 
 	handler := h.Compose(
 		h.updateSecurityGroupHandler(req),
@@ -661,7 +712,7 @@ func (h *Handler) UpdateSecurityGroup(c *gin.Context) {
 }
 
 // updateSecurityGroupHandler is the core business logic for updating a security group
-func (h *Handler) updateSecurityGroupHandler(req dto.UpdateSecurityGroupRequest) handlers.HandlerFunc {
+func (h *Handler) updateSecurityGroupHandler(req networkservice.UpdateSecurityGroupRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "update_security_group")
@@ -675,7 +726,11 @@ func (h *Handler) updateSecurityGroupHandler(req dto.UpdateSecurityGroupRequest)
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
 		securityGroupID := h.parseResourceID(c)
 
 		if securityGroupID == "" {
@@ -721,7 +776,11 @@ func (h *Handler) deleteSecurityGroupHandler() handlers.HandlerFunc {
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
 		securityGroupID := h.parseResourceID(c)
 
 		if securityGroupID == "" {
@@ -736,7 +795,7 @@ func (h *Handler) deleteSecurityGroupHandler() handlers.HandlerFunc {
 			return
 		}
 
-		req := dto.DeleteSecurityGroupRequest{
+		req := networkservice.DeleteSecurityGroupRequest{
 			CredentialID:    credential.ID.String(),
 			SecurityGroupID: securityGroupID,
 			Region:          region,
@@ -754,7 +813,7 @@ func (h *Handler) deleteSecurityGroupHandler() handlers.HandlerFunc {
 
 // AddSecurityGroupRule adds a rule to a security group using decorator pattern
 func (h *Handler) AddSecurityGroupRule(c *gin.Context) {
-	var req dto.AddSecurityGroupRuleRequest
+	var req networkservice.AddSecurityGroupRuleRequest
 
 	handler := h.Compose(
 		h.addSecurityGroupRuleHandler(req),
@@ -765,14 +824,18 @@ func (h *Handler) AddSecurityGroupRule(c *gin.Context) {
 }
 
 // addSecurityGroupRuleHandler is the core business logic for adding a security group rule
-func (h *Handler) addSecurityGroupRuleHandler(req dto.AddSecurityGroupRuleRequest) handlers.HandlerFunc {
+func (h *Handler) addSecurityGroupRuleHandler(req networkservice.AddSecurityGroupRuleRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "add_security_group_rule")
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
 
 		h.logSecurityGroupRuleAdditionAttempt(c, userID, req)
 
@@ -796,7 +859,7 @@ func (h *Handler) addSecurityGroupRuleHandler(req dto.AddSecurityGroupRuleReques
 
 // RemoveSecurityGroupRule removes a rule from a security group using decorator pattern
 func (h *Handler) RemoveSecurityGroupRule(c *gin.Context) {
-	var req dto.RemoveSecurityGroupRuleRequest
+	var req networkservice.RemoveSecurityGroupRuleRequest
 
 	handler := h.Compose(
 		h.removeSecurityGroupRuleHandler(req),
@@ -807,14 +870,18 @@ func (h *Handler) RemoveSecurityGroupRule(c *gin.Context) {
 }
 
 // removeSecurityGroupRuleHandler is the core business logic for removing a security group rule
-func (h *Handler) removeSecurityGroupRuleHandler(req dto.RemoveSecurityGroupRuleRequest) handlers.HandlerFunc {
+func (h *Handler) removeSecurityGroupRuleHandler(req networkservice.RemoveSecurityGroupRuleRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "remove_security_group_rule")
 			return
 		}
 
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
 
 		h.logSecurityGroupRuleRemovalAttempt(c, userID, req)
 
@@ -838,7 +905,7 @@ func (h *Handler) removeSecurityGroupRuleHandler(req dto.RemoveSecurityGroupRule
 
 // UpdateSecurityGroupRules updates all rules for a security group using decorator pattern
 func (h *Handler) UpdateSecurityGroupRules(c *gin.Context) {
-	var req dto.UpdateSecurityGroupRulesRequest
+	var req networkservice.UpdateSecurityGroupRulesRequest
 
 	handler := h.Compose(
 		h.updateSecurityGroupRulesHandler(req),
@@ -849,13 +916,17 @@ func (h *Handler) UpdateSecurityGroupRules(c *gin.Context) {
 }
 
 // updateSecurityGroupRulesHandler is the core business logic for updating security group rules
-func (h *Handler) updateSecurityGroupRulesHandler(req dto.UpdateSecurityGroupRulesRequest) handlers.HandlerFunc {
+func (h *Handler) updateSecurityGroupRulesHandler(req networkservice.UpdateSecurityGroupRulesRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "update_security_group_rules")
 			return
 		}
-		userID := h.extractUserID(c)
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_vpcs")
+			return
+		}
 
 		h.logSecurityGroupRulesUpdateAttempt(c, userID, req)
 
@@ -878,30 +949,6 @@ func (h *Handler) updateSecurityGroupRulesHandler(req dto.UpdateSecurityGroupRul
 }
 
 // Helper methods for better readability
-
-func (h *Handler) extractUserID(c *gin.Context) uuid.UUID {
-	userIDValue, exists := c.Get("user_id")
-	if !exists {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "User not authenticated", 401), "extract_user_id")
-		return uuid.Nil
-	}
-
-	// Convert to uuid.UUID (handle both string and uuid.UUID types)
-	switch v := userIDValue.(type) {
-	case uuid.UUID:
-		return v
-	case string:
-		parsedUserID, err := uuid.Parse(v)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID format", 401), "extract_user_id")
-			return uuid.Nil
-		}
-		return parsedUserID
-	default:
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID type", 401), "extract_user_id")
-		return uuid.Nil
-	}
-}
 
 func (h *Handler) parseRegion(c *gin.Context) string {
 	region := c.Query("region")
@@ -1003,7 +1050,7 @@ func (h *Handler) logVPCGetSuccess(c *gin.Context, userID uuid.UUID, vpcID strin
 
 // Deprecated helpers removed: validation now handled via h.ValidateRequest in handlers
 
-func (h *Handler) logVPCCreationAttempt(c *gin.Context, userID uuid.UUID, req dto.CreateVPCRequest) {
+func (h *Handler) logVPCCreationAttempt(c *gin.Context, userID uuid.UUID, req networkservice.CreateVPCRequest) {
 	h.LogBusinessEvent(c, "vpc_creation_attempted", userID.String(), "", map[string]interface{}{
 		"operation":     "create_vpc",
 		"provider":      h.provider,
@@ -1018,7 +1065,7 @@ func (h *Handler) logVPCCreationSuccess(c *gin.Context, userID uuid.UUID, vpc in
 	})
 }
 
-func (h *Handler) logVPCUpdateAttempt(c *gin.Context, userID uuid.UUID, vpcID string, req dto.UpdateVPCRequest) {
+func (h *Handler) logVPCUpdateAttempt(c *gin.Context, userID uuid.UUID, vpcID string, req networkservice.UpdateVPCRequest) {
 	h.LogBusinessEvent(c, "vpc_update_attempted", userID.String(), vpcID, map[string]interface{}{
 		"operation": "update_vpc",
 		"provider":  h.provider,
@@ -1064,7 +1111,7 @@ func (h *Handler) logSubnetGetSuccess(c *gin.Context, userID uuid.UUID, subnetID
 	})
 }
 
-func (h *Handler) logSubnetCreationAttempt(c *gin.Context, userID uuid.UUID, req dto.CreateSubnetRequest) {
+func (h *Handler) logSubnetCreationAttempt(c *gin.Context, userID uuid.UUID, req networkservice.CreateSubnetRequest) {
 	h.LogBusinessEvent(c, "subnet_creation_attempted", userID.String(), "", map[string]interface{}{
 		"operation":     "create_subnet",
 		"provider":      h.provider,
@@ -1079,7 +1126,7 @@ func (h *Handler) logSubnetCreationSuccess(c *gin.Context, userID uuid.UUID, sub
 	})
 }
 
-func (h *Handler) logSubnetUpdateAttempt(c *gin.Context, userID uuid.UUID, subnetID string, req dto.UpdateSubnetRequest) {
+func (h *Handler) logSubnetUpdateAttempt(c *gin.Context, userID uuid.UUID, subnetID string, req networkservice.UpdateSubnetRequest) {
 	h.LogBusinessEvent(c, "subnet_update_attempted", userID.String(), subnetID, map[string]interface{}{
 		"operation": "update_subnet",
 		"provider":  h.provider,
@@ -1125,7 +1172,7 @@ func (h *Handler) logSecurityGroupGetSuccess(c *gin.Context, userID uuid.UUID, s
 	})
 }
 
-func (h *Handler) logSecurityGroupCreationAttempt(c *gin.Context, userID uuid.UUID, req dto.CreateSecurityGroupRequest) {
+func (h *Handler) logSecurityGroupCreationAttempt(c *gin.Context, userID uuid.UUID, req networkservice.CreateSecurityGroupRequest) {
 	h.LogBusinessEvent(c, "security_group_creation_attempted", userID.String(), "", map[string]interface{}{
 		"operation":     "create_security_group",
 		"provider":      h.provider,
@@ -1140,7 +1187,7 @@ func (h *Handler) logSecurityGroupCreationSuccess(c *gin.Context, userID uuid.UU
 	})
 }
 
-func (h *Handler) logSecurityGroupUpdateAttempt(c *gin.Context, userID uuid.UUID, securityGroupID string, req dto.UpdateSecurityGroupRequest) {
+func (h *Handler) logSecurityGroupUpdateAttempt(c *gin.Context, userID uuid.UUID, securityGroupID string, req networkservice.UpdateSecurityGroupRequest) {
 	h.LogBusinessEvent(c, "security_group_update_attempted", userID.String(), securityGroupID, map[string]interface{}{
 		"operation": "update_security_group",
 		"provider":  h.provider,
@@ -1168,7 +1215,7 @@ func (h *Handler) logSecurityGroupDeletionSuccess(c *gin.Context, userID uuid.UU
 	})
 }
 
-func (h *Handler) logSecurityGroupRuleAdditionAttempt(c *gin.Context, userID uuid.UUID, req dto.AddSecurityGroupRuleRequest) {
+func (h *Handler) logSecurityGroupRuleAdditionAttempt(c *gin.Context, userID uuid.UUID, req networkservice.AddSecurityGroupRuleRequest) {
 	h.LogBusinessEvent(c, "security_group_rule_addition_attempted", userID.String(), "", map[string]interface{}{
 		"operation":     "add_security_group_rule",
 		"provider":      h.provider,
@@ -1176,14 +1223,14 @@ func (h *Handler) logSecurityGroupRuleAdditionAttempt(c *gin.Context, userID uui
 	})
 }
 
-func (h *Handler) logSecurityGroupRuleAdditionSuccess(c *gin.Context, userID uuid.UUID, req dto.AddSecurityGroupRuleRequest) {
+func (h *Handler) logSecurityGroupRuleAdditionSuccess(c *gin.Context, userID uuid.UUID, req networkservice.AddSecurityGroupRuleRequest) {
 	h.LogBusinessEvent(c, "security_group_rule_added", userID.String(), "", map[string]interface{}{
 		"operation": "add_security_group_rule",
 		"provider":  h.provider,
 	})
 }
 
-func (h *Handler) logSecurityGroupRuleRemovalAttempt(c *gin.Context, userID uuid.UUID, req dto.RemoveSecurityGroupRuleRequest) {
+func (h *Handler) logSecurityGroupRuleRemovalAttempt(c *gin.Context, userID uuid.UUID, req networkservice.RemoveSecurityGroupRuleRequest) {
 	h.LogBusinessEvent(c, "security_group_rule_removal_attempted", userID.String(), "", map[string]interface{}{
 		"operation":     "remove_security_group_rule",
 		"provider":      h.provider,
@@ -1191,14 +1238,14 @@ func (h *Handler) logSecurityGroupRuleRemovalAttempt(c *gin.Context, userID uuid
 	})
 }
 
-func (h *Handler) logSecurityGroupRuleRemovalSuccess(c *gin.Context, userID uuid.UUID, req dto.RemoveSecurityGroupRuleRequest) {
+func (h *Handler) logSecurityGroupRuleRemovalSuccess(c *gin.Context, userID uuid.UUID, req networkservice.RemoveSecurityGroupRuleRequest) {
 	h.LogBusinessEvent(c, "security_group_rule_removed", userID.String(), "", map[string]interface{}{
 		"operation": "remove_security_group_rule",
 		"provider":  h.provider,
 	})
 }
 
-func (h *Handler) logSecurityGroupRulesUpdateAttempt(c *gin.Context, userID uuid.UUID, req dto.UpdateSecurityGroupRulesRequest) {
+func (h *Handler) logSecurityGroupRulesUpdateAttempt(c *gin.Context, userID uuid.UUID, req networkservice.UpdateSecurityGroupRulesRequest) {
 	h.LogBusinessEvent(c, "security_group_rules_update_attempted", userID.String(), "", map[string]interface{}{
 		"operation":     "update_security_group_rules",
 		"provider":      h.provider,
@@ -1206,7 +1253,7 @@ func (h *Handler) logSecurityGroupRulesUpdateAttempt(c *gin.Context, userID uuid
 	})
 }
 
-func (h *Handler) logSecurityGroupRulesUpdateSuccess(c *gin.Context, userID uuid.UUID, req dto.UpdateSecurityGroupRulesRequest) {
+func (h *Handler) logSecurityGroupRulesUpdateSuccess(c *gin.Context, userID uuid.UUID, req networkservice.UpdateSecurityGroupRulesRequest) {
 	h.LogBusinessEvent(c, "security_group_rules_updated", userID.String(), "", map[string]interface{}{
 		"operation": "update_security_group_rules",
 		"provider":  h.provider,
