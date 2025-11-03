@@ -11,10 +11,8 @@ const (
 
 // Memory and Performance Constants
 const (
-	// Memory units
-	BytesPerKB = 1024
+	// BytesPerMB is the number of bytes in a megabyte
 	BytesPerMB = 1024 * 1024
-	BytesPerGB = 1024 * 1024 * 1024
 
 	// Percentage calculation
 	PercentageBase = 100.0 // Base for percentage calculations

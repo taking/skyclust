@@ -8,7 +8,7 @@ import (
 	auditlogservice "skyclust/internal/application/services/audit_log"
 	authservice "skyclust/internal/application/services/auth"
 	cacheservice "skyclust/internal/application/services/cache"
-	cloudproviderservice "skyclust/internal/application/services/cloud_provider"
+	computeservice "skyclust/internal/application/services/compute"
 	costanalysisservice "skyclust/internal/application/services/cost_analysis"
 	credentialservice "skyclust/internal/application/services/credential"
 	eventservice "skyclust/internal/application/services/event"
@@ -164,14 +164,14 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 		eventService,
 	)
 
-	// Create CloudProviderService first (needed by VMService)
-	cloudProviderService := cloudproviderservice.NewService()
+	// Create ComputeService first (needed by VMService)
+	computeService := computeservice.NewService()
 
 	// Create VMService
 	vmService := vmservice.NewService(
 		repos.VMRepository,
 		repos.WorkspaceRepository,
-		cloudProviderService,
+		computeService,
 		eventService,
 		repos.AuditLogRepository,
 	)
@@ -220,7 +220,7 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 			NotificationService:     notificationService,
 			ExportService:           exportService,
 			CostAnalysisService:     costAnalysisService,
-			CloudProviderService:    cloudProviderService,
+			ComputeService:          computeService,
 			BusinessRuleService:     nil, // BusinessRuleService is in DomainContainer, not ServiceContainer
 		},
 	}

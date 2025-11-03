@@ -322,34 +322,14 @@ func isLetter(c byte) bool {
 
 // createAWSEKSCluster creates an AWS EKS cluster
 func (s *Service) createAWSEKSCluster(ctx context.Context, credential *domain.Credential, req CreateClusterRequest) (*CreateClusterResponse, error) {
-	// Decrypt credential data
-	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	creds, err := s.extractAWSCredentials(ctx, credential, req.Region)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
+		return nil, err
 	}
 
-	// Extract AWS credentials
-	accessKey, ok := credData["access_key"].(string)
-	if !ok {
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "access_key not found in credential", 400)
-	}
-
-	secretKey, ok := credData["secret_key"].(string)
-	if !ok {
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "secret_key not found in credential", 400)
-	}
-
-	// Create AWS config
-	cfg, err := awsconfig.LoadDefaultConfig(ctx,
-		awsconfig.WithRegion(req.Region),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-			accessKey,
-			secretKey,
-			"",
-		)),
-	)
+	cfg, err := s.createAWSConfig(ctx, creds)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to load AWS config: %v", err), 502)
+		return nil, err
 	}
 
 	// Create EKS client
@@ -455,60 +435,20 @@ func (s *Service) ListEKSClusters(ctx context.Context, credential *domain.Creden
 
 // listAWSEKSClusters lists all AWS EKS clusters
 func (s *Service) listAWSEKSClusters(ctx context.Context, credential *domain.Credential, region string) (*ListClustersResponse, error) {
-	// Decrypt credential data
-	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	creds, err := s.extractAWSCredentials(ctx, credential, region)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
+		return nil, err
 	}
 
-	// Debug log - check decrypted data
-	s.logger.Debug("Decrypted credential keys",
-		zap.Strings("keys", getMapKeys(credData)),
-		zap.Int("key_count", len(credData)))
-
-	// Extract AWS credentials
-	accessKey, ok := credData["access_key"].(string)
-	if !ok {
-		s.logger.Error("access_key not found or wrong type",
-			zap.Any("access_key_value", credData["access_key"]),
-			zap.String("access_key_type", fmt.Sprintf("%T", credData["access_key"])))
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "access_key not found in credential", 400)
-	}
-
-	secretKey, ok := credData["secret_key"].(string)
-	if !ok {
-		s.logger.Error("secret_key not found or wrong type",
-			zap.Any("secret_key_value", credData["secret_key"]),
-			zap.String("secret_key_type", fmt.Sprintf("%T", credData["secret_key"])))
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "secret_key not found in credential", 400)
-	}
-
-	// Debug log - check credential format
 	s.logger.Debug("AWS credentials extracted",
-		zap.String("access_key_prefix", accessKey[:min(10, len(accessKey))]),
-		zap.Int("access_key_length", len(accessKey)),
-		zap.Int("secret_key_length", len(secretKey)))
+		zap.String("access_key_prefix", creds.AccessKey[:min(10, len(creds.AccessKey))]),
+		zap.Int("access_key_length", len(creds.AccessKey)),
+		zap.Int("secret_key_length", len(creds.SecretKey)),
+		zap.String("region", creds.Region))
 
-	// Use region from credential if not specified
-	if region == "" {
-		if r, ok := credData["region"].(string); ok {
-			region = r
-		} else {
-			region = "us-east-1" // Default region
-		}
-	}
-
-	// Create AWS config
-	cfg, err := awsconfig.LoadDefaultConfig(ctx,
-		awsconfig.WithRegion(region),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-			accessKey,
-			secretKey,
-			"",
-		)),
-	)
+	cfg, err := s.createAWSConfig(ctx, creds)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to load AWS config: %v", err), 502)
+		return nil, err
 	}
 
 	// Create EKS client
@@ -589,34 +529,14 @@ func (s *Service) GetEKSCluster(ctx context.Context, credential *domain.Credenti
 
 // getAWSEKSCluster gets AWS EKS cluster details
 func (s *Service) getAWSEKSCluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (*ClusterInfo, error) {
-	// Decrypt credential data
-	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	creds, err := s.extractAWSCredentials(ctx, credential, region)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
+		return nil, err
 	}
 
-	// Extract AWS credentials
-	accessKey, ok := credData["access_key"].(string)
-	if !ok {
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "access_key not found in credential", 400)
-	}
-
-	secretKey, ok := credData["secret_key"].(string)
-	if !ok {
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "secret_key not found in credential", 400)
-	}
-
-	// Create AWS config
-	cfg, err := awsconfig.LoadDefaultConfig(ctx,
-		awsconfig.WithRegion(region),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-			accessKey,
-			secretKey,
-			"",
-		)),
-	)
+	cfg, err := s.createAWSConfig(ctx, creds)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to load AWS config: %v", err), 502)
+		return nil, err
 	}
 
 	// Create EKS client
@@ -636,7 +556,7 @@ func (s *Service) getAWSEKSCluster(ctx context.Context, credential *domain.Crede
 		Name:    aws.ToString(output.Cluster.Name),
 		Version: aws.ToString(output.Cluster.Version),
 		Status:  string(output.Cluster.Status),
-		Region:  region,
+		Region:  creds.Region,
 		Tags:    output.Cluster.Tags,
 	}
 
@@ -672,34 +592,14 @@ func (s *Service) DeleteEKSCluster(ctx context.Context, credential *domain.Crede
 
 // deleteAWSEKSCluster deletes an AWS EKS cluster
 func (s *Service) deleteAWSEKSCluster(ctx context.Context, credential *domain.Credential, clusterName, region string) error {
-	// Decrypt credential data
-	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	creds, err := s.extractAWSCredentials(ctx, credential, region)
 	if err != nil {
-		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
+		return err
 	}
 
-	// Extract AWS credentials
-	accessKey, ok := credData["access_key"].(string)
-	if !ok {
-		return domain.NewDomainError(domain.ErrCodeValidationFailed, "access_key not found in credential", 400)
-	}
-
-	secretKey, ok := credData["secret_key"].(string)
-	if !ok {
-		return domain.NewDomainError(domain.ErrCodeValidationFailed, "secret_key not found in credential", 400)
-	}
-
-	// Create AWS config
-	cfg, err := awsconfig.LoadDefaultConfig(ctx,
-		awsconfig.WithRegion(region),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-			accessKey,
-			secretKey,
-			"",
-		)),
-	)
+	cfg, err := s.createAWSConfig(ctx, creds)
 	if err != nil {
-		return domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to load AWS config: %v", err), 502)
+		return err
 	}
 
 	// Create EKS client
@@ -741,34 +641,14 @@ func (s *Service) GetEKSKubeconfig(ctx context.Context, credential *domain.Crede
 
 // getAWSEKSKubeconfig generates kubeconfig for an AWS EKS cluster
 func (s *Service) getAWSEKSKubeconfig(ctx context.Context, credential *domain.Credential, clusterName, region string) (string, error) {
-	// Decrypt credential data
-	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	creds, err := s.extractAWSCredentials(ctx, credential, region)
 	if err != nil {
-		return "", domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
+		return "", err
 	}
 
-	// Extract AWS credentials
-	accessKey, ok := credData["access_key"].(string)
-	if !ok {
-		return "", domain.NewDomainError(domain.ErrCodeValidationFailed, "access_key not found in credential", 400)
-	}
-
-	secretKey, ok := credData["secret_key"].(string)
-	if !ok {
-		return "", domain.NewDomainError(domain.ErrCodeValidationFailed, "secret_key not found in credential", 400)
-	}
-
-	// Create AWS config
-	cfg, err := awsconfig.LoadDefaultConfig(ctx,
-		awsconfig.WithRegion(region),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-			accessKey,
-			secretKey,
-			"",
-		)),
-	)
+	cfg, err := s.createAWSConfig(ctx, creds)
 	if err != nil {
-		return "", domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to load AWS config: %v", err), 502)
+		return "", err
 	}
 
 	// Create EKS client
@@ -824,9 +704,9 @@ users:
 		clusterName,
 		clusterName,
 		clusterName,
-		region,
-		accessKey,
-		secretKey,
+		creds.Region,
+		creds.AccessKey,
+		creds.SecretKey,
 	)
 
 	return kubeconfig, nil
@@ -918,34 +798,14 @@ func (s *Service) CreateEKSNodePool(ctx context.Context, credential *domain.Cred
 
 // CreateEKSNodeGroup creates an EKS node group
 func (s *Service) CreateEKSNodeGroup(ctx context.Context, credential *domain.Credential, req CreateNodeGroupRequest) (*CreateNodeGroupResponse, error) {
-	// Decrypt credential data
-	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	creds, err := s.extractAWSCredentials(ctx, credential, req.Region)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
+		return nil, err
 	}
 
-	// Extract AWS credentials
-	accessKey, ok := credData["access_key"].(string)
-	if !ok {
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "access_key not found in credential", 400)
-	}
-
-	secretKey, ok := credData["secret_key"].(string)
-	if !ok {
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "secret_key not found in credential", 400)
-	}
-
-	// Create AWS config
-	cfg, err := awsconfig.LoadDefaultConfig(ctx,
-		awsconfig.WithRegion(req.Region),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-			accessKey,
-			secretKey,
-			"",
-		)),
-	)
+	cfg, err := s.createAWSConfig(ctx, creds)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to load AWS config: %v", err), 502)
+		return nil, err
 	}
 
 	// Create EKS client
@@ -1151,38 +1011,13 @@ func (s *Service) listAWSEKSNodeGroups(ctx context.Context, credential *domain.C
 
 // listGCPGKENodePools lists all GKE node pools for a cluster
 func (s *Service) listGCPGKENodePools(ctx context.Context, credential *domain.Credential, req ListNodeGroupsRequest) (*ListNodeGroupsResponse, error) {
-	// Decrypt credential data
-	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
-	}
-
-	// Extract GCP credentials
-	jsonData, err := json.Marshal(credData)
-	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to marshal credential data: %v", err), 500)
-	}
-
-	// Create GCP Container service client
-	containerService, err := container.NewService(ctx, option.WithCredentialsJSON(jsonData))
-	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create GCP container service: %v", err), 502)
-	}
-
-	// Extract project ID from credential
-	projectID, ok := credData["project_id"].(string)
-	if !ok {
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "project_id not found in credential", 400)
+		return nil, err
 	}
 
 	// Find the cluster first to determine its actual location
-	// GCP clusters can be at region level or zone level
-	locations := []string{
-		req.Region,                      // Region level (e.g., asia-northeast3)
-		fmt.Sprintf("%s-a", req.Region), // Zone level (e.g., asia-northeast3-a)
-		fmt.Sprintf("%s-b", req.Region), // Zone level (e.g., asia-northeast3-b)
-		fmt.Sprintf("%s-c", req.Region), // Zone level (e.g., asia-northeast3-c)
-	}
+	locations := s.getGCPLocations(req.Region)
 
 	var nodePools *container.ListNodePoolsResponse
 	var clusterLocation string
@@ -1216,136 +1051,7 @@ func (s *Service) listGCPGKENodePools(ctx context.Context, credential *domain.Cr
 	// Convert to NodeGroupInfo format
 	var nodeGroups []NodeGroupInfo
 	for _, nodePool := range nodePools.NodePools {
-		// Log available fields for debugging
-		s.logger.Debug("Processing GCP NodePool",
-			zap.String("name", nodePool.Name),
-			zap.String("status", nodePool.Status),
-			zap.String("version", nodePool.Version),
-			zap.Bool("has_config", nodePool.Config != nil),
-			zap.Bool("has_autoscaling", nodePool.Autoscaling != nil),
-			zap.Bool("has_management", nodePool.Management != nil),
-			zap.Bool("has_upgrade_settings", nodePool.UpgradeSettings != nil))
-
-		nodeGroup := NodeGroupInfo{
-			ID:          nodePool.Name,
-			Name:        nodePool.Name,
-			Status:      nodePool.Status,
-			ClusterName: req.ClusterName,
-			Region:      req.Region,
-		}
-
-		// Add version if available
-		if nodePool.Version != "" {
-			nodeGroup.Version = nodePool.Version
-		}
-
-		// Add instance types from config
-		if nodePool.Config != nil {
-			// Log config details for debugging
-			s.logger.Info("NodePool Config details",
-				zap.String("name", nodePool.Name),
-				zap.String("machine_type", nodePool.Config.MachineType),
-				zap.Int64("disk_size_gb", nodePool.Config.DiskSizeGb),
-				zap.String("disk_type", nodePool.Config.DiskType),
-				zap.String("image_type", nodePool.Config.ImageType),
-				zap.Bool("preemptible", nodePool.Config.Preemptible),
-				zap.Bool("spot", nodePool.Config.Spot),
-				zap.String("service_account", nodePool.Config.ServiceAccount),
-				zap.Int("oauth_scopes_count", len(nodePool.Config.OauthScopes)),
-				zap.Int("tags_count", len(nodePool.Config.Tags)),
-				zap.Int("labels_count", len(nodePool.Config.Labels)),
-				zap.Int("taints_count", len(nodePool.Config.Taints)))
-
-			if nodePool.Config.MachineType != "" {
-				nodeGroup.InstanceTypes = []string{nodePool.Config.MachineType}
-			}
-			if nodePool.Config.DiskSizeGb > 0 {
-				nodeGroup.DiskSize = int32(nodePool.Config.DiskSizeGb)
-			}
-			if nodePool.Config.DiskType != "" {
-				nodeGroup.DiskType = nodePool.Config.DiskType
-			}
-			if nodePool.Config.ImageType != "" {
-				nodeGroup.ImageType = nodePool.Config.ImageType
-			}
-			if nodePool.Config.Preemptible {
-				nodeGroup.Preemptible = true
-			}
-			if nodePool.Config.Spot {
-				nodeGroup.Spot = true
-			}
-			if nodePool.Config.ServiceAccount != "" {
-				nodeGroup.ServiceAccount = nodePool.Config.ServiceAccount
-			}
-			if len(nodePool.Config.OauthScopes) > 0 {
-				nodeGroup.OAuthScopes = nodePool.Config.OauthScopes
-			}
-			if len(nodePool.Config.Tags) > 0 {
-				// Convert []string to map[string]string
-				tags := make(map[string]string)
-				for _, tag := range nodePool.Config.Tags {
-					tags[tag] = "" // GCP tags don't have values, only keys
-				}
-				nodeGroup.Tags = tags
-			}
-			if len(nodePool.Config.Labels) > 0 {
-				nodeGroup.Labels = nodePool.Config.Labels
-			}
-			if len(nodePool.Config.Taints) > 0 {
-				var taints []NodeTaint
-				for _, taint := range nodePool.Config.Taints {
-					taints = append(taints, NodeTaint{
-						Key:    taint.Key,
-						Value:  taint.Value,
-						Effect: taint.Effect,
-					})
-				}
-				nodeGroup.Taints = taints
-			}
-		}
-
-		// Add scaling config
-		if nodePool.Autoscaling != nil {
-			nodeGroup.ScalingConfig = NodeGroupScalingConfig{
-				MinSize:     int32(nodePool.Autoscaling.MinNodeCount),
-				MaxSize:     int32(nodePool.Autoscaling.MaxNodeCount),
-				DesiredSize: int32(nodePool.InitialNodeCount),
-			}
-		} else {
-			nodeGroup.ScalingConfig = NodeGroupScalingConfig{
-				DesiredSize: int32(nodePool.InitialNodeCount),
-			}
-		}
-
-		// Add network configuration
-		if nodePool.Config != nil && nodePool.Config.WorkloadMetadataConfig != nil {
-			nodeGroup.NetworkConfig = &NodeNetworkConfig{
-				EnablePrivateNodes: nodePool.Config.WorkloadMetadataConfig.Mode == "GKE_METADATA",
-			}
-		}
-
-		// Add management configuration
-		if nodePool.Management != nil {
-			nodeGroup.Management = &NodeManagement{
-				AutoRepair:  nodePool.Management.AutoRepair,
-				AutoUpgrade: nodePool.Management.AutoUpgrade,
-			}
-		}
-
-		// Add upgrade settings
-		if nodePool.UpgradeSettings != nil {
-			nodeGroup.UpgradeSettings = &UpgradeSettings{
-				MaxSurge:       int32(nodePool.UpgradeSettings.MaxSurge),
-				MaxUnavailable: int32(nodePool.UpgradeSettings.MaxUnavailable),
-				Strategy:       nodePool.UpgradeSettings.Strategy,
-			}
-		}
-
-		// Add timestamps (GCP NodePool doesn't have CreateTime/UpdateTime fields)
-		// We'll use empty strings for now, these can be populated from other sources if needed
-		nodeGroup.CreatedAt = ""
-		nodeGroup.UpdatedAt = ""
-
+		nodeGroup := s.convertGCPNodePoolToNodeGroupInfo(nodePool, req.ClusterName, req.Region)
 		nodeGroups = append(nodeGroups, nodeGroup)
 	}
 
@@ -1485,38 +1191,13 @@ func (s *Service) getAWSEKSNodeGroup(ctx context.Context, credential *domain.Cre
 
 // getGCPGKENodePool gets details of a GCP GKE node pool
 func (s *Service) getGCPGKENodePool(ctx context.Context, credential *domain.Credential, req GetNodeGroupRequest) (*NodeGroupInfo, error) {
-	// Decrypt credential data
-	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
-	}
-
-	// Extract GCP credentials
-	jsonData, err := json.Marshal(credData)
-	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to marshal credential data: %v", err), 500)
-	}
-
-	// Create GCP Container service client
-	containerService, err := container.NewService(ctx, option.WithCredentialsJSON(jsonData))
-	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create GCP container service: %v", err), 502)
-	}
-
-	// Extract project ID from credential
-	projectID, ok := credData["project_id"].(string)
-	if !ok {
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "project_id not found in credential", 400)
+		return nil, err
 	}
 
 	// Find the cluster first to determine its actual location
-	// GCP clusters can be at region level or zone level
-	locations := []string{
-		req.Region,                      // Region level (e.g., asia-northeast3)
-		fmt.Sprintf("%s-a", req.Region), // Zone level (e.g., asia-northeast3-a)
-		fmt.Sprintf("%s-b", req.Region), // Zone level (e.g., asia-northeast3-b)
-		fmt.Sprintf("%s-c", req.Region), // Zone level (e.g., asia-northeast3-c)
-	}
+	locations := s.getGCPLocations(req.Region)
 
 	var nodePool *container.NodePool
 	var clusterLocation string
@@ -1546,126 +1227,8 @@ func (s *Service) getGCPGKENodePool(ctx context.Context, credential *domain.Cred
 		return nil, domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("failed to find GKE node pool %s in cluster %s in region %s or any of its zones", req.NodeGroupName, req.ClusterName, req.Region), 404)
 	}
 
-	// Convert to NodeGroupInfo format (same as listGCPGKENodePools)
-	nodeGroup := NodeGroupInfo{
-		ID:          nodePool.Name,
-		Name:        nodePool.Name,
-		Status:      nodePool.Status,
-		ClusterName: req.ClusterName,
-		Region:      req.Region,
-	}
-
-	// Add version if available
-	if nodePool.Version != "" {
-		nodeGroup.Version = nodePool.Version
-	}
-
-	// Add instance types from config
-	if nodePool.Config != nil {
-		// Log config details for debugging
-		s.logger.Info("NodePool Config details",
-			zap.String("name", nodePool.Name),
-			zap.String("machine_type", nodePool.Config.MachineType),
-			zap.Int64("disk_size_gb", nodePool.Config.DiskSizeGb),
-			zap.String("disk_type", nodePool.Config.DiskType),
-			zap.String("image_type", nodePool.Config.ImageType),
-			zap.Bool("preemptible", nodePool.Config.Preemptible),
-			zap.Bool("spot", nodePool.Config.Spot),
-			zap.String("service_account", nodePool.Config.ServiceAccount),
-			zap.Int("oauth_scopes_count", len(nodePool.Config.OauthScopes)),
-			zap.Int("tags_count", len(nodePool.Config.Tags)),
-			zap.Int("labels_count", len(nodePool.Config.Labels)),
-			zap.Int("taints_count", len(nodePool.Config.Taints)))
-
-		if nodePool.Config.MachineType != "" {
-			nodeGroup.InstanceTypes = []string{nodePool.Config.MachineType}
-		}
-		if nodePool.Config.DiskSizeGb > 0 {
-			nodeGroup.DiskSize = int32(nodePool.Config.DiskSizeGb)
-		}
-		if nodePool.Config.DiskType != "" {
-			nodeGroup.DiskType = nodePool.Config.DiskType
-		}
-		if nodePool.Config.ImageType != "" {
-			nodeGroup.ImageType = nodePool.Config.ImageType
-		}
-		if nodePool.Config.Preemptible {
-			nodeGroup.Preemptible = true
-		}
-		if nodePool.Config.Spot {
-			nodeGroup.Spot = true
-		}
-		if nodePool.Config.ServiceAccount != "" {
-			nodeGroup.ServiceAccount = nodePool.Config.ServiceAccount
-		}
-		if len(nodePool.Config.OauthScopes) > 0 {
-			nodeGroup.OAuthScopes = nodePool.Config.OauthScopes
-		}
-		if len(nodePool.Config.Tags) > 0 {
-			// Convert []string to map[string]string
-			tags := make(map[string]string)
-			for _, tag := range nodePool.Config.Tags {
-				tags[tag] = "" // GCP tags don't have values, only keys
-			}
-			nodeGroup.Tags = tags
-		}
-		if len(nodePool.Config.Labels) > 0 {
-			nodeGroup.Labels = nodePool.Config.Labels
-		}
-		if len(nodePool.Config.Taints) > 0 {
-			var taints []NodeTaint
-			for _, taint := range nodePool.Config.Taints {
-				taints = append(taints, NodeTaint{
-					Key:    taint.Key,
-					Value:  taint.Value,
-					Effect: taint.Effect,
-				})
-			}
-			nodeGroup.Taints = taints
-		}
-	}
-
-	// Add scaling config
-	if nodePool.Autoscaling != nil {
-		nodeGroup.ScalingConfig = NodeGroupScalingConfig{
-			MinSize:     int32(nodePool.Autoscaling.MinNodeCount),
-			MaxSize:     int32(nodePool.Autoscaling.MaxNodeCount),
-			DesiredSize: int32(nodePool.InitialNodeCount),
-		}
-	} else {
-		nodeGroup.ScalingConfig = NodeGroupScalingConfig{
-			DesiredSize: int32(nodePool.InitialNodeCount),
-		}
-	}
-
-	// Add network configuration
-	if nodePool.Config != nil && nodePool.Config.WorkloadMetadataConfig != nil {
-		nodeGroup.NetworkConfig = &NodeNetworkConfig{
-			EnablePrivateNodes: nodePool.Config.WorkloadMetadataConfig.Mode == "GKE_METADATA",
-		}
-	}
-
-	// Add management configuration
-	if nodePool.Management != nil {
-		nodeGroup.Management = &NodeManagement{
-			AutoRepair:  nodePool.Management.AutoRepair,
-			AutoUpgrade: nodePool.Management.AutoUpgrade,
-		}
-	}
-
-	// Add upgrade settings
-	if nodePool.UpgradeSettings != nil {
-		nodeGroup.UpgradeSettings = &UpgradeSettings{
-			MaxSurge:       int32(nodePool.UpgradeSettings.MaxSurge),
-			MaxUnavailable: int32(nodePool.UpgradeSettings.MaxUnavailable),
-			Strategy:       nodePool.UpgradeSettings.Strategy,
-		}
-	}
-
-	// Add timestamps (GCP NodePool doesn't have CreateTime/UpdateTime fields)
-	// We'll use empty strings for now, these can be populated from other sources if needed
-	nodeGroup.CreatedAt = ""
-	nodeGroup.UpdatedAt = ""
+	// Convert to NodeGroupInfo format (reusing common conversion function)
+	nodeGroup := s.convertGCPNodePoolToNodeGroupInfo(nodePool, req.ClusterName, req.Region)
 
 	s.logger.Info("GKE node pool retrieved successfully",
 		zap.String("cluster_name", req.ClusterName),
@@ -1730,38 +1293,13 @@ func (s *Service) DeleteNodeGroup(ctx context.Context, credential *domain.Creden
 
 // listGCPGKEClusters lists all GCP GKE clusters
 func (s *Service) listGCPGKEClusters(ctx context.Context, credential *domain.Credential, region string) (*ListClustersResponse, error) {
-	// Decrypt credential data
-	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
-	}
-
-	// Convert credential data to JSON
-	jsonData, err := json.Marshal(credData)
-	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to marshal credential data: %v", err), 500)
-	}
-
-	// Extract project ID
-	projectID, ok := credData["project_id"].(string)
-	if !ok {
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "project_id not found in credential", 400)
-	}
-
-	// Create Container service client
-	containerService, err := container.NewService(ctx, option.WithCredentialsJSON(jsonData))
-	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create GCP container service: %v", err), 502)
+		return nil, err
 	}
 
 	// List clusters in the region and all zones of the specified region
-	// GCP clusters can be at region level or zone level
-	locations := []string{
-		region,                      // Region level (e.g., asia-northeast3)
-		fmt.Sprintf("%s-a", region), // Zone level (e.g., asia-northeast3-a)
-		fmt.Sprintf("%s-b", region), // Zone level (e.g., asia-northeast3-b)
-		fmt.Sprintf("%s-c", region), // Zone level (e.g., asia-northeast3-c)
-	}
+	locations := s.getGCPLocations(region)
 
 	var allClusters []ClusterInfo
 
@@ -1866,28 +1404,9 @@ func (s *Service) listGCPGKEClusters(ctx context.Context, credential *domain.Cre
 
 // getGCPGKECluster gets GCP GKE cluster details
 func (s *Service) getGCPGKECluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (*ClusterInfo, error) {
-	// Decrypt credential data
-	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
-	}
-
-	// Convert credential data to JSON
-	jsonData, err := json.Marshal(credData)
-	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to marshal credential data: %v", err), 500)
-	}
-
-	// Extract project ID
-	projectID, ok := credData["project_id"].(string)
-	if !ok {
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "project_id not found in credential", 400)
-	}
-
-	// Create Container service client
-	containerService, err := container.NewService(ctx, option.WithCredentialsJSON(jsonData))
-	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create GCP container service: %v", err), 502)
+		return nil, err
 	}
 
 	// Get cluster details
@@ -1989,40 +1508,181 @@ func extractZoneFromLocation(location string) string {
 	return ""
 }
 
-// getGCPGKEKubeconfig generates kubeconfig for a GCP GKE cluster
-func (s *Service) getGCPGKEKubeconfig(ctx context.Context, credential *domain.Credential, clusterName, region string) (string, error) {
-	// Decrypt credential data
-	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
-	if err != nil {
-		return "", domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
-	}
-
-	// Convert credential data to JSON
-	jsonData, err := json.Marshal(credData)
-	if err != nil {
-		return "", domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to marshal credential data: %v", err), 500)
-	}
-
-	// Extract project ID
-	projectID, ok := credData["project_id"].(string)
-	if !ok {
-		return "", domain.NewDomainError(domain.ErrCodeValidationFailed, "project_id not found in credential", 400)
-	}
-
-	// Create Container service client
-	containerService, err := container.NewService(ctx, option.WithCredentialsJSON(jsonData))
-	if err != nil {
-		return "", domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create GCP container service: %v", err), 502)
-	}
-
-	// Get cluster details - search in region and all zones
-	// GCP clusters can be at region level or zone level
-	locations := []string{
+// getGCPLocations generates list of GCP locations (region and zones) to search
+// GCP clusters can be at region level or zone level
+func (s *Service) getGCPLocations(region string) []string {
+	return []string{
 		region,                      // Region level (e.g., asia-northeast3)
 		fmt.Sprintf("%s-a", region), // Zone level (e.g., asia-northeast3-a)
 		fmt.Sprintf("%s-b", region), // Zone level (e.g., asia-northeast3-b)
 		fmt.Sprintf("%s-c", region), // Zone level (e.g., asia-northeast3-c)
 	}
+}
+
+// getGCPContainerServiceAndProjectID gets GCP Container service client and project ID from credential
+// Used for create, read, update, delete operations on GCP GKE resources
+func (s *Service) getGCPContainerServiceAndProjectID(ctx context.Context, credential *domain.Credential) (*container.Service, string, error) {
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, "", domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
+	}
+
+	jsonData, err := json.Marshal(credData)
+	if err != nil {
+		return nil, "", domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to marshal credential data: %v", err), 500)
+	}
+
+	containerService, err := container.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return nil, "", domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create GCP container service: %v", err), 502)
+	}
+
+	projectID, ok := credData["project_id"].(string)
+	if !ok {
+		return nil, "", domain.NewDomainError(domain.ErrCodeValidationFailed, "project_id not found in credential", 400)
+	}
+
+	return containerService, projectID, nil
+}
+
+// convertGCPNodePoolToNodeGroupInfo converts GCP NodePool to NodeGroupInfo
+func (s *Service) convertGCPNodePoolToNodeGroupInfo(nodePool *container.NodePool, clusterName, region string) NodeGroupInfo {
+	s.logger.Debug("Processing GCP NodePool",
+		zap.String("name", nodePool.Name),
+		zap.String("status", nodePool.Status),
+		zap.String("version", nodePool.Version),
+		zap.Bool("has_config", nodePool.Config != nil),
+		zap.Bool("has_autoscaling", nodePool.Autoscaling != nil),
+		zap.Bool("has_management", nodePool.Management != nil),
+		zap.Bool("has_upgrade_settings", nodePool.UpgradeSettings != nil))
+
+	nodeGroup := NodeGroupInfo{
+		ID:          nodePool.Name,
+		Name:        nodePool.Name,
+		Status:      nodePool.Status,
+		ClusterName: clusterName,
+		Region:      region,
+	}
+
+	if nodePool.Version != "" {
+		nodeGroup.Version = nodePool.Version
+	}
+
+	if nodePool.Config != nil {
+		s.logger.Info("NodePool Config details",
+			zap.String("name", nodePool.Name),
+			zap.String("machine_type", nodePool.Config.MachineType),
+			zap.Int64("disk_size_gb", nodePool.Config.DiskSizeGb),
+			zap.String("disk_type", nodePool.Config.DiskType),
+			zap.String("image_type", nodePool.Config.ImageType),
+			zap.Bool("preemptible", nodePool.Config.Preemptible),
+			zap.Bool("spot", nodePool.Config.Spot),
+			zap.String("service_account", nodePool.Config.ServiceAccount),
+			zap.Int("oauth_scopes_count", len(nodePool.Config.OauthScopes)),
+			zap.Int("tags_count", len(nodePool.Config.Tags)),
+			zap.Int("labels_count", len(nodePool.Config.Labels)),
+			zap.Int("taints_count", len(nodePool.Config.Taints)))
+
+		s.populateNodeGroupFromConfig(&nodeGroup, nodePool.Config)
+	}
+
+	if nodePool.Autoscaling != nil {
+		nodeGroup.ScalingConfig = NodeGroupScalingConfig{
+			MinSize:     int32(nodePool.Autoscaling.MinNodeCount),
+			MaxSize:     int32(nodePool.Autoscaling.MaxNodeCount),
+			DesiredSize: int32(nodePool.InitialNodeCount),
+		}
+	} else {
+		nodeGroup.ScalingConfig = NodeGroupScalingConfig{
+			DesiredSize: int32(nodePool.InitialNodeCount),
+		}
+	}
+
+	if nodePool.Config != nil && nodePool.Config.WorkloadMetadataConfig != nil {
+		nodeGroup.NetworkConfig = &NodeNetworkConfig{
+			EnablePrivateNodes: nodePool.Config.WorkloadMetadataConfig.Mode == "GKE_METADATA",
+		}
+	}
+
+	if nodePool.Management != nil {
+		nodeGroup.Management = &NodeManagement{
+			AutoRepair:  nodePool.Management.AutoRepair,
+			AutoUpgrade: nodePool.Management.AutoUpgrade,
+		}
+	}
+
+	if nodePool.UpgradeSettings != nil {
+		nodeGroup.UpgradeSettings = &UpgradeSettings{
+			MaxSurge:       int32(nodePool.UpgradeSettings.MaxSurge),
+			MaxUnavailable: int32(nodePool.UpgradeSettings.MaxUnavailable),
+			Strategy:       nodePool.UpgradeSettings.Strategy,
+		}
+	}
+
+	nodeGroup.CreatedAt = ""
+	nodeGroup.UpdatedAt = ""
+
+	return nodeGroup
+}
+
+// populateNodeGroupFromConfig populates NodeGroupInfo from GCP NodePool Config
+func (s *Service) populateNodeGroupFromConfig(nodeGroup *NodeGroupInfo, config *container.NodeConfig) {
+	if config.MachineType != "" {
+		nodeGroup.InstanceTypes = []string{config.MachineType}
+	}
+	if config.DiskSizeGb > 0 {
+		nodeGroup.DiskSize = int32(config.DiskSizeGb)
+	}
+	if config.DiskType != "" {
+		nodeGroup.DiskType = config.DiskType
+	}
+	if config.ImageType != "" {
+		nodeGroup.ImageType = config.ImageType
+	}
+	if config.Preemptible {
+		nodeGroup.Preemptible = true
+	}
+	if config.Spot {
+		nodeGroup.Spot = true
+	}
+	if config.ServiceAccount != "" {
+		nodeGroup.ServiceAccount = config.ServiceAccount
+	}
+	if len(config.OauthScopes) > 0 {
+		nodeGroup.OAuthScopes = config.OauthScopes
+	}
+	if len(config.Tags) > 0 {
+		tags := make(map[string]string)
+		for _, tag := range config.Tags {
+			tags[tag] = ""
+		}
+		nodeGroup.Tags = tags
+	}
+	if len(config.Labels) > 0 {
+		nodeGroup.Labels = config.Labels
+	}
+	if len(config.Taints) > 0 {
+		var taints []NodeTaint
+		for _, taint := range config.Taints {
+			taints = append(taints, NodeTaint{
+				Key:    taint.Key,
+				Value:  taint.Value,
+				Effect: taint.Effect,
+			})
+		}
+		nodeGroup.Taints = taints
+	}
+}
+
+// getGCPGKEKubeconfig generates kubeconfig for a GCP GKE cluster
+func (s *Service) getGCPGKEKubeconfig(ctx context.Context, credential *domain.Credential, clusterName, region string) (string, error) {
+	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
+	if err != nil {
+		return "", err
+	}
+
+	// Get cluster details - search in region and all zones
+	locations := s.getGCPLocations(region)
 
 	var cluster *container.Cluster
 
@@ -2093,37 +1753,13 @@ users:
 
 // deleteGCPGKECluster deletes a GCP GKE cluster
 func (s *Service) deleteGCPGKECluster(ctx context.Context, credential *domain.Credential, clusterName, region string) error {
-	// Decrypt credential data
-	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
 	if err != nil {
-		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
-	}
-
-	// Convert credential data to JSON
-	jsonData, err := json.Marshal(credData)
-	if err != nil {
-		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to marshal credential data: %v", err), 500)
-	}
-
-	// Extract project ID
-	projectID, ok := credData["project_id"].(string)
-	if !ok {
-		return domain.NewDomainError(domain.ErrCodeValidationFailed, "project_id not found in credential", 400)
-	}
-
-	// Create Container service client
-	containerService, err := container.NewService(ctx, option.WithCredentialsJSON(jsonData))
-	if err != nil {
-		return domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create GCP container service: %v", err), 502)
+		return err
 	}
 
 	// Find cluster location - search in region and all zones
-	locations := []string{
-		region,                      // Region level (e.g., asia-northeast3)
-		fmt.Sprintf("%s-a", region), // Zone level (e.g., asia-northeast3-a)
-		fmt.Sprintf("%s-b", region), // Zone level (e.g., asia-northeast3-b)
-		fmt.Sprintf("%s-c", region), // Zone level (e.g., asia-northeast3-c)
-	}
+	locations := s.getGCPLocations(region)
 
 	var clusterLocation string
 

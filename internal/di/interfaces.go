@@ -30,7 +30,7 @@ type ContainerInterface interface {
 	GetNetworkService() interface{}
 	GetExportService() interface{}
 	GetCostAnalysisService() interface{}
-	GetCloudProviderService() interface{}
+	GetComputeService() interface{}
 	GetBusinessRuleService() interface{}
 
 	// Domain services
@@ -79,7 +79,7 @@ type ServiceContainer struct {
 	NetworkService          interface{} // NetworkService for VPC, Subnet, Security Group management
 	ExportService           interface{} // TODO: Define ExportService interface in domain
 	CostAnalysisService     interface{} // TODO: Define CostAnalysisService interface in domain
-	CloudProviderService    interface{} // TODO: Define CloudProviderService interface in domain
+	ComputeService          interface{} // TODO: Define ComputeService interface in domain
 	BusinessRuleService     interface{} // TODO: Define BusinessRuleService interface in domain
 }
 

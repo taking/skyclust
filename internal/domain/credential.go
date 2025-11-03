@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"context"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,44 +22,6 @@ type Credential struct {
 
 	// Relationships
 	Workspace *Workspace `json:"workspace,omitempty" gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
-}
-
-// CredentialRepository defines the interface for credential data operations
-type CredentialRepository interface {
-	Create(credential *Credential) error
-	GetByID(id uuid.UUID) (*Credential, error)
-	GetByWorkspaceID(workspaceID uuid.UUID) ([]*Credential, error)
-	GetByWorkspaceIDAndProvider(workspaceID uuid.UUID, provider string) ([]*Credential, error)
-	Update(credential *Credential) error
-	Delete(id uuid.UUID) error
-	DeleteByWorkspaceID(workspaceID uuid.UUID) error
-	// Deprecated: Use GetByWorkspaceID instead
-	GetByUserID(userID uuid.UUID) ([]*Credential, error)
-	// Deprecated: Use GetByWorkspaceIDAndProvider instead
-	GetByUserIDAndProvider(userID uuid.UUID, provider string) ([]*Credential, error)
-	// Deprecated: Use DeleteByWorkspaceID instead
-	DeleteByUserID(userID uuid.UUID) error
-}
-
-// CredentialService defines the interface for credential business logic
-type CredentialService interface {
-	CreateCredential(ctx context.Context, workspaceID, createdBy uuid.UUID, req CreateCredentialRequest) (*Credential, error)
-	GetCredentials(ctx context.Context, workspaceID uuid.UUID) ([]*Credential, error)
-	GetCredentialByID(ctx context.Context, workspaceID, credentialID uuid.UUID) (*Credential, error)
-	UpdateCredential(ctx context.Context, workspaceID, credentialID uuid.UUID, req UpdateCredentialRequest) (*Credential, error)
-	DeleteCredential(ctx context.Context, workspaceID, credentialID uuid.UUID) error
-	EncryptCredentialData(ctx context.Context, data map[string]interface{}) ([]byte, error)
-	DecryptCredentialData(ctx context.Context, encryptedData []byte) (map[string]interface{}, error)
-	// Deprecated: Use CreateCredential with workspaceID instead
-	CreateCredentialByUser(ctx context.Context, userID uuid.UUID, req CreateCredentialRequest) (*Credential, error)
-	// Deprecated: Use GetCredentials with workspaceID instead
-	GetCredentialsByUser(ctx context.Context, userID uuid.UUID) ([]*Credential, error)
-	// Deprecated: Use GetCredentialByID with workspaceID instead
-	GetCredentialByIDAndUser(ctx context.Context, userID, credentialID uuid.UUID) (*Credential, error)
-	// Deprecated: Use UpdateCredential with workspaceID instead
-	UpdateCredentialByUser(ctx context.Context, userID, credentialID uuid.UUID, req UpdateCredentialRequest) (*Credential, error)
-	// Deprecated: Use DeleteCredential with workspaceID instead
-	DeleteCredentialByUser(ctx context.Context, userID, credentialID uuid.UUID) error
 }
 
 // CreateCredentialRequest represents the request to create a credential

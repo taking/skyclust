@@ -37,27 +37,6 @@ func NewService(
 	}
 }
 
-// ExportFormat represents supported export formats
-type ExportFormat string
-
-const (
-	ExportFormatCSV  ExportFormat = "csv"
-	ExportFormatJSON ExportFormat = "json"
-	ExportFormatXLSX ExportFormat = "xlsx"
-	ExportFormatPDF  ExportFormat = "pdf"
-)
-
-// ExportType represents types of data that can be exported
-type ExportType string
-
-const (
-	ExportTypeVMs         ExportType = "vms"
-	ExportTypeWorkspaces  ExportType = "workspaces"
-	ExportTypeCredentials ExportType = "credentials"
-	ExportTypeAuditLogs   ExportType = "audit_logs"
-	ExportTypeCosts       ExportType = "costs"
-)
-
 // ExportRequest represents an export request
 type ExportRequest struct {
 	UserID         string                 `json:"user_id"`

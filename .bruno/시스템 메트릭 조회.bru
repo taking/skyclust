@@ -1,11 +1,11 @@
 meta {
-  name: Status
+  name: 시스템 메트릭 조회
   type: http
-  seq: 4
+  seq: 2
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/system/status
+  url: {{baseUrl}}/api/{{apiVersion}}/system/metrics
   body: none
   auth: bearer
 }

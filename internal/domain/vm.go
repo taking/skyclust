@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"context"
 	"time"
 )
 
@@ -206,32 +205,6 @@ func (v *VM) GetStatusDisplayName() string {
 	default:
 		return "Unknown"
 	}
-}
-
-// VMRepository defines the interface for VM data operations
-type VMRepository interface {
-	Create(ctx context.Context, vm *VM) error
-	GetByID(ctx context.Context, id string) (*VM, error)
-	GetByWorkspaceID(ctx context.Context, workspaceID string) ([]*VM, error)
-	GetVMsByWorkspace(ctx context.Context, workspaceID string) ([]*VM, error)
-	GetByProvider(ctx context.Context, provider string) ([]*VM, error)
-	Update(ctx context.Context, vm *VM) error
-	Delete(ctx context.Context, id string) error
-	List(ctx context.Context, workspaceID string, limit, offset int) ([]*VM, error)
-	UpdateStatus(ctx context.Context, id string, status VMStatus) error
-}
-
-// VMService defines the business logic interface for VMs
-type VMService interface {
-	CreateVM(ctx context.Context, req CreateVMRequest) (*VM, error)
-	GetVM(ctx context.Context, id string) (*VM, error)
-	UpdateVM(ctx context.Context, id string, req UpdateVMRequest) (*VM, error)
-	DeleteVM(ctx context.Context, id string) error
-	GetVMs(ctx context.Context, workspaceID string) ([]*VM, error)
-	StartVM(ctx context.Context, id string) error
-	StopVM(ctx context.Context, id string) error
-	RestartVM(ctx context.Context, id string) error
-	GetVMStatus(ctx context.Context, id string) (VMStatus, error)
 }
 
 // CreateVMRequest represents the request to create a new VM

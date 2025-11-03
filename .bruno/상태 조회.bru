@@ -1,11 +1,11 @@
 meta {
-  name: Alerts
+  name: 상태 조회
   type: http
-  seq: 3
+  seq: 4
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/system/alerts
+  url: {{baseUrl}}/api/{{apiVersion}}/system/status
   body: none
   auth: bearer
 }

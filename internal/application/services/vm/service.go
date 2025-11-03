@@ -3,7 +3,7 @@ package vm
 import (
 	"context"
 	"fmt"
-	cloudproviderservice "skyclust/internal/application/services/cloud_provider"
+	computeservice "skyclust/internal/application/services/compute"
 	"skyclust/internal/domain"
 	"time"
 
@@ -15,7 +15,7 @@ import (
 type Service struct {
 	vmRepo        domain.VMRepository
 	workspaceRepo domain.WorkspaceRepository
-	cloudProvider cloudproviderservice.CloudProviderService
+	computeService computeservice.ComputeService
 	eventService  domain.EventService
 	auditLogRepo  domain.AuditLogRepository
 }
@@ -24,16 +24,16 @@ type Service struct {
 func NewService(
 	vmRepo domain.VMRepository,
 	workspaceRepo domain.WorkspaceRepository,
-	cloudProvider cloudproviderservice.CloudProviderService,
+	computeService computeservice.ComputeService,
 	eventService domain.EventService,
 	auditLogRepo domain.AuditLogRepository,
 ) *Service {
 	return &Service{
-		vmRepo:        vmRepo,
-		workspaceRepo: workspaceRepo,
-		cloudProvider: cloudProvider,
-		eventService:  eventService,
-		auditLogRepo:  auditLogRepo,
+		vmRepo:         vmRepo,
+		workspaceRepo:  workspaceRepo,
+		computeService: computeService,
+		eventService:   eventService,
+		auditLogRepo:   auditLogRepo,
 	}
 }
 
@@ -65,8 +65,8 @@ func (s *Service) CreateVM(ctx context.Context, req domain.CreateVMRequest) (*do
 		}
 	}
 
-	// Create cloud instance
-	cloudReq := cloudproviderservice.CreateInstanceRequest{
+	// Create compute instance
+	computeReq := computeservice.CreateInstanceRequest{
 		Name:     req.Name,
 		Type:     req.Type,
 		Region:   req.Region,
@@ -74,9 +74,9 @@ func (s *Service) CreateVM(ctx context.Context, req domain.CreateVMRequest) (*do
 		Metadata: req.Metadata,
 	}
 
-	cloudInstance, err := s.cloudProvider.CreateInstance(ctx, req.Provider, cloudReq)
+	computeInstance, err := s.computeService.CreateInstance(ctx, req.Provider, computeReq)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create cloud instance: %v", err), 502)
+		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create compute instance: %v", err), 502)
 	}
 
 	// Create VM record
@@ -85,8 +85,8 @@ func (s *Service) CreateVM(ctx context.Context, req domain.CreateVMRequest) (*do
 		Name:        req.Name,
 		WorkspaceID: req.WorkspaceID,
 		Provider:    req.Provider,
-		InstanceID:  cloudInstance.ID,
-		Status:      domain.VMStatus(cloudInstance.Status),
+		InstanceID:  computeInstance.ID,
+		Status:      domain.VMStatus(computeInstance.Status),
 		Type:        req.Type,
 		Region:      req.Region,
 		ImageID:     req.ImageID,
@@ -96,9 +96,9 @@ func (s *Service) CreateVM(ctx context.Context, req domain.CreateVMRequest) (*do
 	}
 
 	if err := s.vmRepo.Create(ctx, vm); err != nil {
-		// Rollback cloud instance creation
-		if rollbackErr := s.cloudProvider.DeleteInstance(ctx, req.Provider, cloudInstance.ID); rollbackErr != nil {
-			logger.Error(fmt.Sprintf("Failed to rollback cloud instance creation: %v", rollbackErr))
+		// Rollback compute instance creation
+		if rollbackErr := s.computeService.DeleteInstance(ctx, req.Provider, computeInstance.ID); rollbackErr != nil {
+			logger.Error(fmt.Sprintf("Failed to rollback compute instance creation: %v", rollbackErr))
 		}
 		logger.Error(fmt.Sprintf("Failed to create VM record: %v", err))
 		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to create VM record: %v", err), 500)
@@ -181,10 +181,10 @@ func (s *Service) DeleteVM(ctx context.Context, id string) error {
 		return domain.ErrVMNotFound
 	}
 
-	// Delete cloud instance
-	if err := s.cloudProvider.DeleteInstance(ctx, vm.Provider, vm.InstanceID); err != nil {
-		logger.Error(fmt.Sprintf("Failed to delete cloud instance: %v (provider: %s, instance: %s)", err, vm.Provider, vm.InstanceID))
-		// Continue with VM record deletion even if cloud deletion fails
+	// Delete compute instance
+	if err := s.computeService.DeleteInstance(ctx, vm.Provider, vm.InstanceID); err != nil {
+		logger.Error(fmt.Sprintf("Failed to delete compute instance: %v (provider: %s, instance: %s)", err, vm.Provider, vm.InstanceID))
+		// Continue with VM record deletion even if compute deletion fails
 	}
 
 	// Delete VM record
@@ -232,8 +232,8 @@ func (s *Service) StartVM(ctx context.Context, id string) error {
 		return domain.NewDomainError(domain.ErrCodeConflict, "VM is already running", 409)
 	}
 
-	if err := s.cloudProvider.StartInstance(ctx, vm.Provider, vm.InstanceID); err != nil {
-		return domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to start cloud instance: %v", err), 502)
+	if err := s.computeService.StartInstance(ctx, vm.Provider, vm.InstanceID); err != nil {
+		return domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to start compute instance: %v", err), 502)
 	}
 
 	// Update status
@@ -259,8 +259,8 @@ func (s *Service) StopVM(ctx context.Context, id string) error {
 		return domain.NewDomainError(domain.ErrCodeConflict, "VM is already stopped", 409)
 	}
 
-	if err := s.cloudProvider.StopInstance(ctx, vm.Provider, vm.InstanceID); err != nil {
-		return domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to stop cloud instance: %v", err), 502)
+	if err := s.computeService.StopInstance(ctx, vm.Provider, vm.InstanceID); err != nil {
+		return domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to stop compute instance: %v", err), 502)
 	}
 
 	// Update status
@@ -283,16 +283,16 @@ func (s *Service) RestartVM(ctx context.Context, id string) error {
 	}
 
 	// Stop first
-	if err := s.cloudProvider.StopInstance(ctx, vm.Provider, vm.InstanceID); err != nil {
-		return domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to stop cloud instance: %v", err), 502)
+	if err := s.computeService.StopInstance(ctx, vm.Provider, vm.InstanceID); err != nil {
+		return domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to stop compute instance: %v", err), 502)
 	}
 
 	// Wait a bit before starting
 	time.Sleep(2 * time.Second)
 
 	// Start
-	if err := s.cloudProvider.StartInstance(ctx, vm.Provider, vm.InstanceID); err != nil {
-		return domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to start cloud instance: %v", err), 502)
+	if err := s.computeService.StartInstance(ctx, vm.Provider, vm.InstanceID); err != nil {
+		return domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to start compute instance: %v", err), 502)
 	}
 
 	// Update status
@@ -314,11 +314,11 @@ func (s *Service) GetVMStatus(ctx context.Context, id string) (domain.VMStatus, 
 		return "", domain.ErrVMNotFound
 	}
 
-	// Get current status from cloud provider
-	status, err := s.cloudProvider.GetInstanceStatus(ctx, vm.Provider, vm.InstanceID)
+	// Get current status from compute service
+	status, err := s.computeService.GetInstanceStatus(ctx, vm.Provider, vm.InstanceID)
 	if err != nil {
-		logger.Error(fmt.Sprintf("Failed to get cloud instance status: %v (provider: %s, instance: %s)", err, vm.Provider, vm.InstanceID))
-		return vm.Status, nil // Return cached status if cloud call fails
+		logger.Error(fmt.Sprintf("Failed to get compute instance status: %v (provider: %s, instance: %s)", err, vm.Provider, vm.InstanceID))
+		return vm.Status, nil // Return cached status if compute call fails
 	}
 
 	// Update status if it changed

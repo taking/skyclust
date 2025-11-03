@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"context"
 	"time"
 )
 
@@ -112,35 +111,6 @@ type WorkspaceUser struct {
 // TableName specifies the table name for WorkspaceUser
 func (WorkspaceUser) TableName() string {
 	return "workspace_users"
-}
-
-// WorkspaceRepository defines the interface for workspace data operations
-type WorkspaceRepository interface {
-	Create(ctx context.Context, workspace *Workspace) error
-	GetByID(ctx context.Context, id string) (*Workspace, error)
-	GetByOwnerID(ctx context.Context, ownerID string) ([]*Workspace, error)
-	Update(ctx context.Context, workspace *Workspace) error
-	Delete(ctx context.Context, id string) error
-	List(ctx context.Context, limit, offset int) ([]*Workspace, error)
-	GetUserWorkspaces(ctx context.Context, userID string) ([]*Workspace, error)
-	AddUserToWorkspace(ctx context.Context, userID, workspaceID string, role string) error
-	RemoveUserFromWorkspace(ctx context.Context, userID, workspaceID string) error
-	// Optimized methods for N+1 query prevention
-	GetWorkspacesWithUsers(ctx context.Context, userID string) ([]*Workspace, error)
-	GetWorkspaceWithMembers(ctx context.Context, workspaceID string) (*Workspace, []*User, error)
-	GetUserWorkspacesOptimized(ctx context.Context, userID string) ([]*Workspace, error)
-}
-
-// WorkspaceService defines the business logic interface for workspaces
-type WorkspaceService interface {
-	CreateWorkspace(ctx context.Context, req CreateWorkspaceRequest) (*Workspace, error)
-	GetWorkspace(ctx context.Context, id string) (*Workspace, error)
-	UpdateWorkspace(ctx context.Context, id string, req UpdateWorkspaceRequest) (*Workspace, error)
-	DeleteWorkspace(ctx context.Context, id string) error
-	GetUserWorkspaces(ctx context.Context, userID string) ([]*Workspace, error)
-	AddUserToWorkspace(ctx context.Context, workspaceID, userID string) error
-	RemoveUserFromWorkspace(ctx context.Context, workspaceID, userID string) error
-	GetWorkspaceMembers(ctx context.Context, workspaceID string) ([]*User, error)
 }
 
 // CreateWorkspaceRequest represents the request to create a new workspace

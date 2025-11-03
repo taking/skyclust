@@ -65,19 +65,20 @@ func (h *Handler) listVPCsHandler() handlers.HandlerFunc {
 
 		h.logVPCsListAttempt(c, userID, credential.ID, region)
 
-		req := networkservice.ListVPCsRequest{
-			CredentialID: credential.ID.String(),
-			Region:       region,
+		handlerReq := ListVPCsRequest{
+			Region: region,
 		}
+		serviceReq := ToServiceListVPCsRequest(handlerReq, credential.ID.String())
 
-		vpcs, err := h.networkService.ListVPCs(c.Request.Context(), credential, req)
+		vpcs, err := h.networkService.ListVPCs(c.Request.Context(), credential, serviceReq)
 		if err != nil {
 			h.HandleError(c, err, "list_vpcs")
 			return
 		}
 
-		h.logVPCsListSuccess(c, userID, len(vpcs.VPCs))
-		h.OK(c, vpcs, "VPCs retrieved successfully")
+		handlerResp := FromServiceListVPCsResponse(vpcs)
+		h.logVPCsListSuccess(c, userID, len(handlerResp.VPCs))
+		h.OK(c, handlerResp, "VPCs retrieved successfully")
 	}
 }
 
@@ -115,20 +116,21 @@ func (h *Handler) listSubnetsHandler() handlers.HandlerFunc {
 
 		h.logSubnetsListAttempt(c, userID, credential.ID, vpcID, region)
 
-		req := networkservice.ListSubnetsRequest{
-			CredentialID: credential.ID.String(),
-			VPCID:        vpcID,
-			Region:       region,
+		handlerReq := ListSubnetsRequest{
+			VPCID:  vpcID,
+			Region: region,
 		}
+		serviceReq := ToServiceListSubnetsRequest(handlerReq, credential.ID.String())
 
-		subnets, err := h.networkService.ListSubnets(c.Request.Context(), credential, req)
+		subnets, err := h.networkService.ListSubnets(c.Request.Context(), credential, serviceReq)
 		if err != nil {
 			h.HandleError(c, err, "list_subnets")
 			return
 		}
 
-		h.logSubnetsListSuccess(c, userID, vpcID, len(subnets.Subnets))
-		h.OK(c, subnets, "Subnets retrieved successfully")
+		handlerResp := FromServiceListSubnetsResponse(subnets)
+		h.logSubnetsListSuccess(c, userID, vpcID, len(handlerResp.Subnets))
+		h.OK(c, handlerResp, "Subnets retrieved successfully")
 	}
 }
 
@@ -166,20 +168,21 @@ func (h *Handler) listSecurityGroupsHandler() handlers.HandlerFunc {
 
 		h.logSecurityGroupsListAttempt(c, userID, credential.ID, vpcID, region)
 
-		req := networkservice.ListSecurityGroupsRequest{
-			CredentialID: credential.ID.String(),
-			VPCID:        vpcID,
-			Region:       region,
+		handlerReq := ListSecurityGroupsRequest{
+			VPCID:  vpcID,
+			Region: region,
 		}
+		serviceReq := ToServiceListSecurityGroupsRequest(handlerReq, credential.ID.String())
 
-		securityGroups, err := h.networkService.ListSecurityGroups(c.Request.Context(), credential, req)
+		securityGroups, err := h.networkService.ListSecurityGroups(c.Request.Context(), credential, serviceReq)
 		if err != nil {
 			h.HandleError(c, err, "list_security_groups")
 			return
 		}
 
-		h.logSecurityGroupsListSuccess(c, userID, vpcID, len(securityGroups.SecurityGroups))
-		h.OK(c, securityGroups, "Security groups retrieved successfully")
+		handlerResp := FromServiceListSecurityGroupsResponse(securityGroups)
+		h.logSecurityGroupsListSuccess(c, userID, vpcID, len(handlerResp.SecurityGroups))
+		h.OK(c, handlerResp, "Security groups retrieved successfully")
 	}
 }
 
@@ -217,26 +220,27 @@ func (h *Handler) getVPCHandler() handlers.HandlerFunc {
 		}
 		h.logVPCGetAttempt(c, userID, vpcID, credential.ID, region)
 
-		req := networkservice.GetVPCRequest{
-			CredentialID: credential.ID.String(),
-			VPCID:        vpcID,
-			Region:       region,
+		handlerReq := GetVPCRequest{
+			VPCID:  vpcID,
+			Region: region,
 		}
+		serviceReq := ToServiceGetVPCRequest(handlerReq, credential.ID.String())
 
-		vpc, err := h.networkService.GetVPC(c.Request.Context(), credential, req)
+		vpc, err := h.networkService.GetVPC(c.Request.Context(), credential, serviceReq)
 		if err != nil {
 			h.HandleError(c, err, "get_vpc")
 			return
 		}
 
+		handlerResp := FromServiceVPCInfo(vpc)
 		h.logVPCGetSuccess(c, userID, vpcID)
-		h.OK(c, vpc, "VPC retrieved successfully")
+		h.OK(c, handlerResp, "VPC retrieved successfully")
 	}
 }
 
 // CreateVPC handles VPC creation requests using decorator pattern
 func (h *Handler) CreateVPC(c *gin.Context) {
-	var req networkservice.CreateVPCRequest
+	var req CreateVPCRequest
 
 	handler := h.Compose(
 		h.createVPCHandler(req),
@@ -247,7 +251,7 @@ func (h *Handler) CreateVPC(c *gin.Context) {
 }
 
 // createVPCHandler is the core business logic for creating a VPC
-func (h *Handler) createVPCHandler(req networkservice.CreateVPCRequest) handlers.HandlerFunc {
+func (h *Handler) createVPCHandler(req CreateVPCRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "create_vpc")
@@ -259,29 +263,31 @@ func (h *Handler) createVPCHandler(req networkservice.CreateVPCRequest) handlers
 			return
 		}
 
-		h.logVPCCreationAttempt(c, userID, req)
-
-		// Get and validate credential from request body
-		credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, h.provider)
+		// Get credential from query or body
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, h.provider)
 		if err != nil {
 			h.HandleError(c, err, "create_vpc")
 			return
 		}
 
-		vpc, err := h.networkService.CreateVPC(c.Request.Context(), credential, req)
+		serviceReq := ToServiceCreateVPCRequest(req, credential.ID.String())
+		h.logVPCCreationAttempt(c, userID, serviceReq)
+
+		vpc, err := h.networkService.CreateVPC(c.Request.Context(), credential, serviceReq)
 		if err != nil {
 			h.HandleError(c, err, "create_vpc")
 			return
 		}
 
-		h.logVPCCreationSuccess(c, userID, vpc)
-		h.Created(c, vpc, "VPC created successfully")
+		handlerResp := FromServiceVPCInfo(vpc)
+		h.logVPCCreationSuccess(c, userID, handlerResp)
+		h.Created(c, handlerResp, "VPC created successfully")
 	}
 }
 
 // UpdateVPC handles VPC update requests using decorator pattern
 func (h *Handler) UpdateVPC(c *gin.Context) {
-	var req networkservice.UpdateVPCRequest
+	var req UpdateVPCRequest
 
 	handler := h.Compose(
 		h.updateVPCHandler(req),
@@ -292,7 +298,7 @@ func (h *Handler) UpdateVPC(c *gin.Context) {
 }
 
 // updateVPCHandler is the core business logic for updating a VPC
-func (h *Handler) updateVPCHandler(req networkservice.UpdateVPCRequest) handlers.HandlerFunc {
+func (h *Handler) updateVPCHandler(req UpdateVPCRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "update_vpc")
@@ -317,18 +323,20 @@ func (h *Handler) updateVPCHandler(req networkservice.UpdateVPCRequest) handlers
 			return
 		}
 
-		h.logVPCUpdateAttempt(c, userID, vpcID, req)
+		serviceReq := ToServiceUpdateVPCRequest(req)
+		h.logVPCUpdateAttempt(c, userID, vpcID, serviceReq)
 
 		region := c.Query("region") // Optional for VPC
 
-		vpc, err := h.networkService.UpdateVPC(c.Request.Context(), credential, req, vpcID, region)
+		vpc, err := h.networkService.UpdateVPC(c.Request.Context(), credential, serviceReq, vpcID, region)
 		if err != nil {
 			h.HandleError(c, err, "update_vpc")
 			return
 		}
 
+		handlerResp := FromServiceVPCInfo(vpc)
 		h.logVPCUpdateSuccess(c, userID, vpcID)
-		h.OK(c, vpc, "VPC updated successfully")
+		h.OK(c, handlerResp, "VPC updated successfully")
 	}
 }
 
@@ -367,13 +375,13 @@ func (h *Handler) deleteVPCHandler() handlers.HandlerFunc {
 
 		region := c.Query("region") // Optional for VPC
 
-		req := networkservice.DeleteVPCRequest{
-			CredentialID: credential.ID.String(),
-			VPCID:        vpcID,
-			Region:       region,
+		handlerReq := DeleteVPCRequest{
+			VPCID:  vpcID,
+			Region: region,
 		}
+		serviceReq := ToServiceDeleteVPCRequest(handlerReq, credential.ID.String())
 
-		if err := h.networkService.DeleteVPC(c.Request.Context(), credential, req); err != nil {
+		if err := h.networkService.DeleteVPC(c.Request.Context(), credential, serviceReq); err != nil {
 			h.HandleError(c, err, "delete_vpc")
 			return
 		}
@@ -422,26 +430,27 @@ func (h *Handler) getSubnetHandler() handlers.HandlerFunc {
 			return
 		}
 
-		req := networkservice.GetSubnetRequest{
-			CredentialID: credential.ID.String(),
-			SubnetID:     subnetID,
-			Region:       region,
+		handlerReq := GetSubnetRequest{
+			SubnetID: subnetID,
+			Region:   region,
 		}
+		serviceReq := ToServiceGetSubnetRequest(handlerReq, credential.ID.String())
 
-		subnet, err := h.networkService.GetSubnet(c.Request.Context(), credential, req)
+		subnet, err := h.networkService.GetSubnet(c.Request.Context(), credential, serviceReq)
 		if err != nil {
 			h.HandleError(c, err, "get_subnet")
 			return
 		}
 
+		handlerResp := FromServiceSubnetInfo(subnet)
 		h.logSubnetGetSuccess(c, userID, subnetID)
-		h.OK(c, subnet, "Subnet retrieved successfully")
+		h.OK(c, handlerResp, "Subnet retrieved successfully")
 	}
 }
 
 // CreateSubnet handles subnet creation requests using decorator pattern
 func (h *Handler) CreateSubnet(c *gin.Context) {
-	var req networkservice.CreateSubnetRequest
+	var req CreateSubnetRequest
 
 	handler := h.Compose(
 		h.createSubnetHandler(req),
@@ -452,7 +461,7 @@ func (h *Handler) CreateSubnet(c *gin.Context) {
 }
 
 // createSubnetHandler is the core business logic for creating a subnet
-func (h *Handler) createSubnetHandler(req networkservice.CreateSubnetRequest) handlers.HandlerFunc {
+func (h *Handler) createSubnetHandler(req CreateSubnetRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "create_subnet")
@@ -465,29 +474,31 @@ func (h *Handler) createSubnetHandler(req networkservice.CreateSubnetRequest) ha
 			return
 		}
 
-		h.logSubnetCreationAttempt(c, userID, req)
-
-		// Get and validate credential from request body
-		credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, h.provider)
+		// Get credential from query or body
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, h.provider)
 		if err != nil {
 			h.HandleError(c, err, "create_subnet")
 			return
 		}
 
-		subnet, err := h.networkService.CreateSubnet(c.Request.Context(), credential, req)
+		serviceReq := ToServiceCreateSubnetRequest(req, credential.ID.String())
+		h.logSubnetCreationAttempt(c, userID, serviceReq)
+
+		subnet, err := h.networkService.CreateSubnet(c.Request.Context(), credential, serviceReq)
 		if err != nil {
 			h.HandleError(c, err, "create_subnet")
 			return
 		}
 
-		h.logSubnetCreationSuccess(c, userID, subnet)
-		h.Created(c, subnet, "Subnet created successfully")
+		handlerResp := FromServiceSubnetInfo(subnet)
+		h.logSubnetCreationSuccess(c, userID, handlerResp)
+		h.Created(c, handlerResp, "Subnet created successfully")
 	}
 }
 
 // UpdateSubnet handles subnet update requests using decorator pattern
 func (h *Handler) UpdateSubnet(c *gin.Context) {
-	var req networkservice.UpdateSubnetRequest
+	var req UpdateSubnetRequest
 
 	handler := h.Compose(
 		h.updateSubnetHandler(req),
@@ -498,7 +509,7 @@ func (h *Handler) UpdateSubnet(c *gin.Context) {
 }
 
 // updateSubnetHandler is the core business logic for updating a subnet
-func (h *Handler) updateSubnetHandler(req networkservice.UpdateSubnetRequest) handlers.HandlerFunc {
+func (h *Handler) updateSubnetHandler(req UpdateSubnetRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "update_subnet")
@@ -523,22 +534,24 @@ func (h *Handler) updateSubnetHandler(req networkservice.UpdateSubnetRequest) ha
 			return
 		}
 
-		h.logSubnetUpdateAttempt(c, userID, subnetID, req)
-
 		region := h.parseRegion(c)
 
 		if region == "" {
 			return
 		}
 
-		subnet, err := h.networkService.UpdateSubnet(c.Request.Context(), credential, req, subnetID, region)
+		serviceReq := ToServiceUpdateSubnetRequest(req)
+		h.logSubnetUpdateAttempt(c, userID, subnetID, serviceReq)
+
+		subnet, err := h.networkService.UpdateSubnet(c.Request.Context(), credential, serviceReq, subnetID, region)
 		if err != nil {
 			h.HandleError(c, err, "update_subnet")
 			return
 		}
 
+		handlerResp := FromServiceSubnetInfo(subnet)
 		h.logSubnetUpdateSuccess(c, userID, subnetID)
-		h.OK(c, subnet, "Subnet updated successfully")
+		h.OK(c, handlerResp, "Subnet updated successfully")
 	}
 }
 
@@ -581,13 +594,13 @@ func (h *Handler) deleteSubnetHandler() handlers.HandlerFunc {
 			return
 		}
 
-		req := networkservice.DeleteSubnetRequest{
-			CredentialID: credential.ID.String(),
-			SubnetID:     subnetID,
-			Region:       region,
+		handlerReq := DeleteSubnetRequest{
+			SubnetID: subnetID,
+			Region:   region,
 		}
+		serviceReq := ToServiceDeleteSubnetRequest(handlerReq, credential.ID.String())
 
-		if err := h.networkService.DeleteSubnet(c.Request.Context(), credential, req); err != nil {
+		if err := h.networkService.DeleteSubnet(c.Request.Context(), credential, serviceReq); err != nil {
 			h.HandleError(c, err, "delete_subnet")
 			return
 		}
@@ -636,26 +649,27 @@ func (h *Handler) getSecurityGroupHandler() handlers.HandlerFunc {
 			return
 		}
 
-		req := networkservice.GetSecurityGroupRequest{
-			CredentialID:    credential.ID.String(),
+		handlerReq := GetSecurityGroupRequest{
 			SecurityGroupID: securityGroupID,
 			Region:          region,
 		}
+		serviceReq := ToServiceGetSecurityGroupRequest(handlerReq, credential.ID.String())
 
-		securityGroup, err := h.networkService.GetSecurityGroup(c.Request.Context(), credential, req)
+		securityGroup, err := h.networkService.GetSecurityGroup(c.Request.Context(), credential, serviceReq)
 		if err != nil {
 			h.HandleError(c, err, "get_security_group")
 			return
 		}
 
+		handlerResp := FromServiceSecurityGroupInfo(securityGroup)
 		h.logSecurityGroupGetSuccess(c, userID, securityGroupID)
-		h.OK(c, securityGroup, "Security group retrieved successfully")
+		h.OK(c, handlerResp, "Security group retrieved successfully")
 	}
 }
 
 // CreateSecurityGroup handles security group creation requests using decorator pattern
 func (h *Handler) CreateSecurityGroup(c *gin.Context) {
-	var req networkservice.CreateSecurityGroupRequest
+	var req CreateSecurityGroupRequest
 
 	handler := h.Compose(
 		h.createSecurityGroupHandler(req),
@@ -666,7 +680,7 @@ func (h *Handler) CreateSecurityGroup(c *gin.Context) {
 }
 
 // createSecurityGroupHandler is the core business logic for creating a security group
-func (h *Handler) createSecurityGroupHandler(req networkservice.CreateSecurityGroupRequest) handlers.HandlerFunc {
+func (h *Handler) createSecurityGroupHandler(req CreateSecurityGroupRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "create_security_group")
@@ -679,29 +693,31 @@ func (h *Handler) createSecurityGroupHandler(req networkservice.CreateSecurityGr
 			return
 		}
 
-		h.logSecurityGroupCreationAttempt(c, userID, req)
-
-		// Get and validate credential from request body
-		credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, h.provider)
+		// Get credential from query or body
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, h.provider)
 		if err != nil {
 			h.HandleError(c, err, "create_security_group")
 			return
 		}
 
-		securityGroup, err := h.networkService.CreateSecurityGroup(c.Request.Context(), credential, req)
+		serviceReq := ToServiceCreateSecurityGroupRequest(req, credential.ID.String())
+		h.logSecurityGroupCreationAttempt(c, userID, serviceReq)
+
+		securityGroup, err := h.networkService.CreateSecurityGroup(c.Request.Context(), credential, serviceReq)
 		if err != nil {
 			h.HandleError(c, err, "create_security_group")
 			return
 		}
 
-		h.logSecurityGroupCreationSuccess(c, userID, securityGroup)
-		h.Created(c, securityGroup, "Security group created successfully")
+		handlerResp := FromServiceSecurityGroupInfo(securityGroup)
+		h.logSecurityGroupCreationSuccess(c, userID, handlerResp)
+		h.Created(c, handlerResp, "Security group created successfully")
 	}
 }
 
 // UpdateSecurityGroup handles security group update requests using decorator pattern
 func (h *Handler) UpdateSecurityGroup(c *gin.Context) {
-	var req networkservice.UpdateSecurityGroupRequest
+	var req UpdateSecurityGroupRequest
 
 	handler := h.Compose(
 		h.updateSecurityGroupHandler(req),
@@ -712,7 +728,7 @@ func (h *Handler) UpdateSecurityGroup(c *gin.Context) {
 }
 
 // updateSecurityGroupHandler is the core business logic for updating a security group
-func (h *Handler) updateSecurityGroupHandler(req networkservice.UpdateSecurityGroupRequest) handlers.HandlerFunc {
+func (h *Handler) updateSecurityGroupHandler(req UpdateSecurityGroupRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "update_security_group")
@@ -737,22 +753,24 @@ func (h *Handler) updateSecurityGroupHandler(req networkservice.UpdateSecurityGr
 			return
 		}
 
-		h.logSecurityGroupUpdateAttempt(c, userID, securityGroupID, req)
-
 		region := h.parseRegion(c)
 
 		if region == "" {
 			return
 		}
 
-		securityGroup, err := h.networkService.UpdateSecurityGroup(c.Request.Context(), credential, req, securityGroupID, region)
+		serviceReq := ToServiceUpdateSecurityGroupRequest(req)
+		h.logSecurityGroupUpdateAttempt(c, userID, securityGroupID, serviceReq)
+
+		securityGroup, err := h.networkService.UpdateSecurityGroup(c.Request.Context(), credential, serviceReq, securityGroupID, region)
 		if err != nil {
 			h.HandleError(c, err, "update_security_group")
 			return
 		}
 
+		handlerResp := FromServiceSecurityGroupInfo(securityGroup)
 		h.logSecurityGroupUpdateSuccess(c, userID, securityGroupID)
-		h.OK(c, securityGroup, "Security group updated successfully")
+		h.OK(c, handlerResp, "Security group updated successfully")
 	}
 }
 
@@ -795,13 +813,13 @@ func (h *Handler) deleteSecurityGroupHandler() handlers.HandlerFunc {
 			return
 		}
 
-		req := networkservice.DeleteSecurityGroupRequest{
-			CredentialID:    credential.ID.String(),
+		handlerReq := DeleteSecurityGroupRequest{
 			SecurityGroupID: securityGroupID,
 			Region:          region,
 		}
+		serviceReq := ToServiceDeleteSecurityGroupRequest(handlerReq, credential.ID.String())
 
-		if err := h.networkService.DeleteSecurityGroup(c.Request.Context(), credential, req); err != nil {
+		if err := h.networkService.DeleteSecurityGroup(c.Request.Context(), credential, serviceReq); err != nil {
 			h.HandleError(c, err, "delete_security_group")
 			return
 		}
@@ -813,7 +831,7 @@ func (h *Handler) deleteSecurityGroupHandler() handlers.HandlerFunc {
 
 // AddSecurityGroupRule adds a rule to a security group using decorator pattern
 func (h *Handler) AddSecurityGroupRule(c *gin.Context) {
-	var req networkservice.AddSecurityGroupRuleRequest
+	var req AddSecurityGroupRuleRequest
 
 	handler := h.Compose(
 		h.addSecurityGroupRuleHandler(req),
@@ -824,7 +842,7 @@ func (h *Handler) AddSecurityGroupRule(c *gin.Context) {
 }
 
 // addSecurityGroupRuleHandler is the core business logic for adding a security group rule
-func (h *Handler) addSecurityGroupRuleHandler(req networkservice.AddSecurityGroupRuleRequest) handlers.HandlerFunc {
+func (h *Handler) addSecurityGroupRuleHandler(req AddSecurityGroupRuleRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "add_security_group_rule")
@@ -837,29 +855,31 @@ func (h *Handler) addSecurityGroupRuleHandler(req networkservice.AddSecurityGrou
 			return
 		}
 
-		h.logSecurityGroupRuleAdditionAttempt(c, userID, req)
-
-		// Get and validate credential from request body
-		credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, h.provider)
+		// Get credential from query or body
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, h.provider)
 		if err != nil {
 			h.HandleError(c, err, "add_security_group_rule")
 			return
 		}
 
-		result, err := h.networkService.AddSecurityGroupRule(c.Request.Context(), credential, req)
+		serviceReq := ToServiceAddSecurityGroupRuleRequest(req, credential.ID.String())
+		h.logSecurityGroupRuleAdditionAttempt(c, userID, serviceReq)
+
+		result, err := h.networkService.AddSecurityGroupRule(c.Request.Context(), credential, serviceReq)
 		if err != nil {
 			h.HandleError(c, err, "add_security_group_rule")
 			return
 		}
 
-		h.logSecurityGroupRuleAdditionSuccess(c, userID, req)
-		h.OK(c, result, "Security group rule added successfully")
+		handlerResp := FromServiceSecurityGroupInfoToRuleResponse(result, true, "Security group rule added successfully")
+		h.logSecurityGroupRuleAdditionSuccess(c, userID, serviceReq)
+		h.OK(c, handlerResp, "Security group rule added successfully")
 	}
 }
 
 // RemoveSecurityGroupRule removes a rule from a security group using decorator pattern
 func (h *Handler) RemoveSecurityGroupRule(c *gin.Context) {
-	var req networkservice.RemoveSecurityGroupRuleRequest
+	var req RemoveSecurityGroupRuleRequest
 
 	handler := h.Compose(
 		h.removeSecurityGroupRuleHandler(req),
@@ -870,7 +890,7 @@ func (h *Handler) RemoveSecurityGroupRule(c *gin.Context) {
 }
 
 // removeSecurityGroupRuleHandler is the core business logic for removing a security group rule
-func (h *Handler) removeSecurityGroupRuleHandler(req networkservice.RemoveSecurityGroupRuleRequest) handlers.HandlerFunc {
+func (h *Handler) removeSecurityGroupRuleHandler(req RemoveSecurityGroupRuleRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "remove_security_group_rule")
@@ -883,29 +903,31 @@ func (h *Handler) removeSecurityGroupRuleHandler(req networkservice.RemoveSecuri
 			return
 		}
 
-		h.logSecurityGroupRuleRemovalAttempt(c, userID, req)
-
-		// Get and validate credential from request body
-		credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, h.provider)
+		// Get credential from query or body
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, h.provider)
 		if err != nil {
 			h.HandleError(c, err, "remove_security_group_rule")
 			return
 		}
 
-		result, err := h.networkService.RemoveSecurityGroupRule(c.Request.Context(), credential, req)
+		serviceReq := ToServiceRemoveSecurityGroupRuleRequest(req, credential.ID.String())
+		h.logSecurityGroupRuleRemovalAttempt(c, userID, serviceReq)
+
+		result, err := h.networkService.RemoveSecurityGroupRule(c.Request.Context(), credential, serviceReq)
 		if err != nil {
 			h.HandleError(c, err, "remove_security_group_rule")
 			return
 		}
 
-		h.logSecurityGroupRuleRemovalSuccess(c, userID, req)
-		h.OK(c, result, "Security group rule removed successfully")
+		handlerResp := FromServiceSecurityGroupInfoToRuleResponse(result, true, "Security group rule removed successfully")
+		h.logSecurityGroupRuleRemovalSuccess(c, userID, serviceReq)
+		h.OK(c, handlerResp, "Security group rule removed successfully")
 	}
 }
 
 // UpdateSecurityGroupRules updates all rules for a security group using decorator pattern
 func (h *Handler) UpdateSecurityGroupRules(c *gin.Context) {
-	var req networkservice.UpdateSecurityGroupRulesRequest
+	var req UpdateSecurityGroupRulesRequest
 
 	handler := h.Compose(
 		h.updateSecurityGroupRulesHandler(req),
@@ -916,7 +938,7 @@ func (h *Handler) UpdateSecurityGroupRules(c *gin.Context) {
 }
 
 // updateSecurityGroupRulesHandler is the core business logic for updating security group rules
-func (h *Handler) updateSecurityGroupRulesHandler(req networkservice.UpdateSecurityGroupRulesRequest) handlers.HandlerFunc {
+func (h *Handler) updateSecurityGroupRulesHandler(req UpdateSecurityGroupRulesRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "update_security_group_rules")
@@ -928,23 +950,25 @@ func (h *Handler) updateSecurityGroupRulesHandler(req networkservice.UpdateSecur
 			return
 		}
 
-		h.logSecurityGroupRulesUpdateAttempt(c, userID, req)
-
-		// Get and validate credential from request body
-		credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, h.provider)
+		// Get credential from query or body
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, h.provider)
 		if err != nil {
 			h.HandleError(c, err, "update_security_group_rules")
 			return
 		}
 
-		result, err := h.networkService.UpdateSecurityGroupRules(c.Request.Context(), credential, req)
+		serviceReq := ToServiceUpdateSecurityGroupRulesRequest(req, credential.ID.String())
+		h.logSecurityGroupRulesUpdateAttempt(c, userID, serviceReq)
+
+		result, err := h.networkService.UpdateSecurityGroupRules(c.Request.Context(), credential, serviceReq)
 		if err != nil {
 			h.HandleError(c, err, "update_security_group_rules")
 			return
 		}
 
-		h.logSecurityGroupRulesUpdateSuccess(c, userID, req)
-		h.OK(c, result, "Security group rules updated successfully")
+		handlerResp := FromServiceSecurityGroupInfoToRuleResponse(result, true, "Security group rules updated successfully")
+		h.logSecurityGroupRulesUpdateSuccess(c, userID, serviceReq)
+		h.OK(c, handlerResp, "Security group rules updated successfully")
 	}
 }
 

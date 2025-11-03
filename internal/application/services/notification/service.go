@@ -10,13 +10,13 @@ import (
 )
 
 type Service struct {
-	logger              *zap.Logger
-	notificationRepo    domain.NotificationRepository
-	preferencesRepo     domain.NotificationPreferencesRepository
-	auditLogRepo        domain.AuditLogRepository
-	userRepo            domain.UserRepository
-	workspaceRepo       domain.WorkspaceRepository
-	eventService        domain.EventService
+	logger           *zap.Logger
+	notificationRepo domain.NotificationRepository
+	preferencesRepo  domain.NotificationPreferencesRepository
+	auditLogRepo     domain.AuditLogRepository
+	userRepo         domain.UserRepository
+	workspaceRepo    domain.WorkspaceRepository
+	eventService     domain.EventService
 }
 
 func NewService(
@@ -37,82 +37,6 @@ func NewService(
 		workspaceRepo:    workspaceRepo,
 		eventService:     eventService,
 	}
-}
-
-// NotificationType represents different types of notifications
-type NotificationType string
-
-const (
-	NotificationTypeInfo    NotificationType = "info"
-	NotificationTypeWarning NotificationType = "warning"
-	NotificationTypeError   NotificationType = "error"
-	NotificationTypeSuccess NotificationType = "success"
-	NotificationTypeBudget  NotificationType = "budget"
-	NotificationTypeVM      NotificationType = "vm"
-	NotificationTypeSystem  NotificationType = "system"
-)
-
-// NotificationPriority represents notification priority levels
-type NotificationPriority string
-
-const (
-	PriorityLow      NotificationPriority = "low"
-	PriorityMedium   NotificationPriority = "medium"
-	PriorityHigh     NotificationPriority = "high"
-	PriorityCritical NotificationPriority = "critical"
-)
-
-// NotificationChannel represents delivery channels
-type NotificationChannel string
-
-const (
-	ChannelInApp   NotificationChannel = "in_app"
-	ChannelEmail   NotificationChannel = "email"
-	ChannelBrowser NotificationChannel = "browser"
-	ChannelSMS     NotificationChannel = "sms"
-	ChannelWebhook NotificationChannel = "webhook"
-)
-
-// Notification represents a notification message
-type Notification struct {
-	ID          string                 `json:"id"`
-	UserID      string                 `json:"user_id"`
-	WorkspaceID string                 `json:"workspace_id,omitempty"`
-	Type        NotificationType       `json:"type"`
-	Priority    NotificationPriority   `json:"priority"`
-	Title       string                 `json:"title"`
-	Message     string                 `json:"message"`
-	Channels    []NotificationChannel  `json:"channels"`
-	Data        map[string]interface{} `json:"data,omitempty"`
-	Read        bool                   `json:"read"`
-	CreatedAt   time.Time              `json:"created_at"`
-	ReadAt      *time.Time             `json:"read_at,omitempty"`
-}
-
-// NotificationTemplate represents a notification template
-type NotificationTemplate struct {
-	ID        string                `json:"id"`
-	Name      string                `json:"name"`
-	Type      NotificationType      `json:"type"`
-	Priority  NotificationPriority  `json:"priority"`
-	Title     string                `json:"title"`
-	Message   string                `json:"message"`
-	Channels  []NotificationChannel `json:"channels"`
-	Variables []string              `json:"variables"`
-	CreatedAt time.Time             `json:"created_at"`
-	UpdatedAt time.Time             `json:"updated_at"`
-}
-
-// NotificationPreferences represents user notification preferences
-type NotificationPreferences struct {
-	UserID      string                                     `json:"user_id"`
-	Email       bool                                       `json:"email"`
-	Browser     bool                                       `json:"browser"`
-	SMS         bool                                       `json:"sms"`
-	InApp       bool                                       `json:"in_app"`
-	Webhook     bool                                       `json:"webhook"`
-	Preferences map[NotificationType]bool                  `json:"preferences"`
-	Channels    map[NotificationType][]NotificationChannel `json:"channels"`
 }
 
 // SendToWorkspace sends a notification to all users in a workspace
@@ -312,7 +236,7 @@ func (s *Service) GetNotificationPreferences(ctx context.Context, userID string)
 func (s *Service) UpdateNotificationPreferences(ctx context.Context, userID string, preferences *domain.NotificationPreferences) error {
 	// Ensure userID matches
 	preferences.UserID = userID
-	
+
 	// Use Upsert to create or update
 	if err := s.preferencesRepo.Upsert(ctx, preferences); err != nil {
 		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to update notification preferences: %v", err), 500)
@@ -333,17 +257,17 @@ func (s *Service) GetNotificationStats(ctx context.Context, userID string) (*dom
 func (s *Service) SendNotification(ctx context.Context, userID string, notification *domain.Notification) error {
 	// Ensure userID matches
 	notification.UserID = userID
-	
+
 	// Create notification in database
 	if err := s.notificationRepo.Create(ctx, notification); err != nil {
 		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to send notification: %v", err), 500)
 	}
-	
+
 	// Publish event if event service is available
 	if s.eventService != nil {
 		_ = s.eventService.Publish(ctx, "notification.created", notification)
 	}
-	
+
 	return nil
 }
 

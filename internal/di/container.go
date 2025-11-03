@@ -369,11 +369,11 @@ func (c *Container) GetCostAnalysisService() interface{} {
 	return c.serviceModule.GetContainer().CostAnalysisService
 }
 
-// GetCloudProviderService returns the cloud provider service
-func (c *Container) GetCloudProviderService() interface{} {
+// GetComputeService returns the compute service
+func (c *Container) GetComputeService() interface{} {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.serviceModule.GetContainer().CloudProviderService
+	return c.serviceModule.GetContainer().ComputeService
 }
 
 // Close closes all resources
