@@ -1,5 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import { NetworkError, ServerError, isOffline } from './error-handler';
+import { getOfflineQueue } from './offline-queue';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -16,6 +17,22 @@ api.interceptors.request.use(
   (config) => {
     // Check if offline
     if (isOffline()) {
+      // 오프라인 상태면 큐에 추가 (GET 요청 제외, mutation만 큐에 추가)
+      const method = (config.method?.toUpperCase() || 'GET') as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+      
+      if (method !== 'GET') {
+        const queue = getOfflineQueue();
+        queue.addRequest({
+          method,
+          url: config.url || '',
+          data: config.data,
+          headers: config.headers as Record<string, string>,
+        });
+        
+        // 오프라인 상태이므로 요청 실패 처리
+        return Promise.reject(new NetworkError('No internet connection. Request queued for retry.'));
+      }
+      
       return Promise.reject(new NetworkError('No internet connection'));
     }
 
@@ -35,6 +52,7 @@ api.interceptors.request.use(
     return config;
   },
   (error) => {
+    // Request interceptor error - network failure
     return Promise.reject(new NetworkError('Failed to send request'));
   }
 );

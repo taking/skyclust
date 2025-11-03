@@ -1,38 +1,41 @@
-import api from '@/lib/api';
-import { ApiResponse, LoginForm, RegisterForm, AuthResponse, User } from '@/lib/types';
+/**
+ * Auth Service
+ * 인증 관련 API 호출
+ */
 
-export const authService = {
+import { BaseService } from '@/lib/service-base';
+import type { LoginForm, RegisterForm, AuthResponse, User } from '@/lib/types';
+
+class AuthService extends BaseService {
   // Login
-  login: async (data: LoginForm): Promise<AuthResponse> => {
-    const response = await api.post<ApiResponse<{ token: string; user: User }>>('/api/v1/auth/login', data);
-    const responseData = response.data.data!;
+  async login(data: LoginForm): Promise<AuthResponse> {
+    const responseData = await this.post<{ token: string; user: User }>('/api/v1/auth/login', data);
     return {
       token: responseData.token,
       expires_at: '', // Backend doesn't return expires_at, but we can calculate it if needed
       user: responseData.user,
     };
-  },
+  }
 
   // Register
-  register: async (data: RegisterForm): Promise<User> => {
-    const response = await api.post<ApiResponse<User>>('/api/v1/auth/register', data);
-    return response.data.data!;
-  },
+  async register(data: RegisterForm): Promise<User> {
+    return this.post<User>('/api/v1/auth/register', data);
+  }
 
   // Logout
-  logout: async (): Promise<void> => {
-    await api.post('/api/v1/auth/logout');
-  },
+  async logout(): Promise<void> {
+    return this.post<void>('/api/v1/auth/logout');
+  }
 
   // Get current user
-  getCurrentUser: async (): Promise<User> => {
-    const response = await api.get<ApiResponse<User>>('/api/v1/auth/me');
-    return response.data.data!;
-  },
+  async getCurrentUser(): Promise<User> {
+    return this.get<User>('/api/v1/auth/me');
+  }
 
   // Update user
-  updateUser: async (id: string, data: Partial<User>): Promise<User> => {
-    const response = await api.put<ApiResponse<User>>(`/api/v1/users/${id}`, data);
-    return response.data.data!;
-  },
-};
+  async updateUser(id: string, data: Partial<User>): Promise<User> {
+    return this.put<User>(`/api/v1/users/${id}`, data);
+  }
+}
+
+export const authService = new AuthService();

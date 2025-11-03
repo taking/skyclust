@@ -1,21 +1,68 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { Layout } from '@/components/layout/layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useRouter } from 'next/navigation';
-import { DraggableDashboard } from '@/components/dashboard/draggable-dashboard';
-import { WidgetAddPanel } from '@/components/dashboard/widget-add-panel';
-import { WidgetConfigDialog } from '@/components/dashboard/widget-config-dialog';
 import { WidgetData, WidgetType, WidgetSize, WIDGET_CONFIGS } from '@/lib/widgets';
 import { Server, Key, Users, Settings, RefreshCw } from 'lucide-react';
-import { RealtimeNotifications } from '@/components/monitoring/realtime-notifications';
 import { workspaceService } from '@/services/workspace';
 import { useQuery } from '@tanstack/react-query';
 import { WorkspaceRequired } from '@/components/common/workspace-required';
+
+import { Spinner, WidgetSkeleton } from '@/components/ui/loading-states';
+
+// Dynamic imports for heavy components
+const DraggableDashboard = dynamic(
+  () => import('@/components/dashboard/draggable-dashboard').then(mod => ({ default: mod.DraggableDashboard })),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-64">
+        <Spinner size="lg" label="Loading dashboard..." />
+      </div>
+    ),
+  }
+);
+
+const WidgetAddPanel = dynamic(
+  () => import('@/components/dashboard/widget-add-panel').then(mod => ({ default: mod.WidgetAddPanel })),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="animate-pulse">
+        <div className="h-10 w-32 bg-gray-200 rounded"></div>
+      </div>
+    ),
+  }
+);
+
+const WidgetConfigDialog = dynamic(
+  () => import('@/components/dashboard/widget-config-dialog').then(mod => ({ default: mod.WidgetConfigDialog })),
+  { 
+    ssr: false,
+  }
+);
+
+const RealtimeNotifications = dynamic(
+  () => import('@/components/monitoring/realtime-notifications').then(mod => ({ default: mod.RealtimeNotifications })),
+  { 
+    ssr: false,
+    loading: () => (
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-center justify-center h-64">
+            <Spinner size="lg" />
+          </div>
+        </CardContent>
+      </Card>
+    ),
+  }
+);
 
 export default function DashboardPage() {
   const { currentWorkspace, setCurrentWorkspace, workspaces, setWorkspaces } = useWorkspaceStore();

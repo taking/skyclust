@@ -4,7 +4,7 @@ import * as React from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Keyboard } from 'lucide-react';
-import { KeyboardShortcut } from '@/hooks/useKeyboardShortcuts';
+import { KeyboardShortcut } from '@/hooks/use-keyboard-shortcuts';
 
 interface KeyboardShortcutsHelpProps {
   shortcuts: KeyboardShortcut[];

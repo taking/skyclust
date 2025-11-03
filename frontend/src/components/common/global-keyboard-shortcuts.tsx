@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, usePathname } from 'next/navigation';
-import { useKeyboardShortcuts, KeyboardShortcut, commonShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useKeyboardShortcuts, KeyboardShortcut, commonShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useState } from 'react';
 import { KeyboardShortcutsHelp } from './keyboard-shortcuts-help';
 
@@ -88,7 +88,11 @@ export function GlobalKeyboardShortcuts() {
 
   // Store shortcuts globally for help dialog
   if (typeof window !== 'undefined') {
-    (window as any).__keyboardShortcuts = shortcuts;
+    // Window 타입 확장
+    interface WindowWithShortcuts extends Window {
+      __keyboardShortcuts?: KeyboardShortcut[];
+    }
+    (window as WindowWithShortcuts).__keyboardShortcuts = shortcuts;
   }
 
   return null;

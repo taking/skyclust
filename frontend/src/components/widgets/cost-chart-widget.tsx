@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { DollarSign, TrendingUp, TrendingDown } from 'lucide-react';
@@ -16,7 +17,7 @@ interface CostChartWidgetProps {
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
 
-export function CostChartWidget({ data, isLoading }: CostChartWidgetProps) {
+function CostChartWidgetComponent({ data, isLoading }: CostChartWidgetProps) {
   if (isLoading) {
     return (
       <Card>
@@ -145,3 +146,5 @@ export function CostChartWidget({ data, isLoading }: CostChartWidgetProps) {
     </Card>
   );
 }
+
+export const CostChartWidget = React.memo(CostChartWidgetComponent);

@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -16,7 +17,7 @@ interface VMStatusWidgetProps {
   isLoading?: boolean;
 }
 
-export function VMStatusWidget({ data, isLoading }: VMStatusWidgetProps) {
+function VMStatusWidgetComponent({ data, isLoading }: VMStatusWidgetProps) {
   if (isLoading) {
     return (
       <Card>
@@ -121,3 +122,5 @@ export function VMStatusWidget({ data, isLoading }: VMStatusWidgetProps) {
     </Card>
   );
 }
+
+export const VMStatusWidget = React.memo(VMStatusWidgetComponent);

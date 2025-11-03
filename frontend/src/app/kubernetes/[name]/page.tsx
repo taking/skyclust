@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Layout } from '@/components/layout/layout';
@@ -16,18 +17,53 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { kubernetesService } from '@/services/kubernetes';
+import { kubernetesService } from '@/features/kubernetes';
 import { credentialService } from '@/services/credential';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useProviderStore } from '@/store/provider';
 import { ArrowLeft, Download, Settings, Trash2, Plus, Server, RefreshCw, ArrowUp, AlertTriangle, CheckCircle } from 'lucide-react';
 import { CreateNodePoolForm, CreateNodeGroupForm, CloudProvider } from '@/lib/types';
-import { useToast } from '@/hooks/useToast';
-import { useRequireAuth } from '@/hooks/useAuth';
-import { useSSEMonitoring } from '@/hooks/useSSEMonitoring';
-import { ClusterMetricsChart } from '@/components/kubernetes/cluster-metrics-chart';
-import { NodeMetricsChart } from '@/components/kubernetes/node-metrics-chart';
-import { TagManager } from '@/components/common/tag-manager';
+import { useToast } from '@/hooks/use-toast';
+import { useRequireAuth } from '@/hooks/use-auth';
+import { useSSEMonitoring } from '@/hooks/use-sse-monitoring';
+
+// Dynamic imports for heavy chart components
+const ClusterMetricsChart = dynamic(
+  () => import('@/features/kubernetes').then(mod => ({ default: mod.ClusterMetricsChart })),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    ),
+  }
+);
+
+const NodeMetricsChart = dynamic(
+  () => import('@/features/kubernetes').then(mod => ({ default: mod.NodeMetricsChart })),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    ),
+  }
+);
+
+const TagManager = dynamic(
+  () => import('@/components/common/tag-manager').then(mod => ({ default: mod.TagManager })),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="animate-pulse">
+        <div className="h-8 w-24 bg-gray-200 rounded mb-2"></div>
+        <div className="h-8 w-32 bg-gray-200 rounded"></div>
+      </div>
+    ),
+  }
+);
 
 const createNodePoolSchema = z.object({
   credential_id: z.string().uuid('Invalid credential ID'),
@@ -234,8 +270,9 @@ export default function KubernetesClusterDetailPage() {
       return kubernetesService.getUpgradeStatus(selectedProvider, clusterName, selectedCredentialId, selectedRegion);
     },
     enabled: !!selectedProvider && !!selectedCredentialId && !!clusterName && !!currentWorkspace,
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
       // Poll more frequently if upgrade is in progress
+      const data = query.state.data as { status?: string } | undefined;
       return data?.status === 'IN_PROGRESS' || data?.status === 'PENDING' ? 5000 : 30000;
     },
   });

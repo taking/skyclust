@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Layout } from '@/components/layout/layout';
 import { Button } from '@/components/ui/button';
@@ -21,20 +22,51 @@ import { credentialService } from '@/services/credential';
 import { useWorkspaceStore } from '@/store/workspace';
 import { Plus, Trash2, Edit, Network, Shield, Layers, Search, Filter } from 'lucide-react';
 import { CreateVPCForm, CreateSubnetForm, CreateSecurityGroupForm, CloudProvider } from '@/lib/types';
-import { useToast } from '@/hooks/useToast';
-import { useRequireAuth } from '@/hooks/useAuth';
-import { useSearch } from '@/hooks/useSearch';
+import { useToast } from '@/hooks/use-toast';
+import { useRequireAuth } from '@/hooks/use-auth';
+import { useSearch } from '@/hooks/use-search';
 import { SearchBar } from '@/components/ui/search-bar';
 import { FilterPanel, FilterConfig, FilterValue } from '@/components/ui/filter-panel';
-import { useSSEMonitoring } from '@/hooks/useSSEMonitoring';
-import { NetworkTopologyViewer } from '@/components/network/network-topology-viewer';
+import { useSSEMonitoring } from '@/hooks/use-sse-monitoring';
 import { BulkActionsToolbar } from '@/components/common/bulk-actions-toolbar';
 import { Checkbox } from '@/components/ui/checkbox';
-import { TagManager } from '@/components/common/tag-manager';
 import { Pagination } from '@/components/ui/pagination';
-import { usePagination } from '@/hooks/usePagination';
+import { usePagination } from '@/hooks/use-pagination';
 import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { WorkspaceRequired } from '@/components/common/workspace-required';
+
+// Dynamic imports for heavy components
+const NetworkTopologyViewer = dynamic(
+  () => import('@/components/network/network-topology-viewer').then(mod => ({ default: mod.NetworkTopologyViewer })),
+  { 
+    ssr: false,
+    loading: () => (
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-center justify-center h-96">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+              <p className="mt-2 text-gray-600">Loading network topology...</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    ),
+  }
+);
+
+const TagManager = dynamic(
+  () => import('@/components/common/tag-manager').then(mod => ({ default: mod.TagManager })),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="animate-pulse">
+        <div className="h-8 w-24 bg-gray-200 rounded mb-2"></div>
+        <div className="h-8 w-32 bg-gray-200 rounded"></div>
+      </div>
+    ),
+  }
+);
 
 const createVPCSchema = z.object({
   credential_id: z.string().uuid('Invalid credential ID'),
@@ -200,22 +232,22 @@ export default function NetworksPage() {
   // Filter configurations
   const vpcFilterConfigs: FilterConfig[] = [
     {
-      key: 'state',
+      id: 'state',
       label: 'State',
       type: 'select',
       options: [
-        { value: 'available', label: 'Available' },
-        { value: 'pending', label: 'Pending' },
-        { value: 'deleting', label: 'Deleting' },
+        { id: 'available', value: 'available', label: 'Available' },
+        { id: 'pending', value: 'pending', label: 'Pending' },
+        { id: 'deleting', value: 'deleting', label: 'Deleting' },
       ],
     },
     {
-      key: 'is_default',
+      id: 'is_default',
       label: 'Type',
       type: 'select',
       options: [
-        { value: 'true', label: 'Default VPC' },
-        { value: 'false', label: 'Custom VPC' },
+        { id: 'true', value: 'true', label: 'Default VPC' },
+        { id: 'false', value: 'false', label: 'Custom VPC' },
       ],
     },
   ];
@@ -502,7 +534,7 @@ export default function NetworksPage() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Network Management</h1>
             <p className="text-gray-600">
-              Manage VPCs, Subnets, and Security Groups for {currentWorkspace.name}
+              Manage VPCs, Subnets, and Security Groups{currentWorkspace ? ` for ${currentWorkspace.name}` : ''}
             </p>
           </div>
           <div className="flex items-center space-x-2">
@@ -809,10 +841,11 @@ export default function NetworksPage() {
                   {showFilters && (
                     <div className="mt-4">
                       <FilterPanel
-                        configs={vpcFilterConfigs}
+                        filters={vpcFilterConfigs}
                         values={filters}
                         onChange={setFilters}
                         onClear={() => setFilters({})}
+                        onApply={() => {}}
                       />
                     </div>
                   )}

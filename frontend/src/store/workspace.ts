@@ -1,5 +1,19 @@
+/**
+ * Workspace Store
+ * 워크스페이스 상태 관리 스토어
+ * 
+ * Zustand Devtools 지원 (개발 환경에서만 활성화)
+ */
+
 import { create } from 'zustand';
+import { devtools } from 'zustand/middleware';
+import type { StateCreator } from 'zustand';
 import { Workspace } from '@/lib/types';
+
+/**
+ * 개발 환경 확인
+ */
+const isDevelopment = process.env.NODE_ENV === 'development';
 
 interface WorkspaceState {
   currentWorkspace: Workspace | null;
@@ -11,7 +25,7 @@ interface WorkspaceState {
   removeWorkspace: (workspaceId: string) => void;
 }
 
-export const useWorkspaceStore = create<WorkspaceState>((set) => ({
+const storeCreator: StateCreator<WorkspaceState> = (set) => ({
   currentWorkspace: null,
   workspaces: [],
   setCurrentWorkspace: (workspace) => set({ currentWorkspace: workspace }),
@@ -38,4 +52,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
           ? null
           : state.currentWorkspace,
     })),
-}));
+});
+
+// 개발 환경에서만 devtools 적용
+export const useWorkspaceStore = create<WorkspaceState>()(
+  isDevelopment 
+    ? (devtools(storeCreator, { name: 'WorkspaceStore' }) as StateCreator<WorkspaceState>)
+    : storeCreator
+);

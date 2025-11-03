@@ -1,10 +1,11 @@
 'use client';
 
+import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Container, Server, AlertCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { kubernetesService } from '@/services/kubernetes';
+import { kubernetesService } from '@/features/kubernetes';
 import { credentialService } from '@/services/credential';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useProviderStore } from '@/store/provider';
@@ -15,7 +16,7 @@ interface KubernetesStatusWidgetProps {
   isLoading?: boolean;
 }
 
-export function KubernetesStatusWidget({ credentialId, region, isLoading }: KubernetesStatusWidgetProps) {
+function KubernetesStatusWidgetComponent({ credentialId, region, isLoading }: KubernetesStatusWidgetProps) {
   const { currentWorkspace } = useWorkspaceStore();
   const { selectedProvider } = useProviderStore();
 
@@ -150,4 +151,6 @@ export function KubernetesStatusWidget({ credentialId, region, isLoading }: Kube
     </Card>
   );
 }
+
+export const KubernetesStatusWidget = React.memo(KubernetesStatusWidgetComponent);
 

@@ -6,11 +6,11 @@ interface UsePaginationOptions {
   initialPageSize?: number;
 }
 
-interface UsePaginationReturn {
+interface UsePaginationReturn<T> {
   page: number;
   pageSize: number;
   totalPages: number;
-  paginatedItems: any[];
+  paginatedItems: T[];
   setPage: (page: number) => void;
   setPageSize: (size: number) => void;
   goToFirstPage: () => void;
@@ -24,7 +24,7 @@ interface UsePaginationReturn {
 export function usePagination<T>(
   items: T[],
   options: UsePaginationOptions
-): UsePaginationReturn {
+): UsePaginationReturn<T> {
   const { totalItems, initialPage = 1, initialPageSize = 20 } = options;
 
   const [page, setPage] = useState(initialPage);

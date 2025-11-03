@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -18,9 +19,9 @@ import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { ScreenReaderOnly } from '@/components/accessibility/screen-reader-only';
 import { getActionAriaLabel } from '@/lib/accessibility';
 import { KeyboardShortcutsHelp } from '@/components/common/keyboard-shortcuts-help';
-import { KeyboardShortcut } from '@/hooks/useKeyboardShortcuts';
+import { KeyboardShortcut } from '@/hooks/use-keyboard-shortcuts';
 
-export function Header() {
+function HeaderComponent() {
   const { user, logout } = useAuthStore();
   const router = useRouter();
 
@@ -42,7 +43,7 @@ export function Header() {
 
         <div className="flex items-center space-x-4">
           <KeyboardShortcutsHelp 
-            shortcuts={(typeof window !== 'undefined' && (window as any).__keyboardShortcuts) || []}
+            shortcuts={(typeof window !== 'undefined' && (window as Window & { __keyboardShortcuts?: KeyboardShortcut[] }).__keyboardShortcuts) || []}
           />
           <ThemeToggle />
           {user ? (
@@ -114,3 +115,5 @@ export function Header() {
     </header>
   );
 }
+
+export const Header = React.memo(HeaderComponent);

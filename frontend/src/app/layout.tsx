@@ -5,6 +5,7 @@ import { QueryProvider } from '@/components/providers/query-provider';
 import { ThemeProvider } from '@/components/providers/theme-provider';
 import { ToastProvider } from '@/components/ui/toast';
 import { AppErrorBoundary } from '@/components/error-boundary';
+import { OfflineBanner } from '@/components/common/offline-banner';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -29,6 +30,7 @@ export default function RootLayout({
         >
           <AppErrorBoundary>
             <QueryProvider>
+              <OfflineBanner position="top" autoHide showRefreshButton />
               {children}
               <ToastProvider />
             </QueryProvider>

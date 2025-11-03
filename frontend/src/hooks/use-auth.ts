@@ -35,3 +35,4 @@ export const useRequireAuth = (redirectTo: string = '/login') => {
     isLoading: !isAuthenticated && !user && !token,
   };
 };
+

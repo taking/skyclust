@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { useRealtimeMonitoring } from '@/hooks/useRealtimeMonitoring';
+import { useRealtimeMonitoring } from '@/hooks/use-realtime-monitoring';
 import { Cloud, Activity, AlertTriangle, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

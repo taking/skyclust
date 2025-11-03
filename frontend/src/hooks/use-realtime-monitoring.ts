@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useAuthStore } from '@/store/auth';
 import { webSocketService } from '@/services/websocket';
-import { useToast } from '@/hooks/useToast';
+import { useToast } from '@/hooks/use-toast';
 
 interface VMStatusUpdate {
   vmId: string;
@@ -203,3 +203,4 @@ export function useRealtimeMonitoring() {
     isConnected,
   };
 }
+

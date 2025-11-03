@@ -68,7 +68,7 @@ export function FormFieldWithValidation({
               placeholder={placeholder}
               required={required}
               className={cn(baseInputClasses, className)}
-              aria-invalid={hasError}
+              aria-invalid={hasError ? true : undefined}
               aria-describedby={error ? `${name}-error` : description ? `${name}-description` : undefined}
             />
             {isValidating && (
@@ -90,7 +90,7 @@ export function FormFieldWithValidation({
               <SelectTrigger
                 id={name}
                 className={cn(baseInputClasses, className)}
-                aria-invalid={hasError}
+                aria-invalid={hasError ? true : undefined}
                 aria-describedby={error ? `${name}-error` : description ? `${name}-description` : undefined}
               >
                 <SelectValue placeholder={placeholder || 'Select an option'} />
@@ -128,7 +128,7 @@ export function FormFieldWithValidation({
               placeholder={placeholder}
               required={required}
               className={cn(baseInputClasses, 'pr-10', className)}
-              aria-invalid={hasError}
+              aria-invalid={hasError ? true : undefined}
               aria-describedby={error ? `${name}-error` : description ? `${name}-description` : undefined}
             />
             {isValidating && (

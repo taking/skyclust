@@ -1,23 +1,67 @@
 'use client';
 
 import { useState } from 'react';
-import { Bell, X, AlertTriangle, AlertCircle, Info, Check, CheckCheck } from 'lucide-react';
+import { Bell, X, AlertTriangle, AlertCircle, Info, Check, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { useNotifications, useMarkAsRead, useMarkAllAsRead } from '@/hooks/useNotifications';
+import { useNotifications, useMarkAsRead, useMarkAllAsRead } from '@/hooks/use-notifications';
 import { cn } from '@/lib/utils';
+import { formatDistanceToNow } from 'date-fns';
 
 interface NotificationBellProps {
   className?: string;
 }
 
+// Notification utilities
+const notificationUtils = {
+  getTypeIcon: (type: string) => {
+    switch (type) {
+      case 'success':
+        return <CheckCircle className="h-4 w-4 text-green-600" />;
+      case 'warning':
+        return <AlertTriangle className="h-4 w-4 text-yellow-600" />;
+      case 'error':
+        return <AlertCircle className="h-4 w-4 text-red-600" />;
+      case 'info':
+      default:
+        return <Info className="h-4 w-4 text-blue-600" />;
+    }
+  },
+  getPriorityColor: (priority?: string) => {
+    switch (priority) {
+      case 'urgent':
+        return 'bg-red-100 text-red-800';
+      case 'high':
+        return 'bg-orange-100 text-orange-800';
+      case 'medium':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'low':
+        return 'bg-green-100 text-green-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  },
+  formatRelativeTime: (dateString: string) => {
+    try {
+      return formatDistanceToNow(new Date(dateString), { addSuffix: true });
+    } catch {
+      return dateString;
+    }
+  },
+};
+
 export function NotificationBell({ className }: NotificationBellProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const { data: notifications = [], isLoading } = useNotifications(10, 0);
+  const { data: notificationsData, isLoading } = useNotifications(10, 0);
   const markAsRead = useMarkAsRead();
   const markAllAsRead = useMarkAllAsRead();
 
+  // Extract notifications array from response
+  const notifications = Array.isArray(notificationsData) 
+    ? notificationsData 
+    : notificationsData?.notifications || [];
+  
   const unreadCount = notifications.filter(n => !n.is_read).length;
   const sortedNotifications = [...notifications].sort((a, b) => {
     // 우선순위별 정렬 (urgent > high > medium > low)
@@ -95,11 +139,11 @@ export function NotificationBell({ className }: NotificationBellProps) {
                   key={notification.id}
                   className={cn(
                     'p-3 rounded-lg border cursor-pointer transition-colors',
-                    notification.read 
+                    notification.is_read 
                       ? 'bg-gray-50 hover:bg-gray-100' 
                       : 'bg-white hover:bg-gray-50 border-l-4 border-l-blue-500'
                   )}
-                  onClick={() => !notification.read && handleMarkAsRead(notification.id)}
+                  onClick={() => !notification.is_read && handleMarkAsRead(notification.id)}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
@@ -109,36 +153,38 @@ export function NotificationBell({ className }: NotificationBellProps) {
                         </span>
                         <h4 className={cn(
                           'font-medium text-sm truncate',
-                          notification.read ? 'text-gray-600' : 'text-gray-900'
+                          notification.is_read ? 'text-gray-600' : 'text-gray-900'
                         )}>
                           {notification.title}
                         </h4>
-                        {!notification.read && (
+                        {!notification.is_read && (
                           <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0" />
                         )}
                       </div>
                       <p className={cn(
                         'text-sm text-gray-600 line-clamp-2',
-                        notification.read && 'text-gray-500'
+                        notification.is_read && 'text-gray-500'
                       )}>
                         {notification.message}
                       </p>
                       <div className="flex items-center gap-2 mt-2">
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            'text-xs',
-                            notificationUtils.getPriorityColor(notification.priority)
-                          )}
-                        >
-                          {notification.priority}
-                        </Badge>
+                        {notification.priority && (
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              'text-xs',
+                              notificationUtils.getPriorityColor(notification.priority)
+                            )}
+                          >
+                            {notification.priority}
+                          </Badge>
+                        )}
                         <span className="text-xs text-gray-500">
                           {notificationUtils.formatRelativeTime(notification.created_at)}
                         </span>
                       </div>
                     </div>
-                    {!notification.read && (
+                    {!notification.is_read && (
                       <Button
                         variant="ghost"
                         size="sm"

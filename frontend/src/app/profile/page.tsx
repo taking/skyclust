@@ -11,8 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { authService } from '@/services/auth';
-import { useToast } from '@/hooks/useToast';
-import { useRequireAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
+import { useRequireAuth } from '@/hooks/use-auth';
 import { WorkspaceRequired } from '@/components/common/workspace-required';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -57,11 +57,13 @@ export default function ProfilePage() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Fetch current user data
+  // Fetch current user data (사용자 정보는 자주 변경되지 않음)
   const { data: currentUser, isLoading } = useQuery({
     queryKey: ['user', 'me'],
     queryFn: authService.getCurrentUser,
     enabled: !!user,
+    staleTime: 5 * 60 * 1000, // 5분 - 사용자 정보는 비교적 안정적
+    gcTime: 15 * 60 * 1000, // 15분 - GC 시간
   });
 
   // Profile form

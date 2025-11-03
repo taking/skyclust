@@ -61,8 +61,8 @@ import {
   useMarkAllAsRead,
   useDeleteNotification,
   useDeleteNotifications,
-} from '@/hooks/useNotifications';
-import { Notification } from '@/services/notification';
+} from '@/hooks/use-notifications';
+import type { Notification } from '@/lib/types/notification';
 
 interface NotificationListProps {
   limit?: number;

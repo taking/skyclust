@@ -19,7 +19,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ExportDialog } from '@/components/export/ExportDialog';
 import { ExportHistory } from '@/components/export/ExportHistory';
-import { useRequireAuth } from '@/hooks/useAuth';
+import { useRequireAuth } from '@/hooks/use-auth';
 
 export default function ExportsPage() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);

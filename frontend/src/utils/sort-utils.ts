@@ -1,4 +1,4 @@
-import { SortConfig } from '@/hooks/useAdvancedFiltering';
+import { SortConfig } from '@/hooks/use-advanced-filtering';
 
 /**
  * Sort an array of items based on multiple sort configurations

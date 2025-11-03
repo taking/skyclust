@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 // import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -18,7 +19,7 @@ interface SearchBarProps {
   filterCount?: number;
 }
 
-export function SearchBar({
+function SearchBarComponent({
   placeholder = 'Search...',
   value,
   onChange,
@@ -76,3 +77,5 @@ export function SearchBar({
     </div>
   );
 }
+
+export const SearchBar = React.memo(SearchBarComponent);

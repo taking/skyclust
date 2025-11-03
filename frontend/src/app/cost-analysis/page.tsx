@@ -1,20 +1,86 @@
 'use client';
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { CostSummaryCard } from '@/components/cost-analysis/cost-summary-card';
-import { CostTrendChart } from '@/components/cost-analysis/cost-trend-chart';
-import { CostPredictionChart } from '@/components/cost-analysis/cost-prediction-chart';
-import { BudgetAlerts } from '@/components/cost-analysis/budget-alerts';
 import { useWorkspaceStore } from '@/store/workspace';
-import { useCostBreakdown } from '@/hooks/useCostAnalysis';
+import { useCostBreakdown } from '@/hooks/use-cost-analysis';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { DollarSign, TrendingUp, PieChart as PieChartIcon, BarChart3 } from 'lucide-react';
+
+// Dynamic imports for cost analysis components
+const CostSummaryCard = dynamic(
+  () => import('@/components/cost-analysis/cost-summary-card').then(mod => ({ default: mod.CostSummaryCard })),
+  { 
+    ssr: false,
+    loading: () => (
+      <Card>
+        <CardHeader>
+          <div className="h-6 bg-gray-200 rounded animate-pulse w-32"></div>
+        </CardHeader>
+        <CardContent>
+          <div className="h-32 bg-gray-200 rounded animate-pulse"></div>
+        </CardContent>
+      </Card>
+    ),
+  }
+);
+
+const CostTrendChart = dynamic(
+  () => import('@/components/cost-analysis/cost-trend-chart').then(mod => ({ default: mod.CostTrendChart })),
+  { 
+    ssr: false,
+    loading: () => (
+      <Card>
+        <CardHeader>
+          <div className="h-6 bg-gray-200 rounded animate-pulse w-32"></div>
+        </CardHeader>
+        <CardContent>
+          <div className="h-64 bg-gray-200 rounded animate-pulse"></div>
+        </CardContent>
+      </Card>
+    ),
+  }
+);
+
+const CostPredictionChart = dynamic(
+  () => import('@/components/cost-analysis/cost-prediction-chart').then(mod => ({ default: mod.CostPredictionChart })),
+  { 
+    ssr: false,
+    loading: () => (
+      <Card>
+        <CardHeader>
+          <div className="h-6 bg-gray-200 rounded animate-pulse w-32"></div>
+        </CardHeader>
+        <CardContent>
+          <div className="h-64 bg-gray-200 rounded animate-pulse"></div>
+        </CardContent>
+      </Card>
+    ),
+  }
+);
+
+const BudgetAlerts = dynamic(
+  () => import('@/components/cost-analysis/budget-alerts').then(mod => ({ default: mod.BudgetAlerts })),
+  { 
+    ssr: false,
+    loading: () => (
+      <Card>
+        <CardHeader>
+          <div className="h-6 bg-gray-200 rounded animate-pulse w-32"></div>
+        </CardHeader>
+        <CardContent>
+          <div className="h-32 bg-gray-200 rounded animate-pulse"></div>
+        </CardContent>
+      </Card>
+    ),
+  }
+);
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
 

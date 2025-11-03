@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useRealtimeMonitoring } from '@/hooks/useRealtimeMonitoring';
+import { useRealtimeMonitoring } from '@/hooks/use-realtime-monitoring';
 import { Bell, AlertTriangle, Info, AlertCircle, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

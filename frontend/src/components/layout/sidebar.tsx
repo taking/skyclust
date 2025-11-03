@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useRouter, usePathname } from 'next/navigation';
@@ -27,7 +28,7 @@ const navigation = [
   { name: 'Profile', href: '/profile', icon: Settings },
 ];
 
-export function Sidebar() {
+function SidebarComponent() {
   const { currentWorkspace } = useWorkspaceStore();
   const router = useRouter();
   const pathname = usePathname();
@@ -86,3 +87,5 @@ export function Sidebar() {
     </nav>
   );
 }
+
+export const Sidebar = React.memo(SidebarComponent);

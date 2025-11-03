@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Network, Shield, Layers, AlertCircle } from 'lucide-react';
@@ -16,7 +17,7 @@ interface NetworkStatusWidgetProps {
   isLoading?: boolean;
 }
 
-export function NetworkStatusWidget({ credentialId, region, vpcId, isLoading }: NetworkStatusWidgetProps) {
+function NetworkStatusWidgetComponent({ credentialId, region, vpcId, isLoading }: NetworkStatusWidgetProps) {
   const { currentWorkspace } = useWorkspaceStore();
   const { selectedProvider } = useProviderStore();
 
@@ -153,4 +154,6 @@ export function NetworkStatusWidget({ credentialId, region, vpcId, isLoading }: 
     </Card>
   );
 }
+
+export const NetworkStatusWidget = React.memo(NetworkStatusWidgetComponent);
 

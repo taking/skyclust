@@ -8,6 +8,7 @@ import { useEffect } from 'react';
 import { SkipLink } from '@/components/accessibility/skip-link';
 import { LiveRegion } from '@/components/accessibility/live-region';
 import { GlobalKeyboardShortcuts } from '@/components/common/global-keyboard-shortcuts';
+import { OfflineBanner } from '@/components/common/offline-banner';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -31,12 +32,13 @@ export function Layout({ children }: LayoutProps) {
     <div className="flex h-screen bg-background">
       <GlobalKeyboardShortcuts />
       <SkipLink href="#main-content">Skip to main content</SkipLink>
+      <OfflineBanner position="top" autoHide showRefreshButton />
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
         <main 
           id="main-content"
-          className="flex-1 overflow-y-auto bg-muted/30 p-4 sm:p-6"
+          className="flex-1 overflow-y-auto bg-muted/30 p-3 sm:p-4 md:p-6"
           role="main"
           tabIndex={-1}
         >

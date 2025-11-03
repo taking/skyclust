@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Activity, Cpu, HardDrive, MemoryStick } from 'lucide-react';
@@ -13,7 +14,7 @@ interface ResourceUsageWidgetProps {
   isLoading?: boolean;
 }
 
-export function ResourceUsageWidget({ data, isLoading }: ResourceUsageWidgetProps) {
+function ResourceUsageWidgetComponent({ data, isLoading }: ResourceUsageWidgetProps) {
   if (isLoading) {
     return (
       <Card>
@@ -146,3 +147,5 @@ export function ResourceUsageWidget({ data, isLoading }: ResourceUsageWidgetProp
     </Card>
   );
 }
+
+export const ResourceUsageWidget = React.memo(ResourceUsageWidgetComponent);

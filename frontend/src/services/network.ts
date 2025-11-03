@@ -1,6 +1,10 @@
-import api from '@/lib/api';
-import { 
-  ApiResponse, 
+/**
+ * Network Service
+ * Network 관련 API 호출
+ */
+
+import { BaseService } from '@/lib/service-base';
+import type {
   VPC,
   Subnet,
   SecurityGroup,
@@ -8,307 +12,297 @@ import {
   CreateSubnetForm,
   CreateSecurityGroupForm,
   SecurityGroupRule,
-  CloudProvider
+  CloudProvider,
 } from '@/lib/types';
 
-export const networkService = {
+class NetworkService extends BaseService {
   // VPC management
-  listVPCs: async (
+  async listVPCs(
     provider: CloudProvider,
     credentialId: string,
     region?: string
-  ): Promise<VPC[]> => {
+  ): Promise<VPC[]> {
     const params = new URLSearchParams({ credential_id: credentialId });
     if (region) params.append('region', region);
     
-    const response = await api.get<ApiResponse<{ vpcs: VPC[] }>>(
+    const data = await this.get<{ vpcs: VPC[] }>(
       `/api/v1/${provider}/network/vpcs?${params.toString()}`
     );
-    return response.data.data?.vpcs || [];
-  },
+    return data.vpcs || [];
+  }
 
-  getVPC: async (
+  async getVPC(
     provider: CloudProvider,
     vpcId: string,
     credentialId: string,
     region: string
-  ): Promise<VPC> => {
+  ): Promise<VPC> {
     const params = new URLSearchParams({
       credential_id: credentialId,
       region,
     });
     
-    const response = await api.get<ApiResponse<VPC>>(
+    return this.get<VPC>(
       `/api/v1/${provider}/network/vpcs/${encodeURIComponent(vpcId)}?${params.toString()}`
     );
-    return response.data.data!;
-  },
+  }
 
-  createVPC: async (
+  async createVPC(
     provider: CloudProvider,
     data: CreateVPCForm
-  ): Promise<VPC> => {
-    const response = await api.post<ApiResponse<VPC>>(
+  ): Promise<VPC> {
+    return this.post<VPC>(
       `/api/v1/${provider}/network/vpcs`,
       data
     );
-    return response.data.data!;
-  },
+  }
 
-  updateVPC: async (
+  async updateVPC(
     provider: CloudProvider,
     vpcId: string,
     data: Partial<CreateVPCForm>,
     credentialId: string,
     region: string
-  ): Promise<VPC> => {
+  ): Promise<VPC> {
     const params = new URLSearchParams({
       credential_id: credentialId,
       region,
     });
     
-    const response = await api.put<ApiResponse<VPC>>(
+    return this.put<VPC>(
       `/api/v1/${provider}/network/vpcs/${encodeURIComponent(vpcId)}?${params.toString()}`,
       data
     );
-    return response.data.data!;
-  },
+  }
 
-  deleteVPC: async (
+  async deleteVPC(
     provider: CloudProvider,
     vpcId: string,
     credentialId: string,
     region: string
-  ): Promise<void> => {
+  ): Promise<void> {
     const params = new URLSearchParams({
       credential_id: credentialId,
       region,
     });
     
-    await api.delete(
+    return this.delete<void>(
       `/api/v1/${provider}/network/vpcs/${encodeURIComponent(vpcId)}?${params.toString()}`
     );
-  },
+  }
 
   // Subnet management
-  listSubnets: async (
+  async listSubnets(
     provider: CloudProvider,
     credentialId: string,
     vpcId: string,
     region: string
-  ): Promise<Subnet[]> => {
+  ): Promise<Subnet[]> {
     const params = new URLSearchParams({
       credential_id: credentialId,
       vpc_id: vpcId,
       region,
     });
     
-    const response = await api.get<ApiResponse<{ subnets: Subnet[] }>>(
+    const data = await this.get<{ subnets: Subnet[] }>(
       `/api/v1/${provider}/network/subnets?${params.toString()}`
     );
-    return response.data.data?.subnets || [];
-  },
+    return data.subnets || [];
+  }
 
-  getSubnet: async (
+  async getSubnet(
     provider: CloudProvider,
     subnetId: string,
     credentialId: string,
     region: string
-  ): Promise<Subnet> => {
+  ): Promise<Subnet> {
     const params = new URLSearchParams({
       credential_id: credentialId,
       region,
     });
     
-    const response = await api.get<ApiResponse<Subnet>>(
+    return this.get<Subnet>(
       `/api/v1/${provider}/network/subnets/${encodeURIComponent(subnetId)}?${params.toString()}`
     );
-    return response.data.data!;
-  },
+  }
 
-  createSubnet: async (
+  async createSubnet(
     provider: CloudProvider,
     data: CreateSubnetForm
-  ): Promise<Subnet> => {
-    const response = await api.post<ApiResponse<Subnet>>(
+  ): Promise<Subnet> {
+    return this.post<Subnet>(
       `/api/v1/${provider}/network/subnets`,
       data
     );
-    return response.data.data!;
-  },
+  }
 
-  updateSubnet: async (
+  async updateSubnet(
     provider: CloudProvider,
     subnetId: string,
     data: Partial<CreateSubnetForm>,
     credentialId: string,
     region: string
-  ): Promise<Subnet> => {
+  ): Promise<Subnet> {
     const params = new URLSearchParams({
       credential_id: credentialId,
       region,
     });
     
-    const response = await api.put<ApiResponse<Subnet>>(
+    return this.put<Subnet>(
       `/api/v1/${provider}/network/subnets/${encodeURIComponent(subnetId)}?${params.toString()}`,
       data
     );
-    return response.data.data!;
-  },
+  }
 
-  deleteSubnet: async (
+  async deleteSubnet(
     provider: CloudProvider,
     subnetId: string,
     credentialId: string,
     region: string
-  ): Promise<void> => {
+  ): Promise<void> {
     const params = new URLSearchParams({
       credential_id: credentialId,
       region,
     });
     
-    await api.delete(
+    return this.delete<void>(
       `/api/v1/${provider}/network/subnets/${encodeURIComponent(subnetId)}?${params.toString()}`
     );
-  },
+  }
 
   // Security Group management
-  listSecurityGroups: async (
+  async listSecurityGroups(
     provider: CloudProvider,
     credentialId: string,
     vpcId: string,
     region: string
-  ): Promise<SecurityGroup[]> => {
+  ): Promise<SecurityGroup[]> {
     const params = new URLSearchParams({
       credential_id: credentialId,
       vpc_id: vpcId,
       region,
     });
     
-    const response = await api.get<ApiResponse<{ security_groups: SecurityGroup[] }>>(
+    const data = await this.get<{ security_groups: SecurityGroup[] }>(
       `/api/v1/${provider}/network/security-groups?${params.toString()}`
     );
-    return response.data.data?.security_groups || [];
-  },
+    return data.security_groups || [];
+  }
 
-  getSecurityGroup: async (
+  async getSecurityGroup(
     provider: CloudProvider,
     securityGroupId: string,
     credentialId: string,
     region: string
-  ): Promise<SecurityGroup> => {
+  ): Promise<SecurityGroup> {
     const params = new URLSearchParams({
       credential_id: credentialId,
       region,
     });
     
-    const response = await api.get<ApiResponse<SecurityGroup>>(
+    return this.get<SecurityGroup>(
       `/api/v1/${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}?${params.toString()}`
     );
-    return response.data.data!;
-  },
+  }
 
-  createSecurityGroup: async (
+  async createSecurityGroup(
     provider: CloudProvider,
     data: CreateSecurityGroupForm
-  ): Promise<SecurityGroup> => {
-    const response = await api.post<ApiResponse<SecurityGroup>>(
+  ): Promise<SecurityGroup> {
+    return this.post<SecurityGroup>(
       `/api/v1/${provider}/network/security-groups`,
       data
     );
-    return response.data.data!;
-  },
+  }
 
-  updateSecurityGroup: async (
+  async updateSecurityGroup(
     provider: CloudProvider,
     securityGroupId: string,
     data: Partial<CreateSecurityGroupForm>,
     credentialId: string,
     region: string
-  ): Promise<SecurityGroup> => {
+  ): Promise<SecurityGroup> {
     const params = new URLSearchParams({
       credential_id: credentialId,
       region,
     });
     
-    const response = await api.put<ApiResponse<SecurityGroup>>(
+    return this.put<SecurityGroup>(
       `/api/v1/${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}?${params.toString()}`,
       data
     );
-    return response.data.data!;
-  },
+  }
 
-  deleteSecurityGroup: async (
+  async deleteSecurityGroup(
     provider: CloudProvider,
     securityGroupId: string,
     credentialId: string,
     region: string
-  ): Promise<void> => {
+  ): Promise<void> {
     const params = new URLSearchParams({
       credential_id: credentialId,
       region,
     });
     
-    await api.delete(
+    return this.delete<void>(
       `/api/v1/${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}?${params.toString()}`
     );
-  },
+  }
 
   // Security Group Rule management
-  addSecurityGroupRule: async (
+  async addSecurityGroupRule(
     provider: CloudProvider,
     securityGroupId: string,
     rule: SecurityGroupRule,
     credentialId: string,
     region: string
-  ): Promise<SecurityGroup> => {
+  ): Promise<SecurityGroup> {
     const params = new URLSearchParams({
       credential_id: credentialId,
       region,
     });
     
-    const response = await api.post<ApiResponse<SecurityGroup>>(
+    return this.post<SecurityGroup>(
       `/api/v1/${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}/rules?${params.toString()}`,
       rule
     );
-    return response.data.data!;
-  },
+  }
 
-  removeSecurityGroupRule: async (
+  async removeSecurityGroupRule(
     provider: CloudProvider,
     securityGroupId: string,
     ruleId: string,
     credentialId: string,
     region: string
-  ): Promise<void> => {
+  ): Promise<void> {
     const params = new URLSearchParams({
       credential_id: credentialId,
       region,
       rule_id: ruleId,
     });
     
-    await api.delete(
+    return this.delete<void>(
       `/api/v1/${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}/rules?${params.toString()}`
     );
-  },
+  }
 
-  updateSecurityGroupRules: async (
+  async updateSecurityGroupRules(
     provider: CloudProvider,
     securityGroupId: string,
     rules: SecurityGroupRule[],
     credentialId: string,
     region: string
-  ): Promise<SecurityGroup> => {
+  ): Promise<SecurityGroup> {
     const params = new URLSearchParams({
       credential_id: credentialId,
       region,
     });
     
-    const response = await api.put<ApiResponse<SecurityGroup>>(
+    return this.put<SecurityGroup>(
       `/api/v1/${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}/rules?${params.toString()}`,
       { rules }
     );
-    return response.data.data!;
-  },
-};
+  }
+}
 
+export const networkService = new NetworkService();

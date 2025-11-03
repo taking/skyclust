@@ -1,19 +1,24 @@
+/**
+ * Login Page
+ * 로그인 페이지
+ * 
+ * use-form-with-validation 훅을 사용한 리팩토링 버전
+ */
+
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
+import { Form } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuthStore } from '@/store/auth';
 import { authService } from '@/services/auth';
 import { LoginForm } from '@/lib/types';
+import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
 import { getUserFriendlyErrorMessage } from '@/lib/error-handler';
 import Link from 'next/link';
+import * as z from 'zod';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -21,23 +26,18 @@ const loginSchema = z.object({
 });
 
 export default function LoginPage() {
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const { login, isAuthenticated, token, initialize } = useAuthStore();
+  const { login, initialize } = useAuthStore();
   const router = useRouter();
 
   // Check if already authenticated - only redirect if definitely authenticated
   useEffect(() => {
     initialize();
     
-    // Only check once on mount, don't re-trigger on state changes
     let hasRedirected = false;
     
     const checkAuth = () => {
       if (hasRedirected) return;
       
-      // Only redirect if we have both token and authenticated state
-      // Check localStorage directly to avoid Zustand hydration timing issues
       const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
       const authStorage = typeof window !== 'undefined' 
         ? localStorage.getItem('auth-storage') 
@@ -54,39 +54,39 @@ export default function LoginPage() {
       
       const isAuth = parsedAuth?.state?.isAuthenticated && parsedAuth?.state?.token;
       
-      // Only redirect if we have clear authentication evidence
       if (storedToken || isAuth) {
         hasRedirected = true;
         router.replace('/dashboard');
       }
     };
 
-    // Small delay to allow Zustand persist to hydrate
     const timer = setTimeout(checkAuth, 500);
     return () => clearTimeout(timer);
-  }, [router, initialize]); // Remove dependencies that change frequently
+  }, [router, initialize]);
 
   const {
-    register,
+    form,
     handleSubmit,
-    formState: { errors },
-  } = useForm<LoginForm>({
-    resolver: zodResolver(loginSchema),
-  });
-
-  const onSubmit = async (data: LoginForm) => {
-    try {
-      setIsLoading(true);
-      setError('');
+    isLoading,
+    error,
+    getFieldError,
+    getFieldValidationState,
+  } = useFormWithValidation<LoginForm>({
+    schema: loginSchema,
+    defaultValues: {
+      email: '',
+      password: '',
+    },
+    onSubmit: async (data) => {
       const response = await authService.login(data);
       login(response);
       router.push('/dashboard');
-    } catch (err: unknown) {
-      setError(getUserFriendlyErrorMessage(err));
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    },
+    onError: (error) => {
+      // Error is handled by the hook's error state
+    },
+    getErrorMessage: getUserFriendlyErrorMessage,
+  });
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -98,38 +98,36 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
+          <Form {...form}>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <EnhancedField
+                name="email"
+                label="Email"
                 type="email"
                 placeholder="Enter your email"
-                {...register('email')}
+                required
+                getFieldError={getFieldError}
+                getFieldValidationState={getFieldValidationState}
               />
-              {errors.email && (
-                <p className="text-sm text-red-600">{errors.email.message}</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
+              <EnhancedField
+                name="password"
+                label="Password"
                 type="password"
                 placeholder="Enter your password"
-                {...register('password')}
+                required
+                getFieldError={getFieldError}
+                getFieldValidationState={getFieldValidationState}
               />
-              {errors.password && (
-                <p className="text-sm text-red-600">{errors.password.message}</p>
+              {error && (
+                <div className="text-sm text-red-600 text-center" role="alert">
+                  {error}
+                </div>
               )}
-            </div>
-            {error && (
-              <div className="text-sm text-red-600 text-center">{error}</div>
-            )}
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? 'Signing in...' : 'Sign in'}
-            </Button>
-          </form>
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? 'Signing in...' : 'Sign in'}
+              </Button>
+            </form>
+          </Form>
           <div className="mt-4 text-center text-sm">
             Don&apos;t have an account?{' '}
             <Link href="/register" className="text-blue-600 hover:underline">
@@ -141,3 +139,4 @@ export default function LoginPage() {
     </div>
   );
 }
+

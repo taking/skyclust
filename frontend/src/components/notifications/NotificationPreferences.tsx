@@ -43,8 +43,8 @@ import {
   useNotificationPreferences,
   useUpdateNotificationPreferences,
   useSendTestNotification,
-} from '@/hooks/useNotifications';
-import { NotificationPreferences } from '@/services/notification';
+} from '@/hooks/use-notifications';
+import type { NotificationPreferences } from '@/lib/types/notification';
 
 const preferencesSchema = z.object({
   email_enabled: z.boolean(),

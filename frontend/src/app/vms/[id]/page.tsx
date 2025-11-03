@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import dynamic from 'next/dynamic';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Layout } from '@/components/layout/layout';
@@ -8,9 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { vmService } from '@/services/vm';
-import { useToast } from '@/hooks/useToast';
-import { useRequireAuth } from '@/hooks/useAuth';
+import { vmService } from '@/features/vms';
+import { useToast } from '@/hooks/use-toast';
+import { useRequireAuth } from '@/hooks/use-auth';
 import { 
   ArrowLeft, 
   Play, 
@@ -24,7 +25,28 @@ import {
   Server
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
-import { RealtimeVMMonitor } from '@/components/monitoring/realtime-vm-monitor';
+import { Spinner } from '@/components/ui/spinner';
+
+// Dynamic import for RealtimeVMMonitor
+const RealtimeVMMonitor = dynamic(
+  () => import('@/components/monitoring/realtime-vm-monitor').then(mod => ({ default: mod.RealtimeVMMonitor })),
+  { 
+    ssr: false,
+    loading: () => (
+      <Card>
+        <CardHeader>
+          <CardTitle>Real-time Monitoring</CardTitle>
+          <CardDescription>Loading monitoring data...</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center h-64">
+            <Spinner size="lg" label="Loading real-time monitor..." />
+          </div>
+        </CardContent>
+      </Card>
+    ),
+  }
+);
 
 // Mock data for charts
 const cpuData = [
@@ -139,10 +161,7 @@ export default function VMDetailPage() {
     return (
       <Layout>
         <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-            <p className="mt-2 text-gray-600">Loading VM details...</p>
-          </div>
+          <Spinner size="lg" label="Loading VM details..." />
         </div>
       </Layout>
     );

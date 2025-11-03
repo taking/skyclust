@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { UseFormReturn } from 'react-hook-form';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { UseFormReturn, Path, PathValue } from 'react-hook-form';
 
 type ValidationState = 'idle' | 'validating' | 'valid' | 'invalid';
 
@@ -21,20 +21,30 @@ export function useFormValidation<T extends Record<string, unknown>>(
 
   // Watch all form values for real-time validation
   const watchedValues = form.watch();
-  const { errors, trigger } = form;
+  const { errors } = form.formState;
+  const { trigger } = form;
 
   // Debounced validation function
-  const debouncedValidate = useCallback(
-    debounce((fieldName: string) => {
-      trigger(fieldName).then((isValid) => {
-        setValidationStates((prev) => ({
-          ...prev,
-          [fieldName]: isValid ? 'valid' : 'invalid',
-        }));
-      });
-    }, debounceMs),
-    [trigger, debounceMs]
-  );
+  const debouncedValidateRef = useRef<((fieldName: string) => void) | null>(null);
+  
+  if (!debouncedValidateRef.current) {
+    let timeout: NodeJS.Timeout | null = null;
+    debouncedValidateRef.current = (fieldName: string) => {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      timeout = setTimeout(() => {
+        trigger(fieldName as Path<T>).then((isValid) => {
+          setValidationStates((prev) => ({
+            ...prev,
+            [fieldName]: isValid ? 'valid' : 'invalid',
+          }));
+        });
+      }, debounceMs);
+    };
+  }
+  
+  const debouncedValidate = debouncedValidateRef.current;
 
   // Update validation state based on errors
   useEffect(() => {
@@ -48,7 +58,7 @@ export function useFormValidation<T extends Record<string, unknown>>(
         newStates[key] = 'invalid';
       } else if (hasValue) {
         // Only show valid if field has been touched and has no errors
-        const isTouched = form.formState.touchedFields[key];
+        const isTouched = Boolean((form.formState.touchedFields as Record<string, boolean>)[key]);
         if (isTouched) {
           newStates[key] = 'valid';
         } else {
@@ -65,7 +75,7 @@ export function useFormValidation<T extends Record<string, unknown>>(
   // Handle field change with validation
   const handleFieldChange = useCallback(
     (fieldName: keyof T, value: unknown) => {
-      form.setValue(fieldName, value as T[keyof T], {
+      form.setValue(fieldName as Path<T>, value as PathValue<T, Path<T>>, {
         shouldValidate: validateOnChange,
       });
 
@@ -84,7 +94,7 @@ export function useFormValidation<T extends Record<string, unknown>>(
   const handleFieldBlur = useCallback(
     (fieldName: keyof T) => {
       if (validateOnBlur) {
-        trigger(fieldName as string).then((isValid) => {
+        trigger(fieldName as Path<T>).then((isValid) => {
           setValidationStates((prev) => ({
             ...prev,
             [fieldName as string]: isValid ? 'valid' : 'invalid',

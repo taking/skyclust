@@ -4,7 +4,7 @@ import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ArrowUpDown, ArrowUp, ArrowDown, X } from 'lucide-react';
-import { SortConfig } from '@/hooks/useAdvancedFiltering';
+import { SortConfig } from '@/hooks/use-advanced-filtering';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,7 +22,7 @@ interface MultiSortIndicatorProps {
   className?: string;
 }
 
-export function MultiSortIndicator({
+function MultiSortIndicatorComponent({
   sortConfig,
   availableFields,
   onToggleSort,
@@ -121,4 +121,6 @@ export function MultiSortIndicator({
     </div>
   );
 }
+
+export const MultiSortIndicator = React.memo(MultiSortIndicatorComponent);
 

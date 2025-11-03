@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +19,7 @@ interface TagFilterProps {
   onTagsChange: (tags: Record<string, string[]>) => void;
 }
 
-export function TagFilter({ availableTags, selectedTags, onTagsChange }: TagFilterProps) {
+function TagFilterComponent({ availableTags, selectedTags, onTagsChange }: TagFilterProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   const handleTagToggle = (key: string, value: string) => {
@@ -27,10 +28,13 @@ export function TagFilter({ availableTags, selectedTags, onTagsChange }: TagFilt
       ? currentValues.filter(v => v !== value)
       : [...currentValues, value];
     
-    onTagsChange({
-      ...selectedTags,
-      [key]: newValues.length > 0 ? newValues : undefined,
-    });
+    const updatedTags = { ...selectedTags };
+    if (newValues.length > 0) {
+      updatedTags[key] = newValues;
+    } else {
+      delete updatedTags[key];
+    }
+    onTagsChange(updatedTags);
   };
 
   const handleClearFilter = (key?: string) => {
@@ -144,4 +148,6 @@ export function TagFilter({ availableTags, selectedTags, onTagsChange }: TagFilt
     </Popover>
   );
 }
+
+export const TagFilter = React.memo(TagFilterComponent);
 

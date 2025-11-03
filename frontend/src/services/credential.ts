@@ -1,65 +1,67 @@
-import api from '@/lib/api';
-import { ApiResponse, Credential, CreateCredentialForm } from '@/lib/types';
+/**
+ * Credential Service
+ * Credential 관련 API 호출
+ */
 
-export const credentialService = {
+import { BaseService } from '@/lib/service-base';
+import type { Credential, CreateCredentialForm } from '@/lib/types';
+
+class CredentialService extends BaseService {
   // Get credentials by workspace
-  getCredentials: async (workspaceId: string): Promise<Credential[]> => {
-    const response = await api.get<ApiResponse<{ credentials: Credential[] }>>(`/api/v1/credentials?workspace_id=${workspaceId}`);
+  async getCredentials(workspaceId: string): Promise<Credential[]> {
+    const data = await this.get<{ credentials: Credential[] } | Credential[]>(
+      `/api/v1/credentials?workspace_id=${workspaceId}`
+    );
+    
     // Backend returns { credentials: [...] } inside data field
-    const data = response.data.data;
-    if (!data || typeof data !== 'object') {
-      return [];
-    }
-    // Check if data has credentials property
-    if ('credentials' in data && Array.isArray((data as { credentials: Credential[] }).credentials)) {
-      return (data as { credentials: Credential[] }).credentials;
-    }
-    // Fallback: if data is directly an array
     if (Array.isArray(data)) {
       return data;
     }
+    
+    if (data && typeof data === 'object' && 'credentials' in data) {
+      return (data as { credentials: Credential[] }).credentials || [];
+    }
+    
     return [];
-  },
+  }
 
   // Get credential by ID
-  getCredential: async (id: string): Promise<Credential> => {
-    const response = await api.get<ApiResponse<Credential>>(`/api/v1/credentials/${id}`);
-    return response.data.data!;
-  },
+  async getCredential(id: string): Promise<Credential> {
+    return this.get<Credential>(`/api/v1/credentials/${id}`);
+  }
 
   // Create credential
-  createCredential: async (data: CreateCredentialForm & { workspace_id: string; name?: string }): Promise<Credential> => {
-    const response = await api.post<ApiResponse<Credential>>('/api/v1/credentials', {
+  async createCredential(data: CreateCredentialForm & { workspace_id: string; name?: string }): Promise<Credential> {
+    return this.post<Credential>('/api/v1/credentials', {
       workspace_id: data.workspace_id,
       name: data.name || `${data.provider.toUpperCase()} Credential`,
       provider: data.provider,
       data: data.credentials || {},
     });
-    return response.data.data!;
-  },
+  }
 
   // Create credential from file (multipart/form-data)
-  createCredentialFromFile: async (workspaceId: string, name: string, provider: string, file: File): Promise<Credential> => {
+  // FormData는 BaseService의 request를 직접 사용해야 함
+  async createCredentialFromFile(workspaceId: string, name: string, provider: string, file: File): Promise<Credential> {
     const formData = new FormData();
     formData.append('workspace_id', workspaceId);
     formData.append('name', name);
     formData.append('provider', provider);
     formData.append('file', file);
     
-    // Axios automatically sets Content-Type to multipart/form-data with boundary
-    // when FormData is used, so we don't need to set it manually
-    const response = await api.post<ApiResponse<Credential>>('/api/v1/credentials/upload', formData);
-    return response.data.data!;
-  },
+    // FormData는 BaseService의 request 메서드를 직접 사용
+    return this.request<Credential>('post', '/api/v1/credentials/upload', formData);
+  }
 
   // Update credential
-  updateCredential: async (id: string, data: Partial<CreateCredentialForm>): Promise<Credential> => {
-    const response = await api.put<ApiResponse<Credential>>(`/api/v1/credentials/${id}`, data);
-    return response.data.data!;
-  },
+  async updateCredential(id: string, data: Partial<CreateCredentialForm>): Promise<Credential> {
+    return this.put<Credential>(`/api/v1/credentials/${id}`, data);
+  }
 
   // Delete credential
-  deleteCredential: async (id: string): Promise<void> => {
-    await api.delete(`/api/v1/credentials/${id}`);
-  },
-};
+  async deleteCredential(id: string): Promise<void> {
+    return this.delete<void>(`/api/v1/credentials/${id}`);
+  }
+}
+
+export const credentialService = new CredentialService();

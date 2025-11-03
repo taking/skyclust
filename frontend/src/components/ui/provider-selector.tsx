@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CloudProvider } from '@/lib/types';
 import { useProviderStore } from '@/store/provider';
@@ -17,7 +18,7 @@ interface ProviderSelectorProps {
   disabled?: boolean;
 }
 
-export function ProviderSelector({ value, onValueChange, disabled }: ProviderSelectorProps) {
+function ProviderSelectorComponent({ value, onValueChange, disabled }: ProviderSelectorProps) {
   const { selectedProvider, setSelectedProvider } = useProviderStore();
 
   const currentValue = value ?? selectedProvider;
@@ -49,4 +50,6 @@ export function ProviderSelector({ value, onValueChange, disabled }: ProviderSel
     </Select>
   );
 }
+
+export const ProviderSelector = React.memo(ProviderSelectorComponent);
 

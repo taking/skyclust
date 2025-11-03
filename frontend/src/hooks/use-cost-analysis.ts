@@ -1,13 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { costAnalysisService, CostSummary, CostPrediction, BudgetAlert, CostBreakdown, CostComparison } from '@/services/cost-analysis';
-import { useToast } from '@/hooks/useToast';
+import { costAnalysisService } from '@/services/cost-analysis';
+import type { CostSummary, CostPrediction, BudgetAlert, CostBreakdown, CostComparison } from '@/lib/types/cost-analysis';
+import { useToast } from '@/hooks/use-toast';
 
 export function useCostSummary(workspaceId: string, period: string = '30d') {
   return useQuery({
     queryKey: ['cost-summary', workspaceId, period],
     queryFn: () => costAnalysisService.getCostSummary(workspaceId, period),
     enabled: !!workspaceId,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000, // 5 minutes - 비용 요약 데이터
+    gcTime: 10 * 60 * 1000, // 10 minutes - GC 시간
   });
 }
 
@@ -16,7 +18,8 @@ export function useCostPredictions(workspaceId: string, days: number = 30) {
     queryKey: ['cost-predictions', workspaceId, days],
     queryFn: () => costAnalysisService.getCostPredictions(workspaceId, days),
     enabled: !!workspaceId,
-    staleTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 10 * 60 * 1000, // 10 minutes - 예측 데이터는 비교적 안정적
+    gcTime: 30 * 60 * 1000, // 30 minutes - GC 시간
   });
 }
 
@@ -25,7 +28,9 @@ export function useBudgetAlerts(workspaceId: string, budgetLimit: number) {
     queryKey: ['budget-alerts', workspaceId, budgetLimit],
     queryFn: () => costAnalysisService.getBudgetAlerts(workspaceId, budgetLimit),
     enabled: !!workspaceId && budgetLimit > 0,
-    staleTime: 2 * 60 * 1000, // 2 minutes
+    staleTime: 2 * 60 * 1000, // 2 minutes - 알림은 더 자주 업데이트 필요
+    gcTime: 5 * 60 * 1000, // 5 minutes - GC 시간
+    refetchInterval: 60000, // 1분마다 refetch (알림 중요성)
   });
 }
 
@@ -34,7 +39,8 @@ export function useCostTrend(workspaceId: string, period: string = '90d') {
     queryKey: ['cost-trend', workspaceId, period],
     queryFn: () => costAnalysisService.getCostTrend(workspaceId, period),
     enabled: !!workspaceId,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000, // 5 minutes - 트렌드 데이터
+    gcTime: 15 * 60 * 1000, // 15 minutes - GC 시간
   });
 }
 
@@ -43,7 +49,8 @@ export function useCostBreakdown(workspaceId: string, period: string = '30d', di
     queryKey: ['cost-breakdown', workspaceId, period, dimension],
     queryFn: () => costAnalysisService.getCostBreakdown(workspaceId, period, dimension),
     enabled: !!workspaceId,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000, // 5 minutes - 비용 분석 데이터
+    gcTime: 15 * 60 * 1000, // 15 minutes - GC 시간
   });
 }
 
@@ -52,7 +59,8 @@ export function useCostComparison(workspaceId: string, currentPeriod: string = '
     queryKey: ['cost-comparison', workspaceId, currentPeriod, comparePeriod],
     queryFn: () => costAnalysisService.getCostComparison(workspaceId, currentPeriod, comparePeriod),
     enabled: !!workspaceId,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000, // 5 minutes - 비교 데이터
+    gcTime: 15 * 60 * 1000, // 15 minutes - GC 시간
   });
 }
 
@@ -173,3 +181,4 @@ export const costAnalysisUtils = {
     return 'text-red-600';
   },
 };
+

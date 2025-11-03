@@ -1,17 +1,22 @@
+/**
+ * Register Page
+ * 회원가입 페이지
+ * 
+ * use-form-with-validation 훅을 사용한 리팩토링 버전
+ */
+
 'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
+import { Form } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { authService } from '@/services/auth';
 import { RegisterForm } from '@/lib/types';
+import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
 import Link from 'next/link';
+import * as z from 'zod';
 
 const registerSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -20,34 +25,43 @@ const registerSchema = z.object({
 });
 
 export default function RegisterPage() {
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const router = useRouter();
 
   const {
-    register,
+    form,
     handleSubmit,
-    formState: { errors },
-  } = useForm<RegisterForm>({
-    resolver: zodResolver(registerSchema),
-  });
-
-  const onSubmit = async (data: RegisterForm) => {
-    try {
-      setIsLoading(true);
-      setError('');
+    isLoading,
+    error,
+    reset,
+    getFieldError,
+    getFieldValidationState,
+  } = useFormWithValidation<RegisterForm>({
+    schema: registerSchema,
+    defaultValues: {
+      name: '',
+      email: '',
+      password: '',
+    },
+    onSubmit: async (data) => {
       await authService.register(data);
       setSuccess(true);
       setTimeout(() => {
         router.push('/login');
       }, 2000);
-    } catch (err: unknown) {
-      setError((err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message || 'Registration failed');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    },
+    onError: (error) => {
+      // Error is handled by the hook's error state
+    },
+    getErrorMessage: (err) => {
+      if (err && typeof err === 'object' && 'response' in err) {
+        const response = err.response as { data?: { error?: { message?: string } } };
+        return response?.data?.error?.message || 'Registration failed';
+      }
+      return 'Registration failed';
+    },
+    resetOnSuccess: true,
+  });
 
   if (success) {
     return (
@@ -79,50 +93,45 @@ export default function RegisterPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Full Name</Label>
-              <Input
-                id="name"
+          <Form {...form}>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <EnhancedField
+                name="name"
+                label="Full Name"
                 type="text"
                 placeholder="Enter your full name"
-                {...register('name')}
+                required
+                getFieldError={getFieldError}
+                getFieldValidationState={getFieldValidationState}
               />
-              {errors.name && (
-                <p className="text-sm text-red-600">{errors.name.message}</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
+              <EnhancedField
+                name="email"
+                label="Email"
                 type="email"
                 placeholder="Enter your email"
-                {...register('email')}
+                required
+                getFieldError={getFieldError}
+                getFieldValidationState={getFieldValidationState}
               />
-              {errors.email && (
-                <p className="text-sm text-red-600">{errors.email.message}</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
+              <EnhancedField
+                name="password"
+                label="Password"
                 type="password"
                 placeholder="Enter your password"
-                {...register('password')}
+                required
+                getFieldError={getFieldError}
+                getFieldValidationState={getFieldValidationState}
               />
-              {errors.password && (
-                <p className="text-sm text-red-600">{errors.password.message}</p>
+              {error && (
+                <div className="text-sm text-red-600 text-center" role="alert">
+                  {error}
+                </div>
               )}
-            </div>
-            {error && (
-              <div className="text-sm text-red-600 text-center">{error}</div>
-            )}
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? 'Creating account...' : 'Sign up'}
-            </Button>
-          </form>
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? 'Creating account...' : 'Sign up'}
+              </Button>
+            </form>
+          </Form>
           <div className="mt-4 text-center text-sm">
             Already have an account?{' '}
             <Link href="/login" className="text-blue-600 hover:underline">
@@ -134,3 +143,4 @@ export default function RegisterPage() {
     </div>
   );
 }
+

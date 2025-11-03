@@ -4,7 +4,8 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { exportService, ExportRequest, ExportResult } from '@/services/export';
+import { exportService } from '@/services/export';
+import type { ExportRequest, ExportResult } from '@/lib/types/export';
 import { toast } from 'react-hot-toast';
 
 export const useExportData = () => {
@@ -28,7 +29,10 @@ export const useExportStatus = (exportId: string, enabled: boolean = true) => {
     queryKey: ['exports', 'status', exportId],
     queryFn: () => exportService.getExportStatus(exportId),
     enabled: enabled && !!exportId,
-    refetchInterval: 2000,
+    staleTime: 0, // 항상 최신 상태 확인 필요
+    gcTime: 5 * 60 * 1000, // 5 minutes - GC 시간
+    refetchInterval: 2000, // 2초마다 refetch (진행 상황 추적)
+    refetchIntervalInBackground: false, // 백그라운드 polling 비활성화
   });
 };
 
@@ -36,6 +40,8 @@ export const useExportHistory = (limit: number = 20, offset: number = 0) => {
   return useQuery({
     queryKey: ['exports', 'history', limit, offset],
     queryFn: () => exportService.getExportHistory(limit, offset),
+    staleTime: 1 * 60 * 1000, // 1 minute - 히스토리는 비교적 안정적
+    gcTime: 10 * 60 * 1000, // 10 minutes - GC 시간
   });
 };
 
@@ -43,7 +49,8 @@ export const useSupportedFormats = () => {
   return useQuery({
     queryKey: ['exports', 'formats'],
     queryFn: () => exportService.getSupportedFormats(),
-    staleTime: 5 * 60 * 1000, // 5분간 캐시
+    staleTime: 30 * 60 * 1000, // 30 minutes - 지원 형식은 거의 변경되지 않음
+    gcTime: 60 * 60 * 1000, // 1 hour - GC 시간
   });
 };
 
@@ -61,3 +68,4 @@ export const useDownloadExport = () => {
     },
   });
 };
+

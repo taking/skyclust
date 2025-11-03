@@ -1,6 +1,8 @@
 'use client';
 
+import * as React from 'react';
 import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCenter } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { useSortable } from '@dnd-kit/sortable';
@@ -16,11 +18,67 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { VMStatusWidget } from '@/components/widgets/vm-status-widget';
-import { CostChartWidget } from '@/components/widgets/cost-chart-widget';
-import { ResourceUsageWidget } from '@/components/widgets/resource-usage-widget';
-import { KubernetesStatusWidget } from '@/components/widgets/kubernetes-status-widget';
-import { NetworkStatusWidget } from '@/components/widgets/network-status-widget';
+
+// Dynamic imports for widgets with loading states
+const VMStatusWidget = dynamic(
+  () => import('@/components/widgets/vm-status-widget').then(mod => ({ default: mod.VMStatusWidget })),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-32">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    ),
+  }
+);
+
+const CostChartWidget = dynamic(
+  () => import('@/components/widgets/cost-chart-widget').then(mod => ({ default: mod.CostChartWidget })),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-32">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    ),
+  }
+);
+
+const ResourceUsageWidget = dynamic(
+  () => import('@/components/widgets/resource-usage-widget').then(mod => ({ default: mod.ResourceUsageWidget })),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-32">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    ),
+  }
+);
+
+const KubernetesStatusWidget = dynamic(
+  () => import('@/components/widgets/kubernetes-status-widget').then(mod => ({ default: mod.KubernetesStatusWidget })),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-32">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    ),
+  }
+);
+
+const NetworkStatusWidget = dynamic(
+  () => import('@/components/widgets/network-status-widget').then(mod => ({ default: mod.NetworkStatusWidget })),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-32">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    ),
+  }
+);
 
 interface DraggableDashboardProps {
   widgets: WidgetData[];
@@ -37,7 +95,7 @@ interface DraggableWidgetProps {
   onResize?: (widgetId: string, size: WidgetSize) => void;
 }
 
-function DraggableWidget({ widget, onRemove, onConfigure, onResize }: DraggableWidgetProps) {
+const DraggableWidget = React.memo(function DraggableWidget({ widget, onRemove, onConfigure, onResize }: DraggableWidgetProps) {
   const {
     attributes,
     listeners,
@@ -168,7 +226,7 @@ function DraggableWidget({ widget, onRemove, onConfigure, onResize }: DraggableW
       </Card>
     </div>
   );
-}
+});
 
 export function DraggableDashboard({
   widgets,

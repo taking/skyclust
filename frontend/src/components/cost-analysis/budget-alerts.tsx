@@ -3,8 +3,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { useBudgetAlerts } from '@/hooks/useCostAnalysis';
-import { costAnalysisUtils } from '@/hooks/useCostAnalysis';
+import { useBudgetAlerts } from '@/hooks/use-cost-analysis';
+import { costAnalysisUtils } from '@/hooks/use-cost-analysis';
 import { AlertTriangle, DollarSign, Target } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

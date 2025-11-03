@@ -3,8 +3,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { useCostSummary } from '@/hooks/useCostAnalysis';
-import { costAnalysisUtils } from '@/hooks/useCostAnalysis';
+import { useCostSummary } from '@/hooks/use-cost-analysis';
+import { costAnalysisUtils } from '@/hooks/use-cost-analysis';
 import { TrendingUp, TrendingDown, Minus, DollarSign } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

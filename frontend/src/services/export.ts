@@ -3,90 +3,47 @@
  * 데이터 내보내기 관련 API 호출
  */
 
-import { api } from '@/lib/api';
+import { BaseService } from '@/lib/service-base';
+import api from '@/lib/api';
+import type {
+  ExportRequest,
+  ExportResult,
+  SupportedFormats,
+  ExportHistory,
+} from '@/lib/types/export';
 
-export interface ExportRequest {
-  user_id: string;
-  workspace_id?: string;
-  type: 'vms' | 'workspaces' | 'credentials' | 'audit_logs' | 'costs';
-  format: 'csv' | 'json' | 'xlsx' | 'pdf';
-  filters?: Record<string, unknown>;
-  date_from?: string;
-  date_to?: string;
-  include_deleted?: boolean;
-}
-
-export interface ExportResult {
-  id: string;
-  user_id: string;
-  type: string;
-  format: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  file_size?: number;
-  download_url?: string;
-  error?: string;
-  created_at: string;
-  completed_at?: string;
-}
-
-export interface ExportFormat {
-  format: string;
-  name: string;
-  description: string;
-  mime_type: string;
-}
-
-export interface ExportType {
-  type: string;
-  name: string;
-  description: string;
-}
-
-export interface SupportedFormats {
-  formats: ExportFormat[];
-  types: ExportType[];
-}
-
-export interface ExportHistory {
-  exports: ExportResult[];
-  total: number;
-  limit: number;
-  offset: number;
-}
-
-export const exportService = {
+class ExportService extends BaseService {
   // 데이터 내보내기
   async exportData(request: Omit<ExportRequest, 'user_id'>): Promise<ExportResult> {
-    const response = await api.post('/exports', request);
-    return response.data.data;
-  },
+    return this.post<ExportResult>('/exports', request);
+  }
 
   // 내보내기 상태 조회
   async getExportStatus(exportId: string): Promise<ExportResult> {
-    const response = await api.get(`/exports/${exportId}/status`);
-    return response.data.data;
-  },
+    return this.get<ExportResult>(`/exports/${exportId}/status`);
+  }
 
-  // 내보내기 파일 다운로드
+  // 내보내기 파일 다운로드 (Blob 반환)
   async downloadExport(exportId: string): Promise<Blob> {
     const response = await api.get(`/exports/${exportId}/download`, {
       responseType: 'blob',
     });
     return response.data;
-  },
+  }
 
   // 내보내기 이력 조회
   async getExportHistory(limit: number = 20, offset: number = 0): Promise<ExportHistory> {
-    const response = await api.get(`/exports/history?limit=${limit}&offset=${offset}`);
-    return response.data.data;
-  },
+    return this.get<ExportHistory>(`/exports/history?limit=${limit}&offset=${offset}`);
+  }
 
   // 지원되는 형식 조회
   async getSupportedFormats(): Promise<SupportedFormats> {
-    const response = await api.get('/exports/formats');
-    return response.data.data;
-  },
+    return this.get<SupportedFormats>('/exports/formats');
+  }
+}
 
+// Utility functions (서비스와 별도로 export)
+export const exportUtils = {
   // 파일 다운로드 헬퍼
   downloadFile: (blob: Blob, filename: string) => {
     const url = window.URL.createObjectURL(blob);
@@ -140,3 +97,8 @@ export const exportService = {
     }
   },
 };
+
+export const exportService = Object.assign(
+  new ExportService(),
+  exportUtils
+);

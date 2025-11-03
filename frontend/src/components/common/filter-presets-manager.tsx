@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Save, Trash2, Filter, X } from 'lucide-react';
-import { FilterPreset } from '@/hooks/useAdvancedFiltering';
+import { FilterPreset } from '@/hooks/use-advanced-filtering';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,7 +25,7 @@ interface FilterPresetsManagerProps {
   onDeletePreset: (presetId: string) => void;
 }
 
-export function FilterPresetsManager({
+function FilterPresetsManagerComponent({
   presets,
   currentFilters,
   onSavePreset,
@@ -139,4 +139,6 @@ export function FilterPresetsManager({
     </>
   );
 }
+
+export const FilterPresetsManager = React.memo(FilterPresetsManagerComponent);
 

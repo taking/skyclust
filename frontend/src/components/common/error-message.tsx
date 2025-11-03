@@ -1,70 +1,52 @@
+/**
+ * Error Message Component
+ * 에러 메시지를 표시하는 컴포넌트
+ * 
+ * @deprecated InlineError 컴포넌트를 사용하는 것을 권장합니다.
+ * 이 컴포넌트는 하위 호환성을 위해 유지됩니다.
+ */
+
 'use client';
 
+import { useState } from 'react';
 import { AlertCircle, RefreshCw, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { getUserFriendlyErrorMessage, isRetryableError, isOffline, NetworkError } from '@/lib/error-handler';
-import { useState } from 'react';
+import { InlineError } from './error-components';
 
-interface ErrorMessageProps {
+export interface ErrorMessageProps {
   error: unknown;
   title?: string;
-  onRetry?: () => void;
+  onRetry?: () => void | Promise<void>;
   className?: string;
+  /**
+   * 닫기 함수
+   */
+  onDismiss?: () => void;
 }
 
-export function ErrorMessage({ error, title, onRetry, className }: ErrorMessageProps) {
-  const [isRetrying, setIsRetrying] = useState(false);
-
-  const message = getUserFriendlyErrorMessage(error);
-  const retryable = onRetry && isRetryableError(error);
-  const offline = isOffline();
-
-  const handleRetry = async () => {
-    if (!onRetry) return;
-    
-    setIsRetrying(true);
-    try {
-      await onRetry();
-    } finally {
-      setIsRetrying(false);
-    }
-  };
-
+/**
+ * ErrorMessage Component
+ * 
+ * @deprecated InlineError를 사용하세요.
+ */
+export function ErrorMessage({ 
+  error, 
+  title, 
+  onRetry, 
+  className,
+  onDismiss,
+}: ErrorMessageProps) {
+  // InlineError를 사용하여 구현
   return (
-    <Alert variant="destructive" className={className}>
-      <div className="flex items-start gap-3">
-        {offline || error instanceof NetworkError ? (
-          <WifiOff className="h-5 w-5" />
-        ) : (
-          <AlertCircle className="h-5 w-5" />
-        )}
-        <div className="flex-1">
-          {title && <AlertTitle>{title}</AlertTitle>}
-          <AlertDescription>
-            {message}
-            {offline && (
-              <span className="block mt-2">
-                Please check your internet connection.
-              </span>
-            )}
-          </AlertDescription>
-          {retryable && (
-            <div className="mt-4">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRetry}
-                disabled={isRetrying || offline}
-              >
-                <RefreshCw className={`mr-2 h-4 w-4 ${isRetrying ? 'animate-spin' : ''}`} />
-                {isRetrying ? 'Retrying...' : 'Retry'}
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
-    </Alert>
+    <InlineError
+      error={error}
+      title={title}
+      onRetry={onRetry}
+      onDismiss={onDismiss}
+      className={className}
+    />
   );
 }
 

@@ -1,70 +1,62 @@
-import api from '@/lib/api';
-import { ApiResponse, Workspace, CreateWorkspaceForm } from '@/lib/types';
+/**
+ * Workspace Service
+ * Workspace 관련 API 호출
+ */
 
-export const workspaceService = {
+import { BaseService } from '@/lib/service-base';
+import type { Workspace, CreateWorkspaceForm } from '@/lib/types';
+
+class WorkspaceService extends BaseService {
   // Get all workspaces
-  getWorkspaces: async (): Promise<Workspace[]> => {
-    const response = await api.get<ApiResponse<{ workspaces: Workspace[] }>>('/api/v1/workspaces');
-    if (!response.data.success) {
-      throw new Error(response.data.error || 'Failed to fetch workspaces');
-    }
-    return response.data.data?.workspaces || [];
-  },
+  async getWorkspaces(): Promise<Workspace[]> {
+    const data = await this.get<{ workspaces: Workspace[] }>('/api/v1/workspaces');
+    return data.workspaces || [];
+  }
 
   // Get workspace by ID
-  getWorkspace: async (id: string): Promise<Workspace> => {
-    const response = await api.get<ApiResponse<{ workspace: Workspace }>>(`/api/v1/workspaces/${id}`);
-    if (!response.data.success) {
-      throw new Error(response.data.error || 'Failed to fetch workspace');
-    }
-    if (!response.data.data?.workspace) {
+  async getWorkspace(id: string): Promise<Workspace> {
+    const data = await this.get<{ workspace: Workspace }>(`/api/v1/workspaces/${id}`);
+    if (!data.workspace) {
       throw new Error('Workspace not found');
     }
-    return response.data.data.workspace;
-  },
+    return data.workspace;
+  }
 
   // Create workspace
-  createWorkspace: async (data: CreateWorkspaceForm): Promise<Workspace> => {
-    const response = await api.post<ApiResponse<{ workspace: Workspace }>>('/api/v1/workspaces', data);
-    if (!response.data.success) {
-      throw new Error(response.data.error || 'Failed to create workspace');
-    }
-    if (!response.data.data?.workspace) {
+  async createWorkspace(data: CreateWorkspaceForm): Promise<Workspace> {
+    const result = await this.post<{ workspace: Workspace }>('/api/v1/workspaces', data);
+    if (!result.workspace) {
       throw new Error('Failed to create workspace');
     }
-    return response.data.data.workspace;
-  },
+    return result.workspace;
+  }
 
   // Update workspace
-  updateWorkspace: async (id: string, data: Partial<CreateWorkspaceForm>): Promise<Workspace> => {
-    const response = await api.put<ApiResponse<{ workspace: Workspace }>>(`/api/v1/workspaces/${id}`, data);
-    if (!response.data.success) {
-      throw new Error(response.data.error || 'Failed to update workspace');
-    }
-    if (!response.data.data?.workspace) {
+  async updateWorkspace(id: string, data: Partial<CreateWorkspaceForm>): Promise<Workspace> {
+    const result = await this.put<{ workspace: Workspace }>(`/api/v1/workspaces/${id}`, data);
+    if (!result.workspace) {
       throw new Error('Failed to update workspace');
     }
-    return response.data.data.workspace;
-  },
+    return result.workspace;
+  }
 
   // Delete workspace
-  deleteWorkspace: async (id: string): Promise<void> => {
-    const response = await api.delete(`/api/v1/workspaces/${id}`);
-    if (!response.data.success) {
-      throw new Error(response.data.error || 'Failed to delete workspace');
-    }
-  },
+  async deleteWorkspace(id: string): Promise<void> {
+    return this.delete<void>(`/api/v1/workspaces/${id}`);
+  }
 
   // Add member to workspace
-  addMember: async (workspaceId: string, userId: string, role: string = 'member'): Promise<void> => {
-    await api.post(`/api/v1/workspaces/${workspaceId}/members`, {
+  async addMember(workspaceId: string, userId: string, role: string = 'member'): Promise<void> {
+    return this.post<void>(`/api/v1/workspaces/${workspaceId}/members`, {
       user_id: userId,
       role,
     });
-  },
+  }
 
   // Remove member from workspace
-  removeMember: async (workspaceId: string, userId: string): Promise<void> => {
-    await api.delete(`/api/v1/workspaces/${workspaceId}/members/${userId}`);
-  },
-};
+  async removeMember(workspaceId: string, userId: string): Promise<void> {
+    return this.delete<void>(`/api/v1/workspaces/${workspaceId}/members/${userId}`);
+  }
+}
+
+export const workspaceService = new WorkspaceService();

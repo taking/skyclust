@@ -1,8 +1,8 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useCostPredictions } from '@/hooks/useCostAnalysis';
-import { costAnalysisUtils } from '@/hooks/useCostAnalysis';
+import { useCostPredictions } from '@/hooks/use-cost-analysis';
+import { costAnalysisUtils } from '@/hooks/use-cost-analysis';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { TrendingUp, Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';

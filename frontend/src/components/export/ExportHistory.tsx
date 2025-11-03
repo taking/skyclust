@@ -47,8 +47,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { useExportHistory, useDownloadExport } from '@/hooks/useExport';
-import { exportService, ExportResult } from '@/services/export';
+import { useExportHistory, useDownloadExport } from '@/hooks/use-export';
+import { exportService } from '@/services/export';
+import type { ExportResult } from '@/lib/types/export';
 import { toast } from 'react-hot-toast';
 
 interface ExportHistoryProps {

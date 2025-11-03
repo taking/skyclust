@@ -19,8 +19,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { NotificationList } from '@/components/notifications/NotificationList';
 import { NotificationPreferencesComponent } from '@/components/notifications/NotificationPreferences';
-import { useRequireAuth } from '@/hooks/useAuth';
-import { useNotificationStats } from '@/hooks/useNotifications';
+import { useRequireAuth } from '@/hooks/use-auth';
+import { useNotificationStats } from '@/hooks/use-notifications';
 
 export default function NotificationsPage() {
   // 인증 확인

@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +15,7 @@ interface TagManagerProps {
   readonly?: boolean;
 }
 
-export function TagManager({ tags, onTagsChange, readonly = false }: TagManagerProps) {
+function TagManagerComponent({ tags, onTagsChange, readonly = false }: TagManagerProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newTagKey, setNewTagKey] = useState('');
   const [newTagValue, setNewTagValue] = useState('');
@@ -128,4 +129,6 @@ export function TagManager({ tags, onTagsChange, readonly = false }: TagManagerP
     </div>
   );
 }
+
+export const TagManager = React.memo(TagManagerComponent);
 

@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -23,13 +24,16 @@ interface BulkActionsToolbarProps<T extends { id: string }> {
   getItemDisplayName?: (item: T) => string;
 }
 
-export function BulkActionsToolbar<T extends { id: string }>({
+function BulkActionsToolbarComponent<T extends { id: string }>({
   items,
   selectedIds,
   onSelectionChange,
   onBulkDelete,
   onBulkTag,
-  getItemDisplayName = (item) => (item as any).name || item.id,
+  getItemDisplayName = (item: T) => {
+    const itemWithName = item as T & { name?: string };
+    return itemWithName.name || item.id;
+  },
 }: BulkActionsToolbarProps<T>) {
   const [isSelectMode, setIsSelectMode] = useState(false);
 
@@ -146,6 +150,8 @@ export function BulkActionsToolbar<T extends { id: string }>({
     </div>
   );
 }
+
+export const BulkActionsToolbar = React.memo(BulkActionsToolbarComponent) as typeof BulkActionsToolbarComponent;
 
 export function SelectableItem<T extends { id: string }>({
   item,

@@ -48,8 +48,8 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { useExportData } from '@/hooks/useExport';
-import { ExportRequest } from '@/services/export';
+import { useExportData } from '@/hooks/use-export';
+import type { ExportRequest } from '@/lib/types/export';
 
 const exportSchema = z.object({
   type: z.enum(['vms', 'workspaces', 'credentials', 'audit_logs', 'costs']),
