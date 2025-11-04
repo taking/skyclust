@@ -62,7 +62,9 @@ class OfflineQueueManager {
         this.queue = JSON.parse(stored);
       }
     } catch (error) {
-      console.warn('Failed to load offline queue from localStorage:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Failed to load offline queue from localStorage:', error);
+      }
       this.queue = [];
     }
   }
@@ -76,7 +78,9 @@ class OfflineQueueManager {
     try {
       localStorage.setItem(this.storageKey, JSON.stringify(this.queue));
     } catch (error) {
-      console.warn('Failed to save offline queue to localStorage:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Failed to save offline queue to localStorage:', error);
+      }
     }
   }
 
@@ -162,7 +166,9 @@ class OfflineQueueManager {
 
         if (request.retries >= (request.maxRetries ?? this.options.maxRetries)) {
           // 최대 재시도 횟수 초과 - 큐에서 제거
-          console.warn(`Request ${request.id} exceeded max retries, removing from queue`);
+          if (process.env.NODE_ENV === 'development') {
+            console.warn(`Request ${request.id} exceeded max retries, removing from queue`);
+          }
           this.removeRequest(request.id);
         } else {
           // 재시도 가능한 요청은 유지

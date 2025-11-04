@@ -206,8 +206,10 @@ export function AppErrorBoundary({
   resetKeys,
 }: AppErrorBoundaryProps) {
   const handleError = (error: Error, errorInfo: React.ErrorInfo) => {
-    // 콘솔 로깅
-    console.error('Error caught by boundary:', error, errorInfo);
+    // Development 환경에서만 콘솔 로깅
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error caught by boundary:', error, errorInfo);
+    }
     
     // 에러 타입 판단
     const errorType = error instanceof NetworkError 
@@ -219,35 +221,17 @@ export function AppErrorBoundary({
     // 에러 ID 생성 (로깅 서비스 연동 시 사용)
     const errorId = `err-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
+    // ErrorHandler를 통한 로깅 (Sentry 포함)
+    const { ErrorHandler } = require('@/lib/error-handler');
+    ErrorHandler.logError(error, {
+      componentStack: errorInfo.componentStack,
+      errorType,
+      errorId,
+    });
+    
     // 사용자 정의 로깅 함수 호출
     if (onError) {
       onError(error, errorInfo);
-    } else {
-      // 기본 로깅 (나중에 로깅 서비스로 확장 가능)
-      if (typeof window !== 'undefined' && window.localStorage) {
-        try {
-          const errorLog = {
-            id: errorId,
-            message: error.message,
-            stack: error.stack,
-            componentStack: errorInfo.componentStack,
-            timestamp: new Date().toISOString(),
-            userAgent: navigator.userAgent,
-            url: window.location.href,
-            errorType,
-          };
-          
-          // 최근 에러 로그 저장 (최대 10개)
-          const existingLogs = JSON.parse(
-            localStorage.getItem('error-logs') || '[]'
-          ) as Array<unknown>;
-          const updatedLogs = [errorLog, ...existingLogs].slice(0, 10);
-          localStorage.setItem('error-logs', JSON.stringify(updatedLogs));
-        } catch (storageError) {
-          // localStorage 오류 무시
-          console.warn('Failed to log error to localStorage:', storageError);
-        }
-      }
     }
   };
 

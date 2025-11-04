@@ -1,6 +1,7 @@
 import axios, { AxiosError } from 'axios';
 import { NetworkError, ServerError, isOffline } from './error-handler';
 import { getOfflineQueue } from './offline-queue';
+import { useAuthStore } from '@/store/auth';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -41,11 +42,25 @@ api.interceptors.request.use(
       delete config.headers['Content-Type'];
     }
 
-    // Try to get token from localStorage first, then from Zustand store
-    const token = localStorage.getItem('token') || 
-                  (typeof window !== 'undefined' && window.localStorage?.getItem('auth-storage') 
-                    ? JSON.parse(window.localStorage.getItem('auth-storage') || '{}').state?.token 
-                    : null);
+    // Get token from Zustand persist storage (auth-storage)
+    // Fallback to legacy token for backward compatibility
+    let token: string | null = null;
+    if (typeof window !== 'undefined') {
+      try {
+        const authStorage = localStorage.getItem('auth-storage');
+        if (authStorage) {
+          const parsed = JSON.parse(authStorage);
+          token = parsed?.state?.token || null;
+        }
+        // Fallback to legacy token if auth-storage doesn't have it
+        if (!token) {
+          token = localStorage.getItem('token');
+        }
+      } catch {
+        // If parse fails, try legacy token
+        token = localStorage.getItem('token');
+      }
+    }
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -81,7 +96,8 @@ api.interceptors.response.use(
     // Handle 401 - Unauthorized
     // Only redirect if not already on login page
     if (status === 401 && !window.location.pathname.includes('/login')) {
-      localStorage.removeItem('token');
+      // Clear auth-storage (Zustand persist) and legacy token
+      useAuthStore.getState().logout();
       // Delay redirect to allow error message to be shown
       setTimeout(() => {
         window.location.href = '/login';

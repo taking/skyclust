@@ -6,9 +6,11 @@ import { Badge } from '@/components/ui/badge';
 import { Container, Server, AlertCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { kubernetesService } from '@/features/kubernetes';
-import { credentialService } from '@/services/credential';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useProviderStore } from '@/store/provider';
+import { queryKeys } from '@/lib/query-keys';
+import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
+import { useCredentials } from '@/hooks/use-credentials';
 
 interface KubernetesStatusWidgetProps {
   credentialId?: string;
@@ -20,22 +22,23 @@ function KubernetesStatusWidgetComponent({ credentialId, region, isLoading }: Ku
   const { currentWorkspace } = useWorkspaceStore();
   const { selectedProvider } = useProviderStore();
 
-  const { data: credentials = [] } = useQuery({
-    queryKey: ['credentials', currentWorkspace?.id],
-    queryFn: () => currentWorkspace ? credentialService.getCredentials(currentWorkspace.id) : Promise.resolve([]),
-    enabled: !!currentWorkspace,
+  // Fetch credentials using unified hook
+  const { credentials } = useCredentials({
+    workspaceId: currentWorkspace?.id,
   });
 
   const activeCredentialId = credentialId || credentials.find(c => c.provider === selectedProvider)?.id;
   const activeRegion = region || 'ap-northeast-2';
 
   const { data: clusters = [], isLoading: isLoadingClusters } = useQuery({
-    queryKey: ['kubernetes-clusters-widget', selectedProvider, activeCredentialId, activeRegion],
+    queryKey: [...queryKeys.kubernetesClusters.all, 'widget', selectedProvider, activeCredentialId, activeRegion],
     queryFn: async () => {
       if (!selectedProvider || !activeCredentialId) return [];
       return kubernetesService.listClusters(selectedProvider, activeCredentialId, activeRegion);
     },
     enabled: !!selectedProvider && !!activeCredentialId && !!currentWorkspace,
+    staleTime: CACHE_TIMES.REALTIME,
+    gcTime: GC_TIMES.SHORT,
     refetchInterval: 30000, // Poll every 30 seconds
   });
 

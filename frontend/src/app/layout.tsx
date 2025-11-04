@@ -6,6 +6,7 @@ import { ThemeProvider } from '@/components/providers/theme-provider';
 import { ToastProvider } from '@/components/ui/toast';
 import { AppErrorBoundary } from '@/components/error-boundary';
 import { OfflineBanner } from '@/components/common/offline-banner';
+import { SentryProvider } from '@/components/providers/sentry-provider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -22,20 +23,22 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <AppErrorBoundary>
-            <QueryProvider>
-              <OfflineBanner position="top" autoHide showRefreshButton />
-              {children}
-              <ToastProvider />
-            </QueryProvider>
-          </AppErrorBoundary>
-        </ThemeProvider>
+        <SentryProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <AppErrorBoundary>
+              <QueryProvider>
+                <OfflineBanner position="top" autoHide showRefreshButton />
+                {children}
+                <ToastProvider />
+              </QueryProvider>
+            </AppErrorBoundary>
+          </ThemeProvider>
+        </SentryProvider>
       </body>
     </html>
   );

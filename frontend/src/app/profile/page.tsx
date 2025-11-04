@@ -17,6 +17,8 @@ import { WorkspaceRequired } from '@/components/common/workspace-required';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { queryKeys } from '@/lib/query-keys';
+import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
 import { 
   User, 
   Shield, 
@@ -59,11 +61,11 @@ export default function ProfilePage() {
 
   // Fetch current user data (사용자 정보는 자주 변경되지 않음)
   const { data: currentUser, isLoading } = useQuery({
-    queryKey: ['user', 'me'],
-    queryFn: authService.getCurrentUser,
+    queryKey: queryKeys.user.me(),
+    queryFn: () => authService.getCurrentUser(),
     enabled: !!user,
-    staleTime: 5 * 60 * 1000, // 5분 - 사용자 정보는 비교적 안정적
-    gcTime: 15 * 60 * 1000, // 15분 - GC 시간
+    staleTime: CACHE_TIMES.RESOURCE, // 5분 - 사용자 정보는 비교적 안정적
+    gcTime: GC_TIMES.MEDIUM, // 10분 - GC 시간 (15분 대신 10분으로 조정)
   });
 
   // Profile form
@@ -97,7 +99,7 @@ export default function ProfilePage() {
       authService.updateUser(currentUser?.id || '', data),
     onSuccess: () => {
       success('Profile updated successfully');
-      queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.user.me() });
     },
     onError: (error) => {
       showError(`Failed to update profile: ${error.message}`);

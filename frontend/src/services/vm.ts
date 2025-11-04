@@ -9,37 +9,37 @@ import type { VM, CreateVMForm } from '@/lib/types';
 class VMService extends BaseService {
   // Get VMs by workspace
   async getVMs(workspaceId: string): Promise<VM[]> {
-    return this.get<VM[]>(`/api/v1/vms?workspace_id=${workspaceId}`);
+    return this.get<VM[]>(`vms?workspace_id=${workspaceId}`);
   }
 
   // Get VM by ID
   async getVM(id: string): Promise<VM> {
-    return this.get<VM>(`/api/v1/vms/${id}`);
+    return this.get<VM>(`vms/${id}`);
   }
 
   // Create VM
   async createVM(data: CreateVMForm): Promise<VM> {
-    return this.post<VM>('/api/v1/vms', data);
+    return this.post<VM>('vms', data);
   }
 
   // Update VM
   async updateVM(id: string, data: Partial<CreateVMForm>): Promise<VM> {
-    return this.put<VM>(`/api/v1/vms/${id}`, data);
+    return this.put<VM>(`vms/${id}`, data);
   }
 
   // Delete VM
   async deleteVM(id: string): Promise<void> {
-    return this.delete<void>(`/api/v1/vms/${id}`);
+    return this.delete<void>(`vms/${id}`);
   }
 
   // Start VM
   async startVM(id: string): Promise<void> {
-    return this.post<void>(`/api/v1/vms/${id}/start`);
+    return this.post<void>(`vms/${id}/start`);
   }
 
   // Stop VM
   async stopVM(id: string): Promise<void> {
-    return this.post<void>(`/api/v1/vms/${id}/stop`);
+    return this.post<void>(`vms/${id}/stop`);
   }
 }
 

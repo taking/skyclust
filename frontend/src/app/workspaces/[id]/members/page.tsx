@@ -11,11 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { workspaceService } from '@/services/workspace';
+import { workspaceService, useWorkspaceActions } from '@/features/workspaces';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { ArrowLeft, UserPlus, Trash2, Crown, Shield, User, Users } from 'lucide-react';
+import { queryKeys } from '@/lib/query-keys';
 
 const addMemberSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -56,13 +57,13 @@ export default function WorkspaceMembersPage() {
 
   // Fetch workspace details
   const { data: workspace } = useQuery({
-    queryKey: ['workspace', workspaceId],
+    queryKey: queryKeys.workspaces.detail(workspaceId),
     queryFn: () => workspaceService.getWorkspace(workspaceId),
   });
 
   // Fetch workspace members (mock data for now)
   const { data: members = [], isLoading } = useQuery({
-    queryKey: ['workspace-members', workspaceId],
+    queryKey: queryKeys.workspaces.members(workspaceId),
     queryFn: async () => {
       // Mock data - in real implementation, this would fetch from API
       return [
@@ -85,11 +86,10 @@ export default function WorkspaceMembersPage() {
   const addMemberMutation = useMutation({
     mutationFn: async (data: { email: string; role: string }) => {
       // Mock implementation - in real app, this would call API
-      console.log('Adding member:', data);
       return Promise.resolve();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workspace-members', workspaceId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.members(workspaceId) });
       setIsAddMemberDialogOpen(false);
       reset();
     },
@@ -99,11 +99,10 @@ export default function WorkspaceMembersPage() {
   const removeMemberMutation = useMutation({
     mutationFn: async (userId: string) => {
       // Mock implementation - in real app, this would call API
-      console.log('Removing member:', userId);
       return Promise.resolve();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workspace-members', workspaceId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.members(workspaceId) });
     },
   });
 

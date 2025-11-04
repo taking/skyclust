@@ -45,7 +45,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { SearchBar } from '@/components/ui/search-bar';
 import { FilterPanel, FilterConfig, FilterValue } from '@/components/ui/filter-panel';
 import { TableSkeleton } from '@/components/ui/table-skeleton';
-import { useWorkspaceFromUrl } from '@/hooks/use-workspace-from-url';
+import { useWorkspaceStore } from '@/store/workspace';
 import { WorkspaceRequired } from '@/components/common/workspace-required';
 import { useRequireAuth } from '@/hooks/use-auth';
 import { useSSEMonitoring } from '@/hooks/use-sse-monitoring';
@@ -149,12 +149,12 @@ export function ResourceListPage<TItem = unknown>({
   skeletonRows = 5,
   skeletonShowCheckbox = false,
 }: ResourceListPageProps<TItem>) {
-  const { currentWorkspace, isLoadingWorkspaces } = useWorkspaceFromUrl();
+  const { currentWorkspace } = useWorkspaceStore();
   const { isLoading: authLoading } = useRequireAuth();
   useSSEMonitoring();
 
   // Loading state
-  if (authLoading || isLoadingWorkspaces || isLoading) {
+  if (authLoading || isLoading) {
     return (
       <WorkspaceRequired>
         <Layout>

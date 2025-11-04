@@ -6,6 +6,7 @@
 import { useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import type { VM } from '@/lib/types';
 import { getLiveRegionMessage } from '@/lib/accessibility';
+import { queryKeys } from '@/lib/query-keys';
 
 interface UseVMActionsOptions {
   workspaceId?: string;
@@ -33,7 +34,7 @@ export function useVMActions({
     if (confirm('Are you sure you want to delete this VM?')) {
       deleteMutation.mutate(vmId, {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: ['vms', workspaceId] });
+          queryClient.invalidateQueries({ queryKey: queryKeys.vms.list(workspaceId) });
           onSuccess?.('VM deleted successfully');
           if (setLiveMessage) {
             setLiveMessage(getLiveRegionMessage('deleted', vm?.name || 'VM', true));

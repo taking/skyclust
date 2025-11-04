@@ -7,6 +7,7 @@
 import api from './api';
 import type { ApiResponse } from './types/api';
 import { ServiceError, type ServiceRequestOptions } from './types/service';
+import { getApiUrl, getApiVersion } from './api-config';
 
 export abstract class BaseService {
   /**
@@ -107,50 +108,75 @@ export abstract class BaseService {
   }
 
   /**
+   * API URL 생성 헬퍼
+   * 버전 관리를 포함한 URL 생성
+   */
+  protected buildApiUrl(endpoint: string, version?: string): string {
+    return getApiUrl(endpoint, version);
+  }
+
+  /**
+   * 현재 API 버전 가져오기
+   */
+  protected getApiVersion(): string {
+    return getApiVersion();
+  }
+
+  /**
    * GET 요청 헬퍼
    */
-  protected async get<T>(url: string, options?: ServiceRequestOptions): Promise<T> {
-    return this.request<T>('get', url, undefined, options);
+  protected async get<T>(endpoint: string, options?: ServiceRequestOptions & { version?: string }): Promise<T> {
+    const url = this.buildApiUrl(endpoint, options?.version);
+    const { version, ...requestOptions } = options || {};
+    return this.request<T>('get', url, undefined, requestOptions);
   }
 
   /**
    * POST 요청 헬퍼
    */
   protected async post<T>(
-    url: string,
+    endpoint: string,
     data?: unknown,
-    options?: ServiceRequestOptions
+    options?: ServiceRequestOptions & { version?: string }
   ): Promise<T> {
-    return this.request<T>('post', url, data, options);
+    const url = this.buildApiUrl(endpoint, options?.version);
+    const { version, ...requestOptions } = options || {};
+    return this.request<T>('post', url, data, requestOptions);
   }
 
   /**
    * PUT 요청 헬퍼
    */
   protected async put<T>(
-    url: string,
+    endpoint: string,
     data?: unknown,
-    options?: ServiceRequestOptions
+    options?: ServiceRequestOptions & { version?: string }
   ): Promise<T> {
-    return this.request<T>('put', url, data, options);
+    const url = this.buildApiUrl(endpoint, options?.version);
+    const { version, ...requestOptions } = options || {};
+    return this.request<T>('put', url, data, requestOptions);
   }
 
   /**
    * PATCH 요청 헬퍼
    */
   protected async patch<T>(
-    url: string,
+    endpoint: string,
     data?: unknown,
-    options?: ServiceRequestOptions
+    options?: ServiceRequestOptions & { version?: string }
   ): Promise<T> {
-    return this.request<T>('patch', url, data, options);
+    const url = this.buildApiUrl(endpoint, options?.version);
+    const { version, ...requestOptions } = options || {};
+    return this.request<T>('patch', url, data, requestOptions);
   }
 
   /**
    * DELETE 요청 헬퍼
    */
-  protected async delete<T>(url: string, options?: ServiceRequestOptions): Promise<T> {
-    return this.request<T>('delete', url, undefined, options);
+  protected async delete<T>(endpoint: string, options?: ServiceRequestOptions & { version?: string }): Promise<T> {
+    const url = this.buildApiUrl(endpoint, options?.version);
+    const { version, ...requestOptions } = options || {};
+    return this.request<T>('delete', url, undefined, requestOptions);
   }
 }
 

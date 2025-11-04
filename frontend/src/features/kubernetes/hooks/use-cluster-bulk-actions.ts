@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { kubernetesService } from '../services/kubernetes';
 import type { KubernetesCluster, CloudProvider } from '@/lib/types';
+import { queryKeys } from '@/lib/query-keys';
 
 interface BulkOperationProgress {
   operation: 'delete' | 'tag';
@@ -104,7 +105,7 @@ export function useClusterBulkActions(
         onError?.(`Failed to delete all clusters`);
       }
       
-      queryClient.invalidateQueries({ queryKey: ['kubernetes-clusters'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.kubernetesClusters.all });
       
       if (!isOperationCancelled) {
         setTimeout(() => {
@@ -205,7 +206,7 @@ export function useClusterBulkActions(
         onError?.(`Failed to add tag to all clusters`);
       }
       
-      queryClient.invalidateQueries({ queryKey: ['kubernetes-clusters'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.kubernetesClusters.all });
       
       if (!isOperationCancelled) {
         setTimeout(() => {

@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Button } from '@/components/ui/button';
 import { Keyboard } from 'lucide-react';
 import { KeyboardShortcut } from '@/hooks/use-keyboard-shortcuts';
+import { EVENTS } from '@/lib/constants';
 
 interface KeyboardShortcutsHelpProps {
   shortcuts: KeyboardShortcut[];
@@ -13,6 +14,17 @@ interface KeyboardShortcutsHelpProps {
 
 export function KeyboardShortcutsHelp({ shortcuts, trigger }: KeyboardShortcutsHelpProps) {
   const [isOpen, setIsOpen] = React.useState(false);
+
+  // Listen for Shift + ? keyboard shortcut
+  React.useEffect(() => {
+    const handleShowShortcuts = () => {
+      setIsOpen(true);
+    };
+    window.addEventListener(EVENTS.UI.SHOW_KEYBOARD_SHORTCUTS, handleShowShortcuts);
+    return () => {
+      window.removeEventListener(EVENTS.UI.SHOW_KEYBOARD_SHORTCUTS, handleShowShortcuts);
+    };
+  }, []);
 
   const formatKeyCombo = (shortcut: KeyboardShortcut): string => {
     const parts: string[] = [];
@@ -26,7 +38,19 @@ export function KeyboardShortcutsHelp({ shortcuts, trigger }: KeyboardShortcutsH
     if (shortcut.altKey) {
       parts.push('Alt');
     }
-    parts.push(shortcut.key === ' ' ? 'Space' : shortcut.key);
+    
+    // Format key display
+    let keyDisplay = shortcut.key;
+    if (keyDisplay === ' ') {
+      keyDisplay = 'Space';
+    } else if (keyDisplay === '?') {
+      keyDisplay = '?';
+    } else if (keyDisplay.length === 1 && keyDisplay.match(/[a-z]/i)) {
+      // Single letter keys - capitalize for display
+      keyDisplay = keyDisplay.toUpperCase();
+    }
+    
+    parts.push(keyDisplay);
     
     return parts.join(' + ');
   };
@@ -34,16 +58,27 @@ export function KeyboardShortcutsHelp({ shortcuts, trigger }: KeyboardShortcutsH
   const groupedShortcuts = React.useMemo(() => {
     const groups: Record<string, KeyboardShortcut[]> = {
       'Navigation': [],
-      'Actions': [],
+      'Action': [],
       'General': [],
     };
 
     shortcuts.forEach((shortcut) => {
       const desc = shortcut.description.toLowerCase();
-      if (desc.includes('search') || desc.includes('open')) {
+      
+      // Categorize based on description and key combination
+      if (desc.includes('menu list') || desc.includes('menu')) {
         groups['Navigation'].push(shortcut);
-      } else if (desc.includes('delete') || desc.includes('save') || desc.includes('create')) {
-        groups['Actions'].push(shortcut);
+      } else if (desc.includes('go to') || desc.includes('dashboard') || desc.includes('compute') || 
+                 desc.includes('kubernetes') || desc.includes('networks') || desc.includes('credentials')) {
+        groups['General'].push(shortcut);
+      } else if (desc.includes('create') || desc.includes('new resource')) {
+        groups['Action'].push(shortcut);
+      } else if (desc.includes('show keyboard shortcuts') || desc.includes('keyboard shortcuts')) {
+        groups['General'].push(shortcut);
+      } else if (desc.includes('search') || desc.includes('open')) {
+        groups['Navigation'].push(shortcut);
+      } else if (desc.includes('delete') || desc.includes('save')) {
+        groups['Action'].push(shortcut);
       } else {
         groups['General'].push(shortcut);
       }
@@ -55,9 +90,9 @@ export function KeyboardShortcutsHelp({ shortcuts, trigger }: KeyboardShortcutsH
   return (
     <>
       {trigger ? (
-        <DialogTrigger asChild onClick={() => setIsOpen(true)}>
+        <div onClick={() => setIsOpen(true)} style={{ display: 'inline-block' }}>
           {trigger}
-        </DialogTrigger>
+        </div>
       ) : (
         <Button
           variant="ghost"
@@ -69,7 +104,6 @@ export function KeyboardShortcutsHelp({ shortcuts, trigger }: KeyboardShortcutsH
           Shortcuts
         </Button>
       )}
-
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>

@@ -4,6 +4,7 @@
  */
 
 import { BaseService } from '@/lib/service-base';
+import api from '@/lib/api';
 import type {
   KubernetesCluster,
   NodePool,
@@ -23,7 +24,10 @@ class KubernetesService extends BaseService {
     region?: string
   ): Promise<KubernetesCluster[]> {
     const params = new URLSearchParams({ credential_id: credentialId });
-    if (region) params.append('region', region);
+    // Only append region if it's provided and not empty
+    if (region && region.trim() !== '') {
+      params.append('region', region);
+    }
     
     const data = await this.get<{ clusters: KubernetesCluster[] }>(
       `/api/v1/${provider}/kubernetes/clusters?${params.toString()}`
@@ -84,10 +88,17 @@ class KubernetesService extends BaseService {
       region,
     });
     
-    const data = await this.get<{ kubeconfig: string }>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/kubeconfig?${params.toString()}`
+    // Kubeconfig는 YAML 텍스트로 직접 반환되므로 BaseService의 JSON 파싱을 우회
+    const url = this.buildApiUrl(
+      `${provider}/kubernetes/clusters/${clusterName}/kubeconfig?${params.toString()}`
     );
-    return data.kubeconfig || '';
+    
+    // 직접 api를 사용하여 텍스트 응답 처리
+    const response = await api.get<string>(url, {
+      responseType: 'text',
+    });
+    
+    return response.data || '';
   }
 
   async upgradeCluster(

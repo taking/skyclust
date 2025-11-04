@@ -17,6 +17,12 @@ export const createClusterSchema = z.object({
   }).optional(),
 });
 
+export const updateClusterSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters').optional(),
+  version: z.string().min(1, 'Version is required').optional(),
+  tags: z.record(z.string(), z.string()).optional(),
+});
+
 export const createNodePoolSchema = z.object({
   credential_id: z.string().uuid('Invalid credential ID'),
   name: z.string().min(1, 'Name is required'),
@@ -30,6 +36,16 @@ export const createNodePoolSchema = z.object({
   min_nodes: z.number().min(0),
   max_nodes: z.number().min(1),
   node_count: z.number().min(0),
+  auto_scaling: z.boolean().optional(),
+  tags: z.record(z.string(), z.string()).optional(),
+});
+
+export const updateNodePoolSchema = z.object({
+  name: z.string().min(1, 'Name is required').optional(),
+  version: z.string().optional(),
+  min_nodes: z.number().min(0).optional(),
+  max_nodes: z.number().min(1).optional(),
+  node_count: z.number().min(0).optional(),
   auto_scaling: z.boolean().optional(),
   tags: z.record(z.string(), z.string()).optional(),
 });
@@ -61,16 +77,28 @@ export const createVPCSchema = z.object({
   tags: z.record(z.string(), z.string()).optional(),
 });
 
+export const updateVPCSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(255, 'Name must be less than 255 characters').optional(),
+  description: z.string().max(500).optional(),
+  tags: z.record(z.string(), z.string()).optional(),
+});
+
 export const createSubnetSchema = z.object({
   credential_id: z.string().uuid('Invalid credential ID'),
   name: z.string().min(1, 'Name is required').max(255, 'Name must be less than 255 characters'),
   vpc_id: z.string().min(1, 'VPC ID is required'),
-  cidr_block: z.string().regex(/^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/, 'Invalid CIDR format'),
+  cidr_block: z.string().regex(/^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/, 'Invalid CIDR format').min(1, 'CIDR block is required'),
   availability_zone: z.string().min(1, 'Availability zone is required'),
   region: z.string().min(1, 'Region is required'),
   description: z.string().max(500).optional(),
   private_ip_google_access: z.boolean().optional(),
   flow_logs: z.boolean().optional(),
+  tags: z.record(z.string(), z.string()).optional(),
+});
+
+export const updateSubnetSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(255, 'Name must be less than 255 characters').optional(),
+  description: z.string().max(500).optional(),
   tags: z.record(z.string(), z.string()).optional(),
 });
 
@@ -89,6 +117,43 @@ export const createSecurityGroupSchema = z.object({
   source_ranges: z.array(z.string()).optional(),
   target_tags: z.array(z.string()).optional(),
   tags: z.record(z.string(), z.string()).optional(),
+});
+
+export const updateSecurityGroupSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(255, 'Name must be less than 255 characters').optional(),
+  description: z.string().min(1, 'Description is required').max(255, 'Description must be less than 255 characters').optional(),
+  tags: z.record(z.string(), z.string()).optional(),
+});
+
+// VM validations
+export const createVMSchema = z.object({
+  credential_id: z.string().uuid('Invalid credential ID'),
+  name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),
+  provider: z.enum(['aws', 'gcp', 'azure', 'ncp']),
+  type: z.string().min(1, 'Instance type is required'),
+  region: z.string().min(1, 'Region is required'),
+  image_id: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const updateVMSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters').optional(),
+  type: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+// Credential validations
+export const createCredentialSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters').optional(),
+  provider: z.string().min(1, 'Provider is required').refine((val) => ['aws', 'gcp', 'azure', 'ncp'].includes(val), {
+    message: 'Provider must be one of: aws, gcp, azure, ncp',
+  }),
+  credentials: z.record(z.string(), z.unknown()),
+});
+
+export const updateCredentialSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters').optional(),
+  credentials: z.record(z.string(), z.string()).optional(),
 });
 
 // Common validations

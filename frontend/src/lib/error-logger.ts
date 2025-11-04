@@ -148,11 +148,15 @@ class ErrorLogger {
     // localStorage에 저장
     this.saveToStorage();
 
-    // 콘솔에 로깅
-    console.error('Error logged:', log);
+    // Development 환경에서만 콘솔에 로깅
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error logged:', log);
+    }
 
-    // TODO: 외부 로깅 서비스로 전송 (예: Sentry, LogRocket 등)
-    // this.sendToExternalService(log);
+    // 외부 로깅 서비스로 전송 (Sentry)
+    this.sendToExternalService(log).catch(() => {
+      // 에러 전송 실패는 조용히 무시
+    });
 
     return log.id;
   }
@@ -166,7 +170,9 @@ class ErrorLogger {
     try {
       localStorage.setItem(this.storageKey, JSON.stringify(this.logs));
     } catch (error) {
-      console.warn('Failed to save error logs to localStorage:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Failed to save error logs to localStorage:', error);
+      }
     }
   }
 
@@ -183,7 +189,9 @@ class ErrorLogger {
         return [...this.logs];
       }
     } catch (error) {
-      console.warn('Failed to load error logs from localStorage:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Failed to load error logs from localStorage:', error);
+      }
     }
 
     return [];
@@ -225,19 +233,59 @@ class ErrorLogger {
   }
 
   /**
-   * 외부 로깅 서비스로 전송 (구현 예정)
+   * 외부 로깅 서비스로 전송 (Sentry)
    */
   private async sendToExternalService(log: ErrorLog): Promise<void> {
-    // TODO: Sentry, LogRocket 등과 통합
-    // try {
-    //   await fetch('/api/v1/logs', {
-    //     method: 'POST',
-    //     headers: { 'Content-Type': 'application/json' },
-    //     body: JSON.stringify(log),
-    //   });
-    // } catch (error) {
-    //   console.warn('Failed to send error log to external service:', error);
-    // }
+    if (typeof window === 'undefined') return;
+
+    try {
+      // Dynamic import로 Sentry 클라이언트 가져오기
+      const { getSentryClient } = await import('./sentry-client');
+      const sentry = getSentryClient();
+
+      if (!sentry) return;
+
+      // Error 객체 재구성
+      const error = new Error(log.message);
+      error.name = log.type;
+      if (log.stack) {
+        error.stack = log.stack;
+      }
+
+      // Sentry에 컨텍스트 추가
+      if (log.context) {
+        sentry.setContext('errorContext', log.context);
+      }
+
+      // 추가 정보를 태그로 설정
+      if (log.code) {
+        sentry.setContext('errorCode', { code: log.code });
+      }
+
+      if (log.statusCode) {
+        sentry.setContext('httpStatus', { status: log.statusCode });
+      }
+
+      if (log.url) {
+        sentry.setContext('url', { url: log.url });
+      }
+
+      if (log.componentStack) {
+        sentry.setContext('componentStack', { stack: log.componentStack });
+      }
+
+      // 에러 전송
+      sentry.captureException(error, {
+        errorId: log.id,
+        timestamp: log.timestamp,
+        userAgent: log.userAgent,
+      });
+    } catch (error) {
+      // Sentry 전송 실패는 조용히 무시 (무한 루프 방지)
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Failed to send error log to Sentry:', error);
+      }
+    }
   }
 }
 

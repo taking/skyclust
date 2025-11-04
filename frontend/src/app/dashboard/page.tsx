@@ -10,9 +10,10 @@ import { useWorkspaceStore } from '@/store/workspace';
 import { useRouter } from 'next/navigation';
 import { WidgetData, WidgetType, WidgetSize, WIDGET_CONFIGS } from '@/lib/widgets';
 import { Server, Key, Users, Settings, RefreshCw } from 'lucide-react';
-import { workspaceService } from '@/services/workspace';
+import { workspaceService } from '@/features/workspaces';
 import { useQuery } from '@tanstack/react-query';
 import { WorkspaceRequired } from '@/components/common/workspace-required';
+import { queryKeys } from '@/lib/query-keys';
 
 import { Spinner, WidgetSkeleton } from '@/components/ui/loading-states';
 
@@ -73,8 +74,8 @@ export default function DashboardPage() {
 
   // Fetch workspaces
   const { data: fetchedWorkspaces = [], isLoading: isLoadingWorkspaces } = useQuery({
-    queryKey: ['workspaces'],
-    queryFn: workspaceService.getWorkspaces,
+    queryKey: queryKeys.workspaces.list(),
+    queryFn: () => workspaceService.getWorkspaces(),
     retry: 3,
     retryDelay: 1000,
   });
@@ -85,6 +86,7 @@ export default function DashboardPage() {
       setWorkspaces(fetchedWorkspaces);
       
       // If no workspace is selected, select the first one
+      // Only set if we don't already have a current workspace to avoid unnecessary updates
       if (!currentWorkspace) {
         setCurrentWorkspace(fetchedWorkspaces[0]);
       }
@@ -92,7 +94,9 @@ export default function DashboardPage() {
       // No workspaces available, set empty array
       setWorkspaces([]);
     }
-  }, [fetchedWorkspaces, isLoadingWorkspaces, currentWorkspace, setCurrentWorkspace, setWorkspaces]);
+    // Remove currentWorkspace from dependencies to avoid infinite loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchedWorkspaces, isLoadingWorkspaces, setCurrentWorkspace, setWorkspaces]);
 
   // Load default widgets on mount
   useEffect(() => {

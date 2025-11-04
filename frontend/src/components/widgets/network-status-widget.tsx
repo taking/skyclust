@@ -6,9 +6,11 @@ import { Badge } from '@/components/ui/badge';
 import { Network, Shield, Layers, AlertCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { networkService } from '@/services/network';
-import { credentialService } from '@/services/credential';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useProviderStore } from '@/store/provider';
+import { queryKeys } from '@/lib/query-keys';
+import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
+import { useCredentials } from '@/hooks/use-credentials';
 
 interface NetworkStatusWidgetProps {
   credentialId?: string;
@@ -21,44 +23,49 @@ function NetworkStatusWidgetComponent({ credentialId, region, vpcId, isLoading }
   const { currentWorkspace } = useWorkspaceStore();
   const { selectedProvider } = useProviderStore();
 
-  const { data: credentials = [] } = useQuery({
-    queryKey: ['credentials', currentWorkspace?.id],
-    queryFn: () => currentWorkspace ? credentialService.getCredentials(currentWorkspace.id) : Promise.resolve([]),
-    enabled: !!currentWorkspace,
+  // Fetch credentials using unified hook
+  const { credentials } = useCredentials({
+    workspaceId: currentWorkspace?.id,
   });
 
   const activeCredentialId = credentialId || credentials.find(c => c.provider === selectedProvider)?.id;
   const activeRegion = region || 'ap-northeast-2';
 
   const { data: vpcs = [], isLoading: isLoadingVPCs } = useQuery({
-    queryKey: ['vpcs-widget', selectedProvider, activeCredentialId, activeRegion],
+    queryKey: [...queryKeys.vpcs.all, 'widget', selectedProvider, activeCredentialId, activeRegion],
     queryFn: async () => {
       if (!selectedProvider || !activeCredentialId) return [];
       return networkService.listVPCs(selectedProvider, activeCredentialId, activeRegion);
     },
     enabled: !!selectedProvider && !!activeCredentialId && !!currentWorkspace,
+    staleTime: CACHE_TIMES.REALTIME,
+    gcTime: GC_TIMES.SHORT,
     refetchInterval: 30000,
   });
 
   const activeVpcId = vpcId || vpcs[0]?.id;
 
   const { data: subnets = [], isLoading: isLoadingSubnets } = useQuery({
-    queryKey: ['subnets-widget', selectedProvider, activeCredentialId, activeVpcId, activeRegion],
+    queryKey: [...queryKeys.subnets.all, 'widget', selectedProvider, activeCredentialId, activeVpcId, activeRegion],
     queryFn: async () => {
       if (!selectedProvider || !activeCredentialId || !activeVpcId) return [];
       return networkService.listSubnets(selectedProvider, activeCredentialId, activeVpcId, activeRegion);
     },
     enabled: !!selectedProvider && !!activeCredentialId && !!activeVpcId && !!currentWorkspace,
+    staleTime: CACHE_TIMES.REALTIME,
+    gcTime: GC_TIMES.SHORT,
     refetchInterval: 30000,
   });
 
   const { data: securityGroups = [], isLoading: isLoadingSecurityGroups } = useQuery({
-    queryKey: ['security-groups-widget', selectedProvider, activeCredentialId, activeVpcId, activeRegion],
+    queryKey: [...queryKeys.securityGroups.all, 'widget', selectedProvider, activeCredentialId, activeVpcId, activeRegion],
     queryFn: async () => {
       if (!selectedProvider || !activeCredentialId || !activeVpcId) return [];
       return networkService.listSecurityGroups(selectedProvider, activeCredentialId, activeVpcId, activeRegion);
     },
     enabled: !!selectedProvider && !!activeCredentialId && !!activeVpcId && !!currentWorkspace,
+    staleTime: CACHE_TIMES.REALTIME,
+    gcTime: GC_TIMES.SHORT,
     refetchInterval: 30000,
   });
 

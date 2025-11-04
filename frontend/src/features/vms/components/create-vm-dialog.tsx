@@ -13,16 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
 import { useToast } from '@/hooks/use-toast';
-import * as z from 'zod';
+import { createVMSchema } from '@/lib/validations';
 import type { CreateVMForm, Credential } from '@/lib/types';
-
-const createVMSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  provider: z.string().min(1, 'Provider is required'),
-  instance_type: z.string().min(1, 'Instance type is required'),
-  region: z.string().min(1, 'Region is required'),
-  image_id: z.string().min(1, 'Image ID is required'),
-});
 
 interface CreateVMDialogProps {
   open: boolean;

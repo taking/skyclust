@@ -104,7 +104,7 @@ export default function VMDetailPage() {
 
   // Fetch VM details
   const { data: vm, isLoading, error } = useQuery({
-    queryKey: ['vm', vmId],
+    queryKey: queryKeys.vms.detail(vmId),
     queryFn: () => vmService.getVM(vmId),
     enabled: !!vmId,
   });
@@ -114,7 +114,7 @@ export default function VMDetailPage() {
     mutationFn: () => vmService.startVM(vmId),
     onSuccess: () => {
       success('VM started successfully');
-      queryClient.invalidateQueries({ queryKey: ['vm', vmId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.vms.detail(vmId) });
     },
     onError: (error) => {
       showError(`Failed to start VM: ${error.message}`);
@@ -125,7 +125,7 @@ export default function VMDetailPage() {
     mutationFn: () => vmService.stopVM(vmId),
     onSuccess: () => {
       success('VM stopped successfully');
-      queryClient.invalidateQueries({ queryKey: ['vm', vmId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.vms.detail(vmId) });
     },
     onError: (error) => {
       showError(`Failed to stop VM: ${error.message}`);

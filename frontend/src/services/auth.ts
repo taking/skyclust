@@ -9,7 +9,7 @@ import type { LoginForm, RegisterForm, AuthResponse, User } from '@/lib/types';
 class AuthService extends BaseService {
   // Login
   async login(data: LoginForm): Promise<AuthResponse> {
-    const responseData = await this.post<{ token: string; user: User }>('/api/v1/auth/login', data);
+    const responseData = await this.post<{ token: string; user: User }>('auth/login', data);
     return {
       token: responseData.token,
       expires_at: '', // Backend doesn't return expires_at, but we can calculate it if needed
@@ -19,22 +19,22 @@ class AuthService extends BaseService {
 
   // Register
   async register(data: RegisterForm): Promise<User> {
-    return this.post<User>('/api/v1/auth/register', data);
+    return this.post<User>('auth/register', data);
   }
 
   // Logout
   async logout(): Promise<void> {
-    return this.post<void>('/api/v1/auth/logout');
+    return this.post<void>('auth/logout');
   }
 
   // Get current user
   async getCurrentUser(): Promise<User> {
-    return this.get<User>('/api/v1/auth/me');
+    return this.get<User>('auth/me');
   }
 
   // Update user
   async updateUser(id: string, data: Partial<User>): Promise<User> {
-    return this.put<User>(`/api/v1/users/${id}`, data);
+    return this.put<User>(`users/${id}`, data);
   }
 }
 

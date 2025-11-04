@@ -26,7 +26,7 @@ class KubernetesService extends BaseService {
     if (region) params.append('region', region);
     
     const data = await this.get<{ clusters: KubernetesCluster[] }>(
-      `/api/v1/${provider}/kubernetes/clusters?${params.toString()}`
+      `${provider}/kubernetes/clusters?${params.toString()}`
     );
     return data.clusters || [];
   }
@@ -43,7 +43,7 @@ class KubernetesService extends BaseService {
     });
     
     return this.get<KubernetesCluster>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}?${params.toString()}`
+      `${provider}/kubernetes/clusters/${clusterName}?${params.toString()}`
     );
   }
 
@@ -52,7 +52,7 @@ class KubernetesService extends BaseService {
     data: CreateClusterForm
   ): Promise<KubernetesCluster> {
     return this.post<KubernetesCluster>(
-      `/api/v1/${provider}/kubernetes/clusters`,
+      `${provider}/kubernetes/clusters`,
       data
     );
   }
@@ -69,7 +69,7 @@ class KubernetesService extends BaseService {
     });
     
     return this.delete<void>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}?${params.toString()}`
+      `${provider}/kubernetes/clusters/${clusterName}?${params.toString()}`
     );
   }
 
@@ -85,7 +85,7 @@ class KubernetesService extends BaseService {
     });
     
     const data = await this.get<{ kubeconfig: string }>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/kubeconfig?${params.toString()}`
+      `${provider}/kubernetes/clusters/${clusterName}/kubeconfig?${params.toString()}`
     );
     return data.kubeconfig || '';
   }
@@ -103,7 +103,7 @@ class KubernetesService extends BaseService {
     });
     
     return this.post<{ message: string; upgrade_id?: string }>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/upgrade?${params.toString()}`,
+      `${provider}/kubernetes/clusters/${clusterName}/upgrade?${params.toString()}`,
       { version }
     );
   }
@@ -120,7 +120,7 @@ class KubernetesService extends BaseService {
     });
     
     return this.get<{ status: string; current_version?: string; target_version?: string; progress?: number; error?: string }>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/upgrade/status?${params.toString()}`
+      `${provider}/kubernetes/clusters/${clusterName}/upgrade/status?${params.toString()}`
     );
   }
 
@@ -138,7 +138,7 @@ class KubernetesService extends BaseService {
     });
     
     return this.put<void>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/tags?${params.toString()}`,
+      `${provider}/kubernetes/clusters/${clusterName}/tags?${params.toString()}`,
       { tags }
     );
   }
@@ -175,7 +175,7 @@ class KubernetesService extends BaseService {
     });
     
     const data = await this.get<{ node_pools: NodePool[] }>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/nodepools?${params.toString()}`
+      `${provider}/kubernetes/clusters/${clusterName}/nodepools?${params.toString()}`
     );
     return data.node_pools || [];
   }
@@ -193,7 +193,7 @@ class KubernetesService extends BaseService {
     });
     
     return this.get<NodePool>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/nodepools/${nodePoolName}?${params.toString()}`
+      `${provider}/kubernetes/clusters/${clusterName}/nodepools/${nodePoolName}?${params.toString()}`
     );
   }
 
@@ -203,7 +203,7 @@ class KubernetesService extends BaseService {
     data: CreateNodePoolForm
   ): Promise<NodePool> {
     return this.post<NodePool>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/nodepools`,
+      `${provider}/kubernetes/clusters/${clusterName}/nodepools`,
       data
     );
   }
@@ -221,7 +221,7 @@ class KubernetesService extends BaseService {
     });
     
     return this.delete<void>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/nodepools/${nodePoolName}?${params.toString()}`
+      `${provider}/kubernetes/clusters/${clusterName}/nodepools/${nodePoolName}?${params.toString()}`
     );
   }
 
@@ -239,7 +239,7 @@ class KubernetesService extends BaseService {
     });
     
     return this.put<void>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/nodepools/${nodePoolName}/scale?${params.toString()}`,
+      `${provider}/kubernetes/clusters/${clusterName}/nodepools/${nodePoolName}/scale?${params.toString()}`,
       { node_count: nodeCount }
     );
   }
@@ -257,7 +257,7 @@ class KubernetesService extends BaseService {
     });
     
     const data = await this.get<{ node_groups: NodeGroup[] }>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/node-groups?${params.toString()}`
+      `${provider}/kubernetes/clusters/${clusterName}/node-groups?${params.toString()}`
     );
     return data.node_groups || [];
   }
@@ -275,7 +275,7 @@ class KubernetesService extends BaseService {
     });
     
     return this.get<NodeGroup>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/node-groups/${nodeGroupName}?${params.toString()}`
+      `${provider}/kubernetes/clusters/${clusterName}/node-groups/${nodeGroupName}?${params.toString()}`
     );
   }
 
@@ -285,7 +285,7 @@ class KubernetesService extends BaseService {
     data: CreateNodeGroupForm
   ): Promise<NodeGroup> {
     return this.post<NodeGroup>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/node-groups`,
+      `${provider}/kubernetes/clusters/${clusterName}/node-groups`,
       data
     );
   }
@@ -303,7 +303,7 @@ class KubernetesService extends BaseService {
     });
     
     return this.delete<void>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/node-groups/${nodeGroupName}?${params.toString()}`
+      `${provider}/kubernetes/clusters/${clusterName}/node-groups/${nodeGroupName}?${params.toString()}`
     );
   }
 
@@ -320,7 +320,7 @@ class KubernetesService extends BaseService {
     });
     
     const data = await this.get<{ nodes: Node[] }>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/nodes?${params.toString()}`
+      `${provider}/kubernetes/clusters/${clusterName}/nodes?${params.toString()}`
     );
     return data.nodes || [];
   }

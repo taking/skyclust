@@ -1,0 +1,48 @@
+/**
+ * VPCs Hook
+ * VPC 데이터 fetching 및 상태 관리
+ */
+
+import { useQuery } from '@tanstack/react-query';
+import { networkService } from '@/services/network';
+import { queryKeys } from '@/lib/query-keys';
+import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
+import { useCredentials } from '@/hooks/use-credentials';
+import { useCredentialContext } from '@/hooks/use-credential-context';
+import { useWorkspaceStore } from '@/store/workspace';
+
+export function useVPCs() {
+  const { currentWorkspace } = useWorkspaceStore();
+  const { selectedCredentialId, selectedRegion } = useCredentialContext();
+
+  const { credentials, selectedCredential, selectedProvider } = useCredentials({
+    workspaceId: currentWorkspace?.id,
+    selectedCredentialId: selectedCredentialId || undefined,
+  });
+
+  const watchedCredentialId = selectedCredentialId || '';
+  const watchedRegion = selectedRegion || '';
+
+  const { data: vpcs = [], isLoading: isLoadingVPCs } = useQuery({
+    queryKey: queryKeys.vpcs.list(selectedProvider, watchedCredentialId, watchedRegion),
+    queryFn: async () => {
+      if (!selectedProvider || !watchedCredentialId) return [];
+      return networkService.listVPCs(selectedProvider, watchedCredentialId, watchedRegion);
+    },
+    enabled: !!selectedProvider && !!watchedCredentialId && !!currentWorkspace,
+    staleTime: CACHE_TIMES.REALTIME,
+    gcTime: GC_TIMES.SHORT,
+    refetchInterval: 30000,
+  });
+
+  return {
+    vpcs,
+    isLoadingVPCs,
+    credentials,
+    selectedCredential,
+    selectedProvider,
+    selectedCredentialId: watchedCredentialId,
+    selectedRegion: watchedRegion,
+  };
+}
+

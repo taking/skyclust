@@ -51,10 +51,11 @@ func (h *Handler) createWorkspaceHandler(req domain.CreateWorkspaceRequest) hand
 			return
 		}
 
-		// Extract request from body (JSON binding only, without OwnerID validation)
+		// Extract request from body (JSON binding only, without validation)
+		// OwnerID is set from authenticated user, not from client input
 		var req domain.CreateWorkspaceRequest
-		if err := h.ExtractValidatedRequest(c, &req); err != nil {
-			h.HandleError(c, err, "create_workspace")
+		if err := c.ShouldBindJSON(&req); err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeValidationFailed, "Invalid request body", 400), "create_workspace")
 			return
 		}
 

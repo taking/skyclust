@@ -68,7 +68,9 @@ function ClusterRowComponent({
       <TableCell>
         {cluster.endpoint ? (
           <a
-            href={cluster.endpoint}
+            href={cluster.endpoint.startsWith('http://') || cluster.endpoint.startsWith('https://') 
+              ? cluster.endpoint 
+              : `https://${cluster.endpoint}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-blue-600 hover:underline flex items-center"

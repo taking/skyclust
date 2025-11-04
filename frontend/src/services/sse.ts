@@ -48,7 +48,9 @@ class SSEService {
 
     // 연결 성공
     this.eventSource.addEventListener('connected', (event) => {
-      console.log('SSE connected:', event);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('SSE connected:', event);
+      }
       const data = JSON.parse(event.data);
       this.clientId = data.client_id;
       this.reconnectAttempts = 0;
@@ -94,7 +96,10 @@ class SSEService {
 
     // 에러 처리
     this.eventSource.addEventListener('error', (event) => {
-      console.error('SSE error:', event);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('SSE error:', event);
+      }
+      getErrorLogger().log(event, { type: 'SSE' });
       this.isConnecting = false;
       this.callbacks.onError?.(event);
       this.handleReconnect();
@@ -110,19 +115,37 @@ class SSEService {
 
   private handleReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('Max reconnection attempts reached');
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Max reconnection attempts reached');
+      }
+      getErrorLogger().log(new Error('Max reconnection attempts reached'), { service: 'SSE', attempts: this.reconnectAttempts });
       return;
     }
 
     this.reconnectAttempts++;
     const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
 
-    console.log(`Reconnecting SSE in ${delay}ms (attempt ${this.reconnectAttempts})`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`Reconnecting SSE in ${delay}ms (attempt ${this.reconnectAttempts})`);
+    }
 
     setTimeout(() => {
       if (this.eventSource?.readyState === EventSource.CLOSED) {
-        // 토큰을 다시 가져와서 재연결
-        const token = localStorage.getItem('token');
+        // 토큰을 다시 가져와서 재연결 (auth-storage에서 가져오기)
+        let token: string | null = null;
+        try {
+          const authStorage = localStorage.getItem('auth-storage');
+          if (authStorage) {
+            const parsed = JSON.parse(authStorage);
+            token = parsed?.state?.token || null;
+          }
+          // Fallback to legacy token for backward compatibility
+          if (!token) {
+            token = localStorage.getItem('token');
+          }
+        } catch {
+          token = localStorage.getItem('token');
+        }
         if (token) {
           this.connect(token, this.callbacks);
         }

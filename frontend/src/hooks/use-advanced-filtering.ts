@@ -46,7 +46,9 @@ export function useAdvancedFiltering<T>(
         setPresets(JSON.parse(savedPresets));
       }
     } catch (error) {
-      console.error('Failed to load filter presets:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to load filter presets:', error);
+      }
     }
   }, [storageKey]);
 
@@ -68,7 +70,9 @@ export function useAdvancedFiltering<T>(
         onSortChange?.(parsed);
       }
     } catch (error) {
-      console.error('Failed to load saved filters/sort:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to load saved filters/sort:', error);
+      }
     }
   }, [storageKey, onFiltersChange, onSortChange]);
 
@@ -78,7 +82,9 @@ export function useAdvancedFiltering<T>(
       localStorage.setItem(`${storageKey}-filters`, JSON.stringify(filters));
       onFiltersChange?.(filters);
     } catch (error) {
-      console.error('Failed to save filters:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to save filters:', error);
+      }
     }
   }, [filters, storageKey, onFiltersChange]);
 
@@ -88,7 +94,9 @@ export function useAdvancedFiltering<T>(
       localStorage.setItem(`${storageKey}-sort`, JSON.stringify(sortConfig));
       onSortChange?.(sortConfig);
     } catch (error) {
-      console.error('Failed to save sort:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to save sort:', error);
+      }
     }
   }, [sortConfig, storageKey, onSortChange]);
 
@@ -126,7 +134,9 @@ export function useAdvancedFiltering<T>(
     try {
       localStorage.setItem(`${storageKey}-presets`, JSON.stringify(newPresets));
     } catch (error) {
-      console.error('Failed to save preset:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to save preset:', error);
+      }
     }
   }, [filters, presets, storageKey]);
 
@@ -144,7 +154,9 @@ export function useAdvancedFiltering<T>(
     try {
       localStorage.setItem(`${storageKey}-presets`, JSON.stringify(newPresets));
     } catch (error) {
-      console.error('Failed to delete preset:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to delete preset:', error);
+      }
     }
   }, [presets, storageKey]);
 

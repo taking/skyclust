@@ -17,27 +17,34 @@ export function WorkspaceRequired({ children, allowAutoSelect = false }: Workspa
   const router = useRouter();
   const pathname = usePathname();
   const [isChecking, setIsChecking] = useState(allowAutoSelect);
+  const [hasRedirected, setHasRedirected] = useState(false);
 
   useEffect(() => {
-    // If auto-select is allowed, wait a bit before redirecting
+    // Prevent multiple redirects
+    if (hasRedirected) return;
+
+    // If auto-select is allowed, wait longer for workspace auto-selection
     if (allowAutoSelect && !currentWorkspace) {
       const timer = setTimeout(() => {
-        setIsChecking(false);
-        if (!currentWorkspace && pathname !== '/workspaces') {
-          // Use replace to prevent back button issues
+        // Double-check workspace is still not set before redirecting
+        if (!currentWorkspace && pathname !== '/workspaces' && !hasRedirected) {
+          setHasRedirected(true);
           router.replace('/workspaces');
         }
-      }, 800); // Wait 800ms for workspace auto-selection to complete
+        setIsChecking(false);
+      }, 1500); // Wait 1.5s for workspace auto-selection to complete
       return () => clearTimeout(timer);
     } else if (!allowAutoSelect && !currentWorkspace) {
       // Immediate redirect for other pages
-      if (pathname !== '/workspaces') {
+      if (pathname !== '/workspaces' && !hasRedirected) {
+        setHasRedirected(true);
         router.replace('/workspaces');
       }
     } else if (currentWorkspace) {
       setIsChecking(false);
+      setHasRedirected(false); // Reset if workspace is set
     }
-  }, [currentWorkspace, router, pathname, allowAutoSelect]);
+  }, [currentWorkspace, router, pathname, allowAutoSelect, hasRedirected]);
 
   if (isChecking || !currentWorkspace) {
     return (

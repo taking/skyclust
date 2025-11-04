@@ -26,7 +26,7 @@ const loginSchema = z.object({
 });
 
 export default function LoginPage() {
-  const { login, initialize } = useAuthStore();
+  const { login, initialize, isAuthenticated, token } = useAuthStore();
   const router = useRouter();
 
   // Check if already authenticated - only redirect if definitely authenticated
@@ -38,31 +38,45 @@ export default function LoginPage() {
     const checkAuth = () => {
       if (hasRedirected) return;
       
-      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      const authStorage = typeof window !== 'undefined' 
-        ? localStorage.getItem('auth-storage') 
-        : null;
-      
+      // Wait for Zustand to rehydrate
+      // Check auth-storage first (primary source), then legacy token
+      let storedToken: string | null = null;
       let parsedAuth: { state?: { isAuthenticated?: boolean; token?: string } } = {};
-      try {
-        if (authStorage) {
-          parsedAuth = JSON.parse(authStorage);
+      
+      if (typeof window !== 'undefined') {
+        try {
+          const authStorage = localStorage.getItem('auth-storage');
+          if (authStorage) {
+            parsedAuth = JSON.parse(authStorage);
+            storedToken = parsedAuth?.state?.token || null;
+          }
+          // Fallback to legacy token for backward compatibility
+          if (!storedToken) {
+            storedToken = localStorage.getItem('token');
+          }
+        } catch {
+          // If parse fails, try legacy token
+          storedToken = localStorage.getItem('token');
         }
-      } catch {
-        // Ignore parse errors
       }
       
-      const isAuth = parsedAuth?.state?.isAuthenticated && parsedAuth?.state?.token;
+      // Check both Zustand state and localStorage
+      const isAuthFromStorage = parsedAuth?.state?.isAuthenticated && parsedAuth?.state?.token;
+      const isAuthFromStore = isAuthenticated && token;
       
-      if (storedToken || isAuth) {
+      // Only redirect if we're definitely authenticated
+      // Don't redirect if we're already on a page (avoid redirect loops)
+      if (!hasRedirected && ((storedToken && (isAuthFromStorage || isAuthFromStore)) || isAuthFromStore)) {
         hasRedirected = true;
+        // Use replace to avoid adding to history
         router.replace('/dashboard');
       }
     };
 
-    const timer = setTimeout(checkAuth, 500);
+    // Wait a bit longer for Zustand to fully rehydrate
+    const timer = setTimeout(checkAuth, 300);
     return () => clearTimeout(timer);
-  }, [router, initialize]);
+  }, [router, initialize, isAuthenticated, token]);
 
   const {
     form,

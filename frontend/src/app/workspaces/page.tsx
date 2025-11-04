@@ -8,21 +8,24 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Form } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { workspaceService } from '@/services/workspace';
+import { workspaceService, useWorkspaces, useWorkspaceActions } from '@/features/workspaces';
 import { useWorkspaceStore } from '@/store/workspace';
+import { useCredentialContextStore } from '@/store/credential-context';
 import { useRouter } from 'next/navigation';
 import { Plus, Users, Calendar, Trash2, Home } from 'lucide-react';
 import { CreateWorkspaceForm, Workspace } from '@/lib/types';
 import { useRequireAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
+import { ErrorHandler } from '@/lib/error-handler';
 import * as z from 'zod';
+import { queryKeys } from '@/lib/query-keys';
 
 const createWorkspaceSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),
@@ -31,7 +34,7 @@ const createWorkspaceSchema = z.object({
 
 export default function WorkspacesPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const { setCurrentWorkspace } = useWorkspaceStore();
+  const { currentWorkspace, setCurrentWorkspace } = useWorkspaceStore();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { isLoading: authLoading } = useRequireAuth();
@@ -52,44 +55,67 @@ export default function WorkspacesPage() {
       description: '',
     },
     onSubmit: async (data) => {
-      await workspaceService.createWorkspace(data);
+      await createWorkspaceMutation.mutateAsync(data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workspaces'] });
       setIsCreateDialogOpen(false);
       reset();
-      success('Workspace created successfully');
     },
     onError: (error) => {
-      console.error('Failed to create workspace:', error);
-      showError('Failed to create workspace');
+      ErrorHandler.logError(error, { operation: 'createWorkspace' });
     },
     resetOnSuccess: true,
   });
 
   // Fetch workspaces
-  const { data: workspaces = [], isLoading, error } = useQuery({
-    queryKey: ['workspaces'],
-    queryFn: workspaceService.getWorkspaces,
-    retry: 3,
-    retryDelay: 1000,
-  });
+  const { workspaces, isLoading, error } = useWorkspaces();
 
-  // Delete workspace mutation
-  const deleteWorkspaceMutation = useMutation({
-    mutationFn: workspaceService.deleteWorkspace,
+  // Workspace actions
+  const {
+    createWorkspaceMutation,
+    deleteWorkspaceMutation,
+  } = useWorkspaceActions({
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workspaces'] });
-      success('Workspace deleted successfully');
-    },
-    onError: (error) => {
-      console.error('Failed to delete workspace:', error);
-      showError('Failed to delete workspace');
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.all });
     },
   });
 
   const handleSelectWorkspace = (workspace: Workspace) => {
+    const previousWorkspaceId = currentWorkspace?.id;
+    const isWorkspaceChanged = previousWorkspaceId !== workspace.id;
+    
     setCurrentWorkspace(workspace);
+    
+    if (isWorkspaceChanged) {
+      const { clearSelection } = useCredentialContextStore.getState();
+      
+      clearSelection();
+      
+      queryClient.invalidateQueries({
+        predicate: (query) => {
+          const key = query.queryKey;
+          if (!Array.isArray(key)) return false;
+          
+          const keyString = key.join('-').toLowerCase();
+          
+          const shouldInvalidate = 
+            (previousWorkspaceId && key.includes(previousWorkspaceId)) ||
+            keyString.includes('vms') ||
+            keyString.includes('credentials') ||
+            keyString.includes('kubernetes') ||
+            keyString.includes('clusters') ||
+            keyString.includes('node-pools') ||
+            keyString.includes('node-groups') ||
+            keyString.includes('nodes') ||
+            keyString.includes('vpcs') ||
+            keyString.includes('subnets') ||
+            keyString.includes('security-groups');
+          
+          return shouldInvalidate;
+        },
+      });
+    }
+    
     router.push('/dashboard');
   };
 

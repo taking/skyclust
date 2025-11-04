@@ -36,7 +36,8 @@ const persistedStore = persist<AuthState>(
         token: authResponse.token,
         isAuthenticated: true,
       });
-      localStorage.setItem('token', authResponse.token);
+      // Zustand persist will automatically save to auth-storage
+      // No need to manually save token to localStorage
     },
     logout: () => {
       set({
@@ -44,46 +45,49 @@ const persistedStore = persist<AuthState>(
         token: null,
         isAuthenticated: false,
       });
-      localStorage.removeItem('token');
+      // Zustand persist will automatically remove from auth-storage
+      // Also remove legacy token if it exists
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('token');
+      }
     },
     updateUser: (user: User) => {
       set({ user });
     },
     initialize: () => {
-      // Check localStorage for token on initialization
+      // Zustand persist automatically handles rehydration
+      // This method is kept for backward compatibility but should rely on persist
       if (typeof window !== 'undefined') {
-        const storedToken = localStorage.getItem('token');
         const state = get();
         
-        // If token exists in localStorage but not in state, restore from localStorage
-        if (storedToken && !state.token) {
-          // Try to get from persist storage
+        // If state is not hydrated yet, try to migrate from legacy token
+        if (!state.token) {
           try {
             const authStorage = localStorage.getItem('auth-storage');
             if (authStorage) {
               const parsed = JSON.parse(authStorage);
-              if (parsed?.state?.token) {
+              if (parsed?.state?.token && !state.token) {
+                // State will be rehydrated by persist, but we can ensure it here
                 set({
                   token: parsed.state.token,
                   user: parsed.state.user || null,
                   isAuthenticated: !!(parsed.state.token && parsed.state.user),
                 });
               }
-            } else if (storedToken) {
-              // Token exists but persist storage is not set, sync it
+            }
+            
+            // Migrate legacy token to auth-storage if it exists
+            const legacyToken = localStorage.getItem('token');
+            if (legacyToken && !state.token) {
               set({
-                token: storedToken,
-                isAuthenticated: !!storedToken,
+                token: legacyToken,
+                isAuthenticated: !!legacyToken,
               });
+              // Remove legacy token after migration
+              localStorage.removeItem('token');
             }
           } catch (_e) {
-            // If parse fails but token exists, set it
-            if (storedToken) {
-              set({
-                token: storedToken,
-                isAuthenticated: true,
-              });
-            }
+            // Ignore parse errors
           }
         }
       }
@@ -98,15 +102,21 @@ const persistedStore = persist<AuthState>(
       isAuthenticated: state.isAuthenticated,
     }),
     onRehydrateStorage: () => (state) => {
-      // After rehydration, sync with localStorage token
+      // After rehydration, migrate legacy token if it exists
       if (state && typeof window !== 'undefined') {
-        const storedToken = localStorage.getItem('token');
-        if (storedToken && !state.token) {
-          state.token = storedToken;
-          state.isAuthenticated = !!state.user && !!storedToken;
-        } else if (state.token && !storedToken) {
-          // If state has token but localStorage doesn't, sync it
-          localStorage.setItem('token', state.token);
+        const legacyToken = localStorage.getItem('token');
+        
+        // If we have a legacy token but no state token, migrate it
+        if (legacyToken && !state.token) {
+          state.token = legacyToken;
+          state.isAuthenticated = !!state.user && !!legacyToken;
+          // Remove legacy token after migration
+          localStorage.removeItem('token');
+        }
+        // If state has token, ensure legacy token is removed (we use auth-storage only)
+        else if (state.token && legacyToken) {
+          // Remove legacy token to avoid conflicts
+          localStorage.removeItem('token');
         }
       }
     },

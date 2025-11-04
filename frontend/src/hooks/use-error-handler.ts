@@ -8,9 +8,7 @@
 import { useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { 
-  getUserFriendlyErrorMessage, 
-  extractErrorMessage,
-  isRetryableError,
+  ErrorHandler,
   NetworkError,
   ServerError,
 } from '@/lib/error-handler';
@@ -108,8 +106,8 @@ export function useErrorHandler(options: UseErrorHandlerOptions = {}): UseErrorH
     if (onLogError) {
       onLogError(error, context);
     } else {
-      // 기본 로깅
-      console.error('Error handled:', error, context);
+      // 기본 로깅 (ErrorHandler 사용)
+      ErrorHandler.logError(error, context);
     }
 
     // 오프라인 상태이면 별도 처리
@@ -121,7 +119,7 @@ export function useErrorHandler(options: UseErrorHandlerOptions = {}): UseErrorH
     }
 
     // 사용자 친화적 메시지 가져오기
-    const message = getUserFriendlyErrorMessage(error);
+    const message = ErrorHandler.getUserFriendlyMessage(error);
 
     // 토스트 표시
     if (showToast) {
@@ -141,7 +139,7 @@ export function useErrorHandler(options: UseErrorHandlerOptions = {}): UseErrorH
     handleError(error, context);
 
     // 재시도 가능 여부 확인
-    if (!autoRetry || !isRetryableError(error) || isOffline) {
+    if (!autoRetry || !ErrorHandler.isRetryable(error) || isOffline) {
       return false;
     }
 
@@ -173,14 +171,14 @@ export function useErrorHandler(options: UseErrorHandlerOptions = {}): UseErrorH
    * 사용자 친화적 에러 메시지 가져오기
    */
   const getErrorMessage = useCallback((error: unknown): string => {
-    return getUserFriendlyErrorMessage(error);
+    return ErrorHandler.getUserFriendlyMessage(error);
   }, []);
 
   /**
    * 재시도 가능 여부 확인
    */
   const canRetry = useCallback((error: unknown): boolean => {
-    return isRetryableError(error) && !isOffline;
+    return ErrorHandler.isRetryable(error) && !isOffline;
   }, [isOffline]);
 
   return {

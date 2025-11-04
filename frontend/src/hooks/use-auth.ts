@@ -13,8 +13,22 @@ export const useAuth = (redirectTo: string = '/login') => {
       return;
     }
 
-    // Verify token is still valid by checking localStorage
-    const storedToken = localStorage.getItem('token');
+    // Verify token is still valid by checking auth-storage
+    let storedToken: string | null = null;
+    try {
+      const authStorage = typeof window !== 'undefined' ? localStorage.getItem('auth-storage') : null;
+      if (authStorage) {
+        const parsed = JSON.parse(authStorage);
+        storedToken = parsed?.state?.token || null;
+      }
+      // Fallback to legacy token for backward compatibility
+      if (!storedToken && typeof window !== 'undefined') {
+        storedToken = localStorage.getItem('token');
+      }
+    } catch {
+      storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    }
+    
     if (!storedToken || storedToken !== token) {
       useAuthStore.getState().logout();
       router.push(redirectTo);

@@ -17,18 +17,25 @@ export default function HomePage() {
     // Wait for Zustand persist to hydrate, then check auth
     const checkAuth = () => {
       // Check localStorage directly to avoid Zustand hydration timing issues
-      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      const authStorage = typeof window !== 'undefined' 
-        ? localStorage.getItem('auth-storage') 
-        : null;
-      
+      // Check auth-storage first (primary source), then legacy token
+      let storedToken: string | null = null;
       let parsedAuth: { state?: { isAuthenticated?: boolean; token?: string } } = {};
-      try {
-        if (authStorage) {
-          parsedAuth = JSON.parse(authStorage);
+      
+      if (typeof window !== 'undefined') {
+        try {
+          const authStorage = localStorage.getItem('auth-storage');
+          if (authStorage) {
+            parsedAuth = JSON.parse(authStorage);
+            storedToken = parsedAuth?.state?.token || null;
+          }
+          // Fallback to legacy token for backward compatibility
+          if (!storedToken) {
+            storedToken = localStorage.getItem('token');
+          }
+        } catch {
+          // If parse fails, try legacy token
+          storedToken = localStorage.getItem('token');
         }
-      } catch {
-        // Ignore parse errors
       }
       
       const isAuth = storedToken || (parsedAuth?.state?.isAuthenticated && parsedAuth?.state?.token);

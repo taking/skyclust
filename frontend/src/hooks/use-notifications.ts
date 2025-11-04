@@ -7,6 +7,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notificationService } from '@/services/notification';
 import type { Notification, NotificationPreferences, NotificationStats } from '@/lib/types/notification';
 import { toast } from 'react-hot-toast';
+import { queryKeys } from '@/lib/query-keys';
+import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
 
 export const useNotifications = (
   limit: number = 20,
@@ -16,10 +18,10 @@ export const useNotifications = (
   priority?: string
 ) => {
   return useQuery({
-    queryKey: ['notifications', limit, offset, unreadOnly, category, priority],
+    queryKey: queryKeys.notifications.list(limit, offset, unreadOnly, category, priority),
     queryFn: () => notificationService.getNotifications(limit, offset, unreadOnly, category, priority),
-    staleTime: 30 * 1000, // 30초 - 알림은 자주 업데이트될 수 있음
-    gcTime: 5 * 60 * 1000, // 5 minutes - GC 시간
+    staleTime: CACHE_TIMES.REALTIME, // 30초 - 알림은 자주 업데이트될 수 있음
+    gcTime: GC_TIMES.SHORT, // 5 minutes - GC 시간
     refetchInterval: 30000, // 30초마다 refetch (실시간 알림)
     refetchIntervalInBackground: false, // 백그라운드 polling 비활성화
   });
@@ -27,29 +29,29 @@ export const useNotifications = (
 
 export const useNotification = (notificationId: string) => {
   return useQuery({
-    queryKey: ['notifications', 'detail', notificationId],
+    queryKey: queryKeys.notifications.detail(notificationId),
     queryFn: () => notificationService.getNotification(notificationId),
     enabled: !!notificationId,
-    staleTime: 5 * 60 * 1000, // 5 minutes - 알림 상세는 자주 변경되지 않음
-    gcTime: 10 * 60 * 1000, // 10 minutes - GC 시간
+    staleTime: CACHE_TIMES.RESOURCE, // 5 minutes - 알림 상세는 자주 변경되지 않음
+    gcTime: GC_TIMES.MEDIUM, // 10 minutes - GC 시간
   });
 };
 
 export const useNotificationPreferences = () => {
   return useQuery({
-    queryKey: ['notifications', 'preferences'],
+    queryKey: queryKeys.notifications.preferences(),
     queryFn: () => notificationService.getNotificationPreferences(),
-    staleTime: 30 * 60 * 1000, // 30 minutes - 설정은 자주 변경되지 않음
-    gcTime: 60 * 60 * 1000, // 1 hour - GC 시간
+    staleTime: CACHE_TIMES.STATIC, // 30 minutes - 설정은 자주 변경되지 않음
+    gcTime: GC_TIMES.LONG, // 30 minutes - GC 시간 (1시간 대신 30분으로 조정)
   });
 };
 
 export const useNotificationStats = () => {
   return useQuery({
-    queryKey: ['notifications', 'stats'],
+    queryKey: queryKeys.notifications.stats(),
     queryFn: () => notificationService.getNotificationStats(),
-    staleTime: 30 * 1000, // 30초 - 통계는 실시간성 필요
-    gcTime: 5 * 60 * 1000, // 5 minutes - GC 시간
+    staleTime: CACHE_TIMES.REALTIME, // 30초 - 통계는 실시간성 필요
+    gcTime: GC_TIMES.SHORT, // 5 minutes - GC 시간
     refetchInterval: 30000, // 30초마다 refetch
     refetchIntervalInBackground: false, // 백그라운드 polling 비활성화
   });
@@ -61,8 +63,8 @@ export const useMarkAsRead = () => {
   return useMutation({
     mutationFn: (notificationId: string) => notificationService.markAsRead(notificationId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications', 'stats'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications.stats() });
     },
     onError: (error: unknown) => {
       const message = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || '알림 읽음 처리에 실패했습니다.';
@@ -129,7 +131,7 @@ export const useUpdateNotificationPreferences = () => {
     mutationFn: (preferences: Partial<NotificationPreferences>) => 
       notificationService.updateNotificationPreferences(preferences),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications', 'preferences'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications.preferences() });
       toast.success('알림 설정을 업데이트했습니다.');
     },
     onError: (error: unknown) => {

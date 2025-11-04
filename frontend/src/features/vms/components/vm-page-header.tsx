@@ -52,21 +52,7 @@ function VMPageHeaderComponent({
         </p>
       </div>
       <div className="flex items-center space-x-2">
-        <Select
-          value={selectedCredentialId}
-          onValueChange={onCredentialChange}
-        >
-          <SelectTrigger className="w-[250px]">
-            <SelectValue placeholder="Select Credential" />
-          </SelectTrigger>
-          <SelectContent>
-            {credentials.map((credential) => (
-              <SelectItem key={credential.id} value={credential.id}>
-                {credential.name || `${credential.provider.toUpperCase()} (${credential.id.slice(0, 8)})`}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Credential selection is now handled in Header */}
         <Dialog open={isCreateDialogOpen} onOpenChange={onCreateDialogChange}>
           <DialogTrigger asChild>
             <Button disabled={!selectedCredentialId || credentials.length === 0}>

@@ -26,7 +26,7 @@ class NetworkService extends BaseService {
     if (region) params.append('region', region);
     
     const data = await this.get<{ vpcs: VPC[] }>(
-      `/api/v1/${provider}/network/vpcs?${params.toString()}`
+      `${provider}/network/vpcs?${params.toString()}`
     );
     return data.vpcs || [];
   }
@@ -43,7 +43,7 @@ class NetworkService extends BaseService {
     });
     
     return this.get<VPC>(
-      `/api/v1/${provider}/network/vpcs/${encodeURIComponent(vpcId)}?${params.toString()}`
+      `${provider}/network/vpcs/${encodeURIComponent(vpcId)}?${params.toString()}`
     );
   }
 
@@ -52,7 +52,7 @@ class NetworkService extends BaseService {
     data: CreateVPCForm
   ): Promise<VPC> {
     return this.post<VPC>(
-      `/api/v1/${provider}/network/vpcs`,
+      `${provider}/network/vpcs`,
       data
     );
   }
@@ -70,7 +70,7 @@ class NetworkService extends BaseService {
     });
     
     return this.put<VPC>(
-      `/api/v1/${provider}/network/vpcs/${encodeURIComponent(vpcId)}?${params.toString()}`,
+      `${provider}/network/vpcs/${encodeURIComponent(vpcId)}?${params.toString()}`,
       data
     );
   }
@@ -87,7 +87,7 @@ class NetworkService extends BaseService {
     });
     
     return this.delete<void>(
-      `/api/v1/${provider}/network/vpcs/${encodeURIComponent(vpcId)}?${params.toString()}`
+      `${provider}/network/vpcs/${encodeURIComponent(vpcId)}?${params.toString()}`
     );
   }
 
@@ -105,7 +105,7 @@ class NetworkService extends BaseService {
     });
     
     const data = await this.get<{ subnets: Subnet[] }>(
-      `/api/v1/${provider}/network/subnets?${params.toString()}`
+      `${provider}/network/subnets?${params.toString()}`
     );
     return data.subnets || [];
   }
@@ -122,7 +122,7 @@ class NetworkService extends BaseService {
     });
     
     return this.get<Subnet>(
-      `/api/v1/${provider}/network/subnets/${encodeURIComponent(subnetId)}?${params.toString()}`
+      `${provider}/network/subnets/${encodeURIComponent(subnetId)}?${params.toString()}`
     );
   }
 
@@ -131,7 +131,7 @@ class NetworkService extends BaseService {
     data: CreateSubnetForm
   ): Promise<Subnet> {
     return this.post<Subnet>(
-      `/api/v1/${provider}/network/subnets`,
+      `${provider}/network/subnets`,
       data
     );
   }
@@ -149,7 +149,7 @@ class NetworkService extends BaseService {
     });
     
     return this.put<Subnet>(
-      `/api/v1/${provider}/network/subnets/${encodeURIComponent(subnetId)}?${params.toString()}`,
+      `${provider}/network/subnets/${encodeURIComponent(subnetId)}?${params.toString()}`,
       data
     );
   }
@@ -166,7 +166,7 @@ class NetworkService extends BaseService {
     });
     
     return this.delete<void>(
-      `/api/v1/${provider}/network/subnets/${encodeURIComponent(subnetId)}?${params.toString()}`
+      `${provider}/network/subnets/${encodeURIComponent(subnetId)}?${params.toString()}`
     );
   }
 
@@ -184,7 +184,7 @@ class NetworkService extends BaseService {
     });
     
     const data = await this.get<{ security_groups: SecurityGroup[] }>(
-      `/api/v1/${provider}/network/security-groups?${params.toString()}`
+      `${provider}/network/security-groups?${params.toString()}`
     );
     return data.security_groups || [];
   }
@@ -201,7 +201,7 @@ class NetworkService extends BaseService {
     });
     
     return this.get<SecurityGroup>(
-      `/api/v1/${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}?${params.toString()}`
+      `${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}?${params.toString()}`
     );
   }
 
@@ -210,7 +210,7 @@ class NetworkService extends BaseService {
     data: CreateSecurityGroupForm
   ): Promise<SecurityGroup> {
     return this.post<SecurityGroup>(
-      `/api/v1/${provider}/network/security-groups`,
+      `${provider}/network/security-groups`,
       data
     );
   }
@@ -228,7 +228,7 @@ class NetworkService extends BaseService {
     });
     
     return this.put<SecurityGroup>(
-      `/api/v1/${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}?${params.toString()}`,
+      `${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}?${params.toString()}`,
       data
     );
   }
@@ -245,7 +245,7 @@ class NetworkService extends BaseService {
     });
     
     return this.delete<void>(
-      `/api/v1/${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}?${params.toString()}`
+      `${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}?${params.toString()}`
     );
   }
 
@@ -263,7 +263,7 @@ class NetworkService extends BaseService {
     });
     
     return this.post<SecurityGroup>(
-      `/api/v1/${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}/rules?${params.toString()}`,
+      `${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}/rules?${params.toString()}`,
       rule
     );
   }
@@ -282,7 +282,7 @@ class NetworkService extends BaseService {
     });
     
     return this.delete<void>(
-      `/api/v1/${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}/rules?${params.toString()}`
+      `${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}/rules?${params.toString()}`
     );
   }
 
@@ -299,7 +299,7 @@ class NetworkService extends BaseService {
     });
     
     return this.put<SecurityGroup>(
-      `/api/v1/${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}/rules?${params.toString()}`,
+      `${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}/rules?${params.toString()}`,
       { rules }
     );
   }

@@ -2,65 +2,67 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { costAnalysisService } from '@/services/cost-analysis';
 import type { CostSummary, CostPrediction, BudgetAlert, CostBreakdown, CostComparison } from '@/lib/types/cost-analysis';
 import { useToast } from '@/hooks/use-toast';
+import { queryKeys } from '@/lib/query-keys';
+import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
 
 export function useCostSummary(workspaceId: string, period: string = '30d') {
   return useQuery({
-    queryKey: ['cost-summary', workspaceId, period],
+    queryKey: queryKeys.costAnalysis.summary(workspaceId, period),
     queryFn: () => costAnalysisService.getCostSummary(workspaceId, period),
     enabled: !!workspaceId,
-    staleTime: 5 * 60 * 1000, // 5 minutes - 비용 요약 데이터
-    gcTime: 10 * 60 * 1000, // 10 minutes - GC 시간
+    staleTime: CACHE_TIMES.RESOURCE, // 5 minutes - 비용 요약 데이터
+    gcTime: GC_TIMES.MEDIUM, // 10 minutes - GC 시간
   });
 }
 
 export function useCostPredictions(workspaceId: string, days: number = 30) {
   return useQuery({
-    queryKey: ['cost-predictions', workspaceId, days],
+    queryKey: queryKeys.costAnalysis.predictions(workspaceId, days),
     queryFn: () => costAnalysisService.getCostPredictions(workspaceId, days),
     enabled: !!workspaceId,
-    staleTime: 10 * 60 * 1000, // 10 minutes - 예측 데이터는 비교적 안정적
-    gcTime: 30 * 60 * 1000, // 30 minutes - GC 시간
+    staleTime: CACHE_TIMES.STABLE, // 10 minutes - 예측 데이터는 비교적 안정적
+    gcTime: GC_TIMES.LONG, // 30 minutes - GC 시간
   });
 }
 
 export function useBudgetAlerts(workspaceId: string, budgetLimit: number) {
   return useQuery({
-    queryKey: ['budget-alerts', workspaceId, budgetLimit],
+    queryKey: [...queryKeys.costAnalysis.all, 'budget-alerts', workspaceId, budgetLimit],
     queryFn: () => costAnalysisService.getBudgetAlerts(workspaceId, budgetLimit),
     enabled: !!workspaceId && budgetLimit > 0,
-    staleTime: 2 * 60 * 1000, // 2 minutes - 알림은 더 자주 업데이트 필요
-    gcTime: 5 * 60 * 1000, // 5 minutes - GC 시간
+    staleTime: CACHE_TIMES.MONITORING, // 2 minutes - 알림은 더 자주 업데이트 필요
+    gcTime: GC_TIMES.SHORT, // 5 minutes - GC 시간
     refetchInterval: 60000, // 1분마다 refetch (알림 중요성)
   });
 }
 
 export function useCostTrend(workspaceId: string, period: string = '90d') {
   return useQuery({
-    queryKey: ['cost-trend', workspaceId, period],
+    queryKey: queryKeys.costAnalysis.trends(workspaceId, period),
     queryFn: () => costAnalysisService.getCostTrend(workspaceId, period),
     enabled: !!workspaceId,
-    staleTime: 5 * 60 * 1000, // 5 minutes - 트렌드 데이터
-    gcTime: 15 * 60 * 1000, // 15 minutes - GC 시간
+    staleTime: CACHE_TIMES.RESOURCE, // 5 minutes - 트렌드 데이터
+    gcTime: GC_TIMES.MEDIUM, // 10 minutes - GC 시간 (15분 대신 10분으로 조정)
   });
 }
 
 export function useCostBreakdown(workspaceId: string, period: string = '30d', dimension: string = 'service') {
   return useQuery({
-    queryKey: ['cost-breakdown', workspaceId, period, dimension],
+    queryKey: [...queryKeys.costAnalysis.all, 'breakdown', workspaceId, period, dimension],
     queryFn: () => costAnalysisService.getCostBreakdown(workspaceId, period, dimension),
     enabled: !!workspaceId,
-    staleTime: 5 * 60 * 1000, // 5 minutes - 비용 분석 데이터
-    gcTime: 15 * 60 * 1000, // 15 minutes - GC 시간
+    staleTime: CACHE_TIMES.RESOURCE, // 5 minutes - 비용 분석 데이터
+    gcTime: GC_TIMES.MEDIUM, // 10 minutes - GC 시간 (15분 대신 10분으로 조정)
   });
 }
 
 export function useCostComparison(workspaceId: string, currentPeriod: string = '30d', comparePeriod: string = '30d') {
   return useQuery({
-    queryKey: ['cost-comparison', workspaceId, currentPeriod, comparePeriod],
+    queryKey: [...queryKeys.costAnalysis.all, 'comparison', workspaceId, currentPeriod, comparePeriod],
     queryFn: () => costAnalysisService.getCostComparison(workspaceId, currentPeriod, comparePeriod),
     enabled: !!workspaceId,
-    staleTime: 5 * 60 * 1000, // 5 minutes - 비교 데이터
-    gcTime: 15 * 60 * 1000, // 15 minutes - GC 시간
+    staleTime: CACHE_TIMES.RESOURCE, // 5 minutes - 비교 데이터
+    gcTime: GC_TIMES.MEDIUM, // 10 minutes - GC 시간 (15분 대신 10분으로 조정)
   });
 }
 
@@ -73,22 +75,7 @@ export function useRefreshCostAnalysis() {
     mutationFn: async (workspaceId: string) => {
       // 모든 비용 분석 관련 쿼리 무효화
       await queryClient.invalidateQueries({
-        queryKey: ['cost-summary', workspaceId],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ['cost-predictions', workspaceId],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ['budget-alerts', workspaceId],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ['cost-trend', workspaceId],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ['cost-breakdown', workspaceId],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ['cost-comparison', workspaceId],
+        queryKey: queryKeys.costAnalysis.all,
       });
     },
     onSuccess: () => {
