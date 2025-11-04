@@ -1,0 +1,108 @@
+meta {
+  name: 헬스 체크
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/health
+  body: none
+  auth: inherit
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # 헬스 체크
+  
+  서버의 상태와 의존성 상태를 확인합니다.
+  
+  ## Response
+  
+  ```json
+  {
+    "status": "healthy",
+    "timestamp": "2025-10-23T10:00:00+09:00",
+    "version": "1.0.0",
+    "uptime": "1h30m45s",
+    "started_at": "2025-10-23T08:30:00+09:00",
+    "services": {
+      "database": {
+        "healthy": true,
+        "status": "connected"
+      },
+      "redis": {
+        "healthy": true,
+        "status": "not implemented"
+      },
+      "auth": {
+        "healthy": true,
+        "status": "available"
+      },
+      "plugins": {
+        "healthy": true,
+        "status": "gRPC",
+        "type": "gRPC Provider Manager"
+      }
+    },
+    "dependencies": {
+      "postgres": {
+        "healthy": true,
+        "status": "connected",
+        "response_time_ms": 0.000125
+      },
+      "redis": {
+        "healthy": true,
+        "status": "not_implemented",
+        "response_time_ms": 0
+      },
+      "plugins": {
+        "healthy": true,
+        "status": "gRPC",
+        "type": "gRPC Provider Manager"
+      }
+    },
+    "metrics": {
+      "memory_usage": {
+        "alloc_mb": 0.0,
+        "total_alloc_mb": 0.0,
+        "sys_mb": 0.0,
+        "num_gc": 0
+      },
+      "performance": {
+        "goroutines": 8,
+        "cpu_cores": 14,
+        "request_count": 1,
+        "error_count": 0,
+        "error_rate": 0.0,
+        "rps": 0.10439431241675629
+      }
+    },
+    "alerts": {
+      "enabled": false,
+      "count": 0,
+      "alerts": [],
+      "thresholds": {
+        "error_rate": 5.0,
+        "memory_mb": 100.0,
+        "uptime_hours": 24.0
+      }
+    }
+  }
+  ```
+  
+  ## Status 값
+  
+  - `healthy`: 모든 서비스가 정상
+  - `degraded`: 일부 서비스에 문제가 있음
+  - `unhealthy`: 심각한 문제가 있음
+  
+  ## 사용 예시
+  
+  ```bash
+  GET /health
+  ```
+}

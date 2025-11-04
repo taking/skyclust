@@ -1,0 +1,56 @@
+meta {
+  name: 방화벽 규칙 개별 추가
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/network/firewall-rules/{{firewallId}}/ports?credential_id={{gcp_credentialsId}}&region=asia-northeast3
+  body: json
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{gcp_credentialsId}}
+  region: asia-northeast3
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "protocol": "tcp",
+    "ports": ["3306", "5432"],
+    "source_ranges": ["10.0.0.0/8"],
+    "target_tags": ["database"],
+    "action": "ALLOW"
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.be.true;
+  });
+  
+  test("Response has data field", function() {
+    expect(res.getBody().data).to.be.an('object');
+  });
+  
+  test("Firewall rule added successfully", function() {
+    expect(res.getBody().message).to.include("firewall rule added successfully");
+  });
+  
+  test("New ports are added to firewall rules", function() {
+    const rules = res.getBody().data.rules;
+    const tcpRules = rules.filter(rule => rule.protocol === "tcp");
+    const ports = tcpRules.map(rule => rule.from_port);
+    expect(ports).to.include(3306);
+    expect(ports).to.include(5432);
+  });
+}

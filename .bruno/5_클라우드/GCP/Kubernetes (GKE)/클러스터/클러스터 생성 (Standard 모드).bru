@@ -1,0 +1,75 @@
+meta {
+  name: 클러스터 생성 (Standard 모드)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/kubernetes/clusters
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+     "cluster_mode": {
+        "remove_default_node_pool": false,
+        "type": "standard"
+     },
+     "credential_id": "{{gcp_credentialsId}}",
+     "name": "skyclust-gke-standard-{{$timestamp}}",
+     "network": {
+        "master_authorized_networks": [
+           "0.0.0.0/0"
+        ],
+        "pod_cidr": "10.0.0.0/16",
+        "private_endpoint": false,
+        "private_nodes": false,
+        "service_cidr": "10.1.0.0/16",
+        "subnet_id": "{{subnetId}}",
+        "vpc_id": "{{vpcId}}"
+     },
+     "node_pool": {
+        "auto_scaling": {
+           "enabled": true,
+           "max_node_count": 3,
+           "min_node_count": 1
+        },
+        "disk_size_gb": 20,
+        "disk_type": "pd-standard",
+        "labels": {
+           "environment": "development",
+           "node-pool": "default"
+        },
+        "machine_type": "e2-medium",
+        "name": "default-pool",
+        "node_count": 1,
+        "preemptible": false,
+        "spot": false
+     },
+     "project_id": "{{gcp_project_id}}",
+     "region": "asia-northeast3",
+     "security": {
+        "binary_authorization": false,
+        "network_policy": true,
+        "pod_security_policy": false,
+        "workload_identity": true
+     },
+     "tags": {
+        "cluster_type": "standard",
+        "created_by": "bruno-api-test",
+        "environment": "development",
+        "project": "skyclust"
+     },
+     "version": "1.33",
+     "zone": "asia-northeast3-a"
+  }
+}
+
+vars:pre-request {
+  timestamp: {{$timestamp}}
+}

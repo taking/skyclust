@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"cmp/pkg/shared/logger"
+	"skyclust/pkg/logger"
 )
 
 // Migration represents a database migration
@@ -53,7 +53,7 @@ func (m *MigrationManager) Migrate(ctx context.Context) error {
 	// Run pending migrations
 	for _, migration := range m.migrations {
 		if !m.isMigrationApplied(applied, migration.Version) {
-			logger.Info(fmt.Sprintf("Running migration version %d: %s", migration.Version, migration.Description))
+			logger.DefaultLogger.Info(fmt.Sprintf("Running migration version %d: %s", migration.Version, migration.Description))
 
 			if err := migration.Up(m.db); err != nil {
 				return fmt.Errorf("failed to run migration %d: %w", migration.Version, err)
@@ -63,7 +63,7 @@ func (m *MigrationManager) Migrate(ctx context.Context) error {
 				return fmt.Errorf("failed to record migration %d: %w", migration.Version, err)
 			}
 
-			logger.Info(fmt.Sprintf("Migration completed version %d", migration.Version))
+			logger.DefaultLogger.Info(fmt.Sprintf("Migration completed version %d", migration.Version))
 		}
 	}
 
@@ -98,7 +98,7 @@ func (m *MigrationManager) Rollback(ctx context.Context) error {
 		return fmt.Errorf("migration %d not found", lastMigration.Version)
 	}
 
-	logger.Info(fmt.Sprintf("Rolling back migration version %d: %s", migration.Version, migration.Description))
+	logger.DefaultLogger.Info(fmt.Sprintf("Rolling back migration version %d: %s", migration.Version, migration.Description))
 
 	if err := migration.Down(m.db); err != nil {
 		return fmt.Errorf("failed to rollback migration %d: %w", migration.Version, err)
@@ -108,7 +108,7 @@ func (m *MigrationManager) Rollback(ctx context.Context) error {
 		return fmt.Errorf("failed to remove migration record %d: %w", migration.Version, err)
 	}
 
-	logger.Info(fmt.Sprintf("Migration rollback completed version %d", migration.Version))
+	logger.DefaultLogger.Info(fmt.Sprintf("Migration rollback completed version %d", migration.Version))
 	return nil
 }
 

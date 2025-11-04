@@ -1,0 +1,123 @@
+---
+alwaysApply: true
+---
+
+# Project Rules: Go Clean Architecture + Domain vs Feature Types
+
+> system
+You are an expert Go developer following Clean Architecture, Clean Code, and YAGNI principles.
+
+> user
+When generating or refactoring Go code, strictly follow these rules:
+
+---
+
+### 🧩 Core Principles
+- **YAGNI**: Implement only what is needed. Avoid unnecessary abstractions, interfaces, or extra layers.
+- **Clean Code**: Small, focused functions with meaningful naming and clear intent.
+- **Idiomatic Go**: Use simple, composable packages and clear error handling. Avoid over-engineering.
+- **Consistency & Readability**: Consistent structure, naming, and formatting matter more than cleverness.
+- **Maintainability First**: Prefer clarity and fewer moving parts over deep abstractions.
+
+---
+
+### 📁 Folder & File Structure Guidelines
+Keep the project simple, flat, and feature-oriented. Use shallow folders, but separate domain entities and API DTOs.
+
+Recommended structure:
+internal/
+api/
+<feature>/
+handler.go
+routes.go
+types.go ← feature-specific Request/Response DTOs
+common/
+error.go
+response.go
+types.go ← common DTOs used across features (Pagination, ErrorResponse)
+domain/
+user.go ← core entity, business logic types
+workspace.go
+credential.go
+service/ → Use cases / business logic
+repo/ → Database persistence
+plugin/ → External plugin interfaces
+di/ → Dependency injection, app initialization
+pkg/ → Shared reusable packages (logger, cache, middleware, telemetry)
+
+
+#### Rules
+1. **Domain types**
+   - Only core entities and business models belong in `domain/`.
+   - DB models, business rules, and shared domain logic.
+2. **Feature DTOs**
+   - Each API feature folder (`api/<feature>/types.go`) contains Request/Response structs used by handlers.
+   - Example: `api/auth/types.go` → `LoginRequest`, `LoginResponse`.
+3. **Common DTOs**
+   - Place truly reusable types (Pagination, ErrorResponse) in `api/common/types.go`.
+4. **No feature DTO should live in domain/**.
+5. Handlers use **feature DTOs** for HTTP I/O and **domain types** for service calls.
+
+---
+
+### 🌐 RESTful API Guidelines
+- Use correct HTTP verbs, status codes, and plural resource names.
+- Handlers:
+  - Parse requests (feature DTO)
+  - Call service/usecase (domain types)
+  - Return JSON responses (feature DTO or common DTO)
+- Routes:
+  - Map endpoint paths to handlers
+  - Assign middleware if needed
+
+---
+
+### ⚙️ Optimization & Design
+- Optimize for clarity, testability, and maintainability.
+- Avoid premature modularization or dependency injection frameworks unless necessary.
+- Use Go’s native error patterns and interfaces sparingly.
+
+---
+
+### 🧾 Output Expectations
+- Automatically create `types.go` for each feature when generating a new API.
+- Place core business entities only in `domain/`.
+- Keep `common/types.go` for DTOs shared across multiple features.
+- Include a short reasoning note when moving types between domain and feature folders.
+
+---
+
+### 🧩 Example: Auth Feature
+internal/api/auth/
+handler.go
+routes.go
+types.go ← LoginRequest, LoginResponse
+internal/domain/user.go
+internal/service/auth_service.go
+internal/repo/auth_repo.go
+internal/api/common/types.go
+
+
+`auth/types.go`
+type LoginRequest struct {
+    Email    string `json:"email"`
+    Password string `json:"password"`
+}
+
+type LoginResponse struct {
+    Token string `json:"token"`
+}
+
+`domain/user.go
+type User struct {
+    ID    string
+    Name  string
+    Email string
+    Role  string
+}
+
+🧠 Remember:
+Domain contains core entities, feature folders contain API-specific DTOs, common DTOs go in api/common/types.go.
+Keep this separation for maintainability, testability, and clarity.
+
+---

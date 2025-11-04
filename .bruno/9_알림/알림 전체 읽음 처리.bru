@@ -1,0 +1,90 @@
+meta {
+  name: 알림 전체 읽음 처리
+  type: http
+  seq: 4
+}
+
+patch {
+  url: {{baseUrl}}/api/{{apiVersion}}/notifications
+  body: json
+  auth: bearer
+}
+
+body:json {
+  {
+    "read": true,
+    "notification_ids": []
+  }
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains updated count", function() {
+    expect(res.getBody()).to.have.property('updated_count');
+    expect(res.getBody()).to.have.property('read');
+  });
+  
+  test("Updated count is a number", function() {
+    expect(res.getBody().updated_count).to.be.a('number');
+    expect(res.getBody().updated_count).to.be.at.least(0);
+  });
+}
+
+docs {
+  # 알림 전체 읽음 처리
+  
+  사용자의 알림을 일괄로 읽음 처리합니다. (RESTful: PATCH /notifications)
+  
+  ## 요청 본문
+  
+  ### read (선택, 기본값: true)
+  - 읽음 상태
+  - **타입**: `boolean`
+  - **값**: `true` (읽음으로 표시), `false` (읽지 않음으로 표시)
+  
+  ### notification_ids (선택)
+  - 업데이트할 알림 ID 목록
+  - **타입**: `array[string]`
+  - **설명**: 제공되지 않으면 모든 알림을 업데이트합니다. 제공되면 해당 알림만 업데이트합니다.
+  
+  ## 반환 데이터
+  
+  ### updated_count (integer)
+  - 업데이트된 알림 개수
+  
+  ### read (boolean)
+  - 설정된 읽음 상태
+  
+  ## 사용 예시
+  
+  ### 모든 알림 읽음 처리
+  ```
+  PATCH /api/v1/notifications
+  {
+    "read": true
+  }
+  ```
+  
+  ### 특정 알림만 읽음 처리
+  ```
+  PATCH /api/v1/notifications
+  {
+    "read": true,
+    "notification_ids": [
+      "123e4567-e89b-12d3-a456-426614174000",
+      "223e4567-e89b-12d3-a456-426614174001"
+    ]
+  }
+  ```
+}

@@ -1,0 +1,26 @@
+meta {
+  name: 워크스페이스 삭제
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{baseUrl}}/api/{{apiVersion}}/workspaces/{{workspaceId}}
+  body: none
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "name": "Test Workspace",
+    "description": "A test workspace for API testing"
+  }
+}

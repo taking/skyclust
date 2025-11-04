@@ -1,0 +1,208 @@
+meta {
+  name: 감사로그 내보내기
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/admin/audit-logs/export?format=csv&action=user_login&start_time=2025-01-01T00:00:00Z&end_time=2025-12-31T23:59:59Z&limit=10000
+  body: none
+  auth: bearer
+}
+
+params:query {
+  format: csv
+  action: user_login
+  start_time: 2025-01-01T00:00:00Z
+  end_time: 2025-12-31T23:59:59Z
+  limit: 10000
+}
+
+headers {
+  Accept: application/json, text/csv
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has file download headers", function() {
+    const headers = res.getHeaders();
+    expect(headers).to.have.property('content-type');
+    expect(headers).to.have.property('content-disposition');
+  });
+  
+  test("Content-Type matches format (JSON)", function() {
+    const contentType = res.getHeaders()['content-type'];
+    expect(contentType).to.be.a('string');
+    if (res.request.url.includes('format=json')) {
+      expect(contentType).to.include('application/json');
+    }
+  });
+  
+  test("Content-Type matches format (CSV)", function() {
+    const contentType = res.getHeaders()['content-type'];
+    expect(contentType).to.be.a('string');
+    if (res.request.url.includes('format=csv')) {
+      expect(contentType).to.include('text/csv');
+    }
+  });
+  
+  test("Content-Disposition contains filename", function() {
+    const contentDisposition = res.getHeaders()['content-disposition'];
+    expect(contentDisposition).to.be.a('string');
+    expect(contentDisposition).to.include('filename');
+    expect(contentDisposition).to.include('attachment');
+  });
+  
+  test("JSON export contains valid data", function() {
+    if (res.request.url.includes('format=json')) {
+      const body = res.getBody();
+      expect(body).to.be.an('array');
+    }
+  });
+  
+  test("CSV export contains header row", function() {
+    if (res.request.url.includes('format=csv')) {
+      const body = res.getBody();
+      expect(body).to.be.a('string');
+      expect(body).to.include('ID,User ID,Action,Resource');
+    }
+  });
+}
+
+docs {
+  # 감사로그 내보내기
+  
+  ## 기능
+  감사 로그를 다양한 형식(JSON, CSV)으로 내보냅니다. (RESTful: GET /admin/audit-logs/export)
+  
+  필터를 사용하여 특정 조건의 로그만 내보낼 수 있으며, 최대 10,000개의 레코드를 내보낼 수 있습니다.
+  
+  ## 파라미터
+  
+  ### format (필수)
+  - 내보내기 형식
+  - **기본값**: `json`
+  - **지원 형식**: `json`, `csv`
+  - **설명**: 내보낼 파일 형식을 지정합니다.
+  
+  ### limit (선택)
+  - 최대 내보낼 레코드 수
+  - **기본값**: `1000`
+  - **최대값**: `10000`
+  - **설명**: 내보낼 최대 로그 수를 지정합니다. 0 이하이거나 10000을 초과하면 자동으로 10000으로 설정됩니다.
+  
+  ### page (선택)
+  - 페이지 번호
+  - **기본값**: `1`
+  - **설명**: 내보내기는 항상 첫 페이지부터 시작합니다. 이 파라미터는 현재 미사용됩니다.
+  
+  ### user_id (선택)
+  - 사용자 ID (UUID)
+  - **설명**: 특정 사용자의 로그만 필터링합니다.
+  
+  ### action (선택)
+  - 액션 이름
+  - **설명**: 특정 액션의 로그만 필터링합니다. 예: `user_login`, `workspace_create`
+  
+  ### resource (선택)
+  - 리소스 이름
+  - **설명**: 특정 리소스의 로그만 필터링합니다.
+  
+  ### start_time (선택)
+  - 시작 시간 (RFC3339 형식)
+  - **예시**: `2025-01-01T00:00:00Z`
+  - **설명**: 특정 시간 이후의 로그만 필터링합니다. `end_time`과 함께 사용해야 합니다.
+  
+  ### end_time (선택)
+  - 종료 시간 (RFC3339 형식)
+  - **예시**: `2025-01-31T23:59:59Z`
+  - **설명**: 특정 시간 이전의 로그만 필터링합니다. `start_time`과 함께 사용해야 합니다.
+  
+  ## 필터 조합
+  
+  - 필터는 모두 선택 사항입니다.
+  - 여러 필터를 조합하여 사용할 수 있습니다.
+  - `start_time`과 `end_time`은 함께 제공되면 유효성 검사가 수행됩니다 (`start_time <= end_time`).
+  
+  ## 반환 데이터
+  
+  ### Content-Type 헤더
+  - `format=json`: `application/json`
+  - `format=csv`: `text/csv; charset=utf-8`
+  
+  ### Content-Disposition 헤더
+  - `attachment; filename=audit_logs_YYYYMMDD_HHMMSS.{format}`
+  - 파일명에 타임스탬프가 포함됩니다.
+  
+  ### JSON 형식
+  ```json
+  [
+    {
+      "id": "uuid",
+      "user_id": "uuid",
+      "action": "user_login",
+      "resource": "auth",
+      "ip_address": "192.168.1.1",
+      "user_agent": "Mozilla/5.0...",
+      "details": {
+        "key": "value"
+      },
+      "created_at": "2025-01-01T00:00:00Z"
+    }
+  ]
+  ```
+  
+  ### CSV 형식
+  - 헤더: `ID,User ID,Action,Resource,IP Address,User Agent,Details,Created At`
+  - `Details` 필드는 JSON 문자열로 인코딩됩니다.
+  - 빈 결과의 경우 헤더만 포함됩니다.
+  
+  ## 사용 예시
+  
+  ### 기본 JSON 내보내기 (최근 1000개)
+  ```
+  GET /api/v1/admin/audit-logs/export?format=json&limit=1000
+  ```
+  
+  ### CSV 형식으로 내보내기
+  ```
+  GET /api/v1/admin/audit-logs/export?format=csv&limit=5000
+  ```
+  
+  ### 액션 필터링
+  ```
+  GET /api/v1/admin/audit-logs/export?format=json&action=user_login&limit=1000
+  ```
+  
+  ### 날짜 범위 필터링
+  ```
+  GET /api/v1/admin/audit-logs/export?format=json&start_time=2025-01-01T00:00:00Z&end_time=2025-01-31T23:59:59Z
+  ```
+  
+  ### 복합 필터
+  ```
+  GET /api/v1/admin/audit-logs/export?format=csv&action=workspace_create&start_time=2025-01-01T00:00:00Z&end_time=2025-01-31T23:59:59Z&limit=10000
+  ```
+  
+  ## 주의사항
+  
+  - 최대 10,000개의 레코드만 내보낼 수 있습니다.
+  - 대량의 데이터를 내보내는 경우 시간이 걸릴 수 있습니다.
+  - `start_time`이 `end_time`보다 늦으면 400 에러가 반환됩니다.
+  - 빈 결과의 경우 JSON은 `[]`, CSV는 헤더만 반환됩니다.
+  - `xlsx` 형식은 현재 지원되지 않습니다 (501 에러).
+  
+  ## 개선 사항
+  
+  - CSV에 `Details` 필드 추가 (JSON 문자열로 인코딩)
+  - 날짜 범위 유효성 검사 추가
+  - 빈 결과 처리 개선
+  - 더 나은 에러 메시지 제공
+}

@@ -1,0 +1,47 @@
+meta {
+  name: VPC 상세 조회
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/network/vpcs/{{vpcId}}?credential_id={{aws_credentialsId}}&region=ap-northeast-3
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{aws_credentialsId}}
+  region: ap-northeast-3
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.be.true;
+  });
+  
+  test("Response has VPC data", function() {
+    expect(res.getBody().data).to.have.property('id');
+    expect(res.getBody().data).to.have.property('name');
+    expect(res.getBody().data).to.have.property('cidr_block');
+    expect(res.getBody().data).to.have.property('state');
+    expect(res.getBody().data).to.have.property('is_default');
+    expect(res.getBody().data).to.have.property('region');
+  });
+  
+  test("VPC ID matches request", function() {
+    expect(res.getBody().data.id).to.equal(req.getPathParam('vpc_id'));
+  });
+}

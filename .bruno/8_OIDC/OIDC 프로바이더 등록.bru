@@ -1,0 +1,176 @@
+meta {
+  name: OIDC 프로바이더 등록
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/oidc/providers
+  body: json
+  auth: bearer
+}
+
+body:json {
+  {
+    "name": "My Google OIDC",
+    "provider_type": "google",
+    "client_id": "your-google-client-id",
+    "client_secret": "your-google-client-secret",
+    "redirect_url": "http://localhost:8080/api/v1/auth/oidc/google/callback",
+    "scopes": "openid,profile,email",
+    "enabled": true
+  }
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response contains provider ID", function() {
+    const body = res.getBody();
+    expect(body.data).to.have.property('id');
+    expect(body.data.id).to.be.a('string');
+  });
+  
+  test("Response contains provider details", function() {
+    const body = res.getBody();
+    expect(body.data).to.have.property('name');
+    expect(body.data).to.have.property('provider_type');
+    expect(body.data).to.have.property('enabled');
+  });
+  
+  test("Provider type is valid", function() {
+    const providerType = res.getBody().data.provider_type;
+    expect(['google', 'github', 'azure', 'microsoft', 'custom']).to.include(providerType);
+  });
+}
+
+docs {
+  # OIDC 프로바이더 등록
+  
+  ## 기능
+  사용자가 자신만의 OIDC 프로바이더를 등록합니다. 등록된 프로바이더를 사용하여 SSO 로그인을 할 수 있습니다.
+  
+  ## 요청 본문
+  
+  ### name (필수)
+  - 프로바이더 이름
+  - **타입**: `string`
+  - **길이**: 1-100자
+  - **설명**: 사용자가 관리하기 쉽도록 지정하는 이름입니다.
+  - **유니크**: 사용자별로 고유해야 합니다.
+  
+  ### provider_type (필수)
+  - 프로바이더 타입
+  - **값**: `google`, `github`, `azure`, `microsoft`, `custom`
+  - **설명**: 프로바이더의 타입을 지정합니다. `custom`은 완전히 커스텀 프로바이더입니다.
+  
+  ### client_id (필수)
+  - OAuth Client ID
+  - **타입**: `string`
+  - **설명**: OIDC 프로바이더에서 발급받은 Client ID입니다.
+  
+  ### client_secret (필수)
+  - OAuth Client Secret
+  - **타입**: `string`
+  - **설명**: OIDC 프로바이더에서 발급받은 Client Secret입니다.
+  - **보안**: 암호화되어 저장됩니다.
+  
+  ### redirect_url (필수)
+  - 리디렉션 URL
+  - **타입**: `string` (URL)
+  - **설명**: OAuth 콜백을 받을 URL입니다.
+  - **예시**: `http://localhost:8080/api/v1/auth/oidc/google/callback`
+  
+  ### auth_url (선택)
+  - 인증 URL
+  - **타입**: `string` (URL)
+  - **설명**: 커스텀 프로바이더의 OAuth 인증 URL입니다. `custom` 타입에서 필요합니다.
+  
+  ### token_url (선택)
+  - 토큰 교환 URL
+  - **타입**: `string` (URL)
+  - **설명**: 커스텀 프로바이더의 토큰 교환 URL입니다. `custom` 타입에서 필요합니다.
+  
+  ### user_info_url (선택)
+  - 사용자 정보 URL
+  - **타입**: `string` (URL)
+  - **설명**: 커스텀 프로바이더의 사용자 정보 조회 URL입니다. `custom` 타입에서 필요합니다.
+  
+  ### scopes (선택)
+  - OAuth Scopes
+  - **타입**: `string` (쉼표로 구분)
+  - **설명**: 요청할 OAuth 스코프입니다.
+  - **예시**: `openid,profile,email`
+  
+  ### enabled (선택)
+  - 활성화 여부
+  - **타입**: `boolean`
+  - **기본값**: `true`
+  - **설명**: 프로바이더를 즉시 사용할지 여부입니다.
+  
+  ## 반환 데이터
+  
+  ### id (string)
+  - 생성된 프로바이더 ID (UUID)
+  
+  ### name (string)
+  - 프로바이더 이름
+  
+  ### provider_type (string)
+  - 프로바이더 타입
+  
+  ### enabled (boolean)
+  - 활성화 여부
+  
+  ### created_at (string)
+  - 생성 시간 (RFC3339)
+  
+  ## 사용 예시
+  
+  ### Google 프로바이더 등록
+  ```json
+  {
+    "name": "My Google Account",
+    "provider_type": "google",
+    "client_id": "123456789.apps.googleusercontent.com",
+    "client_secret": "GOCSPX-abc123...",
+    "redirect_url": "http://localhost:8080/api/v1/auth/oidc/google/callback",
+    "scopes": "openid,profile,email",
+    "enabled": true
+  }
+  ```
+  
+  ### 커스텀 프로바이더 등록
+  ```json
+  {
+    "name": "My Custom OIDC",
+    "provider_type": "custom",
+    "client_id": "my-client-id",
+    "client_secret": "my-client-secret",
+    "redirect_url": "http://localhost:8080/api/v1/auth/oidc/custom/callback",
+    "auth_url": "https://example.com/oauth/authorize",
+    "token_url": "https://example.com/oauth/token",
+    "user_info_url": "https://example.com/userinfo",
+    "scopes": "openid,profile,email",
+    "enabled": true
+  }
+  ```
+  
+  ## 주의사항
+  
+  - 프로바이더 이름은 사용자별로 고유해야 합니다.
+  - `client_secret`은 암호화되어 저장되지만, 전송 시에는 HTTPS를 사용해야 합니다.
+  - 등록 후 프로바이더를 사용하여 SSO 로그인을 할 수 있습니다.
+  - 비활성화된 프로바이더는 로그인에 사용할 수 없습니다.
+}
+

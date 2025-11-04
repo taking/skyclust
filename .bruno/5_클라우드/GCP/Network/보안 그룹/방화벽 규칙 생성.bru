@@ -1,0 +1,135 @@
+meta {
+  name: 방화벽 규칙 생성
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/network/firewall-rules
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "credential_id": "{{gcp_credentialsId}}",
+    "name": "skyclust-firewall-{{$timestamp}}",
+    "description": "Firewall rules for SkyClust GKE cluster with advanced features",
+    "project_id": "{{gcp_project_id}}",
+    "vpc_id": "{{vpcId}}",
+    "region": "asia-northeast3",
+    "priority": 1000,
+    "direction": "INGRESS",
+    "action": "ALLOW",
+    "source_ranges": ["0.0.0.0/0"],
+    "target_tags": ["gke-node"],
+    "allowed": [
+      {
+        "protocol": "tcp",
+        "ports": ["22", "80", "443", "8080", "30000-32767"]
+      },
+      {
+        "protocol": "icmp"
+      }
+    ],
+    "tags": {
+      "Environment": "development",
+      "Project": "skyclust",
+      "CreatedBy": "bruno-api-test"
+    }
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("firewallRuleId", res.body.data.id);
+  bru.setEnvVar("firewallRuleName", res.body.data.name);
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has firewall rule data", function() {
+    expect(res.getBody().data).to.be.an('object');
+    expect(res.getBody().data.id).to.be.a('string');
+    expect(res.getBody().data.name).to.be.a('string');
+  });
+}
+
+docs {
+  # GCP 방화벽 규칙 생성 (예제)
+  
+  GKE 클러스터를 위한 방화벽 규칙을 생성합니다.
+  
+  ## Request Body
+  
+  ```json
+  {
+    "credential_id": "edb33f37-4f8b-4307-a9d4-3f147ab09a2f",
+    "name": "skyclust-firewall",
+    "description": "Firewall rules for SkyClust GKE cluster",
+    "project_id": "leafy-environs-445206-d2",
+    "network": "projects/leafy-environs-445206-d2/global/networks/skyclust-vpc",
+    "priority": 1000,
+    "direction": "INGRESS",
+    "action": "ALLOW",
+    "source_ranges": ["0.0.0.0/0"],
+    "target_tags": ["gke-node"],
+    "allowed": [
+      {
+        "protocol": "tcp",
+        "ports": ["22", "80", "443", "8080", "30000-32767"]
+      },
+      {
+        "protocol": "icmp"
+      }
+    ],
+    "tags": {
+      "Environment": "development",
+      "Project": "skyclust",
+      "CreatedBy": "bruno-api-test"
+    }
+  }
+  ```
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "projects/leafy-environs-445206-d2/global/firewalls/skyclust-firewall",
+      "name": "skyclust-firewall",
+      "description": "Firewall rules for SkyClust GKE cluster",
+      "project_id": "leafy-environs-445206-d2",
+      "network": "projects/leafy-environs-445206-d2/global/networks/skyclust-vpc",
+      "priority": 1000,
+      "direction": "INGRESS",
+      "action": "ALLOW",
+      "source_ranges": ["0.0.0.0/0"],
+      "target_tags": ["gke-node"],
+      "allowed": [
+        {
+          "protocol": "tcp",
+          "ports": ["22", "80", "443", "8080", "30000-32767"]
+        },
+        {
+          "protocol": "icmp"
+        }
+      ],
+      "state": "READY",
+      "created_at": "2025-10-24T21:30:00Z"
+    },
+    "message": "Firewall rule created successfully"
+  }
+  ```
+}

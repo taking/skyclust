@@ -1,0 +1,94 @@
+meta {
+  name: 클러스터 목록 조회
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/kubernetes/clusters?credential_id={{aws_credentialsId}}&region=ap-northeast-3
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{aws_credentialsId}}
+  region: ap-northeast-3
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+script:post-response {
+  bru.setEnvVar("clusterName", res.body.data.clusters[0].name);
+  
+  const rowData = res.body.data.clusters;
+  
+  const columnDefinitions = [
+    { field: "id", filter: true, floatingFilter: true },
+    { field: "name", filter: true, floatingFilter: true },
+    { field: "version", filter: true, floatingFilter: true },
+    { field: "status", filter: true, floatingFilter: true },
+    { field: "region", filter: true, floatingFilter: true },
+    { field: "endpoint", filter: true, floatingFilter: true },
+    { field: "created_at", filter: true, floatingFilter: true }
+  ];
+   
+  bru.visualize('table', {
+    name: 'table',
+    provider: 'ag-grid',
+    props: { rowData, columnDefinitions }
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # EKS 클러스터 목록 조회
+  
+  AWS EKS 클러스터 목록을 조회합니다.
+  
+  ## Query Parameters
+  
+  - `credential_id`: AWS credential ID (필수)
+  - `region`: AWS 리전 (필수)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "clusters": [
+        {
+          "id": "arn:aws:eks:ap-northeast-3:123456789012:cluster/skyclust-test-cluster",
+          "name": "skyclust-test-cluster",
+          "version": "1.28",
+          "status": "ACTIVE",
+          "region": "ap-northeast-3",
+          "endpoint": "https://XXXXXXXXXXXX.gr7.ap-northeast-3.eks.amazonaws.com",
+          "created_at": "2025-10-21T17:00:00Z",
+          "tags": {
+            "Environment": "development",
+            "ManagedBy": "skyclust"
+          }
+        }
+      ]
+    },
+    "message": "Clusters retrieved successfully",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
+  }
+  ```
+  
+  ## Status 값
+  
+  - `CREATING`: 생성 중
+  - `ACTIVE`: 활성화됨 (사용 가능)
+  - `DELETING`: 삭제 중
+  - `FAILED`: 실패
+  - `UPDATING`: 업데이트 중
+}

@@ -1,0 +1,80 @@
+meta {
+  name: 알림 일괄 삭제
+  type: http
+  seq: 6
+}
+
+delete {
+  url: {{baseUrl}}/api/{{apiVersion}}/notifications
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "notification_ids": [
+      "{{notificationId}}"
+    ]
+  }
+}
+
+headers {
+  Content-Type: application/json
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains deleted count", function() {
+    expect(res.getBody()).to.have.property('deleted_count');
+    expect(res.getBody()).to.have.property('notification_ids');
+  });
+  
+  test("Deleted count matches notification IDs length", function() {
+    const deletedCount = res.getBody().deleted_count;
+    const notificationIds = res.getBody().notification_ids;
+    expect(deletedCount).to.equal(notificationIds.length);
+  });
+}
+
+docs {
+  # 알림 일괄 삭제
+  
+  여러 알림을 일괄로 삭제합니다.
+  
+  ## 요청 본문
+  
+  ### notification_ids (필수)
+  - 삭제할 알림 ID 목록
+  - **타입**: `array[string]` (UUID 배열)
+  - **최소 개수**: 1개
+  
+  ## 반환 데이터
+  
+  ### message (string)
+  - 성공 메시지
+  
+  ### deleted_count (integer)
+  - 삭제된 알림 개수
+  
+  ### notification_ids (array[string])
+  - 삭제된 알림 ID 목록
+  
+  ## 사용 예시
+  
+  ```
+  DELETE /api/v1/notifications
+  {
+    "notification_ids": [
+      "123e4567-e89b-12d3-a456-426614174000",
+      "223e4567-e89b-12d3-a456-426614174001"
+    ]
+  }
+  ```
+}

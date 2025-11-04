@@ -1,117 +1,173 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
 
-// DomainError represents a domain-specific error
+// ErrorCode represents a specific error type
+type ErrorCode string
+
+const (
+	// Authentication errors
+	ErrCodeUnauthorized       ErrorCode = "UNAUTHORIZED"
+	ErrCodeForbidden          ErrorCode = "FORBIDDEN"
+	ErrCodeInvalidToken       ErrorCode = "INVALID_TOKEN"
+	ErrCodeTokenExpired       ErrorCode = "TOKEN_EXPIRED"
+	ErrCodeInvalidCredentials ErrorCode = "INVALID_CREDENTIALS"
+
+	// Validation errors
+	ErrCodeValidationFailed ErrorCode = "VALIDATION_FAILED"
+	ErrCodeInvalidInput     ErrorCode = "INVALID_INPUT"
+	ErrCodeMissingField     ErrorCode = "MISSING_FIELD"
+	ErrCodeBadRequest       ErrorCode = "BAD_REQUEST"
+
+	// Resource errors
+	ErrCodeNotFound          ErrorCode = "NOT_FOUND"
+	ErrCodeAlreadyExists     ErrorCode = "ALREADY_EXISTS"
+	ErrCodeConflict          ErrorCode = "CONFLICT"
+	ErrCodeResourceExhausted ErrorCode = "RESOURCE_EXHAUSTED"
+
+	// System errors
+	ErrCodeInternalError      ErrorCode = "INTERNAL_ERROR"
+	ErrCodeServiceUnavailable ErrorCode = "SERVICE_UNAVAILABLE"
+	ErrCodeTimeout            ErrorCode = "TIMEOUT"
+	ErrCodeDatabaseError      ErrorCode = "DATABASE_ERROR"
+	ErrCodeNetworkError       ErrorCode = "NETWORK_ERROR"
+
+	// Cloud provider errors
+	ErrCodeProviderError   ErrorCode = "PROVIDER_ERROR"
+	ErrCodeProviderTimeout ErrorCode = "PROVIDER_TIMEOUT"
+	ErrCodeProviderAuth    ErrorCode = "PROVIDER_AUTH_ERROR"
+	ErrCodeProviderQuota   ErrorCode = "PROVIDER_QUOTA_EXCEEDED"
+
+	// Plugin errors
+	ErrCodePluginError      ErrorCode = "PLUGIN_ERROR"
+	ErrCodePluginNotFound   ErrorCode = "PLUGIN_NOT_FOUND"
+	ErrCodePluginLoadFailed ErrorCode = "PLUGIN_LOAD_FAILED"
+
+	// Feature support errors
+	ErrCodeNotSupported   ErrorCode = "NOT_SUPPORTED"
+	ErrCodeNotImplemented ErrorCode = "NOT_IMPLEMENTED"
+)
+
+// DomainError represents a structured domain error
 type DomainError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	Status  int    `json:"-"`
+	Code       ErrorCode              `json:"code"`
+	Message    string                 `json:"message"`
+	Details    map[string]interface{} `json:"details,omitempty"`
+	Timestamp  time.Time              `json:"timestamp"`
+	RequestID  string                 `json:"request_id,omitempty"`
+	StatusCode int                    `json:"-"`
 }
 
+// Error implements the error interface
 func (e *DomainError) Error() string {
 	return fmt.Sprintf("[%s] %s", e.Code, e.Message)
 }
 
-// ValidationError represents a validation error
-type ValidationError struct {
-	Field   string `json:"field"`
-	Message string `json:"message"`
-}
-
-func (e *ValidationError) Error() string {
-	return fmt.Sprintf("validation error on field '%s': %s", e.Field, e.Message)
-}
-
-// NewValidationError creates a new validation error
-func NewValidationError(message string) *ValidationError {
-	return &ValidationError{
-		Message: message,
+// NewDomainError creates a new domain error
+func NewDomainError(code ErrorCode, message string, statusCode int) *DomainError {
+	return &DomainError{
+		Code:       code,
+		Message:    message,
+		StatusCode: statusCode,
+		Timestamp:  time.Now(),
+		Details:    make(map[string]interface{}),
 	}
 }
 
-// NewFieldValidationError creates a new field-specific validation error
-func NewFieldValidationError(field, message string) *ValidationError {
-	return &ValidationError{
-		Field:   field,
-		Message: message,
+// WithDetails adds details to the error
+func (e *DomainError) WithDetails(key string, value interface{}) *DomainError {
+	if e.Details == nil {
+		e.Details = make(map[string]interface{})
 	}
+	e.Details[key] = value
+	return e
+}
+
+// WithRequestID adds request ID to the error
+func (e *DomainError) WithRequestID(requestID string) *DomainError {
+	e.RequestID = requestID
+	return e
+}
+
+// ToJSON converts the error to JSON
+func (e *DomainError) ToJSON() ([]byte, error) {
+	return json.Marshal(e)
 }
 
 // Predefined domain errors
 var (
-	ErrUserNotFound = &DomainError{
-		Code:    "USER_NOT_FOUND",
-		Message: "User not found",
-		Status:  http.StatusNotFound,
-	}
+	// User errors
+	ErrUserNotFound       = NewDomainError(ErrCodeNotFound, "user not found", http.StatusNotFound)
+	ErrUserAlreadyExists  = NewDomainError(ErrCodeAlreadyExists, "user already exists", http.StatusConflict)
+	ErrInvalidCredentials = NewDomainError(ErrCodeInvalidCredentials, "invalid credentials", http.StatusUnauthorized)
 
-	ErrUserAlreadyExists = &DomainError{
-		Code:    "USER_ALREADY_EXISTS",
-		Message: "User already exists",
-		Status:  http.StatusConflict,
-	}
+	// Workspace errors
+	ErrWorkspaceNotFound = NewDomainError(ErrCodeNotFound, "workspace not found", http.StatusNotFound)
+	ErrWorkspaceExists   = NewDomainError(ErrCodeAlreadyExists, "workspace already exists", http.StatusConflict)
 
-	ErrInvalidCredentials = &DomainError{
-		Code:    "INVALID_CREDENTIALS",
-		Message: "Invalid credentials",
-		Status:  http.StatusUnauthorized,
-	}
+	// VM errors
+	ErrVMNotFound      = NewDomainError(ErrCodeNotFound, "VM not found", http.StatusNotFound)
+	ErrVMAlreadyExists = NewDomainError(ErrCodeAlreadyExists, "VM already exists", http.StatusConflict)
 
-	ErrWorkspaceNotFound = &DomainError{
-		Code:    "WORKSPACE_NOT_FOUND",
-		Message: "Workspace not found",
-		Status:  http.StatusNotFound,
-	}
+	// Credential errors
+	ErrCredentialNotFound  = NewDomainError(ErrCodeNotFound, "credential not found", http.StatusNotFound)
+	ErrNoActiveCredentials = NewDomainError(ErrCodeNotFound, "no active credentials found", http.StatusNotFound)
 
-	ErrWorkspaceAccessDenied = &DomainError{
-		Code:    "WORKSPACE_ACCESS_DENIED",
-		Message: "Access denied to workspace",
-		Status:  http.StatusForbidden,
-	}
+	// Audit log errors
+	ErrAuditLogNotFound = NewDomainError(ErrCodeNotFound, "audit log not found", http.StatusNotFound)
 
-	ErrVMNotFound = &DomainError{
-		Code:    "VM_NOT_FOUND",
-		Message: "Virtual machine not found",
-		Status:  http.StatusNotFound,
-	}
+	// Plugin errors
+	ErrPluginNotFound  = NewDomainError(ErrCodePluginNotFound, "plugin not found", http.StatusNotFound)
+	ErrPluginNotActive = NewDomainError(ErrCodePluginError, "plugin not active", http.StatusBadRequest)
+	ErrInvalidProvider = NewDomainError(ErrCodeProviderError, "invalid provider", http.StatusBadRequest)
 
-	ErrVMAlreadyExists = &DomainError{
-		Code:    "VM_ALREADY_EXISTS",
-		Message: "Virtual machine already exists",
-		Status:  http.StatusConflict,
-	}
+	// Cloud provider errors
+	ErrProviderError   = NewDomainError(ErrCodeProviderError, "provider error", http.StatusBadGateway)
+	ErrProviderTimeout = NewDomainError(ErrCodeProviderTimeout, "provider timeout", http.StatusGatewayTimeout)
+	ErrProviderAuth    = NewDomainError(ErrCodeProviderAuth, "provider authentication error", http.StatusUnauthorized)
+	ErrProviderQuota   = NewDomainError(ErrCodeProviderQuota, "provider quota exceeded", http.StatusTooManyRequests)
 
-	ErrInvalidVMStatus = &DomainError{
-		Code:    "INVALID_VM_STATUS",
-		Message: "Invalid virtual machine status",
-		Status:  http.StatusBadRequest,
-	}
-
-	ErrProviderNotFound = &DomainError{
-		Code:    "PROVIDER_NOT_FOUND",
-		Message: "Cloud provider not found",
-		Status:  http.StatusNotFound,
-	}
-
-	ErrProviderNotInitialized = &DomainError{
-		Code:    "PROVIDER_NOT_INITIALIZED",
-		Message: "Cloud provider not initialized",
-		Status:  http.StatusBadRequest,
-	}
+	// General errors
+	ErrNotFound         = NewDomainError(ErrCodeNotFound, "resource not found", http.StatusNotFound)
+	ErrValidationFailed = NewDomainError(ErrCodeValidationFailed, "validation failed", http.StatusBadRequest)
+	ErrInternalError    = NewDomainError(ErrCodeInternalError, "internal server error", http.StatusInternalServerError)
 )
 
-// IsDomainError checks if an error is a domain error
+// Helper functions
 func IsDomainError(err error) bool {
 	_, ok := err.(*DomainError)
 	return ok
 }
 
-// IsValidationError checks if an error is a validation error
+func GetDomainError(err error) *DomainError {
+	if domainErr, ok := err.(*DomainError); ok {
+		return domainErr
+	}
+	return ErrInternalError
+}
+
+func IsNotFoundError(err error) bool {
+	if domainErr, ok := err.(*DomainError); ok {
+		return domainErr.Code == ErrCodeNotFound
+	}
+	return false
+}
+
 func IsValidationError(err error) bool {
-	_, ok := err.(*ValidationError)
-	return ok
+	if domainErr, ok := err.(*DomainError); ok {
+		return domainErr.Code == ErrCodeValidationFailed
+	}
+	return false
+}
+
+func IsUnauthorizedError(err error) bool {
+	if domainErr, ok := err.(*DomainError); ok {
+		return domainErr.Code == ErrCodeUnauthorized || domainErr.Code == ErrCodeInvalidCredentials
+	}
+	return false
 }

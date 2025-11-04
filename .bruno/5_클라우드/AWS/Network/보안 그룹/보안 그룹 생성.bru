@@ -1,0 +1,60 @@
+meta {
+  name: 보안 그룹 생성
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/network/security-groups
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "credential_id": "{{aws_credentialsId}}",
+    "name": "skyclust-sg-{{$timestamp}}",
+    "description": "Security group for SkyClust testing",
+    "vpc_id": "{{vpcId}}",
+    "region": "ap-northeast-3",
+    "tags": {
+      "Environment": "development",
+      "Project": "skyclust",
+      "CreatedBy": "bruno-api-test"
+    }
+  }
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.be.true;
+  });
+  
+  test("Response has security group data", function() {
+    expect(res.getBody().data).to.have.property('id');
+    expect(res.getBody().data).to.have.property('name');
+    expect(res.getBody().data).to.have.property('description');
+    expect(res.getBody().data).to.have.property('vpc_id');
+    expect(res.getBody().data).to.have.property('region');
+  });
+  
+  test("Security group name matches request", function() {
+    expect(res.getBody().data.name).to.equal(req.getBody().name);
+  });
+  
+  test("Security group VPC ID matches request", function() {
+    expect(res.getBody().data.vpc_id).to.equal(req.getBody().vpc_id);
+  });
+}

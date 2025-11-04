@@ -1,0 +1,72 @@
+meta {
+  name: 비용 분석 조회
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/cost-analysis/workspaces/{{workspaceId}}/breakdown?period=30d&dimension=service&resource_types=all
+  body: none
+  auth: bearer
+}
+
+docs {
+  # 비용 분석 조회
+  
+  워크스페이스의 비용을 카테고리별로 분석합니다.
+  
+  ## Parameters
+  - `workspaceId` (path): 워크스페이스 ID
+  - `period` (query, optional): 기간 (7d, 30d, 90d, 1y), 기본값: 30d
+  - `dimension` (query, optional): 분석 기준 (service, provider, region), 기본값: service
+  - `resource_types` (query, optional): 리소스 타입 필터 (comma-separated)
+    - `all`: 모든 리소스 타입 (기본값)
+    - `vm`, `vms`: VM만 조회
+    - `cluster`, `clusters`, `kubernetes`, `k8s`: Kubernetes 클러스터만 조회
+    - `node_group`, `node_groups`, `node_pool`, `node_pools`: Node Groups/Pools 포함
+  
+  ## Response
+  - `breakdown`: 카테고리별 비용 분석
+    - 각 카테고리별로:
+      - `cost`: 비용
+      - `percentage`: 비율 (%)
+      - `services`: 서비스별 세부 비용 (provider dimension인 경우)
+  
+  ## Dimension별 분석
+  
+  ### service (기본값)
+  - **EC2**: AWS EC2 인스턴스 비용
+  - **EKS**: AWS EKS 클러스터 비용
+  - **Compute**: GCP Compute Engine VM 비용
+  - **GKE**: GCP GKE 클러스터 비용
+  
+  ### provider
+  - **aws**: AWS 전체 비용 (EC2, EKS 등)
+  - **gcp**: GCP 전체 비용 (Compute, GKE 등)
+  
+  ### region
+  - 리전별 비용 분포
+  
+  ## 서비스 세분화
+  
+  비용은 다음과 같이 세분화됩니다:
+  - **VM**: Compute 서비스 (EC2, Compute Engine)
+  - **Kubernetes Cluster**: 관리형 쿠버네티스 서비스 (EKS, GKE)
+  - **Node Groups/Pools**: 노드 그룹/풀 비용
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains breakdown data", function() {
+    const body = res.getBody();
+    expect(body.data).to.have.property('breakdown');
+    expect(body.data.breakdown).to.be.an('object');
+  });
+}

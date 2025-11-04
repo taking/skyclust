@@ -1,0 +1,84 @@
+meta {
+  name: OIDC 프로바이더 목록 조회
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/oidc/providers/types
+  body: none
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains providers array", function() {
+    const body = res.getBody();
+    expect(body.data).to.have.property('providers');
+    expect(body.data.providers).to.be.an('array');
+  });
+  
+  test("Providers have valid structure", function() {
+    const providers = res.getBody().data.providers;
+    if (providers.length > 0) {
+      expect(providers[0]).to.be.a('string');
+      // Should be one of: google, github, azure, microsoft, custom
+      const validProviders = ['google', 'github', 'azure', 'microsoft', 'custom'];
+      expect(validProviders).to.include(providers[0]);
+    }
+  });
+  
+  test("Response includes custom provider type", function() {
+    const providers = res.getBody().data.providers;
+    expect(providers).to.include('custom');
+  });
+}
+
+docs {
+  # OIDC 프로바이더 목록 조회
+  
+  ## 기능
+  시스템에서 지원하는 OIDC 프로바이더 목록을 조회합니다.
+  
+  ## 반환 데이터
+  
+  ### providers (array)
+  - 지원하는 OIDC 프로바이더 타입 목록
+  - **값**: `["google", "github", "azure", "microsoft", "custom"]`
+  - **설명**: 사용자가 등록할 수 있는 프로바이더 타입들입니다. `custom`은 완전히 커스텀 프로바이더를 의미합니다.
+  
+  ## 사용 예시
+  
+  ```
+  GET /api/v1/oidc/providers/types
+  ```
+  
+  ### 응답 예시
+  ```json
+  {
+    "success": true,
+    "data": {
+      "providers": ["google", "github", "azure", "microsoft"]
+    },
+    "message": "Providers retrieved successfully"
+  }
+  ```
+  
+  ## 주의사항
+  
+  - 이 엔드포인트는 **시스템에서 지원하는 프로바이더 타입**만 반환합니다.
+  - **사용자가 등록한 프로바이더 목록**을 조회하려면 `GET /api/v1/oidc/providers`를 사용하세요 (인증 필요).
+  
+  ## 관련 엔드포인트
+  
+  - **시스템 프로바이더 타입**: `GET /api/v1/oidc/providers/types` (이 엔드포인트, 공개)
+  - **사용자 등록 프로바이더**: `GET /api/v1/oidc/providers` (인증 필요)
+}
+

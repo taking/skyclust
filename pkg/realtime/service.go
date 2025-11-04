@@ -5,17 +5,11 @@ import (
 	"fmt"
 	"net/http"
 
-	"cmp/internal/infrastructure/messaging"
-
-	"github.com/gorilla/websocket"
+	"skyclust/internal/infrastructure/messaging"
 )
 
 // Service defines the realtime service interface
 type Service interface {
-	// WebSocket management
-	UpgradeToWebSocket(w http.ResponseWriter, r *http.Request, userID string) (*websocket.Conn, error)
-	HandleWebSocket(conn *websocket.Conn)
-
 	// SSE management
 	CreateSSEConnection(w http.ResponseWriter, r *http.Request, userID, workspaceID string) (*SSEConnection, error)
 	HandleSSE(conn *SSEConnection)
@@ -38,45 +32,11 @@ type SSEConnection struct {
 func NewService(eventBus messaging.Bus) Service {
 	return &service{
 		eventBus: eventBus,
-		upgrader: websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool {
-				return true // Allow all origins in development
-			},
-		},
 	}
 }
 
 type service struct {
 	eventBus messaging.Bus
-	upgrader websocket.Upgrader
-}
-
-// UpgradeToWebSocket upgrades HTTP connection to WebSocket
-func (s *service) UpgradeToWebSocket(w http.ResponseWriter, r *http.Request, userID string) (*websocket.Conn, error) {
-	conn, err := s.upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return conn, nil
-}
-
-// HandleWebSocket handles WebSocket connections
-func (s *service) HandleWebSocket(conn *websocket.Conn) {
-	defer conn.Close()
-
-	for {
-		// Read message from client
-		_, message, err := conn.ReadMessage()
-		if err != nil {
-			break
-		}
-
-		// Echo message back (in production, handle different message types)
-		if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
-			break
-		}
-	}
 }
 
 // CreateSSEConnection creates a Server-Sent Events connection

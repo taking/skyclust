@@ -1,0 +1,74 @@
+meta {
+  name: 알림 설정 조회
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/notifications/preferences
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains notification preferences", function() {
+    expect(res.getBody()).to.have.property('email_enabled');
+    expect(res.getBody()).to.have.property('push_enabled');
+    expect(res.getBody()).to.have.property('browser_enabled');
+    expect(res.getBody()).to.have.property('in_app_enabled');
+  });
+  
+  test("Preferences have category settings", function() {
+    expect(res.getBody()).to.have.property('system_notifications');
+    expect(res.getBody()).to.have.property('vm_notifications');
+    expect(res.getBody()).to.have.property('cost_notifications');
+    expect(res.getBody()).to.have.property('security_notifications');
+  });
+  
+  test("Preferences have priority settings", function() {
+    expect(res.getBody()).to.have.property('low_priority_enabled');
+    expect(res.getBody()).to.have.property('medium_priority_enabled');
+    expect(res.getBody()).to.have.property('high_priority_enabled');
+    expect(res.getBody()).to.have.property('urgent_priority_enabled');
+  });
+}
+
+docs {
+  # 알림 설정 조회
+  
+  사용자의 알림 설정을 조회합니다.
+  
+  ## 반환 데이터
+  
+  ### 채널 설정
+  - `email_enabled`: 이메일 알림 활성화 여부
+  - `push_enabled`: 푸시 알림 활성화 여부
+  - `browser_enabled`: 브라우저 알림 활성화 여부
+  - `in_app_enabled`: 인앱 알림 활성화 여부
+  
+  ### 카테고리별 설정
+  - `system_notifications`: 시스템 알림
+  - `vm_notifications`: VM 관련 알림
+  - `cost_notifications`: 비용 관련 알림
+  - `security_notifications`: 보안 관련 알림
+  
+  ### 우선순위별 설정
+  - `low_priority_enabled`: 낮은 우선순위 알림
+  - `medium_priority_enabled`: 보통 우선순위 알림
+  - `high_priority_enabled`: 높은 우선순위 알림
+  - `urgent_priority_enabled`: 긴급 우선순위 알림
+  
+  ### 시간 설정
+  - `quiet_hours_start`: 조용한 시간 시작 (HH:MM 형식)
+  - `quiet_hours_end`: 조용한 시간 종료 (HH:MM 형식)
+  - `timezone`: 타임존 (예: Asia/Seoul)
+}

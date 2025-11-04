@@ -1,0 +1,93 @@
+meta {
+  name: 알림 목록 조회
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/notifications?limit=20&offset=0&unread_only=false&category=&priority=
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains notifications array and pagination", function() {
+    expect(res.getBody()).to.have.property('notifications');
+    expect(res.getBody().notifications).to.be.an('array');
+    expect(res.getBody()).to.have.property('pagination');
+  });
+  
+  test("Pagination has required fields", function() {
+    const pagination = res.getBody().pagination;
+    expect(pagination).to.have.property('total');
+    expect(pagination).to.have.property('limit');
+    expect(pagination).to.have.property('offset');
+    expect(pagination).to.have.property('current_page');
+    expect(pagination).to.have.property('total_pages');
+  });
+  
+  test("Notifications have required fields", function() {
+    const notifications = res.getBody().notifications;
+    if (notifications.length > 0) {
+      expect(notifications[0]).to.have.property('id');
+      expect(notifications[0]).to.have.property('title');
+      expect(notifications[0]).to.have.property('message');
+      expect(notifications[0]).to.have.property('type');
+      expect(notifications[0]).to.have.property('status');
+      expect(notifications[0]).to.have.property('created_at');
+    }
+  });
+}
+
+docs {
+  # 알림 목록 조회
+  
+  사용자의 알림 목록을 조회합니다.
+  
+  ## 쿼리 파라미터
+  
+  ### limit (선택)
+  - 페이지당 알림 개수
+  - **타입**: `integer`
+  - **기본값**: `20`
+  - **최대값**: `100`
+  
+  ### offset (선택)
+  - 페이지 오프셋
+  - **타입**: `integer`
+  - **기본값**: `0`
+  
+  ### unread_only (선택)
+  - 읽지 않은 알림만 조회
+  - **타입**: `boolean`
+  - **기본값**: `false`
+  
+  ### category (선택)
+  - 카테고리 필터 (system, vm, cost, security 등)
+  - **타입**: `string`
+  
+  ### priority (선택)
+  - 우선순위 필터 (low, medium, high, urgent)
+  - **타입**: `string`
+  
+  ## 반환 데이터
+  
+  ### notifications (array)
+  - 알림 목록 배열
+  
+  ### pagination (object)
+  - 페이지네이션 정보
+  - `total`: 전체 알림 개수
+  - `limit`: 페이지당 알림 개수
+  - `offset`: 현재 오프셋
+  - `current_page`: 현재 페이지 번호
+  - `total_pages`: 전체 페이지 수
+}

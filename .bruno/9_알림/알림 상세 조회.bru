@@ -1,0 +1,76 @@
+meta {
+  name: 알림 상세 조회
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/notifications/{{notificationId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains notification data", function() {
+    expect(res.getBody()).to.have.property('id');
+    expect(res.getBody()).to.have.property('title');
+    expect(res.getBody()).to.have.property('message');
+  });
+  
+  test("Notification ID matches", function() {
+    expect(res.getBody().id).to.equal('{{notificationId}}');
+  });
+}
+
+docs {
+  # 알림 상세 조회
+  
+  특정 알림의 상세 정보를 조회합니다.
+  
+  ## 경로 파라미터
+  
+  ### notificationId (필수)
+  - 알림 ID
+  - **타입**: `string` (UUID)
+  
+  ## 반환 데이터
+  
+  ### id (string)
+  - 알림 ID
+  
+  ### user_id (string)
+  - 사용자 ID
+  
+  ### title (string)
+  - 알림 제목
+  
+  ### message (string)
+  - 알림 메시지
+  
+  ### type (string)
+  - 알림 타입 (info, warning, error, success)
+  
+  ### category (string)
+  - 카테고리 (system, vm, cost, security 등)
+  
+  ### priority (string)
+  - 우선순위 (low, medium, high, urgent)
+  
+  ### is_read (boolean)
+  - 읽음 여부
+  
+  ### read_at (string, nullable)
+  - 읽은 시간
+  
+  ### created_at (string)
+  - 생성 시간
+}

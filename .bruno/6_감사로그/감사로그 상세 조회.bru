@@ -1,0 +1,93 @@
+meta {
+  name: 감사로그 상세 조회
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/admin/audit-logs/{{auditLogId}}
+  body: none
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains logs array and pagination", function() {
+    expect(res.getBody()).to.have.property('logs');
+    expect(res.getBody().logs).to.be.an('array');
+    expect(res.getBody()).to.have.property('pagination');
+  });
+  
+  test("Pagination has required fields", function() {
+    const pagination = res.getBody().pagination;
+    expect(pagination).to.have.property('total');
+    expect(pagination).to.have.property('limit');
+    expect(pagination).to.have.property('offset');
+  });
+  
+  test("Logs have required fields", function() {
+    const logs = res.getBody().logs;
+    if (logs.length > 0) {
+      expect(logs[0]).to.have.property('id');
+      expect(logs[0]).to.have.property('user_id');
+      expect(logs[0]).to.have.property('action');
+      expect(logs[0]).to.have.property('resource');
+      expect(logs[0]).to.have.property('created_at');
+    }
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # 감사로그 상세 조회
+  
+  특정 감사 로그의 상세 정보를 조회합니다. (RESTful: GET /admin/audit-logs/:id)
+  
+  ## Path Parameters
+  
+  ### id (필수)
+  - 감사 로그 UUID
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "user_id": "83973f6b-5d90-4e4e-9cf6-09e33f685a32",
+      "action": "user_login",
+      "resource": "/api/v1/auth/login",
+      "ip_address": "192.168.1.1",
+      "user_agent": "Mozilla/5.0...",
+      "details": {
+        "key": "value"
+      },
+      "created_at": "2025-10-31T10:30:00Z"
+    },
+    "message": "Audit log retrieved successfully"
+  }
+  ```
+  
+  ## 사용 예시
+  
+  ```
+  GET /api/v1/admin/audit-logs/123e4567-e89b-12d3-a456-426614174000
+  Authorization: Bearer your-jwt-token
+  ```
+}

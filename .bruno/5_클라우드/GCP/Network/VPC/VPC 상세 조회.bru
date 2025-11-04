@@ -1,0 +1,108 @@
+meta {
+  name: VPC 상세 조회
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/network/vpcs/{{vpcName}}?credential_id={{gcp_credentialsId}}
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{gcp_credentialsId}}
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has VPC data", function() {
+    expect(res.getBody().data).to.be.an('object');
+    expect(res.getBody().data.id).to.be.a('string');
+    expect(res.getBody().data.name).to.be.a('string');
+    expect(res.getBody().data.cidr_block).to.be.a('string');
+    expect(res.getBody().data.state).to.be.a('string');
+  });
+  
+  test("VPC has subnets", function() {
+    expect(res.getBody().data.subnets).to.be.an('array');
+  });
+  
+  test("VPC has firewall rules", function() {
+    expect(res.getBody().data.firewall_rules).to.be.an('array');
+  });
+}
+
+docs {
+  # GCP VPC 상세 조회
+  
+  특정 VPC의 상세 정보를 조회합니다.
+  
+  ## Path Parameters
+  
+  - `vpcName`: VPC 이름 (예: `skyclust-vpc-1234567890` 또는 전체 경로)
+  
+  ## Query Parameters
+  
+  - `credential_id`: GCP credential ID (필수)
+  - Note: VPC는 Global 리소스이므로 region 파라미터는 불필요
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "https://www.googleapis.com/compute/v1/projects/my-project/global/networks/skyclust-vpc-1234567890",
+      "name": "skyclust-vpc-1234567890",
+      "cidr_block": "",
+      "state": "available",
+      "is_default": false,
+      "network_mode": "subnet",
+      "routing_mode": "REGIONAL",
+      "mtu": 1460,
+      "auto_subnets": false,
+      "description": "Custom VPC for SkyClust GKE cluster",
+      "tags": {
+        "Environment": "development",
+        "Project": "skyclust"
+      }
+    },
+    "message": "GCP VPC retrieved successfully"
+  }
+  ```
+  
+  ## 사용 예시
+  
+  ```bash
+  GET /api/v1/gcp/network/vpcs/projects/my-project/global/networks/skyclust-vpc-1234567890?credential_id=123&region=us-central1
+  Authorization: Bearer your-jwt-token
+  ```
+  
+  ## 응답 필드
+  
+  - `id`: VPC 전체 경로
+  - `name`: VPC 이름
+  - `cidr_block`: IP 주소 범위
+  - `state`: VPC 상태
+  - `is_default`: 기본 VPC 여부
+  - `region`: GCP 리전
+  - `project_id`: GCP 프로젝트 ID
+  - `subnets`: 서브넷 목록
+  - `firewall_rules`: 방화벽 규칙 목록
+  - `routing`: 라우팅 설정
+  - `created_at`: 생성일
+  - `updated_at`: 수정일
+  - `tags`: 태그 정보
+}

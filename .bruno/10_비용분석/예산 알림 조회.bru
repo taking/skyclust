@@ -1,0 +1,67 @@
+meta {
+  name: 예산 알림 조회
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/cost-analysis/workspaces/{{workspaceId}}/budget-alerts?budget_limit=1000
+  body: none
+  auth: bearer
+}
+
+docs {
+  # 예산 알림 조회
+  
+  워크스페이스의 예산 사용량을 확인하고 알림을 조회합니다.
+  
+  ## Parameters
+  - `workspaceId` (path): 워크스페이스 ID
+  - `budget_limit` (query, optional): 예산 한도, 기본값: 없음 (알림 없음)
+  
+  ## Response
+  - `alerts`: 알림 배열
+    - `id`: 알림 ID
+    - `workspace_id`: 워크스페이스 ID
+    - `budget_limit`: 예산 한도
+    - `current_cost`: 현재 비용 (최근 1개월)
+    - `percentage`: 사용률 (%)
+    - `alert_level`: 알림 레벨 (warning, critical)
+    - `message`: 알림 메시지
+    - `created_at`: 생성 시간
+  
+  ## 알림 레벨
+  
+  - **warning**: 예산 사용률 80% 이상
+  - **critical**: 예산 사용률 100% 이상 (예산 초과)
+  
+  ## 비용 계산
+  
+  현재 비용은 최근 1개월(30일) 동안의 실제 비용을 기준으로 계산됩니다:
+  - Workspace에 할당된 모든 VM 비용
+  - Provider별 Credential을 사용한 실제 비용 조회
+  - AWS Cost Explorer API / GCP Billing API 사용
+  
+  ## 사용 예시
+  
+  ```bash
+  # 예산 한도 $1000 설정하여 알림 확인
+  GET /api/v1/cost-analysis/workspaces/{workspaceId}/budget-alerts?budget_limit=1000
+  ```
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains alerts", function() {
+    const body = res.getBody();
+    expect(body.data).to.have.property('alerts');
+    expect(body.data.alerts).to.be.an('array');
+  });
+}

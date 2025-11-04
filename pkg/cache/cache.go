@@ -7,21 +7,13 @@ import (
 	"time"
 )
 
-// Cache interface defines the cache operations
+// Cache interface defines the essential cache operations (simplified)
 type Cache interface {
 	Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error
 	Get(ctx context.Context, key string, dest interface{}) error
 	Delete(ctx context.Context, key string) error
 	Exists(ctx context.Context, key string) (bool, error)
-	SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error)
-	Increment(ctx context.Context, key string) (int64, error)
-	Decrement(ctx context.Context, key string) (int64, error)
-	Expire(ctx context.Context, key string, expiration time.Duration) error
-	TTL(ctx context.Context, key string) (time.Duration, error)
-	FlushAll(ctx context.Context) error
 	Close() error
-	Health(ctx context.Context) error
-	GetStats(ctx context.Context) (map[string]interface{}, error)
 }
 
 // Cache errors
@@ -41,19 +33,27 @@ func (e *CacheEntry) IsExpired() bool {
 	return time.Now().After(e.ExpiresAt)
 }
 
+// CacheStats holds basic cache statistics (simplified)
+type CacheStats struct {
+	Hits   int64 `json:"hits"`
+	Misses int64 `json:"misses"`
+	Keys   int64 `json:"keys"`
+}
+
+// HitRate calculates the cache hit rate
+func (s *CacheStats) HitRate() float64 {
+	total := s.Hits + s.Misses
+	if total == 0 {
+		return 0.0
+	}
+	return float64(s.Hits) / float64(total)
+}
+
 // MemoryCache implements an in-memory cache
 type MemoryCache struct {
 	mu    sync.RWMutex
 	items map[string]*CacheEntry
 	stats CacheStats
-}
-
-// CacheStats holds cache statistics
-type CacheStats struct {
-	Hits   int64
-	Misses int64
-	Sets   int64
-	Dels   int64
 }
 
 // NewMemoryCache creates a new in-memory cache
@@ -69,7 +69,7 @@ func NewMemoryCache() *MemoryCache {
 	return cache
 }
 
-// Set stores a value in the cache
+// Set stores a value in the cache (simplified)
 func (m *MemoryCache) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -80,12 +80,10 @@ func (m *MemoryCache) Set(ctx context.Context, key string, value interface{}, ex
 	}
 
 	m.items[key] = entry
-	m.stats.Sets++
-
 	return nil
 }
 
-// Get retrieves a value from the cache
+// Get retrieves a value from the cache (simplified)
 func (m *MemoryCache) Get(ctx context.Context, key string, dest interface{}) error {
 	m.mu.RLock()
 	entry, exists := m.items[key]
@@ -118,16 +116,12 @@ func (m *MemoryCache) Get(ctx context.Context, key string, dest interface{}) err
 	return nil
 }
 
-// Delete removes a value from the cache
+// Delete removes a value from the cache (simplified)
 func (m *MemoryCache) Delete(ctx context.Context, key string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if _, exists := m.items[key]; exists {
-		delete(m.items, key)
-		m.stats.Dels++
-	}
-
+	delete(m.items, key)
 	return nil
 }
 
@@ -151,147 +145,14 @@ func (m *MemoryCache) Exists(ctx context.Context, key string) (bool, error) {
 	return true, nil
 }
 
-// SetNX sets a value only if the key doesn't exist
-func (m *MemoryCache) SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error) {
+// Close closes the cache (simplified)
+func (m *MemoryCache) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if _, exists := m.items[key]; exists {
-		return false, nil
-	}
-
-	entry := &CacheEntry{
-		Value:     value,
-		ExpiresAt: time.Now().Add(expiration),
-	}
-
-	m.items[key] = entry
-	m.stats.Sets++
-
-	return true, nil
-}
-
-// Increment increments a numeric value in the cache
-func (m *MemoryCache) Increment(ctx context.Context, key string) (int64, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	entry, exists := m.items[key]
-	if !exists {
-		entry = &CacheEntry{
-			Value:     int64(0),
-			ExpiresAt: time.Now().Add(time.Hour), // Default expiration
-		}
-		m.items[key] = entry
-	}
-
-	if entry.IsExpired() {
-		entry.Value = int64(1)
-		return 1, nil
-	}
-
-	if val, ok := entry.Value.(int64); ok {
-		entry.Value = val + 1
-		return entry.Value.(int64), nil
-	}
-
-	// If not a number, start from 1
-	entry.Value = int64(1)
-	return 1, nil
-}
-
-// Decrement decrements a numeric value in the cache
-func (m *MemoryCache) Decrement(ctx context.Context, key string) (int64, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	entry, exists := m.items[key]
-	if !exists {
-		entry = &CacheEntry{
-			Value:     int64(0),
-			ExpiresAt: time.Now().Add(time.Hour), // Default expiration
-		}
-		m.items[key] = entry
-	}
-
-	if entry.IsExpired() {
-		entry.Value = int64(-1)
-		return -1, nil
-	}
-
-	if val, ok := entry.Value.(int64); ok {
-		entry.Value = val - 1
-		return entry.Value.(int64), nil
-	}
-
-	// If not a number, start from -1
-	entry.Value = int64(-1)
-	return -1, nil
-}
-
-// Expire sets expiration for a key
-func (m *MemoryCache) Expire(ctx context.Context, key string, expiration time.Duration) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	entry, exists := m.items[key]
-	if !exists {
-		return ErrCacheMiss
-	}
-
-	entry.ExpiresAt = time.Now().Add(expiration)
-	return nil
-}
-
-// TTL returns the time to live for a key
-func (m *MemoryCache) TTL(ctx context.Context, key string) (time.Duration, error) {
-	m.mu.RLock()
-	entry, exists := m.items[key]
-	m.mu.RUnlock()
-
-	if !exists {
-		return 0, ErrCacheMiss
-	}
-
-	if entry.IsExpired() {
-		return 0, ErrCacheMiss
-	}
-
-	return time.Until(entry.ExpiresAt), nil
-}
-
-// FlushAll removes all keys from the cache
-func (m *MemoryCache) FlushAll(ctx context.Context) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+	// Clear all items
 	m.items = make(map[string]*CacheEntry)
 	return nil
-}
-
-// Close closes the cache (no-op for memory cache)
-func (m *MemoryCache) Close() error {
-	return nil
-}
-
-// Health checks the health of the cache
-func (m *MemoryCache) Health(ctx context.Context) error {
-	return nil
-}
-
-// GetStats returns cache statistics
-func (m *MemoryCache) GetStats(ctx context.Context) (map[string]interface{}, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	stats := make(map[string]interface{})
-	stats["hits"] = m.stats.Hits
-	stats["misses"] = m.stats.Misses
-	stats["sets"] = m.stats.Sets
-	stats["dels"] = m.stats.Dels
-	stats["items"] = len(m.items)
-
-	return stats, nil
 }
 
 // cleanup removes expired entries periodically
@@ -301,8 +162,9 @@ func (m *MemoryCache) cleanup() {
 
 	for range ticker.C {
 		m.mu.Lock()
+		now := time.Now()
 		for key, entry := range m.items {
-			if entry.IsExpired() {
+			if now.After(entry.ExpiresAt) {
 				delete(m.items, key)
 			}
 		}

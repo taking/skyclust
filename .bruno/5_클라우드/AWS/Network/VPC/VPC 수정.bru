@@ -1,0 +1,59 @@
+meta {
+  name: VPC 수정
+  type: http
+  seq: 1
+}
+
+put {
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/network/vpcs/{{vpcId}}?credential_id={{aws_credentialsId}}&region=ap-northeast-3
+  body: json
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{aws_credentialsId}}
+  region: ap-northeast-3
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "name": "skyclust-vpc-updated-{{$timestamp}}",
+    "tags": {
+      "Environment": "development",
+      "Project": "skyclust",
+      "UpdatedBy": "bruno-api-test",
+      "UpdatedAt": "{{$timestamp}}"
+    }
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.be.true;
+  });
+  
+  test("Response has VPC data", function() {
+    expect(res.getBody().data).to.have.property('id');
+    expect(res.getBody().data).to.have.property('name');
+    expect(res.getBody().data).to.have.property('cidr_block');
+    expect(res.getBody().data).to.have.property('state');
+    expect(res.getBody().data).to.have.property('is_default');
+    expect(res.getBody().data).to.have.property('region');
+  });
+  
+  test("VPC name matches request", function() {
+    expect(res.getBody().data.name).to.equal(req.getBody().name);
+  });
+}

@@ -1,32 +1,25 @@
 services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: cmp-postgres
-    environment:
-      POSTGRES_DB: cmp
-      POSTGRES_USER: cmp_user
-      POSTGRES_PASSWORD: cmp_password
-      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
-    ports:
-      - "5432:5432"
+  redis:
+    image: redis:7-alpine
+    container_name: cmp-redis-prod
+    command: redis-server --requirepass ${CMP_REDIS_PASSWORD:-}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+      - redis_prod_data:/data
     networks:
       - cmp-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cmp_user -d cmp"]
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${CMP_REDIS_PASSWORD:-}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   nats:
     image: nats:2.10-alpine
-    container_name: cmp-nats
-    command: ["--port", "4222", "--http_port", "8222", "--jetstream"]
-    ports:
-      - "4222:4222"
-      - "8222:8222"
+    container_name: cmp-nats-prod
+    command: ["--port", "4222", "--http_port", "8222", "--jetstream", "--cluster_name", "cmp-cluster"]
+    volumes:
+      - nats_prod_data:/data
     networks:
       - cmp-network
     healthcheck:
@@ -34,78 +27,64 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   cmp-server:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: cmp-server
+    image: ${CMP_IMAGE:-cmp-server:latest}
+    container_name: cmp-server-prod
+    env_file:
+      - .env
     environment:
-      # Application Environment
+      # Override for production Docker environment
       - CMP_ENV=production
-      
-      # Server Configuration
-      - CMP_PORT=8080
-      - CMP_HOST=0.0.0.0
-      
-      # Database Configuration
-      - CMP_DB_HOST=postgres
-      - CMP_DB_PORT=5432
-      - CMP_DB_NAME=cmp
-      - CMP_DB_USER=cmp_user
-      - CMP_DB_PASSWORD=cmp_password
-      - CMP_DB_SSLMODE=disable
-      - CMP_DB_MAX_CONNS=25
-      - CMP_DB_MIN_CONNS=5
-      
-      # NATS Configuration
       - CMP_NATS_URL=nats://nats:4222
-      - CMP_NATS_CLUSTER=cmp-cluster
-      
-      # Plugins Configuration
-      - CMP_PLUGINS_DIR=/app/plugins
-      
-      # Security (These should be set via secrets in production)
-      - CMP_JWT_SECRET=${CMP_JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
-      - CMP_ENCRYPTION_KEY=${CMP_ENCRYPTION_KEY:-your-32-byte-encryption-key-here}
-      
-      # Cloud Provider Configuration (Optional - set as needed)
-      - CMP_AWS_ACCESS_KEY=${CMP_AWS_ACCESS_KEY:-}
-      - CMP_AWS_SECRET_KEY=${CMP_AWS_SECRET_KEY:-}
-      - CMP_AWS_REGION=${CMP_AWS_REGION:-us-east-1}
-      
-      - CMP_GCP_PROJECT_ID=${CMP_GCP_PROJECT_ID:-}
-      - CMP_GCP_CREDENTIALS_FILE=${CMP_GCP_CREDENTIALS_FILE:-}
-      - CMP_GCP_REGION=${CMP_GCP_REGION:-us-central1}
-      
-      - CMP_OPENSTACK_AUTH_URL=${CMP_OPENSTACK_AUTH_URL:-}
-      - CMP_OPENSTACK_USERNAME=${CMP_OPENSTACK_USERNAME:-}
-      - CMP_OPENSTACK_PASSWORD=${CMP_OPENSTACK_PASSWORD:-}
-      - CMP_OPENSTACK_PROJECT_ID=${CMP_OPENSTACK_PROJECT_ID:-}
-      - CMP_OPENSTACK_REGION=${CMP_OPENSTACK_REGION:-RegionOne}
-      
-      - CMP_PROXMOX_HOST=${CMP_PROXMOX_HOST:-}
-      - CMP_PROXMOX_USERNAME=${CMP_PROXMOX_USERNAME:-}
-      - CMP_PROXMOX_PASSWORD=${CMP_PROXMOX_PASSWORD:-}
-      - CMP_PROXMOX_REALM=${CMP_PROXMOX_REALM:-pve}
+      - CMP_REDIS_HOST=redis
     ports:
       - "8080:8080"
     depends_on:
-      postgres:
+      redis:
         condition: service_healthy
       nats:
         condition: service_healthy
     networks:
       - cmp-network
     volumes:
-      - ./plugins:/app/plugins
-      - ./config.docker.yaml:/app/config.yaml
+      - ./configs:/app/configs:ro
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  cmp-frontend:
+    image: ${CMP_FRONTEND_IMAGE:-cmp-frontend:latest}
+    container_name: cmp-frontend-prod
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=${CMP_FRONTEND_API_URL:-http://localhost:8080}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - cmp-server
+    networks:
+      - cmp-network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
-  postgres_data:
+  redis_prod_data:
+  nats_prod_data:
 
 networks:
   cmp-network:
     driver: bridge
-

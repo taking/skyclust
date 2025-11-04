@@ -1,0 +1,87 @@
+meta {
+  name: VPC 삭제
+  type: http
+  seq: 6
+}
+
+delete {
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/network/vpcs/{{vpcName}}?credential_id={{gcp_credentialsId}}
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{gcp_credentialsId}}
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has deletion message", function() {
+    expect(res.getBody().message).to.include("deleted successfully");
+  });
+}
+
+docs {
+  # GCP VPC 삭제
+  
+  VPC 네트워크를 삭제합니다.
+  
+  ## Path Parameters
+  
+  - `vpcId`: VPC ID (예: `projects/my-project/global/networks/skyclust-vpc-1234567890`)
+  
+  ## Query Parameters
+  
+  - `credential_id`: GCP credential ID (필수)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": null,
+    "message": "GCP VPC deleted successfully"
+  }
+  ```
+  
+  ## 주의사항
+  
+  - VPC 삭제는 **되돌릴 수 없습니다**
+  - VPC 내의 모든 서브넷과 리소스가 함께 삭제됩니다
+  - 삭제 작업은 비동기적으로 진행됩니다
+  - 삭제 완료까지 몇 분이 소요될 수 있습니다
+  - **기본 VPC는 삭제할 수 없습니다**
+  
+  ## 삭제 전 확인사항
+  
+  1. **서브넷 확인**: 모든 서브넷이 비어있는지 확인
+  2. **방화벽 규칙 확인**: 모든 방화벽 규칙이 삭제되었는지 확인
+  3. **리소스 확인**: VPC를 사용하는 모든 리소스가 제거되었는지 확인
+  4. **의존성 확인**: 다른 VPC와의 피어링 연결이 해제되었는지 확인
+  
+  ## 사용 예시
+  
+  ```bash
+  DELETE /api/v1/gcp/network/vpcs/projects/my-project/global/networks/skyclust-vpc-1234567890?credential_id=123
+  Authorization: Bearer your-jwt-token
+  ```
+  
+  ## 삭제 순서
+  
+  1. VPC 내의 모든 서브넷 삭제
+  2. VPC 내의 모든 방화벽 규칙 삭제
+  3. VPC 피어링 연결 해제
+  4. VPC 리소스 정리
+  5. VPC 삭제 완료
+}

@@ -1,0 +1,151 @@
+meta {
+  name: OIDC 프로바이더 수정
+  type: http
+  seq: 10
+}
+
+put {
+  url: {{baseUrl}}/api/{{apiVersion}}/oidc/providers/{{providerId}}
+  body: json
+  auth: bearer
+}
+
+body:json {
+  {
+    "name": "My Google OIDC (Updated)",
+    "client_id": "updated-client-id",
+    "client_secret": "updated-client-secret",
+    "redirect_url": "http://localhost:8080/api/v1/auth/oidc/google/callback",
+    "scopes": "openid,profile,email,offline_access",
+    "enabled": true
+  }
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains updated provider", function() {
+    const body = res.getBody();
+    expect(body.data).to.have.property('id');
+    expect(body.data).to.have.property('name');
+    expect(body.data).to.have.property('provider_type');
+  });
+  
+  test("Provider name is updated", function() {
+    const name = res.getBody().data.name;
+    expect(name).to.include('Updated');
+  });
+  
+  test("Updated at timestamp is present", function() {
+    expect(res.getBody().data).to.have.property('updated_at');
+  });
+}
+
+docs {
+  # OIDC 프로바이더 수정
+  
+  ## 기능
+  등록된 OIDC 프로바이더의 설정을 수정합니다. 모든 필드는 선택 사항이며, 제공된 필드만 업데이트됩니다.
+  
+  ## 파라미터
+  
+  ### providerId (경로)
+  - 프로바이더 ID
+  - **타입**: `string` (UUID)
+  
+  ## 요청 본문 (모든 필드 선택)
+  
+  ### name (선택)
+  - 프로바이더 이름
+  - **타입**: `string`
+  - **길이**: 1-100자
+  - **유니크**: 사용자별로 고유해야 합니다.
+  
+  ### client_id (선택)
+  - OAuth Client ID
+  
+  ### client_secret (선택)
+  - OAuth Client Secret
+  - **보안**: 암호화되어 저장됩니다.
+  
+  ### redirect_url (선택)
+  - 리디렉션 URL
+  - **타입**: `string` (URL)
+  
+  ### auth_url (선택)
+  - 인증 URL (커스텀 프로바이더용)
+  
+  ### token_url (선택)
+  - 토큰 교환 URL (커스텀 프로바이더용)
+  
+  ### user_info_url (선택)
+  - 사용자 정보 URL (커스텀 프로바이더용)
+  
+  ### scopes (선택)
+  - OAuth Scopes
+  
+  ### enabled (선택)
+  - 활성화 여부
+  - **타입**: `boolean`
+  
+  ## 반환 데이터
+  
+  ### id (string)
+  - 프로바이더 ID
+  
+  ### name (string)
+  - 업데이트된 프로바이더 이름
+  
+  ### provider_type (string)
+  - 프로바이더 타입 (변경 불가)
+  
+  ### enabled (boolean)
+  - 활성화 여부
+  
+  ### updated_at (string)
+  - 수정 시간
+  
+  ## 사용 예시
+  
+  ### 프로바이더 이름 변경
+  ```json
+  {
+    "name": "My Google Account (Updated)"
+  }
+  ```
+  
+  ### Client Secret 업데이트
+  ```json
+  {
+    "client_secret": "new-client-secret"
+  }
+  ```
+  
+  ### 여러 필드 동시 업데이트
+  ```json
+  {
+    "name": "My Google OIDC",
+    "redirect_url": "https://example.com/callback",
+    "scopes": "openid,profile,email,offline_access",
+    "enabled": true
+  }
+  ```
+  
+  ## 주의사항
+  
+  - 프로바이더 이름은 사용자별로 고유해야 합니다 (기존 이름과 중복 불가).
+  - `provider_type`은 수정할 수 없습니다.
+  - 제공하지 않은 필드는 기존 값이 유지됩니다.
+  - 다른 사용자의 프로바이더를 수정하려고 하면 403 Forbidden 에러가 반환됩니다.
+}
+

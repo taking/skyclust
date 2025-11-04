@@ -1,0 +1,102 @@
+meta {
+  name: 감사로그 정리
+  type: http
+  seq: 9
+}
+
+delete {
+  url: {{baseUrl}}/api/{{apiVersion}}/admin/audit-logs?retention_days=90
+  body: none
+  auth: bearer
+}
+
+params:query {
+  retention_days: 90
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains cleanup results", function() {
+    const body = res.getBody();
+    expect(body).to.have.property('message');
+    expect(body).to.have.property('retention_days');
+    expect(body).to.have.property('deleted_count');
+  });
+  
+  test("Cleanup results have valid structure", function() {
+    const body = res.getBody();
+    expect(body.retention_days).to.be.a('number');
+    expect(body.retention_days).to.be.greaterThan(0);
+    expect(body.deleted_count).to.be.a('number');
+    expect(body.deleted_count).to.be.at.least(0);
+  });
+  
+  test("Message indicates success", function() {
+    expect(res.getBody().message).to.include('successfully');
+  });
+}
+
+docs {
+  # 감사로그 정리
+  
+  ## 기능
+  지정된 보관 기간보다 오래된 감사 로그를 삭제합니다. (RESTful: DELETE /admin/audit-logs?retention_days=90)
+  
+  보관 기간(retention_days)보다 오래된 로그만 삭제되며, 삭제된 로그 수를 반환합니다.
+  
+  ## 파라미터
+  
+  ### retention_days (필수)
+  - 보관 기간 (일 단위)
+  - **기본값**: 90일
+  - **최소값**: 1 (0은 허용되지 않음 - 모든 로그 삭제 방지)
+  - **설명**: 현재 시간 기준으로 `retention_days`일보다 오래된 로그를 삭제합니다.
+  
+  ## 반환 데이터
+  
+  ### message (string)
+  - 작업 완료 메시지
+  
+  ### retention_days (int64)
+  - 사용된 보관 기간 (일 단위)
+  
+  ### deleted_count (int64)
+  - 실제로 삭제된 감사 로그 수
+  - 0 이상의 정수
+  
+  ## 사용 예시
+  
+  ### 기본 보관 기간 (90일)
+  ```
+  DELETE /api/v1/admin/audit-logs?retention_days=90
+  ```
+  
+  ### 사용자 정의 보관 기간
+  ```
+  DELETE /api/v1/admin/audit-logs?retention_days=180
+  ```
+  
+  ### 짧은 보관 기간 (30일)
+  ```
+  DELETE /api/v1/admin/audit-logs?retention_days=30
+  ```
+  
+  ## 주의사항
+  
+  - 이 작업은 **되돌릴 수 없습니다**. 삭제된 로그는 복구할 수 없습니다.
+  - `retention_days`가 0인 경우 요청이 거부됩니다 (모든 로그 삭제 방지).
+  - 작업 실행 전 삭제될 로그 수를 확인하려면 `/stats` 엔드포인트를 사용하세요.
+  - 대량의 로그를 삭제하는 경우 시간이 걸릴 수 있습니다.
+}
+

@@ -1,339 +1,334 @@
 package database
 
 import (
-	"context"
-	"errors"
 	"fmt"
-	"log"
+	"skyclust/internal/domain"
+	pkglogger "skyclust/pkg/logger"
 	"time"
 
+	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
+	gormLogger "gorm.io/gorm/logger"
 )
 
-type postgresService struct {
-	db *gorm.DB
+// PostgresConfig holds PostgreSQL configuration
+type PostgresConfig struct {
+	Host            string
+	Port            int
+	User            string
+	Password        string
+	Database        string
+	SSLMode         string
+	MaxConns        int
+	MinConns        int
+	ConnMaxLifetime time.Duration
+	ConnMaxIdleTime time.Duration
+	SlowQueryLog    bool
+	SlowQueryTime   time.Duration
 }
 
-// GetDB returns the underlying GORM database instance
-func (p *postgresService) GetDB() *gorm.DB {
+// PostgresService implements the database service interface
+type PostgresService struct {
+	db        *gorm.DB
+	config    PostgresConfig
+	optimizer *DatabaseOptimizer
+}
+
+// NewPostgresService creates a new PostgreSQL service
+func NewPostgresService(config PostgresConfig) (*PostgresService, error) {
+	// Build DSN
+	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		config.Host, config.Port, config.User, config.Password, config.Database, config.SSLMode)
+
+	// Configure GORM logger - use silent mode for now
+	logger := gormLogger.Default.LogMode(gormLogger.Silent)
+
+	// Configure GORM
+	gormConfig := &gorm.Config{
+		Logger: logger,
+		NowFunc: func() time.Time {
+			return time.Now().UTC()
+		},
+		PrepareStmt: true, // Enable prepared statements for better performance
+	}
+
+	// Connect to database
+	db, err := gorm.Open(postgres.Open(dsn), gormConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	// Get underlying sql.DB for connection pool configuration
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
+
+	// Configure connection pool with optimized settings
+	sqlDB.SetMaxOpenConns(config.MaxConns)
+	sqlDB.SetMaxIdleConns(config.MinConns)
+
+	// Set connection lifetime (default to 1 hour if not specified)
+	if config.ConnMaxLifetime == 0 {
+		config.ConnMaxLifetime = time.Hour
+	}
+	sqlDB.SetConnMaxLifetime(config.ConnMaxLifetime)
+
+	// Set idle connection timeout (default to 30 minutes if not specified)
+	if config.ConnMaxIdleTime == 0 {
+		config.ConnMaxIdleTime = 30 * time.Minute
+	}
+	sqlDB.SetConnMaxIdleTime(config.ConnMaxIdleTime)
+
+	// Test connection
+	if err := sqlDB.Ping(); err != nil {
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	service := &PostgresService{
+		db:        db,
+		config:    config,
+		optimizer: NewDatabaseOptimizer(db),
+	}
+
+	// Enable UUID extension
+	if err := db.Exec("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"").Error; err != nil {
+		// Log warning but don't fail startup - some databases might not support this
+		pkglogger.DefaultLogger.GetLogger().Warn("Failed to enable uuid-ossp extension", zap.Error(err))
+	}
+
+	// Migrate credentials table from user-based to workspace-based
+	if err := migrateCredentialsToWorkspace(db); err != nil {
+		pkglogger.DefaultLogger.GetLogger().Warn("Failed to migrate credentials to workspace-based", zap.Error(err))
+	}
+
+	// Auto-migrate the schema
+	if err := db.AutoMigrate(
+		&domain.User{},
+		&domain.Workspace{},
+		&domain.Credential{},
+		&domain.AuditLog{},
+		&domain.WorkspaceUser{},
+		&domain.UserRole{},
+		&domain.RolePermission{},
+		&domain.OIDCProvider{},
+		&domain.Notification{},
+		&domain.NotificationPreferences{},
+		&domain.VM{},
+	); err != nil {
+		return nil, fmt.Errorf("failed to auto-migrate schema: %w", err)
+	}
+
+	// Create performance indexes
+	if err := service.optimizer.CreateIndexes(); err != nil {
+		// Log warning but don't fail startup
+		pkglogger.DefaultLogger.GetLogger().Warn("Failed to create some indexes", zap.Error(err))
+	}
+
+	// Optimize queries
+	if err := service.optimizer.OptimizeQueries(); err != nil {
+		// Log warning but don't fail startup
+		pkglogger.DefaultLogger.GetLogger().Warn("Failed to optimize queries", zap.Error(err))
+	}
+
+	pkglogger.DefaultLogger.GetLogger().Info("Successfully connected to PostgreSQL database")
+	return service, nil
+}
+
+// GetDB returns the GORM database instance
+func (p *PostgresService) GetDB() *gorm.DB {
 	return p.db
 }
 
-func NewPostgresService(config Config) Service {
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%d sslmode=%s",
-		config.Host, config.User, config.Password, config.Database, config.Port, config.SSLMode)
-
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
-	})
-	if err != nil {
-		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
-	}
-
-	// Skip AutoMigrate for now to avoid constraint conflicts
-	// The database schema is already created by init-db.sql
-	log.Println("Skipping AutoMigrate - using existing schema")
-
-	log.Println("Connected to PostgreSQL with GORM")
-	return &postgresService{db: db}
-}
-
-// User management methods
-func (p *postgresService) CreateUser(ctx context.Context, user *User) error {
-	gormUser := user.ToGormUser()
-	result := p.db.WithContext(ctx).Create(gormUser)
-	if result.Error != nil {
-		return result.Error
-	}
-	// Update the original user with the generated ID
-	user.ID = gormUser.ID
-	user.CreatedAt = gormUser.CreatedAt
-	user.UpdatedAt = gormUser.UpdatedAt
-	return nil
-}
-
-func (p *postgresService) GetUser(ctx context.Context, userID string) (*User, error) {
-	var gormUser GormUser
-	result := p.db.WithContext(ctx).Where("id = ?", userID).First(&gormUser)
-	if result.Error != nil {
-		return nil, result.Error
-	}
-	return gormUser.ToUser(), nil
-}
-
-func (p *postgresService) GetUserByEmail(ctx context.Context, email string) (*User, error) {
-	var gormUser GormUser
-	result := p.db.WithContext(ctx).Where("email = ?", email).First(&gormUser)
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return nil, nil // User not found, return nil without error
-		}
-		return nil, result.Error
-	}
-	return gormUser.ToUser(), nil
-}
-
-func (p *postgresService) UpdateUser(ctx context.Context, user *User) error {
-	gormUser := user.ToGormUser()
-	result := p.db.WithContext(ctx).Save(gormUser)
-	return result.Error
-}
-
-func (p *postgresService) DeleteUser(ctx context.Context, userID string) error {
-	result := p.db.WithContext(ctx).Delete(&GormUser{}, "id = ?", userID)
-	return result.Error
-}
-
-// Token management methods
-func (p *postgresService) StoreToken(ctx context.Context, userID, token string) error {
-	gormToken := &GormToken{
-		Token:     token,
-		UserID:    userID,
-		ExpiresAt: time.Now().Add(24 * time.Hour),
-	}
-	result := p.db.WithContext(ctx).Create(gormToken)
-	return result.Error
-}
-
-func (p *postgresService) ValidateToken(ctx context.Context, token string) (string, error) {
-	var gormToken GormToken
-	result := p.db.WithContext(ctx).Where("token = ? AND expires_at > ?", token, time.Now()).First(&gormToken)
-	if result.Error != nil {
-		return "", result.Error
-	}
-	return gormToken.UserID, nil
-}
-
-func (p *postgresService) DeleteToken(ctx context.Context, token string) error {
-	result := p.db.WithContext(ctx).Delete(&GormToken{}, "token = ?", token)
-	return result.Error
-}
-
-// Workspace management methods
-func (p *postgresService) CreateWorkspace(ctx context.Context, workspace *Workspace) error {
-	gormWorkspace := workspace.ToGormWorkspace()
-	result := p.db.WithContext(ctx).Create(gormWorkspace)
-	if result.Error != nil {
-		return result.Error
-	}
-	// Update the original workspace with the generated ID
-	workspace.ID = gormWorkspace.ID
-	workspace.CreatedAt = gormWorkspace.CreatedAt
-	workspace.UpdatedAt = gormWorkspace.UpdatedAt
-	return nil
-}
-
-func (p *postgresService) GetWorkspace(ctx context.Context, workspaceID string) (*Workspace, error) {
-	var gormWorkspace GormWorkspace
-	result := p.db.WithContext(ctx).Where("id = ?", workspaceID).First(&gormWorkspace)
-	if result.Error != nil {
-		return nil, result.Error
-	}
-	return gormWorkspace.ToWorkspace(), nil
-}
-
-func (p *postgresService) GetWorkspaceByID(ctx context.Context, workspaceID string) (*Workspace, error) {
-	// This is the same as GetWorkspace, just for interface compatibility
-	return p.GetWorkspace(ctx, workspaceID)
-}
-
-func (p *postgresService) ListWorkspaces(ctx context.Context) ([]*Workspace, error) {
-	var gormWorkspaces []GormWorkspace
-	result := p.db.WithContext(ctx).Find(&gormWorkspaces)
-	if result.Error != nil {
-		return nil, result.Error
-	}
-
-	workspaces := make([]*Workspace, len(gormWorkspaces))
-	for i, gw := range gormWorkspaces {
-		workspaces[i] = gw.ToWorkspace()
-	}
-	return workspaces, nil
-}
-
-func (p *postgresService) ListWorkspacesByUser(ctx context.Context, userID string) ([]*Workspace, error) {
-	// This is the same as GetUserWorkspaces, just for interface compatibility
-	return p.GetUserWorkspaces(ctx, userID)
-}
-
-func (p *postgresService) UpdateWorkspace(ctx context.Context, workspace *Workspace) error {
-	gormWorkspace := workspace.ToGormWorkspace()
-	result := p.db.WithContext(ctx).Save(gormWorkspace)
-	return result.Error
-}
-
-func (p *postgresService) DeleteWorkspace(ctx context.Context, workspaceID string) error {
-	result := p.db.WithContext(ctx).Delete(&GormWorkspace{}, "id = ?", workspaceID)
-	return result.Error
-}
-
-// User-Workspace relationship methods
-func (p *postgresService) AddUserToWorkspace(ctx context.Context, userID, workspaceID string, role string) error {
-	gormWorkspaceUser := &GormWorkspaceUser{
-		UserID:      userID,
-		WorkspaceID: workspaceID,
-		Role:        role,
-	}
-	result := p.db.WithContext(ctx).Create(gormWorkspaceUser)
-	return result.Error
-}
-
-func (p *postgresService) RemoveUserFromWorkspace(ctx context.Context, userID, workspaceID string) error {
-	result := p.db.WithContext(ctx).Delete(&GormWorkspaceUser{}, "user_id = ? AND workspace_id = ?", userID, workspaceID)
-	return result.Error
-}
-
-func (p *postgresService) GetWorkspaceUsers(ctx context.Context, workspaceID string) ([]*WorkspaceUser, error) {
-	var gormWorkspaceUsers []GormWorkspaceUser
-	result := p.db.WithContext(ctx).Where("workspace_id = ?", workspaceID).Find(&gormWorkspaceUsers)
-	if result.Error != nil {
-		return nil, result.Error
-	}
-
-	workspaceUsers := make([]*WorkspaceUser, len(gormWorkspaceUsers))
-	for i, gwu := range gormWorkspaceUsers {
-		workspaceUsers[i] = &WorkspaceUser{
-			UserID:      gwu.UserID,
-			WorkspaceID: gwu.WorkspaceID,
-			Role:        gwu.Role,
-			JoinedAt:    gwu.JoinedAt,
-		}
-	}
-	return workspaceUsers, nil
-}
-
-func (p *postgresService) GetUserWorkspaces(ctx context.Context, userID string) ([]*Workspace, error) {
-	var gormWorkspaces []GormWorkspace
-	result := p.db.WithContext(ctx).
-		Joins("JOIN workspace_users ON workspaces.id = workspace_users.workspace_id").
-		Where("workspace_users.user_id = ?", userID).
-		Find(&gormWorkspaces)
-	if result.Error != nil {
-		return nil, result.Error
-	}
-
-	workspaces := make([]*Workspace, len(gormWorkspaces))
-	for i, gw := range gormWorkspaces {
-		workspaces[i] = gw.ToWorkspace()
-	}
-	return workspaces, nil
-}
-
-// Credentials management methods
-func (p *postgresService) CreateCredentials(ctx context.Context, cred *Credentials) error {
-	gormCred := cred.ToGormCredentials()
-	result := p.db.WithContext(ctx).Create(gormCred)
-	if result.Error != nil {
-		return result.Error
-	}
-	// Update the original credentials with the generated ID
-	cred.ID = gormCred.ID
-	cred.CreatedAt = gormCred.CreatedAt
-	cred.UpdatedAt = gormCred.UpdatedAt
-	return nil
-}
-
-func (p *postgresService) GetCredentials(ctx context.Context, workspaceID, credID string) (*Credentials, error) {
-	var gormCred GormCredentials
-	result := p.db.WithContext(ctx).Where("id = ? AND workspace_id = ?", credID, workspaceID).First(&gormCred)
-	if result.Error != nil {
-		return nil, result.Error
-	}
-	return gormCred.ToCredentials(), nil
-}
-
-func (p *postgresService) ListCredentials(ctx context.Context, workspaceID string) ([]*Credentials, error) {
-	var gormCreds []GormCredentials
-	result := p.db.WithContext(ctx).Where("workspace_id = ?", workspaceID).Find(&gormCreds)
-	if result.Error != nil {
-		return nil, result.Error
-	}
-
-	credentials := make([]*Credentials, len(gormCreds))
-	for i, gc := range gormCreds {
-		credentials[i] = gc.ToCredentials()
-	}
-	return credentials, nil
-}
-
-func (p *postgresService) UpdateCredentials(ctx context.Context, cred *Credentials) error {
-	gormCred := cred.ToGormCredentials()
-	result := p.db.WithContext(ctx).Save(gormCred)
-	return result.Error
-}
-
-func (p *postgresService) DeleteCredentials(ctx context.Context, workspaceID, credID string) error {
-	result := p.db.WithContext(ctx).Delete(&GormCredentials{}, "id = ? AND workspace_id = ?", credID, workspaceID)
-	return result.Error
-}
-
-// Execution management methods
-func (p *postgresService) CreateExecution(ctx context.Context, execution *Execution) error {
-	gormExecution := execution.ToGormExecution()
-	result := p.db.WithContext(ctx).Create(gormExecution)
-	if result.Error != nil {
-		return result.Error
-	}
-	// Update the original execution with the generated ID
-	execution.ID = gormExecution.ID
-	execution.StartedAt = gormExecution.StartedAt
-	return nil
-}
-
-func (p *postgresService) GetExecution(ctx context.Context, workspaceID, executionID string) (*Execution, error) {
-	var gormExecution GormExecution
-	result := p.db.WithContext(ctx).Where("id = ? AND workspace_id = ?", executionID, workspaceID).First(&gormExecution)
-	if result.Error != nil {
-		return nil, result.Error
-	}
-	return gormExecution.ToExecution(), nil
-}
-
-func (p *postgresService) ListExecutions(ctx context.Context, workspaceID string) ([]*Execution, error) {
-	var gormExecutions []GormExecution
-	result := p.db.WithContext(ctx).Where("workspace_id = ?", workspaceID).Find(&gormExecutions)
-	if result.Error != nil {
-		return nil, result.Error
-	}
-
-	executions := make([]*Execution, len(gormExecutions))
-	for i, ge := range gormExecutions {
-		executions[i] = ge.ToExecution()
-	}
-	return executions, nil
-}
-
-func (p *postgresService) UpdateExecution(ctx context.Context, execution *Execution) error {
-	gormExecution := execution.ToGormExecution()
-	result := p.db.WithContext(ctx).Save(gormExecution)
-	return result.Error
-}
-
-func (p *postgresService) UpdateExecutionStatus(ctx context.Context, workspaceID, executionID, status string) error {
-	result := p.db.WithContext(ctx).Model(&GormExecution{}).
-		Where("id = ? AND workspace_id = ?", executionID, workspaceID).
-		Update("status", status)
-	return result.Error
-}
-
-// State management methods
-func (p *postgresService) SaveState(ctx context.Context, workspaceID string, state map[string]interface{}) error {
-	// This would be implemented if we add a state table
-	return fmt.Errorf("not implemented")
-}
-
-func (p *postgresService) GetState(ctx context.Context, workspaceID string) (map[string]interface{}, error) {
-	// This would be implemented if we add a state table
-	return nil, fmt.Errorf("not implemented")
-}
-
-// Ping checks database connectivity
-func (p *postgresService) Ping(ctx context.Context) error {
+// Close closes the database connection
+func (p *PostgresService) Close() error {
 	sqlDB, err := p.db.DB()
 	if err != nil {
 		return err
 	}
-	return sqlDB.PingContext(ctx)
+	return sqlDB.Close()
+}
+
+// Health checks the database health
+func (p *PostgresService) Health() error {
+	sqlDB, err := p.db.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.Ping()
+}
+
+// GetStats returns database performance statistics
+func (p *PostgresService) GetStats() (*DatabaseStats, error) {
+	return p.optimizer.GetDatabaseStats()
+}
+
+// Optimize performs database optimization tasks
+func (p *PostgresService) Optimize() error {
+	return p.optimizer.OptimizeQueries()
+}
+
+// CleanupOldData removes old data to maintain performance
+func (p *PostgresService) CleanupOldData() error {
+	return p.optimizer.CleanupOldData()
+}
+
+// migrateCredentialsToWorkspace migrates credentials from user-based to workspace-based
+func migrateCredentialsToWorkspace(db *gorm.DB) error {
+	// Check if credentials table exists
+	var hasTable bool
+	if err := db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'credentials')").Scan(&hasTable).Error; err != nil {
+		return err
+	}
+
+	if !hasTable {
+		// Table doesn't exist, migration will be handled by AutoMigrate
+		return nil
+	}
+
+	// Check if workspace_id column exists
+	var hasWorkspaceID bool
+	if err := db.Raw("SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'credentials' AND column_name = 'workspace_id')").Scan(&hasWorkspaceID).Error; err != nil {
+		return err
+	}
+
+	if !hasWorkspaceID {
+		// Add workspace_id column (nullable initially)
+		if err := db.Exec("ALTER TABLE credentials ADD COLUMN IF NOT EXISTS workspace_id UUID").Error; err != nil {
+			return fmt.Errorf("failed to add workspace_id column: %w", err)
+		}
+
+		// Add created_by column (nullable initially)
+		if err := db.Exec("ALTER TABLE credentials ADD COLUMN IF NOT EXISTS created_by UUID").Error; err != nil {
+			return fmt.Errorf("failed to add created_by column: %w", err)
+		}
+
+		// Migrate existing data: create a default workspace for each user and assign credentials
+		// Create workspaces for users who have credentials but no workspace
+		createWorkspacesSQL := `
+			INSERT INTO workspaces (id, name, description, owner_id, created_at, updated_at)
+			SELECT DISTINCT
+				gen_random_uuid(),
+				u.username || '''s Workspace',
+				'Default workspace migrated from user credentials',
+				u.id,
+				NOW(),
+				NOW()
+			FROM users u
+			WHERE EXISTS (
+				SELECT 1 FROM credentials c WHERE c.user_id = u.id
+			)
+			AND NOT EXISTS (
+				SELECT 1 FROM workspaces w WHERE w.owner_id = u.id
+			)
+		`
+		if err := db.Exec(createWorkspacesSQL).Error; err != nil {
+			pkglogger.DefaultLogger.GetLogger().Warn("Failed to create workspaces for credential migration", zap.Error(err))
+		}
+
+		// Update credentials with workspace_id and created_by
+		updateCredentialsSQL := `
+			UPDATE credentials c
+			SET 
+				workspace_id = w.id,
+				created_by = c.user_id
+			FROM workspaces w
+			WHERE w.owner_id = c.user_id
+			AND c.workspace_id IS NULL
+		`
+		if err := db.Exec(updateCredentialsSQL).Error; err != nil {
+			pkglogger.DefaultLogger.GetLogger().Warn("Failed to update credentials with workspace_id", zap.Error(err))
+		}
+
+		// For credentials where user doesn't have a workspace, use the first available workspace
+		fallbackUpdateSQL := `
+			UPDATE credentials c
+			SET 
+				workspace_id = (SELECT id FROM workspaces LIMIT 1),
+				created_by = c.user_id
+			WHERE c.workspace_id IS NULL
+			AND EXISTS (SELECT 1 FROM workspaces)
+		`
+		if err := db.Exec(fallbackUpdateSQL).Error; err != nil {
+			pkglogger.DefaultLogger.GetLogger().Warn("Failed to set fallback workspace_id for credentials", zap.Error(err))
+		}
+
+		// Delete credentials that couldn't be migrated (no workspace available)
+		if err := db.Exec("DELETE FROM credentials WHERE workspace_id IS NULL").Error; err != nil {
+			pkglogger.DefaultLogger.GetLogger().Warn("Failed to delete unmigrated credentials", zap.Error(err))
+		}
+	}
+
+	// Now make workspace_id NOT NULL if it's still nullable
+	var isNullable string
+	if err := db.Raw("SELECT is_nullable FROM information_schema.columns WHERE table_name = 'credentials' AND column_name = 'workspace_id'").Scan(&isNullable).Error; err == nil {
+		if isNullable == "YES" {
+			// Set default workspace_id for any remaining null values
+			if err := db.Exec(`
+				UPDATE credentials 
+				SET workspace_id = (SELECT id FROM workspaces LIMIT 1)
+				WHERE workspace_id IS NULL
+			`).Error; err != nil {
+				pkglogger.DefaultLogger.GetLogger().Warn("Failed to set default workspace_id", zap.Error(err))
+			}
+
+			// Make workspace_id NOT NULL
+			if err := db.Exec("ALTER TABLE credentials ALTER COLUMN workspace_id SET NOT NULL").Error; err != nil {
+				pkglogger.DefaultLogger.GetLogger().Warn("Failed to set workspace_id NOT NULL", zap.Error(err))
+			}
+		}
+	}
+
+	// Check if user_id column still exists and remove it completely
+	var hasUserID bool
+	if err := db.Raw("SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'credentials' AND column_name = 'user_id')").Scan(&hasUserID).Error; err == nil {
+		if hasUserID {
+			// Check if there are any foreign key constraints referencing user_id
+			var hasFK bool
+			fkCheckSQL := `
+				SELECT EXISTS (
+					SELECT 1 
+					FROM information_schema.table_constraints 
+					WHERE table_name = 'credentials' 
+					AND constraint_type = 'FOREIGN KEY'
+					AND constraint_name LIKE '%user_id%'
+				)
+			`
+			if err := db.Raw(fkCheckSQL).Scan(&hasFK).Error; err == nil && hasFK {
+				// Find and drop foreign key constraint
+				var constraintName string
+				dropFKSQL := `
+					SELECT constraint_name
+					FROM information_schema.table_constraints
+					WHERE table_name = 'credentials'
+					AND constraint_type = 'FOREIGN KEY'
+					AND constraint_name LIKE '%user_id%'
+					LIMIT 1
+				`
+				if err := db.Raw(dropFKSQL).Scan(&constraintName).Error; err == nil && constraintName != "" {
+					if err := db.Exec(fmt.Sprintf("ALTER TABLE credentials DROP CONSTRAINT IF EXISTS %s", constraintName)).Error; err != nil {
+						pkglogger.DefaultLogger.GetLogger().Warn("Failed to drop foreign key constraint on user_id", zap.Error(err))
+					}
+				}
+			}
+
+			// Drop the user_id column
+			if err := db.Exec("ALTER TABLE credentials DROP COLUMN IF EXISTS user_id").Error; err != nil {
+				pkglogger.DefaultLogger.GetLogger().Warn("Failed to drop user_id column", zap.Error(err))
+			} else {
+				pkglogger.DefaultLogger.GetLogger().Info("Successfully dropped user_id column from credentials table")
+			}
+
+			// Also drop any indexes on user_id
+			if err := db.Exec(`
+				DROP INDEX IF EXISTS idx_credentials_user_id;
+				DROP INDEX IF EXISTS idx_credentials_user_provider;
+			`).Error; err != nil {
+				pkglogger.DefaultLogger.GetLogger().Warn("Failed to drop user_id indexes (may not exist)", zap.Error(err))
+			}
+		}
+	}
+
+	return nil
 }

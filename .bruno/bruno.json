@@ -1,0 +1,27 @@
+{
+  "version": "1",
+  "name": "SkyClust API",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ],
+  "environments": [
+    {
+      "id": "env-1",
+      "name": "Development",
+      "data": {
+        "baseUrl": "http://localhost:8080",
+        "apiVersion": "v1"
+      }
+    },
+    {
+      "id": "env-2", 
+      "name": "Production",
+      "data": {
+        "baseUrl": "https://api.skyclust.com",
+        "apiVersion": "v1"
+      }
+    }
+  ]
+}

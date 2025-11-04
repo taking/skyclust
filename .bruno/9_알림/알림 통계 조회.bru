@@ -1,0 +1,71 @@
+meta {
+  name: 알림 통계 조회
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/notifications/stats
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains stats", function() {
+    expect(res.getBody()).to.have.property('total_notifications');
+    expect(res.getBody()).to.have.property('unread_notifications');
+    expect(res.getBody()).to.have.property('read_notifications');
+  });
+  
+  test("Stats have category counts", function() {
+    expect(res.getBody()).to.have.property('system_count');
+    expect(res.getBody()).to.have.property('vm_count');
+    expect(res.getBody()).to.have.property('cost_count');
+    expect(res.getBody()).to.have.property('security_count');
+  });
+  
+  test("Stats have priority counts", function() {
+    expect(res.getBody()).to.have.property('low_priority_count');
+    expect(res.getBody()).to.have.property('medium_priority_count');
+    expect(res.getBody()).to.have.property('high_priority_count');
+    expect(res.getBody()).to.have.property('urgent_priority_count');
+  });
+}
+
+docs {
+  # 알림 통계 조회
+  
+  사용자의 알림 통계를 조회합니다.
+  
+  ## 반환 데이터
+  
+  ### 기본 통계
+  - `total_notifications`: 전체 알림 개수
+  - `unread_notifications`: 읽지 않은 알림 개수
+  - `read_notifications`: 읽은 알림 개수
+  
+  ### 카테고리별 통계
+  - `system_count`: 시스템 알림 개수
+  - `vm_count`: VM 관련 알림 개수
+  - `cost_count`: 비용 관련 알림 개수
+  - `security_count`: 보안 관련 알림 개수
+  
+  ### 우선순위별 통계
+  - `low_priority_count`: 낮은 우선순위 알림 개수
+  - `medium_priority_count`: 보통 우선순위 알림 개수
+  - `high_priority_count`: 높은 우선순위 알림 개수
+  - `urgent_priority_count`: 긴급 우선순위 알림 개수
+  
+  ### 기간별 통계
+  - `last_7_days_count`: 최근 7일 알림 개수
+  - `last_30_days_count`: 최근 30일 알림 개수
+}

@@ -1,0 +1,130 @@
+meta {
+  name: 감사로그 통계 정보
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/admin/audit-logs?aggregate=stats
+  body: none
+  auth: bearer
+}
+
+params:query {
+  start_time: 
+  end_time: 
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains stats", function() {
+    const body = res.getBody();
+    expect(body).to.have.property('total_events');
+    expect(body).to.have.property('unique_users');
+    expect(body).to.have.property('top_actions');
+    expect(body).to.have.property('top_resources');
+    expect(body).to.have.property('events_by_day');
+  });
+  
+  test("Stats have valid structure", function() {
+    const body = res.getBody();
+    expect(body.total_events).to.be.a('number');
+    expect(body.total_events).to.be.at.least(0);
+    expect(body.unique_users).to.be.a('number');
+    expect(body.unique_users).to.be.at.least(0);
+    expect(body.top_actions).to.be.an('array');
+    expect(body.top_resources).to.be.an('array');
+    expect(body.events_by_day).to.be.an('array');
+  });
+  
+  test("Top actions have required fields", function() {
+    const topActions = res.getBody().top_actions;
+    if (topActions.length > 0) {
+      expect(topActions[0]).to.have.property('action');
+      expect(topActions[0]).to.have.property('count');
+      expect(topActions[0].action).to.be.a('string');
+      expect(topActions[0].count).to.be.a('number');
+    }
+  });
+  
+  test("Top resources have required fields", function() {
+    const topResources = res.getBody().top_resources;
+    if (topResources.length > 0) {
+      expect(topResources[0]).to.have.property('resource');
+      expect(topResources[0]).to.have.property('count');
+      expect(topResources[0].resource).to.be.a('string');
+      expect(topResources[0].count).to.be.a('number');
+    }
+  });
+  
+  test("Events by day have required fields", function() {
+    const eventsByDay = res.getBody().events_by_day;
+    if (eventsByDay.length > 0) {
+      expect(eventsByDay[0]).to.have.property('date');
+      expect(eventsByDay[0]).to.have.property('count');
+      expect(eventsByDay[0].date).to.be.a('string');
+      expect(eventsByDay[0].count).to.be.a('number');
+    }
+  });
+}
+
+docs {
+  # 감사로그 통계 조회
+  
+  ## 기능
+  감사 로그의 통계 정보를 조회합니다. (RESTful: GET /admin/audit-logs?aggregate=stats)
+  
+  전체 이벤트 수, 고유 사용자 수, 상위 액션, 상위 리소스, 일별 이벤트 추이를 반환합니다.
+  
+  ## 필터 파라미터 (선택사항)
+  
+  ### 날짜 범위 필터
+  - `start_time`: 시작 시간 (RFC3339 형식, 예: `2025-10-01T00:00:00Z`)
+  - `end_time`: 종료 시간 (RFC3339 형식, 예: `2025-10-31T23:59:59Z`)
+  - **주의**: `start_time`과 `end_time`은 함께 제공되어야 합니다.
+  - **기본값**: 날짜 범위가 제공되지 않으면 전체 기간의 통계를 반환합니다. `events_by_day`는 기본적으로 최근 30일간의 데이터를 반환합니다.
+  
+  ## 반환 데이터
+  
+  ### total_events (int64)
+  - 전체 감사 로그 이벤트 수
+  
+  ### unique_users (int64)
+  - 감사 로그에 기록된 고유 사용자 수
+  
+  ### top_actions ([]map[string]interface{})
+  - 가장 많이 발생한 액션 목록 (최대 10개)
+  - 각 항목: `{"action": "user_login", "count": 150}`
+  
+  ### top_resources ([]map[string]interface{})
+  - 가장 많이 접근된 리소스/API 엔드포인트 목록 (최대 10개)
+  - 각 항목: `{"resource": "/api/v1/auth/login", "count": 200}`
+  
+  ### events_by_day ([]map[string]interface{})
+  - 일별 이벤트 발생 추이
+  - 각 항목: `{"date": "2025-10-31", "count": 50}`
+  - 날짜 범위가 제공되지 않으면 최근 30일간의 데이터를 반환
+  
+  ## 사용 예시
+  
+  ### 전체 통계 조회
+  ```
+  GET /api/v1/admin/audit-logs?aggregate=stats
+  ```
+  
+  ### 특정 기간 통계 조회
+  ```
+  GET /api/v1/admin/audit-logs?aggregate=stats&start_time=2025-10-01T00:00:00Z&end_time=2025-10-31T23:59:59Z
+  ```
+}

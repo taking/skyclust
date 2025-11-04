@@ -1,0 +1,105 @@
+meta {
+  name: VPC 생성
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/network/vpcs
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "credential_id": "{{gcp_credentialsId}}",
+    "name": "skyclust-vpc-{{$timestamp}}",
+    "description": "Auto-mode VPC with GCP-managed subnets in all regions",
+    "project_id": "{{gcp_project_id}}",
+    "auto_create_subnets": true,
+    "routing_mode": "REGIONAL",
+    "mtu": 1460,
+    "tags": {
+      "Environment": "development",
+      "Project": "skyclust",
+      "CreatedBy": "bruno-api-test"
+    }
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("vpcId", res.body.data.id);
+  bru.setEnvVar("vpcName", res.body.data.name);
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has VPC data", function() {
+    expect(res.getBody().data).to.be.an('object');
+    expect(res.getBody().data.id).to.be.a('string');
+    expect(res.getBody().data.name).to.be.a('string');
+  });
+}
+
+docs {
+  # GCP VPC 생성 (자동 서브넷 모드)
+  
+  GKE 클러스터를 위한 VPC를 생성합니다. GCP SDK 제한으로 인해 `auto_create_subnets: true`로 설정하여 자동으로 서브넷을 생성하는 모드입니다.
+  
+  ## Request Body
+  
+  ```json
+  {
+    "credential_id": "edb33f37-4f8b-4307-a9d4-3f147ab09a2f",
+    "name": "skyclust-vpc",
+    "description": "VPC for SkyClust GKE cluster",
+    "project_id": "leafy-environs-445206-d2",
+    "auto_create_subnets": true,
+    "routing_mode": "REGIONAL",
+    "mtu": 1460,
+    "tags": {
+      "Environment": "development",
+      "Project": "skyclust",
+      "CreatedBy": "bruno-api-test"
+    }
+  }
+  ```
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "projects/leafy-environs-445206-d2/global/networks/skyclust-vpc",
+      "name": "skyclust-vpc",
+      "description": "VPC for SkyClust GKE cluster",
+      "project_id": "leafy-environs-445206-d2",
+      "auto_create_subnets": true,
+      "routing_mode": "REGIONAL",
+      "mtu": 1460,
+      "state": "READY",
+      "created_at": "2025-10-24T21:30:00Z"
+    },
+    "message": "VPC created successfully"
+  }
+  ```
+  
+  ## 참고사항
+  
+  - **GCP SDK 제한**: `auto_create_subnets: false`는 GCP SDK에서 지원하지 않음
+  - `auto_create_subnets: true`: GCP가 자동으로 모든 리전에 서브넷 생성
+  - 생성 후 불필요한 서브넷은 삭제하고 필요한 서브넷을 수동으로 생성 가능
+  - VPC는 Global 리소스이므로 `region` 파라미터 불필요
+}

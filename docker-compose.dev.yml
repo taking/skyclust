@@ -1,0 +1,136 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: cmp-postgres
+    environment:
+      POSTGRES_DB: cmp
+      POSTGRES_USER: cmp_user
+      POSTGRES_PASSWORD: cmp_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - cmp-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cmp_user -d cmp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: cmp-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redia_dev_data:/data
+    networks:
+      - cmp-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: cmp-nats
+    command: ["--port", "4222", "--http_port", "8222", "--jetstream"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    networks:
+      - cmp-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8222/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  cmp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cmp-server
+    environment:
+      # Application Environment
+      - CMP_ENV=development
+      
+      # Server Configuration
+      - CMP_PORT=8080
+      - CMP_HOST=0.0.0.0
+      
+      # Database Configuration
+      - CMP_DB_HOST=postgres
+      - CMP_DB_PORT=5432
+      - CMP_DB_NAME=cmp
+      - CMP_DB_USER=cmp_user
+      - CMP_DB_PASSWORD=cmp_password
+      - CMP_DB_SSLMODE=disable
+      - CMP_DB_MAX_CONNS=25
+      - CMP_DB_MIN_CONNS=5
+      
+      # Redis Configuration
+      - CMP_REDIS_HOST=redis
+      - CMP_REDIS_PORT=6379
+      - CMP_REDIS_PASSWORD=
+      - CMP_REDIS_DB=0
+      - CMP_REDIS_POOL_SIZE=10
+      
+      # JWT Configuration
+      - CMP_JWT_SECRET=A3/TRVASQZkXqqt27ZnT7m/UboTfizF26/CaUSlZHLOlfQ2h8Gd1xzdIeuQnSeQX
+      - CMP_JWT_EXPIRATION=24
+      - CMP_JWT_ISSUER=cmp
+      
+      # Encryption Configuration
+      - CMP_ENCRYPTION_KEY=99ek1nyT4IJ4W2tUvks9TvHqIdNn7rKZd2kcgQ9gSuf2xoKAaW3BnDl73iMpTwsc
+      
+      # NATS Configuration
+      - CMP_NATS_URL=nats://nats:4222
+      - CMP_NATS_CLUSTER=cmp-cluster
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks:
+      - cmp-network
+    volumes:
+      - ./configs:/app/configs:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  cmp-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cmp-frontend
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      - cmp-server
+    networks:
+      - cmp-network
+    restart: unless-stopped
+
+volumes:
+  postgres_dev_data:
+  redia_dev_data:
+
+networks:
+  cmp-network:
+    driver: bridge

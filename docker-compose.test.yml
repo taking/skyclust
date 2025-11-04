@@ -1,0 +1,65 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: cmp-postgres-test
+    environment:
+      POSTGRES_DB: cmp
+      POSTGRES_USER: cmp_user
+      POSTGRES_PASSWORD: cmp_password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - cmp-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cmp_user -d cmp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: cmp-redis-test
+    command: redis-server --requirepass redis_password
+    volumes:
+      - redis_test_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - cmp-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "redis_password", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # NATS Message Broker
+  nats:
+    image: nats:2.10-alpine
+    container_name: cmp-nats-test
+    command: ["--port", "4222", "--http_port", "8222", "--jetstream", "--cluster_name", "cmp-cluster"]
+    volumes:
+      - nats_test_data:/data
+    ports:
+      - "4222:4222"
+      - "8222:8222"  # Monitoring
+    networks:
+      - cmp-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8222/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_test_data:
+  redis_test_data:
+  nats_test_data:
+
+networks:
+  cmp-network:
+    driver: bridge

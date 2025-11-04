@@ -1,53 +1,13 @@
 package database
 
 import (
+	"github.com/google/uuid"
+	"skyclust/internal/domain"
 	"time"
 )
 
-// User represents a user in the database with GORM tags
-type GormUser struct {
-	ID        string    `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
-	Email     string    `gorm:"uniqueIndex;not null" json:"email"`
-	Password  string    `gorm:"column:password_hash;not null" json:"-"`
-	Name      string    `gorm:"not null" json:"name"`
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
-}
-
-// TableName specifies the table name for User
-func (GormUser) TableName() string {
-	return "users"
-}
-
-// Workspace represents a workspace in the database with GORM tags
-type GormWorkspace struct {
-	ID        string                 `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
-	Name      string                 `gorm:"uniqueIndex;not null" json:"name"`
-	OwnerID   string                 `gorm:"not null" json:"owner_id"`
-	Settings  map[string]interface{} `gorm:"type:jsonb" json:"settings"`
-	CreatedAt time.Time              `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt time.Time              `gorm:"autoUpdateTime" json:"updated_at"`
-}
-
-// TableName specifies the table name for Workspace
-func (GormWorkspace) TableName() string {
-	return "workspaces"
-}
-
-// WorkspaceUser represents a user in a workspace with GORM tags
-type GormWorkspaceUser struct {
-	UserID      string    `gorm:"primaryKey;type:uuid" json:"user_id"`
-	WorkspaceID string    `gorm:"primaryKey;type:uuid" json:"workspace_id"`
-	Role        string    `gorm:"not null" json:"role"`
-	JoinedAt    time.Time `gorm:"autoCreateTime" json:"joined_at"`
-}
-
-// TableName specifies the table name for WorkspaceUser
-func (GormWorkspaceUser) TableName() string {
-	return "workspace_users"
-}
-
-// Credentials represents encrypted credentials for a cloud provider with GORM tags
+// GormCredentials represents encrypted credentials for a cloud provider with GORM tags
+// This is kept separate from domain.Credential as it has different structure (workspace-based vs user-based)
 type GormCredentials struct {
 	ID          string            `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
 	WorkspaceID string            `gorm:"not null;type:uuid" json:"workspace_id"`
@@ -94,106 +54,44 @@ func (GormToken) TableName() string {
 	return "tokens"
 }
 
-// Conversion methods to maintain compatibility with existing interfaces
+// Common conversion utilities for domain entities
+// Since domain entities now have GORM tags, direct usage is preferred
+// These utilities are kept for backward compatibility and special cases
 
-// ToUser converts GormUser to User
-func (g *GormUser) ToUser() *User {
-	return &User{
-		ID:        g.ID,
-		Email:     g.Email,
-		Password:  g.Password,
-		Name:      g.Name,
-		CreatedAt: g.CreatedAt,
-		UpdatedAt: g.UpdatedAt,
+// ToCredentials converts GormCredentials to domain.Credential
+// Note: This is a special case as GormCredentials has different structure than domain.Credential
+func (g *GormCredentials) ToCredentials() *domain.Credential {
+	credID, _ := uuid.Parse(g.ID)
+	workspaceID, _ := uuid.Parse(g.WorkspaceID)
+
+	return &domain.Credential{
+		ID:            credID,
+		WorkspaceID:   workspaceID,
+		Provider:      g.Provider,
+		Name:          g.Metadata["name"], // Extract name from metadata
+		EncryptedData: g.Encrypted,
+		IsActive:      true, // Default value
+		CreatedBy:     uuid.Nil, // CreatedBy is not stored in GormCredentials, use Nil as default
+		CreatedAt:     g.CreatedAt,
+		UpdatedAt:     g.UpdatedAt,
 	}
 }
 
-// ToGormUser converts User to GormUser
-func (u *User) ToGormUser() *GormUser {
-	return &GormUser{
-		ID:        u.ID,
-		Email:     u.Email,
-		Password:  u.Password,
-		Name:      u.Name,
-		CreatedAt: u.CreatedAt,
-		UpdatedAt: u.UpdatedAt,
+// ToGormCredentials converts domain.Credential to GormCredentials
+// Note: This is a special case as they have different structures
+func ToGormCredentials(c *domain.Credential, workspaceID string) *GormCredentials {
+	metadata := make(map[string]string)
+	if c.Name != "" {
+		metadata["name"] = c.Name
 	}
-}
 
-// ToWorkspace converts GormWorkspace to Workspace
-func (g *GormWorkspace) ToWorkspace() *Workspace {
-	return &Workspace{
-		ID:        g.ID,
-		Name:      g.Name,
-		OwnerID:   g.OwnerID,
-		Settings:  g.Settings,
-		CreatedAt: g.CreatedAt,
-		UpdatedAt: g.UpdatedAt,
-	}
-}
-
-// ToGormWorkspace converts Workspace to GormWorkspace
-func (w *Workspace) ToGormWorkspace() *GormWorkspace {
-	return &GormWorkspace{
-		ID:        w.ID,
-		Name:      w.Name,
-		OwnerID:   w.OwnerID,
-		Settings:  w.Settings,
-		CreatedAt: w.CreatedAt,
-		UpdatedAt: w.UpdatedAt,
-	}
-}
-
-// ToCredentials converts GormCredentials to Credentials
-func (g *GormCredentials) ToCredentials() *Credentials {
-	return &Credentials{
-		ID:          g.ID,
-		WorkspaceID: g.WorkspaceID,
-		Provider:    g.Provider,
-		Encrypted:   g.Encrypted,
-		Metadata:    g.Metadata,
-		CreatedAt:   g.CreatedAt,
-		UpdatedAt:   g.UpdatedAt,
-	}
-}
-
-// ToGormCredentials converts Credentials to GormCredentials
-func (c *Credentials) ToGormCredentials() *GormCredentials {
 	return &GormCredentials{
-		ID:          c.ID,
-		WorkspaceID: c.WorkspaceID,
+		ID:          c.ID.String(),
+		WorkspaceID: workspaceID,
 		Provider:    c.Provider,
-		Encrypted:   c.Encrypted,
-		Metadata:    c.Metadata,
+		Encrypted:   c.EncryptedData,
+		Metadata:    metadata,
 		CreatedAt:   c.CreatedAt,
 		UpdatedAt:   c.UpdatedAt,
-	}
-}
-
-// ToExecution converts GormExecution to Execution
-func (g *GormExecution) ToExecution() *Execution {
-	return &Execution{
-		ID:          g.ID,
-		WorkspaceID: g.WorkspaceID,
-		Command:     g.Command,
-		Status:      g.Status,
-		Output:      g.Output,
-		Error:       g.Error,
-		StartedAt:   g.StartedAt,
-		CompletedAt: g.CompletedAt,
-	}
-}
-
-// ToGormExecution converts Execution to GormExecution
-func (e *Execution) ToGormExecution() *GormExecution {
-	return &GormExecution{
-		ID:          e.ID,
-		WorkspaceID: e.WorkspaceID,
-		Command:     e.Command,
-		Status:      e.Status,
-		Output:      e.Output,
-		Error:       e.Error,
-		StartedAt:   e.StartedAt,
-		CompletedAt: e.CompletedAt,
 	}
 }

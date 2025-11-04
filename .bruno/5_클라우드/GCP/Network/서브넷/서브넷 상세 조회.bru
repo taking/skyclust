@@ -1,0 +1,108 @@
+meta {
+  name: 서브넷 상세 조회
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/network/subnets/{{subnetName}}?credential_id={{gcp_credentialsId}}&region=asia-northeast3
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has subnet data", function() {
+    expect(res.getBody().data).to.be.an('object');
+    expect(res.getBody().data.id).to.be.a('string');
+    expect(res.getBody().data.name).to.be.a('string');
+    expect(res.getBody().data.vpc_id).to.be.a('string');
+    expect(res.getBody().data.cidr_block).to.be.a('string');
+  });
+  
+  test("Subnet has required fields", function() {
+    const subnet = res.getBody().data;
+    expect(subnet).to.have.property('id');
+    expect(subnet).to.have.property('name');
+    expect(subnet).to.have.property('vpc_id');
+    expect(subnet).to.have.property('cidr_block');
+    expect(subnet).to.have.property('state');
+  });
+}
+
+docs {
+  # GCP 서브넷 상세 조회
+  
+  특정 서브넷의 상세 정보를 조회합니다.
+  
+  ## Path Parameters
+  
+  - `subnetName`: 서브넷 이름
+  
+  ## Query Parameters
+  
+  - `credential_id`: GCP credential ID (필수)
+  - `region`: GCP 리전 (필수)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "projects/my-project/regions/asia-northeast3/subnetworks/skyclust-subnet-1234567890",
+      "name": "skyclust-subnet-1234567890",
+      "vpc_id": "projects/my-project/global/networks/my-vpc",
+      "cidr_block": "10.0.1.0/24",
+      "region": "asia-northeast3",
+      "state": "READY",
+      "private_ip_google_access": true,
+      "flow_logs": false,
+      "description": "Custom subnet for skyclust application",
+      "tags": {
+        "Environment": "development",
+        "Project": "skyclust"
+      }
+    },
+    "message": "GCP subnet retrieved successfully"
+  }
+  ```
+  
+  ## State 값
+  
+  - `READY`: 사용 가능
+  - `CREATING`: 생성 중
+  - `DELETING`: 삭제 중
+  - `ERROR`: 오류 상태
+  
+  ## 사용 예시
+  
+  ```bash
+  GET /api/v1/gcp/network/subnets/my-subnet?credential_id=123&region=us-central1
+  Authorization: Bearer your-jwt-token
+  ```
+  
+  ## 응답 필드
+  
+  - `id`: 서브넷 전체 경로
+  - `name`: 서브넷 이름
+  - `vpc_id`: 소속 VPC ID
+  - `cidr_block`: IP 주소 범위
+  - `region`: GCP 리전
+  - `state`: 서브넷 상태
+  - `private_ip_google_access`: Private Google Access 설정
+  - `flow_logs`: Flow Logs 설정
+  - `description`: 서브넷 설명
+  - `tags`: 태그 정보
+}

@@ -1,0 +1,82 @@
+meta {
+  name: 클러스터 생성 (고급 Standard 모드)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/kubernetes/clusters
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+     "cluster_mode": {
+        "remove_default_node_pool": true,
+        "type": "standard"
+     },
+     "credential_id": "{{gcp_credentialsId}}",
+     "name": "skyclust-gke-advanced-{{$timestamp}}",
+     "network": {
+        "master_authorized_networks": [
+           "10.0.0.0/8",
+           "172.16.0.0/12",
+           "192.168.0.0/16"
+        ],
+        "pod_cidr": "10.0.0.0/16",
+        "private_endpoint": true,
+        "private_nodes": true,
+        "service_cidr": "10.1.0.0/16",
+        "subnet_id": "projects/{{gcp_project_id}}/regions/asia-northeast3/subnetworks/default",
+        "vpc_id": "projects/{{gcp_project_id}}/global/networks/default"
+     },
+     "node_pool": {
+        "auto_scaling": {
+           "enabled": true,
+           "max_node_count": 5,
+           "min_node_count": 2
+        },
+        "disk_size_gb": 50,
+        "disk_type": "pd-ssd",
+        "labels": {
+           "environment": "production",
+           "node-pool": "custom",
+           "workload": "compute-intensive"
+        },
+        "machine_type": "e2-standard-2",
+        "name": "custom-pool",
+        "node_count": 2,
+        "preemptible": false,
+        "spot": false,
+        "taints": [
+           "workload=compute-intensive:NoSchedule"
+        ]
+     },
+     "project_id": "{{gcp_project_id}}",
+     "region": "asia-northeast3",
+     "security": {
+        "binary_authorization": true,
+        "network_policy": true,
+        "pod_security_policy": true,
+        "workload_identity": true
+     },
+     "tags": {
+        "cluster_type": "standard-advanced",
+        "created_by": "bruno-api-test",
+        "environment": "production",
+        "project": "skyclust",
+        "security_level": "high"
+     },
+     "version": "1.28",
+     "zone": "asia-northeast3-a"
+  }
+}
+
+vars:pre-request {
+  timestamp: {{$timestamp}}
+}

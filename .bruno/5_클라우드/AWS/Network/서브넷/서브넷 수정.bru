@@ -1,0 +1,61 @@
+meta {
+  name: 서브넷 수정
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/network/subnets/{{subnetId}}?credential_id={{aws_credentialsId}}&region=ap-northeast-3
+  body: json
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{aws_credentialsId}}
+  region: ap-northeast-3
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "name": "skyclust-subnet-updated-{{$timestamp}}",
+    "tags": {
+      "Environment": "development",
+      "Project": "skyclust",
+      "UpdatedBy": "bruno-api-test",
+      "UpdatedAt": "{{$timestamp}}"
+    }
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.be.true;
+  });
+  
+  test("Response has subnet data", function() {
+    expect(res.getBody().data).to.have.property('id');
+    expect(res.getBody().data).to.have.property('name');
+    expect(res.getBody().data).to.have.property('vpc_id');
+    expect(res.getBody().data).to.have.property('cidr_block');
+    expect(res.getBody().data).to.have.property('availability_zone');
+    expect(res.getBody().data).to.have.property('state');
+    expect(res.getBody().data).to.have.property('is_public');
+    expect(res.getBody().data).to.have.property('region');
+  });
+  
+  test("Subnet name matches request", function() {
+    expect(res.getBody().data.name).to.equal(req.getBody().name);
+  });
+}

@@ -1,0 +1,125 @@
+meta {
+  name: 방화벽 규칙 상세 조회
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/network/firewall-rules/{{firewallId}}?credential_id={{gcp_credentialsId}}&region=asia-northeast3
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+docs {
+  # GCP 방화벽 규칙 상세 조회
+  
+  특정 방화벽 규칙의 상세 정보를 조회합니다.
+  
+  ## Path Parameters
+  
+  - `firewallId`: 방화벽 규칙 ID (예: `projects/my-project/global/firewalls/skyclust-firewall-1234567890`)
+  
+  ## Query Parameters
+  
+  - `credential_id`: GCP credential ID (필수)
+  - `region`: GCP 리전 (필수)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "projects/my-project/global/firewalls/skyclust-firewall-1234567890",
+      "name": "skyclust-firewall-1234567890",
+      "description": "Allow HTTP and HTTPS traffic",
+      "vpc_id": "projects/my-project/global/networks/default",
+      "region": "us-central1",
+      "project_id": "my-project",
+      "direction": "INGRESS",
+      "priority": 1000,
+      "action": "ALLOW",
+      "protocol": "tcp",
+      "ports": ["80", "443"],
+      "source_ranges": ["0.0.0.0/0"],
+      "target_tags": ["web-server"],
+      "source_tags": [],
+      "source_service_accounts": [],
+      "target_service_accounts": [],
+      "disabled": false,
+      "log_config": {
+        "enable": false
+      },
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T01:00:00Z",
+      "tags": {
+        "Environment": "development",
+        "Project": "skyclust"
+      }
+    },
+    "message": "GCP security group retrieved successfully"
+  }
+  ```
+  
+  ## 사용 예시
+  
+  ```bash
+  GET /api/v1/gcp/network/security-groups/projects/my-project/global/firewalls/skyclust-firewall-1234567890?credential_id=123&region=us-central1
+  Authorization: Bearer your-jwt-token
+  ```
+  
+  ## 응답 필드
+  
+  - `id`: 방화벽 규칙 전체 경로
+  - `name`: 방화벽 규칙 이름
+  - `description`: 설명
+  - `vpc_id`: 소속 VPC ID
+  - `region`: GCP 리전
+  - `project_id`: GCP 프로젝트 ID
+  - `direction`: 방향 (INGRESS/EGRESS)
+  - `priority`: 우선순위
+  - `action`: 액션 (ALLOW/DENY)
+  - `protocol`: 프로토콜
+  - `ports`: 포트 목록
+  - `source_ranges`: 소스 IP 범위
+  - `target_tags`: 대상 태그
+  - `source_tags`: 소스 태그
+  - `source_service_accounts`: 소스 서비스 계정
+  - `target_service_accounts`: 대상 서비스 계정
+  - `disabled`: 비활성화 여부
+  - `log_config`: 로그 설정
+  - `created_at`: 생성일
+  - `updated_at`: 수정일
+  - `tags`: 태그 정보
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has security group data", function() {
+    expect(res.getBody().data).to.be.an('object');
+    expect(res.getBody().data.id).to.be.a('string');
+    expect(res.getBody().data.name).to.be.a('string');
+    expect(res.getBody().data.direction).to.be.a('string');
+    expect(res.getBody().data.action).to.be.a('string');
+  });
+  
+  test("Security group has priority", function() {
+    expect(res.getBody().data.priority).to.be.a('number');
+  });
+  
+  test("Security group has protocol and ports", function() {
+    expect(res.getBody().data.protocol).to.be.a('string');
+    expect(res.getBody().data.ports).to.be.an('array');
+  });
+}

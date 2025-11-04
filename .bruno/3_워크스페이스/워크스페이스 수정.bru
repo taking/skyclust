@@ -1,0 +1,42 @@
+meta {
+  name: 워크스페이스 수정
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/{{apiVersion}}/workspaces/{{workspaceId}}
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "name": "Updated Workspace",
+    "description": "Updated description"
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains updated workspace", function() {
+    expect(res.getBody()).to.have.property('id');
+    expect(res.getBody()).to.have.property('name');
+    expect(res.getBody()).to.have.property('description');
+  });
+  
+  test("Workspace name is updated", function() {
+    expect(res.getBody().name).to.equal('Updated Workspace');
+  });
+}

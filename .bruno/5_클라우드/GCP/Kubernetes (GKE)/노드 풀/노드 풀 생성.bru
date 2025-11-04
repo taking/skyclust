@@ -1,0 +1,167 @@
+meta {
+  name: 노드 풀 생성
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/kubernetes/clusters/{{clusterName}}/nodepools
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "credential_id": "{{gcp_credentialsId}}",
+    "node_pool_name": "skyclust-nodepool-{{$timestamp}}",
+    "machine_type": "e2-medium",
+    "disk_size_gb": 20,
+    "disk_type": "pd-standard",
+    "node_count": 1,
+    "auto_scaling": {
+      "enabled": true,
+      "min_node_count": 1,
+      "max_node_count": 5
+    },
+    "labels": {
+      "environment": "development",
+      "workload": "general"
+    },
+    "taints": [],
+    "preemptible": false,
+    "spot": false,
+    "region": "asia-northeast3",
+    "project_id": "{{gcp_project_id}}",
+    "tags": {
+      "Environment": "development",
+      "Project": "skyclust",
+      "CreatedBy": "bruno-api-test"
+    }
+  }
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has node pool data", function() {
+    expect(res.getBody().data).to.be.an('object');
+    expect(res.getBody().data.node_pool_name).to.be.a('string');
+    expect(res.getBody().data.cluster_name).to.be.a('string');
+  });
+}
+
+docs {
+  # GKE 노드 풀 생성
+  
+  GKE 클러스터에 노드 풀을 생성합니다.
+  
+  ## Path Parameters
+  
+  - `clusterName`: 클러스터 이름 (예: `skyclust-gke-1234567890`)
+  
+  ## Request Body
+  
+  ```json
+  {
+    "credential_id": "your-credential-id",
+    "node_pool_name": "skyclust-nodepool-1234567890",
+    "machine_type": "e2-medium",
+    "disk_size_gb": 20,
+    "disk_type": "pd-standard",
+    "node_count": 1,
+    "auto_scaling": {
+      "enabled": true,
+      "min_node_count": 1,
+      "max_node_count": 5
+    },
+    "labels": {
+      "environment": "development",
+      "workload": "general"
+    },
+    "taints": [],
+    "preemptible": false,
+    "spot": false,
+    "region": "us-central1",
+    "project_id": "my-project",
+    "tags": {
+      "Environment": "development",
+      "Project": "skyclust"
+    }
+  }
+  ```
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "node_pool_name": "skyclust-nodepool-1234567890",
+      "cluster_name": "skyclust-gke-1234567890",
+      "status": "PROVISIONING",
+      "machine_type": "e2-medium",
+      "disk_size_gb": 20,
+      "disk_type": "pd-standard",
+      "node_count": 1,
+      "auto_scaling": {
+        "enabled": true,
+        "min_node_count": 1,
+        "max_node_count": 5
+      },
+      "labels": {
+        "environment": "development",
+        "workload": "general"
+      },
+      "preemptible": false,
+      "spot": false,
+      "region": "us-central1",
+      "project_id": "my-project",
+      "created_at": "2024-01-01T00:00:00Z"
+    },
+    "message": "GKE node pool creation initiated"
+  }
+  ```
+  
+  ## 머신 타입
+  
+  ### 범용 머신
+  - `e2-micro`: 0.25 vCPU, 1GB RAM
+  - `e2-small`: 0.5 vCPU, 2GB RAM
+  - `e2-medium`: 1 vCPU, 4GB RAM
+  - `e2-standard-2`: 2 vCPU, 8GB RAM
+  - `e2-standard-4`: 4 vCPU, 16GB RAM
+  
+  ### 메모리 최적화 머신
+  - `e2-highmem-2`: 2 vCPU, 16GB RAM
+  - `e2-highmem-4`: 4 vCPU, 32GB RAM
+  - `e2-highmem-8`: 8 vCPU, 64GB RAM
+  
+  ### 컴퓨팅 최적화 머신
+  - `c2-standard-4`: 4 vCPU, 16GB RAM
+  - `c2-standard-8`: 8 vCPU, 32GB RAM
+  - `c2-standard-16`: 16 vCPU, 64GB RAM
+  
+  ## 디스크 타입
+  
+  - `pd-standard`: HDD, 저렴한 비용
+  - `pd-balanced`: SSD, 균형잡힌 성능
+  - `pd-ssd`: SSD, 높은 성능
+  - `pd-extreme`: 극한 성능 SSD
+  
+  ## 필수 IAM 권한
+  
+  - `container.nodePools.create`
+  - `compute.instances.create`
+  - `compute.disks.create`
+  - `iam.serviceAccounts.actAs`
+}

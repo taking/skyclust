@@ -1,0 +1,69 @@
+meta {
+  name: 비용 트렌드 조회
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/cost-analysis/workspaces/{{workspaceId}}/trend?period=90d&resource_types=all
+  body: none
+  auth: bearer
+}
+
+docs {
+  # 비용 트렌드 조회
+  
+  워크스페이스의 비용 트렌드를 조회합니다. 일별 비용 데이터와 트렌드 방향을 제공합니다.
+  
+  ## Parameters
+  - `workspaceId` (path): 워크스페이스 ID
+  - `period` (query, optional): 기간 (7d, 30d, 90d, 1y), 기본값: 90d
+  - `resource_types` (query, optional): 리소스 타입 필터 (comma-separated)
+    - `all`: 모든 리소스 타입 (기본값)
+    - `vm`, `vms`: VM만 조회
+    - `cluster`, `clusters`, `kubernetes`, `k8s`: Kubernetes 클러스터만 조회
+    - `node_group`, `node_groups`, `node_pool`, `node_pools`: Node Groups/Pools 포함
+  
+  ## Response
+  - `trend`: 일별 비용 데이터 배열
+    - `date`: 날짜
+    - `amount`: 비용
+  - `trend_direction`: 트렌드 방향 (increasing, decreasing, stable)
+  - `change_percentage`: 변화율 (%)
+  - `total_cost`: 총 비용
+  - `currency`: 통화
+  - `period`: 기간
+  - `start_date`: 시작 날짜
+  - `end_date`: 종료 날짜
+  
+  ## 트렌드 계산 방식
+  
+  - **전반기 vs 후반기 비교**: 기간을 두 부분으로 나누어 평균 비용을 비교
+  - **트렌드 방향**: 5% 이상 증가 → "increasing", 5% 이상 감소 → "decreasing", 그 외 → "stable"
+  - **변화율**: 후반기 평균 비용 대비 전반기 평균 비용의 변화율 (%)
+  
+  ## 서비스별 트렌드
+  
+  트렌드는 다음 서비스의 비용을 포함합니다:
+  - **EC2** (AWS): 인스턴스 비용
+  - **EKS** (AWS): 클러스터 비용
+  - **Compute** (GCP): VM 비용
+  - **GKE** (GCP): 클러스터 비용
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains trend data", function() {
+    const body = res.getBody();
+    expect(body.data).to.have.property('trend');
+    expect(body.data).to.have.property('trend_direction');
+    expect(body.data).to.have.property('change_percentage');
+  });
+}

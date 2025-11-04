@@ -1,0 +1,47 @@
+meta {
+  name: 알림 삭제
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{baseUrl}}/api/{{apiVersion}}/notifications/{{notificationId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains notification ID", function() {
+    expect(res.getBody()).to.have.property('id');
+  });
+  
+  test("Notification ID matches", function() {
+    expect(res.getBody().id).to.equal('{{notificationId}}');
+  });
+}
+
+docs {
+  # 알림 삭제
+  
+  특정 알림을 삭제합니다.
+  
+  ## 경로 파라미터
+  
+  ### notificationId (필수)
+  - 삭제할 알림 ID
+  - **타입**: `string` (UUID)
+  
+  ## 반환 데이터
+  
+  ### id (string)
+  - 삭제된 알림 ID
+}

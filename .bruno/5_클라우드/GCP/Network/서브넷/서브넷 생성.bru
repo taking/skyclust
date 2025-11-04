@@ -1,0 +1,105 @@
+meta {
+  name: 서브넷 생성
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/network/subnets
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "credential_id": "{{gcp_credentialsId}}",
+    "name": "skyclust-subnet-{{$timestamp}}",
+    "description": "Subnet for SkyClust GKE cluster with advanced features",
+    "project_id": "{{gcp_project_id}}",
+    "vpc_id": "{{vpcId}}",
+    "cidr_block": "10.0.0.0/24",
+    "region": "asia-northeast3",
+    "zone": "asia-northeast3-a",
+    "private_ip_google_access": true,
+    "flow_logs": false,
+    "tags": {
+      "Environment": "development",
+      "Project": "skyclust",
+      "CreatedBy": "bruno-api-test"
+    }
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("subnetId", res.body.data.id);
+  bru.setEnvVar("subnetName", res.body.data.name);
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has subnet data", function() {
+    expect(res.getBody().data).to.be.an('object');
+    expect(res.getBody().data.id).to.be.a('string');
+    expect(res.getBody().data.name).to.be.a('string');
+  });
+}
+
+docs {
+  # GCP 서브넷 생성 (예제)
+  
+  GKE 클러스터를 위한 서브넷을 생성합니다.
+  
+  ## Request Body
+  
+  ```json
+  {
+    "credential_id": "edb33f37-4f8b-4307-a9d4-3f147ab09a2f",
+    "name": "skyclust-subnet",
+    "description": "Subnet for SkyClust GKE cluster",
+    "project_id": "leafy-environs-445206-d2",
+    "region": "asia-northeast3",
+    "vpc_id": "projects/leafy-environs-445206-d2/global/networks/skyclust-vpc",
+    "cidr_block": "10.0.0.0/24",
+    "private_ip_google_access": true,
+    "flow_logs": true,
+    "tags": {
+      "Environment": "development",
+      "Project": "skyclust",
+      "CreatedBy": "bruno-api-test"
+    }
+  }
+  ```
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "projects/leafy-environs-445206-d2/regions/asia-northeast3/subnetworks/skyclust-subnet",
+      "name": "skyclust-subnet",
+      "description": "Subnet for SkyClust GKE cluster",
+      "project_id": "leafy-environs-445206-d2",
+      "region": "asia-northeast3",
+      "vpc_id": "projects/leafy-environs-445206-d2/global/networks/skyclust-vpc",
+      "cidr_block": "10.0.0.0/24",
+      "private_ip_google_access": true,
+      "flow_logs": true,
+      "state": "READY",
+      "created_at": "2025-10-24T21:30:00Z"
+    },
+    "message": "Subnet created successfully"
+  }
+  ```
+}

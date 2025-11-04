@@ -1,0 +1,77 @@
+meta {
+  name: 서브넷 목록 조회
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/network/subnets?credential_id={{aws_credentialsId}}&vpc_id={{vpcId}}&region=ap-northeast-3
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{aws_credentialsId}}
+  vpc_id: {{vpcId}}
+  region: ap-northeast-3
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+script:post-response {
+  bru.setEnvVar("subnetId", res.body.data.subnets[0].id);
+  
+  const rowData = res.body.data.subnets;
+  
+  const columnDefinitions = [
+    { field: "id", filter: true, floatingFilter: true },
+    { field: "name", filter: true, floatingFilter: true },
+    { field: "vpc_id", filter: true, floatingFilter: true },
+    { field: "cidr_block", filter: true, floatingFilter: true },
+    { field: "availability_zone", filter: true, floatingFilter: true },
+    { field: "state", filter: true, floatingFilter: true },
+    { field: "is_public", filter: true, floatingFilter: true },
+    { field: "region", filter: true, floatingFilter: true }
+  ];
+   
+  bru.visualize('table', {
+    name: 'table',
+    provider: 'ag-grid',
+    props: { rowData, columnDefinitions }
+  });
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.be.true;
+  });
+  
+  test("Response has subnets array", function() {
+    expect(res.getBody().data.subnets).to.be.an('array');
+  });
+  
+  test("Subnet has required fields", function() {
+    const subnets = res.getBody().data.subnets;
+    if (subnets.length > 0) {
+      const subnet = subnets[0];
+      expect(subnet).to.have.property('id');
+      expect(subnet).to.have.property('name');
+      expect(subnet).to.have.property('vpc_id');
+      expect(subnet).to.have.property('cidr_block');
+      expect(subnet).to.have.property('availability_zone');
+      expect(subnet).to.have.property('state');
+      expect(subnet).to.have.property('is_public');
+      expect(subnet).to.have.property('region');
+    }
+  });
+}
