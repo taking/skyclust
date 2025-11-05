@@ -4,6 +4,8 @@
  */
 
 import type { SSECallbacks } from '@/lib/types/sse';
+import { API_CONFIG } from '@/lib/api-config';
+import { getErrorLogger } from '@/lib/error-logger';
 
 class SSEService {
   private eventSource: EventSource | null = null;
@@ -28,7 +30,7 @@ class SSEService {
     this.isConnecting = true;
     this.callbacks = callbacks;
 
-    const url = `${process.env.NEXT_PUBLIC_API_URL}/api/events?token=${token}`;
+    const url = `${API_CONFIG.BASE_URL}/api/events?token=${token}`;
     this.eventSource = new EventSource(url);
 
     this.setupEventListeners();

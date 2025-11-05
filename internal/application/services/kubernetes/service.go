@@ -494,6 +494,11 @@ func (s *Service) listAWSEKSClusters(ctx context.Context, credential *domain.Cre
 		clusters = append(clusters, cluster)
 	}
 
+	// 빈 배열인 경우에도 nil이 아닌 빈 슬라이스 반환 보장
+	if clusters == nil {
+		clusters = []ClusterInfo{}
+	}
+
 	return &ListClustersResponse{
 		Clusters: clusters,
 	}, nil
@@ -1317,6 +1322,13 @@ func (s *Service) listGCPGKEClusters(ctx context.Context, credential *domain.Cre
 		}
 
 		// Convert to ClusterInfo
+		// clustersResp.Clusters가 nil인 경우 처리
+		if clustersResp.Clusters == nil {
+			s.logger.Debug("No clusters found in location",
+				zap.String("location", location))
+			continue
+		}
+
 		for _, cluster := range clustersResp.Clusters {
 			// Determine if this is a region or zone
 			var clusterZone string
@@ -1398,6 +1410,11 @@ func (s *Service) listGCPGKEClusters(ctx context.Context, credential *domain.Cre
 		zap.String("project_id", projectID),
 		zap.String("region", region),
 		zap.Int("count", len(allClusters)))
+
+	// 빈 배열인 경우에도 nil이 아닌 빈 슬라이스 반환 보장
+	if allClusters == nil {
+		allClusters = []ClusterInfo{}
+	}
 
 	return &ListClustersResponse{Clusters: allClusters}, nil
 }

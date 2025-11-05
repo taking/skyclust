@@ -36,6 +36,7 @@ import { CreateWorkspaceForm } from '@/lib/types';
 import * as z from 'zod';
 import { queryKeys } from '@/lib/query-keys';
 import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
+import { useTranslation } from '@/hooks/use-translation';
 
 const createWorkspaceSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),
@@ -50,37 +51,40 @@ interface NavigationItem {
   children?: NavigationItem[];
 }
 
-const navigation: NavigationItem[] = [
-  { name: 'Dashboard', href: '/dashboard', icon: Home },
-  {
-    name: 'Compute',
-    icon: Server,
-    children: [
-      { name: 'VMs', href: '/compute/vms', icon: Server },
-      { name: 'Images', href: '/compute/images', icon: Image },
-      { name: 'Snapshots', href: '/compute/snapshots', icon: HardDrive },
-    ],
-  },
-  {
-    name: 'Kubernetes',
-    icon: Container,
-    children: [
-      { name: 'Clusters', href: '/kubernetes/clusters', icon: Container },
-      { name: 'Node Pools', href: '/kubernetes/node-pools', icon: Layers },
-      { name: 'Nodes', href: '/kubernetes/nodes', icon: Building2 },
-    ],
-  },
-  {
-    name: 'Networks',
-    icon: Network,
-    children: [
-      { name: 'VPCs', href: '/networks/vpcs', icon: Network },
-      { name: 'Subnets', href: '/networks/subnets', icon: Layers },
-      { name: 'Security Groups', href: '/networks/security-groups', icon: Shield },
-    ],
-  },
-  { name: 'Credentials', href: '/credentials', icon: Key },
-];
+// Navigation will be generated dynamically with translations
+function getNavigation(t: (key: string) => string): NavigationItem[] {
+  return [
+    { name: t('nav.dashboard'), href: '/dashboard', icon: Home },
+    {
+      name: t('nav.compute'),
+      icon: Server,
+      children: [
+        { name: t('nav.vms'), href: '/compute/vms', icon: Server },
+        { name: t('nav.images'), href: '/compute/images', icon: Image },
+        { name: t('nav.snapshots'), href: '/compute/snapshots', icon: HardDrive },
+      ],
+    },
+    {
+      name: t('nav.kubernetes'),
+      icon: Container,
+      children: [
+        { name: t('nav.clusters'), href: '/kubernetes/clusters', icon: Container },
+        { name: t('nav.nodePools'), href: '/kubernetes/node-pools', icon: Layers },
+        { name: t('nav.nodes'), href: '/kubernetes/nodes', icon: Building2 },
+      ],
+    },
+    {
+      name: t('nav.networks'),
+      icon: Network,
+      children: [
+        { name: t('nav.vpcs'), href: '/networks/vpcs', icon: Network },
+        { name: t('nav.subnets'), href: '/networks/subnets', icon: Layers },
+        { name: t('nav.securityGroups'), href: '/networks/security-groups', icon: Shield },
+      ],
+    },
+    { name: t('nav.credentials'), href: '/credentials', icon: Key },
+  ];
+}
 
 function SidebarComponent() {
   const { currentWorkspace, setCurrentWorkspace, workspaces, setWorkspaces } = useWorkspaceStore();
@@ -89,6 +93,46 @@ function SidebarComponent() {
   const queryClient = useQueryClient();
   const { success, error: showError } = useToast();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const { t } = useTranslation();
+  
+  // navigation을 안전하게 생성 (t가 함수인지 확인)
+  const navigation = React.useMemo(() => {
+    if (typeof t === 'function') {
+      return getNavigation(t);
+    }
+    // Fallback: 기본 영어 메뉴
+    return [
+      { name: 'Dashboard', href: '/dashboard', icon: Home },
+      {
+        name: 'Compute',
+        icon: Server,
+        children: [
+          { name: 'VMs', href: '/compute/vms', icon: Server },
+          { name: 'Images', href: '/compute/images', icon: Image },
+          { name: 'Snapshots', href: '/compute/snapshots', icon: HardDrive },
+        ],
+      },
+      {
+        name: 'Kubernetes',
+        icon: Container,
+        children: [
+          { name: 'Clusters', href: '/kubernetes/clusters', icon: Container },
+          { name: 'Node Pools', href: '/kubernetes/node-pools', icon: Layers },
+          { name: 'Nodes', href: '/kubernetes/nodes', icon: Building2 },
+        ],
+      },
+      {
+        name: 'Networks',
+        icon: Network,
+        children: [
+          { name: 'VPCs', href: '/networks/vpcs', icon: Network },
+          { name: 'Subnets', href: '/networks/subnets', icon: Layers },
+          { name: 'Security Groups', href: '/networks/security-groups', icon: Shield },
+        ],
+      },
+      { name: 'Credentials', href: '/credentials', icon: Key },
+    ];
+  }, [t]);
 
   // Fetch workspaces
   const { data: fetchedWorkspaces = [] } = useQuery({
@@ -149,11 +193,19 @@ function SidebarComponent() {
       queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.all });
       setIsCreateDialogOpen(false);
       reset();
-      success('Workspace created successfully');
+      // t 함수를 안전하게 사용
+      const successMessage = typeof t === 'function' 
+        ? t('messages.created', { resource: t('workspace.title') })
+        : 'Workspace created successfully';
+      success(successMessage);
     },
     onError: (error) => {
       ErrorHandler.logError(error, { operation: 'createWorkspace', source: 'sidebar' });
-      showError('Failed to create workspace');
+      // t 함수를 안전하게 사용
+      const errorMessage = typeof t === 'function'
+        ? t('messages.operationFailed')
+        : 'Failed to create workspace';
+      showError(errorMessage);
     },
     resetOnSuccess: true,
   });
@@ -271,15 +323,15 @@ function SidebarComponent() {
           {/* Workspace Selector */}
           <div className="mb-4 space-y-2">
             <label className="text-sm font-medium text-muted-foreground">
-              <ScreenReaderOnly>Select workspace</ScreenReaderOnly>
-              Workspace
+              <ScreenReaderOnly>{t('workspace.select')}</ScreenReaderOnly>
+              {t('workspace.title')}
             </label>
             <Select
               value={currentWorkspace?.id || 'all'}
               onValueChange={handleWorkspaceChange}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select Workspace" />
+                <SelectValue placeholder={t('workspace.select')} />
               </SelectTrigger>
               <SelectContent>
                 {displayWorkspaces.map((workspace) => (
@@ -301,7 +353,7 @@ function SidebarComponent() {
                       aria-label="Open workspace settings"
                     >
                       <Settings className="mr-2 h-4 w-4" aria-hidden="true" />
-                      Settings
+                      {t('workspace.settings')}
                     </Button>
                   </div>
                 )}
@@ -318,32 +370,32 @@ function SidebarComponent() {
                         aria-label="Create a new workspace"
                       >
                         <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-                        Create Workspace
+                        {t('workspace.createNew')}
                       </Button>
                         </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
-                        <DialogTitle>Create New Workspace</DialogTitle>
+                        <DialogTitle>{t('workspace.createNew')}</DialogTitle>
                         <DialogDescription>
-                          Create a new workspace to organize your resources and collaborate with your team.
+                          {t('workspace.createNewDescription')}
                         </DialogDescription>
                       </DialogHeader>
                       <Form {...form}>
                         <form onSubmit={handleSubmit} className="space-y-4">
                           <EnhancedField
                             name="name"
-                            label="Workspace Name"
+                            label={t('workspace.name')}
                             type="text"
-                            placeholder="Enter workspace name"
+                            placeholder={t('workspace.name')}
                             required
                             getFieldError={getFieldError}
                             getFieldValidationState={getFieldValidationState}
                           />
                           <EnhancedField
                             name="description"
-                            label="Description"
+                            label={t('workspace.description')}
                             type="textarea"
-                            placeholder="Enter workspace description"
+                            placeholder={t('workspace.description')}
                             required
                             getFieldError={getFieldError}
                             getFieldValidationState={getFieldValidationState}
@@ -364,10 +416,10 @@ function SidebarComponent() {
                                 setIsCreateDialogOpen(false);
                               }}
                             >
-                              Cancel
+                              {t('common.cancel')}
                             </Button>
                             <Button type="submit" disabled={isFormLoading}>
-                              {isFormLoading ? 'Creating...' : 'Create Workspace'}
+                              {isFormLoading ? t('common.loading') : t('workspace.create')}
                             </Button>
                           </div>
                         </form>

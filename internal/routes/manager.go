@@ -13,6 +13,7 @@ import (
 	"skyclust/internal/application/handlers/network"
 	"skyclust/internal/application/handlers/notification"
 	"skyclust/internal/application/handlers/oidc"
+	"skyclust/internal/application/handlers/rbac"
 	"skyclust/internal/application/handlers/sse"
 	"skyclust/internal/application/handlers/system"
 	"skyclust/internal/application/handlers/workspace"
@@ -143,9 +144,9 @@ func (rm *RouteManager) setupAdminRoutes(router *gin.Engine) {
 		// Audit log routes (RESTful: /audit-logs)
 		auditGroup := v1Admin.Group("/audit-logs")
 		rm.setupAuditRoutes(auditGroup)
-		// Permission management routes
-		permissionsGroup := v1Admin.Group("/permissions")
-		rm.setupPermissionRoutes(permissionsGroup)
+		// RBAC management routes
+		rbacGroup := v1Admin.Group("/rbac")
+		rm.setupRBACRoutes(rbacGroup)
 	}
 }
 
@@ -284,7 +285,7 @@ func (rm *RouteManager) setupGCPRoutes(router *gin.RouterGroup) {
 		rm.logger.Info("Kubernetes service found, setting up GCP routes")
 		if k8s, ok := k8sService.(*kubernetesservice.Service); ok {
 			rm.logger.Info("Kubernetes service type assertion successful, setting up GCP routes")
-			kubernetes.SetupGCPRoutes(k8sGroup, k8s, rm.container.GetCredentialService())
+			kubernetes.SetupRoutes(k8sGroup, k8s, rm.container.GetCredentialService(), "gcp")
 		} else {
 			rm.logger.Warn("Kubernetes service type assertion failed for GCP")
 		}
@@ -295,7 +296,7 @@ func (rm *RouteManager) setupGCPRoutes(router *gin.RouterGroup) {
 	networkGroup := router.Group("/network")
 	if networkService := rm.container.GetNetworkService(); networkService != nil {
 		if networkSvc, ok := networkService.(*networkservice.Service); ok {
-			network.SetupGCPRoutes(networkGroup, networkSvc, rm.container.GetCredentialService(), rm.logger)
+			network.SetupRoutes(networkGroup, networkSvc, rm.container.GetCredentialService(), "gcp", rm.logger)
 		}
 	}
 	// TODO: Add more GCP-specific services
@@ -389,10 +390,10 @@ func (rm *RouteManager) setupAuditRoutes(router *gin.RouterGroup) {
 	}
 }
 
-// setupPermissionRoutes sets up permission management routes
-func (rm *RouteManager) setupPermissionRoutes(router *gin.RouterGroup) {
+// setupRBACRoutes sets up RBAC management routes
+func (rm *RouteManager) setupRBACRoutes(router *gin.RouterGroup) {
 	if rbacService := rm.container.GetRBACService(); rbacService != nil {
-		admin.SetupPermissionRoutes(router, rbacService)
+		rbac.SetupRoutes(router, rbacService)
 	}
 }
 

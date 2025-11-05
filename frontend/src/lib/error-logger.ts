@@ -236,14 +236,13 @@ class ErrorLogger {
    * 외부 로깅 서비스로 전송 (Sentry)
    */
   private async sendToExternalService(log: ErrorLog): Promise<void> {
+    // 클라이언트에서만 Sentry 사용
     if (typeof window === 'undefined') return;
 
     try {
-      // Dynamic import로 Sentry 클라이언트 가져오기
-      const { getSentryClient } = await import('./sentry-client');
-      const sentry = getSentryClient();
 
-      if (!sentry) return;
+      // Dynamic import로 Sentry SDK 가져오기
+      const Sentry = await import('@sentry/nextjs');
 
       // Error 객체 재구성
       const error = new Error(log.message);
@@ -253,32 +252,39 @@ class ErrorLogger {
       }
 
       // Sentry에 컨텍스트 추가
-      if (log.context) {
-        sentry.setContext('errorContext', log.context);
-      }
+      Sentry.withScope((scope) => {
+        if (log.context) {
+          scope.setContext('errorContext', log.context);
+        }
 
-      // 추가 정보를 태그로 설정
-      if (log.code) {
-        sentry.setContext('errorCode', { code: log.code });
-      }
+        // 추가 정보를 컨텍스트로 설정
+        if (log.code) {
+          scope.setContext('errorCode', { code: log.code });
+        }
 
-      if (log.statusCode) {
-        sentry.setContext('httpStatus', { status: log.statusCode });
-      }
+        if (log.statusCode) {
+          scope.setContext('httpStatus', { status: log.statusCode });
+        }
 
-      if (log.url) {
-        sentry.setContext('url', { url: log.url });
-      }
+        if (log.url) {
+          scope.setContext('url', { url: log.url });
+        }
 
-      if (log.componentStack) {
-        sentry.setContext('componentStack', { stack: log.componentStack });
-      }
+        if (log.componentStack) {
+          scope.setContext('componentStack', { stack: log.componentStack });
+        }
 
-      // 에러 전송
-      sentry.captureException(error, {
-        errorId: log.id,
-        timestamp: log.timestamp,
-        userAgent: log.userAgent,
+        // 추가 메타데이터
+        scope.setTag('errorId', log.id);
+        if (log.timestamp) {
+          scope.setTag('timestamp', log.timestamp);
+        }
+        if (log.userAgent) {
+          scope.setTag('userAgent', log.userAgent);
+        }
+
+        // 에러 전송
+        Sentry.captureException(error);
       });
     } catch (error) {
       // Sentry 전송 실패는 조용히 무시 (무한 루프 방지)

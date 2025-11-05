@@ -2,15 +2,14 @@ import axios, { AxiosError } from 'axios';
 import { NetworkError, ServerError, isOffline } from './error-handler';
 import { getOfflineQueue } from './offline-queue';
 import { useAuthStore } from '@/store/auth';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+import { API_CONFIG } from './api-config';
 
 export const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_CONFIG.BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // 30 seconds
+  timeout: API_CONFIG.TIMEOUT,
 });
 
 // Request interceptor to add auth token

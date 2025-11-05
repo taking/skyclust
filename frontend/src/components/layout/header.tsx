@@ -26,6 +26,8 @@ import { getActionAriaLabel } from '@/lib/accessibility';
 import { Breadcrumb } from '@/components/common/breadcrumb';
 import { getRegionsForProvider, supportsRegionSelection } from '@/lib/regions';
 import type { CloudProvider } from '@/lib/types';
+import { useTranslation } from '@/hooks/use-translation';
+import { locales, localeNames, type Locale } from '@/i18n/config';
 
 function HeaderComponent() {
   const { user, logout } = useAuthStore();
@@ -34,6 +36,7 @@ function HeaderComponent() {
   const searchParams = useSearchParams();
   const { currentWorkspace } = useWorkspaceStore();
   const { selectedCredentialId, selectedRegion, setSelectedCredential, setSelectedRegion } = useCredentialContextStore();
+  const { t, locale, setLocale } = useTranslation();
 
   // Check if we should show credential/region selectors
   const shouldShowSelectors = React.useMemo(() => {
@@ -161,7 +164,7 @@ function HeaderComponent() {
                   onValueChange={handleCredentialChange}
                 >
                   <SelectTrigger className="w-[200px] h-8 text-xs">
-                    <SelectValue placeholder="Select Credential" />
+                    <SelectValue placeholder={typeof t === 'function' ? t('credential.select') : 'Select Credential'} />
                   </SelectTrigger>
                   <SelectContent>
                     {credentials.map((credential) => (
@@ -182,7 +185,7 @@ function HeaderComponent() {
                         aria-label="Create a new credential"
                       >
                         <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-                        Create Credential
+                        {typeof t === 'function' ? t('credential.create') : 'Create Credential'}
                       </Button>
                     </div>
                   </SelectContent>
@@ -193,10 +196,10 @@ function HeaderComponent() {
                     onValueChange={handleRegionChange}
                   >
                     <SelectTrigger className="w-[180px] h-8 text-xs">
-                      <SelectValue placeholder="All Regions" />
+                      <SelectValue placeholder={typeof t === 'function' ? t('region.select') : 'Select Region'} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Regions</SelectItem>
+                      <SelectItem value="all">{typeof t === 'function' ? t('region.select') : 'All Regions'}</SelectItem>
                       {regions.map((region) => (
                         <SelectItem key={region.value} value={region.value} className="text-xs">
                           {region.value} - {region.label}
@@ -207,6 +210,23 @@ function HeaderComponent() {
                 )}
               </>
             )}
+
+            {/* Language Selector */}
+            <Select
+              value={locale}
+              onValueChange={(value) => setLocale(value as Locale)}
+            >
+              <SelectTrigger className="w-[120px] h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {locales.map((loc) => (
+                  <SelectItem key={loc} value={loc} className="text-xs">
+                    {localeNames[loc]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
             <ThemeToggle />
             {user ? (
@@ -242,7 +262,7 @@ function HeaderComponent() {
                   aria-label="Go to profile page"
                 >
                   <User className="mr-2 h-4 w-4" aria-hidden="true" />
-                  <span>Profile</span>
+                  <span>{typeof t === 'function' ? t('user.profile') : 'Profile'}</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem 
                   onClick={() => router.push('/settings')}
@@ -250,7 +270,7 @@ function HeaderComponent() {
                   aria-label="Go to settings page"
                 >
                   <Settings className="mr-2 h-4 w-4" aria-hidden="true" />
-                  <span>Settings</span>
+                  <span>{typeof t === 'function' ? t('user.settings') : 'Settings'}</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem 
@@ -259,17 +279,17 @@ function HeaderComponent() {
                   aria-label="Log out of account"
                 >
                   <LogOut className="mr-2 h-4 w-4" aria-hidden="true" />
-                  <span>Log out</span>
+                  <span>{typeof t === 'function' ? t('user.logout') : 'Log out'}</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
             <div className="flex items-center space-x-2">
               <Button variant="ghost" onClick={() => router.push('/login')}>
-                Login
+                {typeof t === 'function' ? t('user.login') : 'Login'}
               </Button>
               <Button onClick={() => router.push('/register')}>
-                Sign Up
+                {typeof t === 'function' ? t('user.signUp') : 'Sign Up'}
               </Button>
             </div>
           )}

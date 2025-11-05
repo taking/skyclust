@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { API_CONFIG } from '@/lib/api-config';
 
 export interface UseOfflineReturn {
   /**
@@ -99,7 +100,7 @@ export function useOffline(): UseOfflineReturn {
 
     // 간단한 연결 확인
     // 실제 서버 health check를 시도하되, 실패하면 navigator.onLine 사용
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+    const apiBaseUrl = API_CONFIG.BASE_URL;
     
     let timeoutId: NodeJS.Timeout | null = null;
     try {

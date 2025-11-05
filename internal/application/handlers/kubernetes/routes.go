@@ -1,16 +1,21 @@
 package kubernetes
 
 import (
+	kubernetesh "skyclust/internal/application/handlers/kubernetes/providers"
 	kubernetesservice "skyclust/internal/application/services/kubernetes"
 	"skyclust/internal/domain"
 
 	"github.com/gin-gonic/gin"
 )
 
-// SetupRoutes sets up Kubernetes routes for a specific provider
+// SetupRoutes sets up Kubernetes routes for a specific provider using Factory pattern
 // provider: "aws", "gcp", "azure", "ncp"
 func SetupRoutes(router *gin.RouterGroup, k8sService *kubernetesservice.Service, credentialService domain.CredentialService, provider string) {
-	handler := NewHandler(k8sService, credentialService, provider)
+	factory := kubernetesh.NewFactory(k8sService, credentialService)
+	handler, err := factory.GetHandler(provider)
+	if err != nil {
+		return
+	}
 
 	// Cluster management
 	// Path: /api/v1/{provider}/kubernetes/clusters
@@ -52,5 +57,4 @@ func SetupRoutes(router *gin.RouterGroup, k8sService *kubernetesservice.Service,
 	// Path: /api/v1/{provider}/kubernetes/clusters/:name/nodes/:node/ssh
 	router.GET("/clusters/:name/nodes/:node/ssh", handler.GetNodeSSHConfig)
 	router.POST("/clusters/:name/nodes/:node/ssh/execute", handler.ExecuteNodeCommand)
-
 }

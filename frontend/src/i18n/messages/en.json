@@ -1,0 +1,180 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "update": "Update",
+    "search": "Search",
+    "filter": "Filter",
+    "reset": "Reset",
+    "refresh": "Refresh",
+    "close": "Close",
+    "open": "Open",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "submit": "Submit",
+    "required": "Required",
+    "optional": "Optional",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "compute": "Compute",
+    "kubernetes": "Kubernetes",
+    "networks": "Networks",
+    "credentials": "Credentials",
+    "vms": "VMs",
+    "images": "Images",
+    "snapshots": "Snapshots",
+    "clusters": "Clusters",
+    "nodePools": "Node Pools",
+    "nodes": "Nodes",
+    "vpcs": "VPCs",
+    "subnets": "Subnets",
+    "securityGroups": "Security Groups"
+  },
+  "workspace": {
+    "title": "Workspace",
+    "select": "Select Workspace",
+    "create": "Create Workspace",
+    "name": "Name",
+    "description": "Description",
+    "createNew": "Create New Workspace",
+    "createNewDescription": "Create a new workspace to organize your resources and collaborate with your team.",
+    "settings": "Settings",
+    "noWorkspace": "No workspace",
+    "noWorkspaceSelected": "No workspace selected",
+    "selectWorkspace": "Please select a workspace",
+    "welcome": "Welcome",
+    "welcomeTo": "Welcome to {{name}} workspace"
+  },
+  "credential": {
+    "title": "Credentials",
+    "select": "Select Credential",
+    "create": "Create Credential",
+    "add": "Add Credentials",
+    "noCredential": "No credentials",
+    "selectCredential": "Please select a credential",
+    "required": "Credentials required",
+    "description": "Add cloud provider credentials to start managing VMs"
+  },
+  "region": {
+    "select": "Select Region",
+    "all": "All Regions",
+    "noRegion": "No region",
+    "selectRegion": "Please select a region"
+  },
+  "user": {
+    "profile": "Profile",
+    "settings": "Settings",
+    "logout": "Log out",
+    "login": "Login",
+    "signUp": "Sign Up"
+  },
+  "vm": {
+    "title": "Virtual Machines",
+    "create": "Create VM",
+    "list": "VM List",
+    "noVMs": "No VMs",
+    "noVMsFound": "No VMs found",
+    "createFirst": "Create your first VM",
+    "name": "Name",
+    "status": "Status",
+    "type": "Type",
+    "region": "Region"
+  },
+  "kubernetes": {
+    "title": "Kubernetes",
+    "clusters": "Clusters",
+    "nodePools": "Node Pools",
+    "nodes": "Nodes",
+    "createCluster": "Create Cluster",
+    "noClusters": "No clusters",
+    "noClustersFound": "No clusters found",
+    "createFirst": "Create your first cluster",
+    "downloadKubeconfig": "Download Kubeconfig"
+  },
+  "network": {
+    "title": "Networks",
+    "vpcs": "VPCs",
+    "subnets": "Subnets",
+    "securityGroups": "Security Groups",
+    "createVPC": "Create VPC",
+    "createSubnet": "Create Subnet",
+    "createSecurityGroup": "Create Security Group",
+    "noVPCs": "No VPCs",
+    "noSubnets": "No subnets",
+    "noSecurityGroups": "No security groups"
+  },
+  "emptyState": {
+    "noResults": "No results",
+    "noResultsFound": "No results found",
+    "tryAdjusting": "Try adjusting your search or filter criteria",
+    "getStarted": "Get started by",
+    "createFirst": "creating your first {{resource}}"
+  },
+  "form": {
+    "validation": {
+      "required": "{{field}} is required",
+      "minLength": "{{field}} must be at least {{min}} characters",
+      "maxLength": "{{field}} must be at most {{max}} characters",
+      "invalid": "Invalid {{field}}",
+      "looksGood": "Looks good!"
+    }
+  },
+  "actions": {
+    "create": "Create",
+    "edit": "Edit",
+    "delete": "Delete",
+    "view": "View",
+    "download": "Download",
+    "upload": "Upload",
+    "export": "Export",
+    "import": "Import",
+    "bulkDelete": "Bulk Delete",
+    "bulkTag": "Bulk Tag",
+    "confirmDelete": "Are you sure you want to delete?",
+    "confirmBulkDelete": "Are you sure you want to delete {{count}} items?",
+    "cannotUndo": "This action cannot be undone"
+  },
+  "status": {
+    "active": "Active",
+    "inactive": "Inactive",
+    "creating": "Creating",
+    "updating": "Updating",
+    "deleting": "Deleting",
+    "failed": "Failed",
+    "pending": "Pending",
+    "running": "Running",
+    "stopped": "Stopped"
+  },
+  "messages": {
+    "created": "{{resource}} created",
+    "updated": "{{resource}} updated",
+    "deleted": "{{resource}} deleted",
+    "creationInitiated": "{{resource}} creation initiated",
+    "deletionInitiated": "{{resource}} deletion initiated",
+    "updateInitiated": "{{resource}} update initiated",
+    "downloadSuccess": "Download completed",
+    "operationSuccess": "Operation completed successfully",
+    "operationFailed": "Operation failed"
+  },
+  "errors": {
+    "generic": "An error occurred",
+    "network": "Network error occurred",
+    "notFound": "Not found",
+    "unauthorized": "Authentication required",
+    "forbidden": "Access forbidden",
+    "serverError": "Server error occurred",
+    "unknown": "Unknown error occurred"
+  }
+}
+

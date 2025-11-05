@@ -7,6 +7,11 @@ import { ToastProvider } from '@/components/ui/toast';
 import { AppErrorBoundary } from '@/components/error-boundary';
 import { OfflineBanner } from '@/components/common/offline-banner';
 import { SentryProvider } from '@/components/providers/sentry-provider';
+import { I18nProvider } from '@/components/providers/i18n-provider';
+// 개발 환경에서 Sentry 테스트 함수 로드
+if (process.env.NODE_ENV === 'development') {
+  import('@/lib/test-sentry');
+}
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -21,7 +26,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="ko" suppressHydrationWarning>
       <body className={inter.className}>
         <SentryProvider>
           <ThemeProvider
@@ -30,13 +35,15 @@ export default function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-            <AppErrorBoundary>
-              <QueryProvider>
-                <OfflineBanner position="top" autoHide showRefreshButton />
-                {children}
-                <ToastProvider />
-              </QueryProvider>
-            </AppErrorBoundary>
+            <I18nProvider>
+              <AppErrorBoundary>
+                <QueryProvider>
+                  <OfflineBanner position="top" autoHide showRefreshButton />
+                  {children}
+                  <ToastProvider />
+                </QueryProvider>
+              </AppErrorBoundary>
+            </I18nProvider>
           </ThemeProvider>
         </SentryProvider>
       </body>
