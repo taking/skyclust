@@ -9,7 +9,7 @@ import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components
 import { Checkbox } from '@/components/ui/checkbox';
 import { Pagination } from '@/components/ui/pagination';
 import { VirtualizedTable } from '@/components/common/virtualized-table';
-import { ClusterRow } from './cluster-row';
+import { ClusterRow } from '@/features/kubernetes/components/cluster-row';
 import type { KubernetesCluster } from '@/lib/types';
 
 interface ClusterTableProps {

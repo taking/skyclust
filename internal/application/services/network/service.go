@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"skyclust/internal/domain"
+	"skyclust/internal/infrastructure/messaging"
+	"skyclust/pkg/cache"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -24,29 +26,57 @@ import (
 // Service handles network resource operations
 type Service struct {
 	credentialService domain.CredentialService
+	cache             cache.Cache
+	keyBuilder        *cache.CacheKeyBuilder
+	invalidator       *cache.Invalidator
+	eventPublisher    *messaging.Publisher
 	logger            *zap.Logger
 }
 
 // NewService creates a new network service
-func NewService(credentialService domain.CredentialService, logger *zap.Logger) *Service {
+func NewService(credentialService domain.CredentialService, cacheService cache.Cache, eventBus messaging.Bus, logger *zap.Logger) *Service {
+	eventPublisher := messaging.NewPublisher(eventBus, logger)
 	return &Service{
 		credentialService: credentialService,
+		cache:             cacheService,
+		keyBuilder:        cache.NewCacheKeyBuilder(),
+		invalidator:       cache.NewInvalidatorWithEvents(cacheService, eventPublisher),
+		eventPublisher:    eventPublisher,
 		logger:            logger,
 	}
 }
 
 // ListVPCs lists VPCs for a given credential and region
 func (s *Service) ListVPCs(ctx context.Context, credential *domain.Credential, req ListVPCsRequest) (*ListVPCsResponse, error) {
-	// Route to provider-specific implementation
+	// 캐시 키 생성
+	credentialID := credential.ID.String()
+	cacheKey := s.keyBuilder.BuildNetworkVPCListKey(credential.Provider, credentialID, req.Region)
+
+	// 캐시에서 조회 시도
+	if s.cache != nil {
+		var cachedResponse ListVPCsResponse
+		if err := s.cache.Get(ctx, cacheKey, &cachedResponse); err == nil {
+			s.logger.Debug("VPCs retrieved from cache",
+				zap.String("provider", credential.Provider),
+				zap.String("credential_id", credentialID),
+				zap.String("region", req.Region))
+			return &cachedResponse, nil
+		}
+	}
+
+	// 캐시 미스 시 실제 API 호출
+	var response *ListVPCsResponse
+	var err error
+
 	switch credential.Provider {
 	case domain.ProviderAWS:
-		return s.listAWSVPCs(ctx, credential, req)
+		response, err = s.listAWSVPCs(ctx, credential, req)
 	case domain.ProviderGCP:
-		return s.listGCPVPCs(ctx, credential, req)
+		response, err = s.listGCPVPCs(ctx, credential, req)
 	case domain.ProviderAzure:
-		return s.listAzureVPCs(ctx, credential, req)
+		response, err = s.listAzureVPCs(ctx, credential, req)
 	case domain.ProviderNCP:
-		return s.listNCPVPCs(ctx, credential, req)
+		response, err = s.listNCPVPCs(ctx, credential, req)
 	default:
 		return nil, domain.NewDomainError(
 			domain.ErrCodeNotSupported,
@@ -54,6 +84,25 @@ func (s *Service) ListVPCs(ctx context.Context, credential *domain.Credential, r
 			400,
 		)
 	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	// 응답을 캐시에 저장 (캐시 실패해도 계속 진행)
+	if s.cache != nil && response != nil {
+		ttl := cache.GetDefaultTTL(cache.ResourceNetwork)
+		if err := s.cache.Set(ctx, cacheKey, response, ttl); err != nil {
+			s.logger.Warn("Failed to cache VPCs, continuing without cache",
+				zap.String("provider", credential.Provider),
+				zap.String("credential_id", credentialID),
+				zap.String("region", req.Region),
+				zap.Error(err))
+			// 캐시 실패는 치명적이지 않으므로 계속 진행
+		}
+	}
+
+	return response, nil
 }
 
 // listAWSVPCs lists AWS VPCs
@@ -93,16 +142,35 @@ func (s *Service) listAWSVPCs(ctx context.Context, credential *domain.Credential
 
 // GetVPC gets a specific VPC
 func (s *Service) GetVPC(ctx context.Context, credential *domain.Credential, req GetVPCRequest) (*VPCInfo, error) {
-	// Route to provider-specific implementation
+	// 캐시 키 생성
+	credentialID := credential.ID.String()
+	cacheKey := s.keyBuilder.BuildNetworkVPCItemKey(credential.Provider, credentialID, req.VPCID)
+
+	// 캐시에서 조회 시도
+	if s.cache != nil {
+		var cachedVPC VPCInfo
+		if err := s.cache.Get(ctx, cacheKey, &cachedVPC); err == nil {
+			s.logger.Debug("VPC retrieved from cache",
+				zap.String("provider", credential.Provider),
+				zap.String("credential_id", credentialID),
+				zap.String("vpc_id", req.VPCID))
+			return &cachedVPC, nil
+		}
+	}
+
+	// 캐시 미스 시 실제 API 호출
+	var vpc *VPCInfo
+	var err error
+
 	switch credential.Provider {
 	case "aws":
-		return s.getAWSVPC(ctx, credential, req)
+		vpc, err = s.getAWSVPC(ctx, credential, req)
 	case "gcp":
-		return s.getGCPVPC(ctx, credential, req)
+		vpc, err = s.getGCPVPC(ctx, credential, req)
 	case "azure":
-		return s.getAzureVPC(ctx, credential, req)
+		vpc, err = s.getAzureVPC(ctx, credential, req)
 	case "ncp":
-		return s.getNCPVPC(ctx, credential, req)
+		vpc, err = s.getNCPVPC(ctx, credential, req)
 	default:
 		return nil, domain.NewDomainError(
 			domain.ErrCodeNotSupported,
@@ -110,6 +178,24 @@ func (s *Service) GetVPC(ctx context.Context, credential *domain.Credential, req
 			400,
 		)
 	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	// 응답을 캐시에 저장
+	if s.cache != nil && vpc != nil {
+		ttl := cache.GetDefaultTTL(cache.ResourceNetwork)
+		if err := s.cache.Set(ctx, cacheKey, vpc, ttl); err != nil {
+			s.logger.Warn("Failed to cache VPC",
+				zap.String("provider", credential.Provider),
+				zap.String("credential_id", credentialID),
+				zap.String("vpc_id", req.VPCID),
+				zap.Error(err))
+		}
+	}
+
+	return vpc, nil
 }
 
 // getAWSVPC gets a specific AWS VPC
@@ -150,15 +236,18 @@ func (s *Service) getAWSVPC(ctx context.Context, credential *domain.Credential, 
 // CreateVPC creates a new VPC
 func (s *Service) CreateVPC(ctx context.Context, credential *domain.Credential, req CreateVPCRequest) (*VPCInfo, error) {
 	// Route to provider-specific implementation
+	var vpc *VPCInfo
+	var err error
+
 	switch credential.Provider {
 	case "aws":
-		return s.createAWSVPC(ctx, credential, req)
+		vpc, err = s.createAWSVPC(ctx, credential, req)
 	case "gcp":
-		return s.createGCPVPC(ctx, credential, req)
+		vpc, err = s.createGCPVPC(ctx, credential, req)
 	case "azure":
-		return s.createAzureVPC(ctx, credential, req)
+		vpc, err = s.createAzureVPC(ctx, credential, req)
 	case "ncp":
-		return s.createNCPVPC(ctx, credential, req)
+		vpc, err = s.createNCPVPC(ctx, credential, req)
 	default:
 		return nil, domain.NewDomainError(
 			domain.ErrCodeNotSupported,
@@ -166,6 +255,37 @@ func (s *Service) CreateVPC(ctx context.Context, credential *domain.Credential, 
 			400,
 		)
 	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	// 캐시 무효화: VPC 목록 캐시 삭제
+	credentialID := credential.ID.String()
+	if err := s.invalidator.InvalidateNetworkVPCList(ctx, credential.Provider, credentialID, req.Region); err != nil {
+		s.logger.Warn("Failed to invalidate VPC list cache",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("region", req.Region),
+			zap.Error(err))
+	}
+
+	// 이벤트 발행: VPC 생성 이벤트
+	vpcData := map[string]interface{}{
+		"vpc_id": vpc.ID,
+		"name":   vpc.Name,
+		"state":  vpc.State,
+		"region": vpc.Region,
+	}
+	if err := s.eventPublisher.PublishVPCEvent(ctx, credential.Provider, credentialID, req.Region, "created", vpcData); err != nil {
+		s.logger.Warn("Failed to publish VPC created event",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("vpc_id", vpc.ID),
+			zap.Error(err))
+	}
+
+	return vpc, nil
 }
 
 // createGCPVPC creates a GCP VPC
@@ -937,21 +1057,60 @@ func (s *Service) updateAWSVPC(ctx context.Context, credential *domain.Credentia
 		VPCID:        vpcID,
 		Region:       region,
 	}
-	return s.GetVPC(ctx, credential, getReq)
+	vpc, err := s.GetVPC(ctx, credential, getReq)
+	if err != nil {
+		return nil, err
+	}
+
+	// 캐시 무효화: VPC 목록 및 개별 VPC 캐시 삭제
+	credentialID := credential.ID.String()
+	if err := s.invalidator.InvalidateNetworkVPCList(ctx, credential.Provider, credentialID, region); err != nil {
+		s.logger.Warn("Failed to invalidate VPC list cache",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("region", region),
+			zap.Error(err))
+	}
+	if err := s.invalidator.InvalidateNetworkVPCItem(ctx, credential.Provider, credentialID, vpcID); err != nil {
+		s.logger.Warn("Failed to invalidate VPC item cache",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("vpc_id", vpcID),
+			zap.Error(err))
+	}
+
+	// 이벤트 발행: VPC 업데이트 이벤트
+	vpcData := map[string]interface{}{
+		"vpc_id": vpc.ID,
+		"name":   vpc.Name,
+		"state":  vpc.State,
+		"region": vpc.Region,
+	}
+	if err := s.eventPublisher.PublishVPCEvent(ctx, credential.Provider, credentialID, region, "updated", vpcData); err != nil {
+		s.logger.Warn("Failed to publish VPC updated event",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("vpc_id", vpcID),
+			zap.Error(err))
+	}
+
+	return vpc, nil
 }
 
 // DeleteVPC deletes a VPC
 func (s *Service) DeleteVPC(ctx context.Context, credential *domain.Credential, req DeleteVPCRequest) error {
 	// Route to provider-specific implementation
+	var err error
+
 	switch credential.Provider {
 	case "aws":
-		return s.deleteAWSVPC(ctx, credential, req)
+		err = s.deleteAWSVPC(ctx, credential, req)
 	case "gcp":
-		return s.deleteGCPVPC(ctx, credential, req)
+		err = s.deleteGCPVPC(ctx, credential, req)
 	case "azure":
-		return s.deleteAzureVPC(ctx, credential, req)
+		err = s.deleteAzureVPC(ctx, credential, req)
 	case "ncp":
-		return s.deleteNCPVPC(ctx, credential, req)
+		err = s.deleteNCPVPC(ctx, credential, req)
 	default:
 		return domain.NewDomainError(
 			domain.ErrCodeNotSupported,
@@ -959,6 +1118,42 @@ func (s *Service) DeleteVPC(ctx context.Context, credential *domain.Credential, 
 			400,
 		)
 	}
+
+	if err != nil {
+		return err
+	}
+
+	// 캐시 무효화: VPC 목록 및 개별 VPC 캐시 삭제
+	credentialID := credential.ID.String()
+	if err := s.invalidator.InvalidateNetworkVPCList(ctx, credential.Provider, credentialID, req.Region); err != nil {
+		s.logger.Warn("Failed to invalidate VPC list cache",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("region", req.Region),
+			zap.Error(err))
+	}
+	if err := s.invalidator.InvalidateNetworkVPCItem(ctx, credential.Provider, credentialID, req.VPCID); err != nil {
+		s.logger.Warn("Failed to invalidate VPC item cache",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("vpc_id", req.VPCID),
+			zap.Error(err))
+	}
+
+	// 이벤트 발행: VPC 삭제 이벤트
+	vpcData := map[string]interface{}{
+		"vpc_id": req.VPCID,
+		"region": req.Region,
+	}
+	if err := s.eventPublisher.PublishVPCEvent(ctx, credential.Provider, credentialID, req.Region, "deleted", vpcData); err != nil {
+		s.logger.Warn("Failed to publish VPC deleted event",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("vpc_id", req.VPCID),
+			zap.Error(err))
+	}
+
+	return nil
 }
 
 // deleteAWSVPC deletes an AWS VPC

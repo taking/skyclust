@@ -27,6 +27,7 @@ import { CredentialRequiredState } from '@/components/common/credential-required
 import { ResourceEmptyState } from '@/components/common/resource-empty-state';
 import { useCredentialContext } from '@/hooks/use-credential-context';
 import { useCreateDialog } from '@/hooks/use-create-dialog';
+import { useTranslation } from '@/hooks/use-translation';
 import {
   ClusterPageHeader,
   useKubernetesClusters,
@@ -57,6 +58,7 @@ const ClusterTable = dynamic(
 export default function KubernetesClustersPage() {
   const { success } = useToast();
   const { handleError } = useErrorHandler();
+  const { t } = useTranslation();
 
   // Get workspace from store (consistent with other pages)
   const { currentWorkspace } = useWorkspaceStore();
@@ -133,19 +135,19 @@ export default function KubernetesClustersPage() {
   const filterConfigs: FilterConfig[] = useMemo(() => [
     {
       id: 'status',
-      label: 'Status',
+      label: t('filters.status'),
       type: 'select',
       options: [
-        { id: 'active', value: 'ACTIVE', label: 'Active' },
-        { id: 'creating', value: 'CREATING', label: 'Creating' },
-        { id: 'updating', value: 'UPDATING', label: 'Updating' },
-        { id: 'deleting', value: 'DELETING', label: 'Deleting' },
-        { id: 'failed', value: 'FAILED', label: 'Failed' },
+        { id: 'active', value: 'ACTIVE', label: t('filters.active') },
+        { id: 'creating', value: 'CREATING', label: t('kubernetes.creating') },
+        { id: 'updating', value: 'UPDATING', label: t('kubernetes.updating') },
+        { id: 'deleting', value: 'DELETING', label: t('kubernetes.deleting') },
+        { id: 'failed', value: 'FAILED', label: t('kubernetes.failed') },
       ],
     },
     {
       id: 'region',
-      label: 'Region',
+      label: t('filters.region'),
       type: 'select',
       options: Array.from(new Set(clusters.map(c => c.region)))
         .filter(Boolean)
@@ -155,7 +157,7 @@ export default function KubernetesClustersPage() {
           label: r 
         })),
     },
-  ], [clusters]);
+  ], [clusters, t]);
 
   // Event handlers
   const handleCreateCluster = (data: CreateClusterForm) => {
@@ -167,7 +169,7 @@ export default function KubernetesClustersPage() {
       { provider: selectedProvider, data },
       {
         onSuccess: () => {
-          success('Cluster creation initiated');
+          success(t('kubernetes.clusterCreationInitiated'));
           setIsCreateDialogOpen(false);
         },
         onError: (error: unknown) => {
@@ -179,7 +181,7 @@ export default function KubernetesClustersPage() {
 
   const handleDeleteCluster = (clusterName: string, region: string) => {
     if (!selectedCredentialId || !selectedProvider) return;
-    if (confirm(`Are you sure you want to delete cluster ${clusterName}? This action cannot be undone.`)) {
+    if (confirm(t('kubernetes.confirmDeleteCluster', { clusterName }))) {
       deleteClusterMutation.mutate(
         {
           provider: selectedProvider,
@@ -189,7 +191,7 @@ export default function KubernetesClustersPage() {
         },
         {
           onSuccess: () => {
-            success('Cluster deletion initiated');
+            success(t('kubernetes.clusterDeletionInitiated'));
           },
           onError: (error: unknown) => {
             handleError(error, { operation: 'deleteCluster', resource: 'Cluster' });
@@ -211,7 +213,7 @@ export default function KubernetesClustersPage() {
       {
         onSuccess: (kubeconfig) => {
           downloadKubeconfig(kubeconfig, clusterName);
-          success('Kubeconfig downloaded');
+          success(t('kubernetes.downloadKubeconfig'));
         },
         onError: (error: unknown) => {
           handleError(error, { operation: 'downloadKubeconfig', resource: 'Cluster' });
@@ -252,25 +254,25 @@ export default function KubernetesClustersPage() {
 
   // Empty state component
   const emptyStateComponent = credentials.length === 0 ? (
-    <CredentialRequiredState serviceName="Kubernetes" />
+    <CredentialRequiredState serviceName={t('kubernetes.title')} />
   ) : !selectedProvider ? (
     <ResourceEmptyState
-      resourceName="Clusters"
-      title="Select a Provider"
-      description="Please select a cloud provider to view Kubernetes clusters"
+      resourceName={t('kubernetes.clusters')}
+      title={t('credential.selectCredential')}
+      description={t('credential.selectCredential')}
       withCard={true}
     />
   ) : !selectedCredentialId ? (
     <CredentialRequiredState
-      title="Select a Credential"
-      description="Please select a credential to view Kubernetes clusters. If you don't have any credentials, register one first."
-      serviceName="Kubernetes"
+      title={t('credential.selectCredential')}
+      description={t('credential.selectCredential')}
+      serviceName={t('kubernetes.title')}
     />
   ) : filteredClusters.length === 0 ? (
     <ResourceEmptyState
-      resourceName="Clusters"
-      title="No Clusters Found"
-      description="No Kubernetes clusters found. Create your first cluster to get started."
+      resourceName={t('kubernetes.clusters')}
+      title={t('kubernetes.noClustersFound')}
+      description={t('kubernetes.createFirst')}
       onCreateClick={() => setIsCreateDialogOpen(true)}
       withCard={true}
     />
@@ -278,8 +280,8 @@ export default function KubernetesClustersPage() {
 
   return (
     <ResourceListPage
-      title="Kubernetes Clusters"
-      resourceName="clusters"
+      title={t('kubernetes.clusters')}
+      resourceName={t('kubernetes.clusters')}
       storageKey="kubernetes-clusters-page"
       header={
         <ClusterPageHeader

@@ -156,8 +156,11 @@ export function useFormWithValidation<T extends FieldValues>({
   const [success, setSuccess] = useState(false);
 
   // Initialize react-hook-form with zod resolver
+  // zodResolver expects z.ZodObject, but we accept z.ZodSchema<T> for flexibility
+  // Type assertion is safe here as zodResolver can handle any ZodSchema
   const form = useForm<T>({
-    resolver: zodResolver(schema) as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(schema as any),
     defaultValues: defaultValues as T,
     mode: formOptions?.mode || 'onChange',
     ...formOptions,
@@ -229,6 +232,9 @@ export function useFormWithValidation<T extends FieldValues>({
     }
     return 'An error occurred. Please try again.';
   }, []);
+  
+  // Note: defaultGetErrorMessage는 서버에서 반환한 메시지를 그대로 사용하므로
+  // 번역이 필요한 경우 useErrorHandler의 getErrorMessage를 사용하세요
 
   // Form submission handler
   const handleSubmit = useCallback(

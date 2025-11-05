@@ -27,8 +27,8 @@ export function usePagination<T>(
 ): UsePaginationReturn<T> {
   const { totalItems, initialPage = 1, initialPageSize = 20 } = options;
 
-  const [page, setPage] = useState(initialPage);
-  const [pageSize, setPageSize] = useState(initialPageSize);
+  const [page, setPage] = useState<number>(initialPage);
+  const [pageSize, setPageSize] = useState<number>(initialPageSize);
 
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogTrigger } from '@/components/ui/dialog';
 import { Plus } from 'lucide-react';
+import { useTranslation } from '@/hooks/use-translation';
 import type { Credential, CreateVMForm } from '@/lib/types';
 
 // Dynamic import for CreateVMDialog
@@ -43,12 +44,17 @@ function VMPageHeaderComponent({
   isCreateDialogOpen,
   onCreateDialogChange,
 }: VMPageHeaderProps) {
+  const { t } = useTranslation();
+  
   return (
     <div className="flex items-center justify-between">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Virtual Machines</h1>
+        <h1 className="text-3xl font-bold text-gray-900">{t('vm.title')}</h1>
         <p className="text-gray-600">
-          Manage VMs{workspaceName ? ` in ${workspaceName} workspace` : ''}
+          {workspaceName 
+            ? t('vm.manageVMsWithWorkspace', { workspaceName }) 
+            : t('vm.manageVMs')
+          }
         </p>
       </div>
       <div className="flex items-center space-x-2">
@@ -57,7 +63,7 @@ function VMPageHeaderComponent({
           <DialogTrigger asChild>
             <Button disabled={!selectedCredentialId || credentials.length === 0}>
               <Plus className="mr-2 h-4 w-4" />
-              Create VM
+              {t('vm.create')}
             </Button>
           </DialogTrigger>
           <CreateVMDialog

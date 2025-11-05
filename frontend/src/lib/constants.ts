@@ -33,9 +33,9 @@ export const EVENTS = {
 export const UI = {
   // Pagination
   PAGINATION: {
-    DEFAULT_PAGE_SIZE: 20,
+    DEFAULT_PAGE_SIZE: 20 as number,
     PAGE_SIZE_OPTIONS: [10, 20, 50, 100] as number[],
-    DEFAULT_PAGE: 1,
+    DEFAULT_PAGE: 1 as number,
   },
   // Search
   SEARCH: {

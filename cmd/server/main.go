@@ -97,6 +97,15 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 	defer appContainer.Close()
 
+	// Start background workers
+	if err := appContainer.StartWorkers(ctx); err != nil {
+		log.Printf("Failed to start workers: %v", err)
+		// Continue even if workers fail to start
+	} else {
+		log.Println("Background workers started successfully")
+	}
+	defer appContainer.StopWorkers()
+
 	// Initialize logger
 	logger, err := zap.NewProduction()
 	if err != nil {

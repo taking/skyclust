@@ -80,21 +80,55 @@ function HeaderComponent() {
   const regions = React.useMemo(() => getRegionsForProvider(selectedProvider), [selectedProvider]);
   const showRegionSelector = supportsRegionSelection(selectedProvider) && shouldShowSelectors;
 
-  // Sync with URL query parameters
+  // Sync with URL query parameters (bidirectional)
+  // URL이 있으면 URL을 우선하고, URL이 없으면 Store의 값을 URL에 반영
   React.useEffect(() => {
-    if (!shouldShowSelectors) return;
+    if (!shouldShowSelectors || !currentWorkspace) return;
 
     const urlCredentialId = searchParams.get('credentialId');
     const urlRegion = searchParams.get('region');
 
-    // Sync from URL to store
+    // Priority 1: URL → Store (URL이 있으면 Store 업데이트)
     if (urlCredentialId && urlCredentialId !== selectedCredentialId) {
-      setSelectedCredential(urlCredentialId);
+      // URL의 credential이 현재 workspace에 속하는지 확인
+      const credentialExists = credentials.some(c => c.id === urlCredentialId);
+      if (credentialExists) {
+        setSelectedCredential(urlCredentialId);
+      }
     }
     if (urlRegion !== null && urlRegion !== selectedRegion) {
       setSelectedRegion(urlRegion || null);
     }
-  }, [searchParams, shouldShowSelectors, selectedCredentialId, selectedRegion, setSelectedCredential, setSelectedRegion]);
+
+    // Priority 2: Store → URL (URL이 없고 Store에 값이 있으면 URL에 반영)
+    // 단, credential이 현재 workspace에 속하는 경우에만 반영
+    if (!urlCredentialId && selectedCredentialId) {
+      const credentialExists = credentials.some(c => c.id === selectedCredentialId);
+      if (credentialExists) {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('credentialId', selectedCredentialId);
+        
+        // Region도 함께 업데이트 (provider가 region을 지원하는 경우)
+        if (selectedRegion) {
+          const credential = credentials.find(c => c.id === selectedCredentialId);
+          if (credential && supportsRegionSelection(credential.provider as CloudProvider)) {
+            params.set('region', selectedRegion);
+          }
+        }
+        
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      }
+    } else if (urlCredentialId && !urlRegion && selectedRegion) {
+      // Credential은 있지만 Region이 없고 Store에 Region이 있는 경우
+      // provider가 region을 지원하는지 확인
+      const credential = credentials.find(c => c.id === urlCredentialId);
+      if (credential && supportsRegionSelection(credential.provider as CloudProvider)) {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('region', selectedRegion);
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      }
+    }
+  }, [searchParams, shouldShowSelectors, selectedCredentialId, selectedRegion, setSelectedCredential, setSelectedRegion, pathname, router, credentials, currentWorkspace]);
 
   // Update URL when selection changes
   const handleCredentialChange = React.useCallback((credentialId: string) => {

@@ -108,10 +108,12 @@ type MonitoringConfig struct {
 
 // NATSConfig holds NATS configuration
 type NATSConfig struct {
-	URL      string `json:"url"`
-	Cluster  string `json:"cluster"`
-	Username string `json:"username"`
-	Password string `json:"password"`
+	URL                  string `json:"url"`
+	Cluster              string `json:"cluster"`
+	Username             string `json:"username"`
+	Password             string `json:"password"`
+	CompressionType      string `json:"compression_type"`      // "none", "gzip", "snappy"
+	CompressionThreshold int    `json:"compression_threshold"` // Minimum size in bytes to compress
 }
 
 // RedisConfig holds Redis configuration

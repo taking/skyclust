@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { WidgetData, WidgetSize, WIDGET_CONFIGS } from '@/lib/widgets';
+import { useTranslation } from '@/hooks/use-translation';
+import { getWidgetSizeTranslationKey } from '@/lib/widgets-utils';
 
 interface WidgetConfigDialogProps {
   widget: WidgetData | null;
@@ -21,6 +23,7 @@ export function WidgetConfigDialog({
   onOpenChange,
   onSave,
 }: WidgetConfigDialogProps) {
+  const { t } = useTranslation();
   const [size, setSize] = React.useState<WidgetSize>(widget?.size || 'medium');
   const [title, setTitle] = React.useState<string>(widget?.title || '');
   const [refreshInterval, setRefreshInterval] = React.useState<string>('');
@@ -60,15 +63,15 @@ export function WidgetConfigDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Configure Widget</DialogTitle>
+          <DialogTitle>{t('widgetConfig.title')}</DialogTitle>
           <DialogDescription>
-            Customize the appearance and behavior of this widget
+            {t('widgetConfig.description')}
           </DialogDescription>
         </DialogHeader>
         
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="widget-title">Widget Title</Label>
+            <Label htmlFor="widget-title">{t('widgetConfig.widgetTitle')}</Label>
             <Input
               id="widget-title"
               value={title}
@@ -78,7 +81,7 @@ export function WidgetConfigDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="widget-size">Widget Size</Label>
+            <Label htmlFor="widget-size">{t('widgetConfig.widgetSize')}</Label>
             <Select value={size} onValueChange={(value) => setSize(value as WidgetSize)}>
               <SelectTrigger id="widget-size">
                 <SelectValue />
@@ -86,18 +89,18 @@ export function WidgetConfigDialog({
               <SelectContent>
                 {availableSizes.map((s) => (
                   <SelectItem key={s} value={s}>
-                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                    {t(getWidgetSizeTranslationKey(s))}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <p className="text-xs text-gray-500">
-              Min: {config.minSize}, Max: {config.maxSize}
+              {t('widgetConfig.minMax', { min: config.minSize, max: config.maxSize })}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="refresh-interval">Auto-refresh Interval (seconds)</Label>
+            <Label htmlFor="refresh-interval">{t('widgetConfig.refreshInterval')}</Label>
             <Input
               id="refresh-interval"
               type="number"
@@ -109,17 +112,17 @@ export function WidgetConfigDialog({
               placeholder="30"
             />
             <p className="text-xs text-gray-500">
-              Leave empty to disable auto-refresh
+              {t('widgetConfig.refreshIntervalHint')}
             </p>
           </div>
         </div>
 
         <div className="flex justify-end space-x-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t('widgetConfig.cancel')}
           </Button>
           <Button onClick={handleSave}>
-            Save Changes
+            {t('widgetConfig.saveChanges')}
           </Button>
         </div>
       </DialogContent>

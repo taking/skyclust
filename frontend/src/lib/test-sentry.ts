@@ -41,7 +41,9 @@ export async function testSentryError(): Promise<void> {
 
 // 전역에서 접근 가능하도록 window에 추가 (개발 환경에서만)
 if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).testSentryMessage = testSentryMessage;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).testSentryError = testSentryError;
   console.log('[Sentry Test] Test functions available:');
   console.log('  - testSentryMessage() - 테스트 메시지 전송');

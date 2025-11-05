@@ -28,6 +28,7 @@ export function useCredentialContext() {
 
   // Sync from URL to store on mount and when URL changes (read-only)
   // URL 업데이트는 Header 컴포넌트에서만 처리합니다
+  // Store → URL 동기화는 Header에서 처리하므로, 여기서는 URL → Store만 처리
   useEffect(() => {
     if (!shouldSync) return;
 
@@ -37,18 +38,14 @@ export function useCredentialContext() {
     // Sync credential from URL to store only
     if (urlCredentialId && urlCredentialId !== selectedCredentialId) {
       setSelectedCredential(urlCredentialId);
-    } else if (!urlCredentialId && selectedCredentialId) {
-      // URL에 credentialId가 없으면 store도 초기화 (workspace 변경 시)
-      setSelectedCredential(null);
     }
+    // URL이 없을 때 store를 초기화하지 않음 (Header에서 Store → URL 동기화 처리)
 
     // Sync region from URL to store only
     if (urlRegion !== null && urlRegion !== selectedRegion) {
       setSelectedRegion(urlRegion || null);
-    } else if (urlRegion === null && selectedRegion) {
-      // URL에 region이 없으면 store도 초기화 (workspace 변경 시)
-      setSelectedRegion(null);
     }
+    // URL이 없을 때 store를 초기화하지 않음 (Header에서 Store → URL 동기화 처리)
   }, [searchParams, shouldSync, selectedCredentialId, selectedRegion, setSelectedCredential, setSelectedRegion]);
 
   return {

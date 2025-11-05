@@ -94,7 +94,7 @@ export function VPCTable({
                   <TableCell>
                     <Checkbox
                       checked={isSelected}
-                      onCheckedChange={(checked) => handleSelectOne(vpc.id, checked)}
+                      onCheckedChange={(checked) => handleSelectOne(vpc.id, checked === true)}
                     />
                   </TableCell>
                   <TableCell className="font-medium">{vpc.name}</TableCell>

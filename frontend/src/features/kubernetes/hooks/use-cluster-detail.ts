@@ -55,7 +55,7 @@ export function useClusterDetail({ clusterName }: UseClusterDetailOptions) {
 
   // Fetch node pools (GKE, AKS, NKS)
   const { data: nodePools = [], isLoading: isLoadingNodePools } = useQuery({
-    queryKey: queryKeys.kubernetesClusters.nodePools(clusterName, selectedProvider, selectedCredentialId, selectedRegion),
+    queryKey: queryKeys.kubernetesClusters.nodePools(clusterName, selectedProvider || undefined, selectedCredentialId || undefined, selectedRegion || undefined),
     queryFn: async () => {
       if (!selectedProvider || !selectedCredentialId) return [];
       return kubernetesService.listNodePools(selectedProvider, clusterName, selectedCredentialId, selectedRegion);
@@ -68,7 +68,7 @@ export function useClusterDetail({ clusterName }: UseClusterDetailOptions) {
 
   // Fetch node groups (EKS)
   const { data: nodeGroups = [], isLoading: isLoadingNodeGroups } = useQuery({
-    queryKey: queryKeys.kubernetesClusters.nodePools(clusterName, selectedProvider, selectedCredentialId, selectedRegion),
+    queryKey: queryKeys.kubernetesClusters.nodePools(clusterName, selectedProvider || undefined, selectedCredentialId || undefined, selectedRegion || undefined),
     queryFn: async () => {
       if (!selectedProvider || !selectedCredentialId) return [];
       return kubernetesService.listNodeGroups(selectedProvider, clusterName, selectedCredentialId, selectedRegion);
@@ -81,7 +81,7 @@ export function useClusterDetail({ clusterName }: UseClusterDetailOptions) {
 
   // Fetch nodes
   const { data: nodes = [], isLoading: isLoadingNodes } = useQuery({
-    queryKey: queryKeys.kubernetesClusters.nodes(clusterName, selectedProvider, selectedCredentialId, selectedRegion),
+    queryKey: queryKeys.kubernetesClusters.nodes(clusterName, selectedProvider || undefined, selectedCredentialId || undefined, selectedRegion || undefined),
     queryFn: async () => {
       if (!selectedProvider || !selectedCredentialId) return [];
       return kubernetesService.listNodes(selectedProvider, clusterName, selectedCredentialId, selectedRegion);

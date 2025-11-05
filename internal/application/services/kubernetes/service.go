@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"skyclust/internal/domain"
+	"skyclust/internal/infrastructure/messaging"
+	"skyclust/pkg/cache"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -55,13 +57,22 @@ func (s *Service) handleAWSError(err error, operation string) error {
 
 type Service struct {
 	credentialService domain.CredentialService
+	cache             cache.Cache
+	keyBuilder        *cache.CacheKeyBuilder
+	invalidator       *cache.Invalidator
+	eventPublisher    *messaging.Publisher
 	logger            *zap.Logger
 }
 
 // NewService creates a new Kubernetes service
-func NewService(credentialService domain.CredentialService, logger *zap.Logger) *Service {
+func NewService(credentialService domain.CredentialService, cacheService cache.Cache, eventBus messaging.Bus, logger *zap.Logger) *Service {
+	eventPublisher := messaging.NewPublisher(eventBus, logger)
 	return &Service{
 		credentialService: credentialService,
+		cache:             cacheService,
+		keyBuilder:        cache.NewCacheKeyBuilder(),
+		invalidator:       cache.NewInvalidatorWithEvents(cacheService, eventPublisher),
+		eventPublisher:    eventPublisher,
 		logger:            logger,
 	}
 }
@@ -213,6 +224,32 @@ func (s *Service) createGCPGKEClusterWithAdvanced(ctx context.Context, credentia
 		ProjectID: req.ProjectID,
 		Tags:      req.Tags,
 		CreatedAt: time.Now().Format(time.RFC3339),
+	}
+
+	// 캐시 무효화: 클러스터 목록 캐시 삭제
+	credentialID := credential.ID.String()
+	if err := s.invalidator.InvalidateKubernetesClusterList(ctx, credential.Provider, credentialID, req.Region); err != nil {
+		s.logger.Warn("Failed to invalidate Kubernetes cluster list cache",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("region", req.Region),
+			zap.Error(err))
+	}
+
+	// 이벤트 발행: 클러스터 생성 이벤트
+	clusterData := map[string]interface{}{
+		"cluster_id": response.ClusterID,
+		"name":       response.Name,
+		"version":    response.Version,
+		"status":     response.Status,
+		"region":     response.Region,
+	}
+	if err := s.eventPublisher.PublishKubernetesClusterEvent(ctx, credential.Provider, credentialID, req.Region, "created", clusterData); err != nil {
+		s.logger.Warn("Failed to publish Kubernetes cluster created event",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("cluster_name", req.Name),
+			zap.Error(err))
 	}
 
 	return response, nil
@@ -411,26 +448,74 @@ func (s *Service) createAWSEKSCluster(ctx context.Context, credential *domain.Cr
 		zap.String("region", req.Region),
 		zap.String("version", req.Version))
 
+	// 캐시 무효화: 클러스터 목록 캐시 삭제
+	credentialID := credential.ID.String()
+	if err := s.invalidator.InvalidateKubernetesClusterList(ctx, credential.Provider, credentialID, req.Region); err != nil {
+		s.logger.Warn("Failed to invalidate Kubernetes cluster list cache",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("region", req.Region),
+			zap.Error(err))
+	}
+
 	return response, nil
 }
 
 // ListEKSClusters lists all Kubernetes clusters (supports multiple providers)
 func (s *Service) ListEKSClusters(ctx context.Context, credential *domain.Credential, region string) (*ListClustersResponse, error) {
-	// Route to provider-specific implementation
+	// 캐시 키 생성
+	credentialID := credential.ID.String()
+	cacheKey := s.keyBuilder.BuildKubernetesClusterListKey(credential.Provider, credentialID, region)
+
+	// 캐시에서 조회 시도
+	if s.cache != nil {
+		var cachedResponse ListClustersResponse
+		if err := s.cache.Get(ctx, cacheKey, &cachedResponse); err == nil {
+			s.logger.Debug("Kubernetes clusters retrieved from cache",
+				zap.String("provider", credential.Provider),
+				zap.String("credential_id", credentialID),
+				zap.String("region", region))
+			return &cachedResponse, nil
+		}
+	}
+
+	// 캐시 미스 시 실제 API 호출
+	var response *ListClustersResponse
+	var err error
+
 	switch credential.Provider {
 	case "aws":
-		return s.listAWSEKSClusters(ctx, credential, region)
+		response, err = s.listAWSEKSClusters(ctx, credential, region)
 	case "gcp":
-		return s.listGCPGKEClusters(ctx, credential, region)
+		response, err = s.listGCPGKEClusters(ctx, credential, region)
 	case "azure":
 		// TODO: Implement Azure AKS cluster listing
-		return &ListClustersResponse{Clusters: []ClusterInfo{}}, nil
+		response = &ListClustersResponse{Clusters: []ClusterInfo{}}
 	case "ncp":
 		// TODO: Implement NCP NKS cluster listing
-		return &ListClustersResponse{Clusters: []ClusterInfo{}}, nil
+		response = &ListClustersResponse{Clusters: []ClusterInfo{}}
 	default:
 		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported provider: %s", credential.Provider), 400)
 	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	// 응답을 캐시에 저장 (캐시 실패해도 계속 진행)
+	if s.cache != nil && response != nil {
+		ttl := cache.GetDefaultTTL(cache.ResourceKubernetes)
+		if err := s.cache.Set(ctx, cacheKey, response, ttl); err != nil {
+			s.logger.Warn("Failed to cache Kubernetes clusters, continuing without cache",
+				zap.String("provider", credential.Provider),
+				zap.String("credential_id", credentialID),
+				zap.String("region", region),
+				zap.Error(err))
+			// 캐시 실패는 치명적이지 않으므로 계속 진행
+		}
+	}
+
+	return response, nil
 }
 
 // listAWSEKSClusters lists all AWS EKS clusters
@@ -515,12 +600,31 @@ func getMapKeys(m map[string]interface{}) []string {
 
 // GetEKSCluster gets details of an EKS cluster by name
 func (s *Service) GetEKSCluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (*ClusterInfo, error) {
-	// Route to provider-specific implementation
+	// 캐시 키 생성
+	credentialID := credential.ID.String()
+	cacheKey := s.keyBuilder.BuildKubernetesClusterItemKey(credential.Provider, credentialID, clusterName)
+
+	// 캐시에서 조회 시도
+	if s.cache != nil {
+		var cachedCluster ClusterInfo
+		if err := s.cache.Get(ctx, cacheKey, &cachedCluster); err == nil {
+			s.logger.Debug("Kubernetes cluster retrieved from cache",
+				zap.String("provider", credential.Provider),
+				zap.String("credential_id", credentialID),
+				zap.String("cluster_name", clusterName))
+			return &cachedCluster, nil
+		}
+	}
+
+	// 캐시 미스 시 실제 API 호출
+	var cluster *ClusterInfo
+	var err error
+
 	switch credential.Provider {
 	case "aws":
-		return s.getAWSEKSCluster(ctx, credential, clusterName, region)
+		cluster, err = s.getAWSEKSCluster(ctx, credential, clusterName, region)
 	case "gcp":
-		return s.getGCPGKECluster(ctx, credential, clusterName, region)
+		cluster, err = s.getGCPGKECluster(ctx, credential, clusterName, region)
 	case "azure":
 		// TODO: Implement Azure AKS cluster retrieval
 		return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "Azure AKS cluster retrieval not implemented yet", 501)
@@ -530,6 +634,24 @@ func (s *Service) GetEKSCluster(ctx context.Context, credential *domain.Credenti
 	default:
 		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported provider: %s", credential.Provider), 400)
 	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	// 응답을 캐시에 저장
+	if s.cache != nil && cluster != nil {
+		ttl := cache.GetDefaultTTL(cache.ResourceKubernetes)
+		if err := s.cache.Set(ctx, cacheKey, cluster, ttl); err != nil {
+			s.logger.Warn("Failed to cache Kubernetes cluster",
+				zap.String("provider", credential.Provider),
+				zap.String("credential_id", credentialID),
+				zap.String("cluster_name", clusterName),
+				zap.Error(err))
+		}
+	}
+
+	return cluster, nil
 }
 
 // getAWSEKSCluster gets AWS EKS cluster details
@@ -621,6 +743,36 @@ func (s *Service) deleteAWSEKSCluster(ctx context.Context, credential *domain.Cr
 	s.logger.Info("EKS cluster deletion initiated",
 		zap.String("cluster_name", clusterName),
 		zap.String("region", region))
+
+	// 캐시 무효화: 클러스터 목록 및 개별 클러스터 캐시 삭제
+	credentialID := credential.ID.String()
+	if err := s.invalidator.InvalidateKubernetesClusterList(ctx, credential.Provider, credentialID, region); err != nil {
+		s.logger.Warn("Failed to invalidate Kubernetes cluster list cache",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("region", region),
+			zap.Error(err))
+	}
+	if err := s.invalidator.InvalidateKubernetesClusterItem(ctx, credential.Provider, credentialID, clusterName); err != nil {
+		s.logger.Warn("Failed to invalidate Kubernetes cluster item cache",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("cluster_name", clusterName),
+			zap.Error(err))
+	}
+
+	// 이벤트 발행: 클러스터 삭제 이벤트
+	clusterData := map[string]interface{}{
+		"cluster_name": clusterName,
+		"region":       region,
+	}
+	if err := s.eventPublisher.PublishKubernetesClusterEvent(ctx, credential.Provider, credentialID, region, "deleted", clusterData); err != nil {
+		s.logger.Warn("Failed to publish Kubernetes cluster deleted event",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("cluster_name", clusterName),
+			zap.Error(err))
+	}
 
 	return nil
 }
@@ -1812,6 +1964,36 @@ func (s *Service) deleteGCPGKECluster(ctx context.Context, credential *domain.Cr
 		zap.String("cluster_name", clusterName),
 		zap.String("location", clusterLocation),
 		zap.String("operation_name", operation.Name))
+
+	// 캐시 무효화: 클러스터 목록 및 개별 클러스터 캐시 삭제
+	credentialID := credential.ID.String()
+	if err := s.invalidator.InvalidateKubernetesClusterList(ctx, credential.Provider, credentialID, region); err != nil {
+		s.logger.Warn("Failed to invalidate Kubernetes cluster list cache",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("region", region),
+			zap.Error(err))
+	}
+	if err := s.invalidator.InvalidateKubernetesClusterItem(ctx, credential.Provider, credentialID, clusterName); err != nil {
+		s.logger.Warn("Failed to invalidate Kubernetes cluster item cache",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("cluster_name", clusterName),
+			zap.Error(err))
+	}
+
+	// 이벤트 발행: 클러스터 삭제 이벤트
+	clusterData := map[string]interface{}{
+		"cluster_name": clusterName,
+		"region":       region,
+	}
+	if err := s.eventPublisher.PublishKubernetesClusterEvent(ctx, credential.Provider, credentialID, region, "deleted", clusterData); err != nil {
+		s.logger.Warn("Failed to publish Kubernetes cluster deleted event",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("cluster_name", clusterName),
+			zap.Error(err))
+	}
 
 	return nil
 }

@@ -8,7 +8,7 @@ import { networkService } from '@/services/network';
 import { queryKeys } from '@/lib/query-keys';
 import { useToast } from '@/hooks/use-toast';
 import { useErrorHandler } from '@/hooks/use-error-handler';
-import type { CreateSubnetForm } from '@/lib/types';
+import type { CreateSubnetForm, CloudProvider } from '@/lib/types';
 
 export interface UseSubnetActionsOptions {
   selectedProvider: string | undefined;
@@ -28,7 +28,7 @@ export function useSubnetActions({
   const createSubnetMutation = useStandardMutation({
     mutationFn: (data: CreateSubnetForm) => {
       if (!selectedProvider) throw new Error('Provider not selected');
-      return networkService.createSubnet(selectedProvider, data);
+      return networkService.createSubnet(selectedProvider as CloudProvider, data);
     },
     invalidateQueries: [queryKeys.subnets.all],
     successMessage: 'Subnet creation initiated',
@@ -40,7 +40,7 @@ export function useSubnetActions({
   const deleteSubnetMutation = useStandardMutation({
     mutationFn: async ({ subnetId, credentialId, region }: { subnetId: string; credentialId: string; region: string }) => {
       if (!selectedProvider) throw new Error('Provider not selected');
-      return networkService.deleteSubnet(selectedProvider, subnetId, credentialId, region);
+      return networkService.deleteSubnet(selectedProvider as CloudProvider, subnetId, credentialId, region);
     },
     invalidateQueries: [queryKeys.subnets.all],
     successMessage: 'Subnet deletion initiated',

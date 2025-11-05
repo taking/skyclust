@@ -9,6 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Search, Server, DollarSign, Activity, Clock, Zap, AlertTriangle, TrendingUp, MapPin } from 'lucide-react';
 import { WidgetType, WIDGET_CONFIGS } from '@/lib/widgets';
+import { useTranslation } from '@/hooks/use-translation';
+import { useWidgetConfigs, getWidgetCategoryTranslationKey, getWidgetSizeTranslationKey } from '@/lib/widgets-utils';
 
 interface WidgetAddPanelProps {
   onAddWidget: (type: WidgetType) => void;
@@ -27,25 +29,32 @@ const iconMap = {
 };
 
 export function WidgetAddPanel({ onAddWidget, existingWidgets }: WidgetAddPanelProps) {
+  const { t } = useTranslation();
+  const { getWidgetConfig } = useWidgetConfigs();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
   const categories = [
-    { id: 'all', label: 'All', count: Object.keys(WIDGET_CONFIGS).length },
-    { id: 'overview', label: 'Overview', count: Object.values(WIDGET_CONFIGS).filter(w => w.category === 'overview').length },
-    { id: 'monitoring', label: 'Monitoring', count: Object.values(WIDGET_CONFIGS).filter(w => w.category === 'monitoring').length },
-    { id: 'cost', label: 'Cost', count: Object.values(WIDGET_CONFIGS).filter(w => w.category === 'cost').length },
-    { id: 'management', label: 'Management', count: Object.values(WIDGET_CONFIGS).filter(w => w.category === 'management').length },
+    { id: 'all', label: t('widgets.addWidget.categories.all'), count: Object.keys(WIDGET_CONFIGS).length },
+    { id: 'overview', label: t('widgets.addWidget.categories.overview'), count: Object.values(WIDGET_CONFIGS).filter(w => w.category === 'overview').length },
+    { id: 'monitoring', label: t('widgets.addWidget.categories.monitoring'), count: Object.values(WIDGET_CONFIGS).filter(w => w.category === 'monitoring').length },
+    { id: 'cost', label: t('widgets.addWidget.categories.cost'), count: Object.values(WIDGET_CONFIGS).filter(w => w.category === 'cost').length },
+    { id: 'management', label: t('widgets.addWidget.categories.management'), count: Object.values(WIDGET_CONFIGS).filter(w => w.category === 'management').length },
   ];
 
-  const filteredWidgets = Object.entries(WIDGET_CONFIGS).filter(([type, config]) => {
-    const matchesSearch = config.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         config.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || config.category === selectedCategory;
-    const notAlreadyAdded = !existingWidgets.includes(type);
-    
-    return matchesSearch && matchesCategory && notAlreadyAdded;
-  });
+  const filteredWidgets = Object.entries(WIDGET_CONFIGS)
+    .map(([type, config]) => {
+      const translatedConfig = getWidgetConfig(type as WidgetType);
+      return [type, translatedConfig] as [string, typeof translatedConfig];
+    })
+    .filter(([type, config]) => {
+      const matchesSearch = config.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                           config.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCategory = selectedCategory === 'all' || config.category === selectedCategory;
+      const notAlreadyAdded = !existingWidgets.includes(type);
+      
+      return matchesSearch && matchesCategory && notAlreadyAdded;
+    });
 
   const handleAddWidget = (type: WidgetType) => {
     onAddWidget(type);
@@ -56,25 +65,25 @@ export function WidgetAddPanel({ onAddWidget, existingWidgets }: WidgetAddPanelP
       <DialogTrigger asChild>
         <Button>
           <Plus className="mr-2 h-4 w-4" />
-          Add Widget
+          {t('widgets.addWidget.addButton')}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
+      <DialogContent className="w-[95vw] max-w-4xl max-h-[85vh] overflow-hidden sm:w-full">
         <DialogHeader>
-          <DialogTitle>Add Widget</DialogTitle>
+          <DialogTitle>{t('widgets.addWidget.title')}</DialogTitle>
           <DialogDescription>
-            Choose a widget to add to your dashboard
+            {t('widgets.addWidget.description')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           {/* Search and Filter */}
-          <div className="flex space-x-4">
+          <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
             <div className="flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Search widgets..."
+                  placeholder={t('widgets.addWidget.searchPlaceholder')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10"
@@ -85,7 +94,7 @@ export function WidgetAddPanel({ onAddWidget, existingWidgets }: WidgetAddPanelP
 
           {/* Category Tabs */}
           <Tabs value={selectedCategory} onValueChange={setSelectedCategory}>
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 gap-1">
               {categories.map((category) => (
                 <TabsTrigger key={category.id} value={category.id}>
                   {category.label} ({category.count})
@@ -94,7 +103,7 @@ export function WidgetAddPanel({ onAddWidget, existingWidgets }: WidgetAddPanelP
             </TabsList>
 
             <TabsContent value={selectedCategory} className="mt-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[50vh] sm:max-h-96 overflow-y-auto">
                 {filteredWidgets.map(([type, config]) => {
                   const IconComponent = iconMap[config.icon as keyof typeof iconMap] || Server;
                   
@@ -107,7 +116,7 @@ export function WidgetAddPanel({ onAddWidget, existingWidgets }: WidgetAddPanelP
                             <CardTitle className="text-sm">{config.title}</CardTitle>
                           </div>
                           <Badge variant="outline" className="text-xs">
-                            {config.defaultSize}
+                            {t(getWidgetSizeTranslationKey(config.defaultSize))}
                           </Badge>
                         </div>
                         <CardDescription className="text-xs">
@@ -117,8 +126,8 @@ export function WidgetAddPanel({ onAddWidget, existingWidgets }: WidgetAddPanelP
                       <CardContent className="pt-0">
                         <div className="space-y-2">
                           <div className="flex items-center justify-between text-xs text-gray-500">
-                            <span>Size: {config.defaultSize}</span>
-                            <span>Category: {config.category}</span>
+                            <span>{t('widgets.addWidget.size')}: {t(getWidgetSizeTranslationKey(config.defaultSize))}</span>
+                            <span>{t('widgets.addWidget.category')}: {t(getWidgetCategoryTranslationKey(config.category))}</span>
                           </div>
                           <Button
                             size="sm"
@@ -126,7 +135,7 @@ export function WidgetAddPanel({ onAddWidget, existingWidgets }: WidgetAddPanelP
                             onClick={() => handleAddWidget(type as WidgetType)}
                           >
                             <Plus className="mr-1 h-3 w-3" />
-                            Add Widget
+                            {t('widgets.addWidget.addButton')}
                           </Button>
                         </div>
                       </CardContent>
@@ -140,11 +149,11 @@ export function WidgetAddPanel({ onAddWidget, existingWidgets }: WidgetAddPanelP
                   <div className="mx-auto h-12 w-12 text-gray-400">
                     <Search className="h-12 w-12" />
                   </div>
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">No widgets found</h3>
+                  <h3 className="mt-2 text-sm font-medium text-gray-900">{t('widgets.addWidget.noWidgetsFound')}</h3>
                   <p className="mt-1 text-sm text-gray-500">
                     {searchQuery 
-                      ? 'Try adjusting your search criteria.'
-                      : 'All available widgets have been added to your dashboard.'
+                      ? t('widgets.addWidget.tryAdjusting')
+                      : t('widgets.addWidget.allAdded')
                     }
                   </p>
                 </div>

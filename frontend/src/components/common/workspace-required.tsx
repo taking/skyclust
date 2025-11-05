@@ -6,6 +6,7 @@ import { useWorkspaceStore } from '@/store/workspace';
 import { Layout } from '@/components/layout/layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useTranslation } from '@/hooks/use-translation';
 
 interface WorkspaceRequiredProps {
   children: React.ReactNode;
@@ -16,6 +17,7 @@ export function WorkspaceRequired({ children, allowAutoSelect = false }: Workspa
   const { currentWorkspace } = useWorkspaceStore();
   const router = useRouter();
   const pathname = usePathname();
+  const { t } = useTranslation();
   const [isChecking, setIsChecking] = useState(allowAutoSelect);
   const [hasRedirected, setHasRedirected] = useState(false);
 
@@ -52,15 +54,15 @@ export function WorkspaceRequired({ children, allowAutoSelect = false }: Workspa
         <div className="flex items-center justify-center min-h-screen">
           <Card className="w-full max-w-md">
             <CardHeader>
-              <CardTitle>Workspace Required</CardTitle>
+              <CardTitle>{t('workspace.title')}</CardTitle>
               <CardDescription>
-                {isChecking ? 'Loading workspace...' : 'Please select a workspace to continue.'}
+                {isChecking ? t('components.workspaceRequired.loading') : t('components.workspaceRequired.selectWorkspace')}
               </CardDescription>
             </CardHeader>
             {!isChecking && (
               <CardContent>
                 <Button onClick={() => router.push('/workspaces')} className="w-full">
-                  Go to Workspaces
+                  {t('workspace.goToWorkspaces')}
                 </Button>
               </CardContent>
             )}

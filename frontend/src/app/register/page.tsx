@@ -17,6 +17,7 @@ import { RegisterForm } from '@/lib/types';
 import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
 import Link from 'next/link';
 import * as z from 'zod';
+import { useTranslation } from '@/hooks/use-translation';
 
 const registerSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -27,6 +28,7 @@ const registerSchema = z.object({
 export default function RegisterPage() {
   const [success, setSuccess] = useState(false);
   const router = useRouter();
+  const { t } = useTranslation();
 
   const {
     form,
@@ -71,10 +73,10 @@ export default function RegisterPage() {
             <div className="text-center">
               <div className="text-green-600 text-6xl mb-4">✓</div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                Registration Successful!
+                {t('auth.registrationSuccessful')}
               </h2>
               <p className="text-gray-600">
-                Your account has been created. Redirecting to login...
+                {t('auth.registrationSuccessDescription')}
               </p>
             </div>
           </CardContent>
@@ -87,9 +89,9 @@ export default function RegisterPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">Sign up</CardTitle>
+          <CardTitle className="text-2xl font-bold text-center">{t('auth.signUpTitle')}</CardTitle>
           <CardDescription className="text-center">
-            Create a new account to get started
+            {t('auth.signUpDescription')}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -97,27 +99,27 @@ export default function RegisterPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <EnhancedField
                 name="name"
-                label="Full Name"
+                label={t('auth.fullName')}
                 type="text"
-                placeholder="Enter your full name"
+                placeholder={t('auth.namePlaceholder')}
                 required
                 getFieldError={getFieldError}
                 getFieldValidationState={getFieldValidationState}
               />
               <EnhancedField
                 name="email"
-                label="Email"
+                label={t('auth.email')}
                 type="email"
-                placeholder="Enter your email"
+                placeholder={t('auth.emailPlaceholder')}
                 required
                 getFieldError={getFieldError}
                 getFieldValidationState={getFieldValidationState}
               />
               <EnhancedField
                 name="password"
-                label="Password"
+                label={t('auth.password')}
                 type="password"
-                placeholder="Enter your password"
+                placeholder={t('auth.passwordPlaceholder')}
                 required
                 getFieldError={getFieldError}
                 getFieldValidationState={getFieldValidationState}
@@ -128,14 +130,14 @@ export default function RegisterPage() {
                 </div>
               )}
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Creating account...' : 'Sign up'}
+                {isLoading ? t('auth.signingUp') : t('auth.signUp')}
               </Button>
             </form>
           </Form>
           <div className="mt-4 text-center text-sm">
-            Already have an account?{' '}
+            {t('auth.alreadyHaveAccount')}{' '}
             <Link href="/login" className="text-blue-600 hover:underline">
-              Sign in
+              {t('auth.signIn')}
             </Link>
           </div>
         </CardContent>

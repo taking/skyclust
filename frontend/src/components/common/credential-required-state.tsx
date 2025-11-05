@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Key, ExternalLink } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useTranslation } from '@/hooks/use-translation';
 
 interface CredentialRequiredStateProps {
   title?: string;
@@ -20,12 +21,15 @@ interface CredentialRequiredStateProps {
 function CredentialRequiredStateComponent({
   title,
   description,
-  serviceName = 'this service',
+  serviceName,
 }: CredentialRequiredStateProps) {
   const router = useRouter();
+  const { t } = useTranslation();
 
-  const defaultTitle = title || 'No Credentials Found';
-  const defaultDescription = description || `To use ${serviceName}, you need to register cloud credentials first.`;
+  const defaultTitle = title || t('components.credentialRequired.title');
+  const defaultDescription = description || t('components.credentialRequired.description', { 
+    serviceName: serviceName || t('credential.title') 
+  });
 
   return (
     <Card>
@@ -38,7 +42,7 @@ function CredentialRequiredStateComponent({
           variant="default"
         >
           <Key className="mr-2 h-4 w-4" />
-          Register Credentials
+          {t('components.credentialRequired.registerButton')}
           <ExternalLink className="ml-2 h-4 w-4" />
         </Button>
       </CardContent>

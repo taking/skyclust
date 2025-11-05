@@ -96,9 +96,9 @@ export interface CreateSecurityGroupForm {
   vpc_id: string;
   region: string;
   project_id?: string;
-  direction?: string;
+  direction?: 'INGRESS' | 'EGRESS';
   priority?: number;
-  action?: string;
+  action?: 'ALLOW' | 'DENY';
   protocol?: string;
   ports?: string[];
   source_ranges?: string[];

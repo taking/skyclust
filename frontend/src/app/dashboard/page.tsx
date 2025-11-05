@@ -14,6 +14,7 @@ import { workspaceService } from '@/features/workspaces';
 import { useQuery } from '@tanstack/react-query';
 import { WorkspaceRequired } from '@/components/common/workspace-required';
 import { queryKeys } from '@/lib/query-keys';
+import { useTranslation } from '@/hooks/use-translation';
 
 import { Spinner, WidgetSkeleton } from '@/components/ui/loading-states';
 
@@ -68,6 +69,7 @@ const RealtimeNotifications = dynamic(
 export default function DashboardPage() {
   const { currentWorkspace, setCurrentWorkspace, workspaces, setWorkspaces } = useWorkspaceStore();
   const router = useRouter();
+  const { t } = useTranslation();
   const [widgets, setWidgets] = useState<WidgetData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [configuringWidget, setConfiguringWidget] = useState<WidgetData | null>(null);
@@ -200,7 +202,7 @@ export default function DashboardPage() {
   };
 
   const handleResetDashboard = () => {
-    if (confirm('Are you sure you want to reset the dashboard to default widgets?')) {
+    if (confirm(t('dashboard.resetConfirm'))) {
       const defaultWidgets: WidgetData[] = [
         {
           id: 'vm-status-1',
@@ -246,7 +248,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-            <p className="mt-2 text-gray-600">Loading dashboard...</p>
+            <p className="mt-2 text-gray-600">{t('dashboard.loading')}</p>
           </div>
         </div>
       </Layout>
@@ -260,9 +262,12 @@ export default function DashboardPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+            <h1 className="text-3xl font-bold text-gray-900">{t('dashboard.title')}</h1>
             <p className="text-gray-600">
-              {currentWorkspace ? `Welcome to ${currentWorkspace.name} workspace` : 'Welcome to your workspace'}
+              {currentWorkspace?.name
+                ? t('dashboard.welcomeWithWorkspace', { workspaceName: currentWorkspace.name || '' })
+                : t('dashboard.welcome')
+              }
             </p>
           </div>
           <div className="flex items-center space-x-2">
@@ -272,7 +277,7 @@ export default function DashboardPage() {
               onClick={handleResetDashboard}
             >
               <RefreshCw className="mr-2 h-4 w-4" />
-              Reset
+              {t('dashboard.reset')}
             </Button>
             <WidgetAddPanel
               onAddWidget={handleAddWidget}
@@ -285,26 +290,26 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">VMs</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('dashboard.vms')}</CardTitle>
               <Server className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">0</div>
               <p className="text-xs text-muted-foreground">
-                Active virtual machines
+                {t('dashboard.vmsDescription')}
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Credentials</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('dashboard.credentials')}</CardTitle>
               <Key className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">0</div>
               <p className="text-xs text-muted-foreground">
-                Cloud provider credentials
+                {t('dashboard.credentialsDescription')}
               </p>
             </CardContent>
           </Card>
@@ -312,13 +317,13 @@ export default function DashboardPage() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Members</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('dashboard.members')}</CardTitle>
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">1</div>
               <p className="text-xs text-muted-foreground">
-                Workspace members
+                {t('dashboard.membersDescription')}
               </p>
             </CardContent>
           </Card>
@@ -328,13 +333,13 @@ export default function DashboardPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold">Dashboard Widgets</h2>
+              <h2 className="text-lg font-semibold">{t('dashboard.widgets')}</h2>
               <p className="text-sm text-gray-600">
-                Drag and drop to rearrange widgets. Click the settings icon to configure.
+                {t('dashboard.widgetsDescription')}
               </p>
             </div>
             <Badge variant="outline">
-              {widgets.length} widget{widgets.length !== 1 ? 's' : ''}
+              {widgets.length} {widgets.length !== 1 ? t('dashboard.widgets') : t('dashboard.widgets').replace(/s$/, '')}
             </Badge>
           </div>
 
@@ -344,9 +349,9 @@ export default function DashboardPage() {
                 <div className="mx-auto h-12 w-12 text-gray-400">
                   <Settings className="h-12 w-12" />
                 </div>
-                <h3 className="mt-2 text-sm font-medium text-gray-900">No widgets</h3>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">{t('dashboard.noWidgets')}</h3>
                 <p className="mt-1 text-sm text-gray-500">
-                  Get started by adding widgets to your dashboard.
+                  {t('dashboard.noWidgetsDescription')}
                 </p>
                 <div className="mt-6">
                   <WidgetAddPanel

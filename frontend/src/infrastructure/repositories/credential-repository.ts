@@ -17,6 +17,14 @@ export class CredentialRepository implements ICredentialRepository {
     return credential || null;
   }
 
+  async getById(id: string): Promise<Credential> {
+    const credential = await credentialService.getCredential(id);
+    if (!credential) {
+      throw new Error(`Credential with id ${id} not found`);
+    }
+    return credential;
+  }
+
   async list(workspaceId: string): Promise<Credential[]> {
     return credentialService.getCredentials(workspaceId);
   }

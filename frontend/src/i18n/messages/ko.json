@@ -48,13 +48,14 @@
     "name": "이름",
     "description": "설명",
     "createNew": "새 작업 공간 생성",
+    "goToWorkspaces": "작업 공간으로 이동",
     "createNewDescription": "리소스를 구성하고 팀과 협업하기 위한 새 작업 공간을 생성하세요.",
     "settings": "설정",
     "noWorkspace": "작업 공간이 없습니다",
     "noWorkspaceSelected": "작업 공간이 선택되지 않았습니다",
     "selectWorkspace": "작업 공간을 선택하세요",
     "welcome": "환영합니다",
-    "welcomeTo": "{{name}} 작업 공간에 오신 것을 환영합니다"
+    "welcomeTo": "{name} 작업 공간에 오신 것을 환영합니다"
   },
   "credential": {
     "title": "자격 증명",
@@ -64,12 +65,22 @@
     "noCredential": "자격 증명이 없습니다",
     "selectCredential": "자격 증명을 선택하세요",
     "required": "자격 증명이 필요합니다",
-    "description": "VM 관리를 시작하려면 클라우드 제공업체 자격 증명을 추가하세요"
+    "description": "VM 관리를 시작하려면 클라우드 제공업체 자격 증명을 추가하세요",
+    "manageCredentials": "자격 증명 관리",
+    "manageCredentialsWithWorkspace": "{workspaceName} 작업 공간의 자격 증명 관리",
+    "noWorkspaceSelected": "작업 공간이 선택되지 않았습니다",
+    "selectWorkspaceMessage": "자격 증명을 관리하려면 작업 공간을 선택해주세요.",
+    "selectWorkspace": "작업 공간 선택",
+    "loadingCredentials": "자격 증명 로딩 중...",
+    "confirmDelete": "이 자격 증명을 삭제하시겠습니까?",
+    "addCredentialsDescription": "VM 관리를 시작하려면 클라우드 제공업체 자격 증명을 추가하세요",
+    "selectGCPFile": "GCP 서비스 계정 JSON 파일을 선택해주세요"
   },
   "region": {
     "select": "리전 선택",
     "noRegion": "리전이 없습니다",
-    "selectRegion": "리전을 선택하세요"
+    "selectRegion": "리전을 선택하세요",
+    "placeholder": "예: ap-northeast-2"
   },
   "user": {
     "profile": "프로필",
@@ -77,18 +88,6 @@
     "logout": "로그아웃",
     "login": "로그인",
     "signUp": "회원가입"
-  },
-  "vm": {
-    "title": "가상 머신",
-    "create": "VM 생성",
-    "list": "VM 목록",
-    "noVMs": "VM이 없습니다",
-    "noVMsFound": "VM을 찾을 수 없습니다",
-    "createFirst": "첫 번째 VM을 생성하세요",
-    "name": "이름",
-    "status": "상태",
-    "type": "타입",
-    "region": "리전"
   },
   "kubernetes": {
     "title": "Kubernetes",
@@ -99,7 +98,27 @@
     "noClusters": "클러스터가 없습니다",
     "noClustersFound": "클러스터를 찾을 수 없습니다",
     "createFirst": "첫 번째 클러스터를 생성하세요",
-    "downloadKubeconfig": "Kubeconfig 다운로드"
+    "downloadKubeconfig": "Kubeconfig 다운로드",
+    "manageClusters": "클러스터 관리",
+    "manageClustersWithWorkspace": "{workspaceName} 작업 공간의 클러스터 관리",
+    "manageNodePools": "노드 풀 관리",
+    "manageNodePoolsWithWorkspace": "{workspaceName} 작업 공간의 노드 풀 관리",
+    "manageNodes": "노드 관리",
+    "manageNodesWithWorkspace": "{workspaceName} 작업 공간의 노드 관리",
+    "clusterCreationInitiated": "클러스터 생성이 시작되었습니다",
+    "clusterDeletionInitiated": "클러스터 삭제가 시작되었습니다",
+    "confirmDeleteCluster": "클러스터 {clusterName}을(를) 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.",
+    "creating": "생성 중",
+    "updating": "업데이트 중",
+    "deleting": "삭제 중",
+    "failed": "실패",
+    "nodePoolCreationInitiated": "노드 풀 생성이 시작되었습니다",
+    "nodePoolDeletionInitiated": "노드 풀 삭제가 시작되었습니다",
+    "confirmDeleteNodePool": "노드 풀 {nodePoolName}을(를) 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.",
+    "selectClusterAndRegion": "클러스터 및 리전 선택",
+    "selectClusterAndRegionMessage": "노드 풀을 보려면 클러스터와 리전을 선택해주세요",
+    "noNodePoolsFoundForCluster": "선택한 클러스터에 대한 노드 풀을 찾을 수 없습니다. 첫 번째 노드 풀을 생성하세요.",
+    "noNodesFoundForCluster": "선택한 클러스터에 대한 노드를 찾을 수 없습니다."
   },
   "network": {
     "title": "네트워크",
@@ -111,21 +130,44 @@
     "createSecurityGroup": "보안 그룹 생성",
     "noVPCs": "VPC가 없습니다",
     "noSubnets": "서브넷이 없습니다",
-    "noSecurityGroups": "보안 그룹이 없습니다"
+    "noSecurityGroups": "보안 그룹이 없습니다",
+    "manageVPCs": "VPC 관리",
+    "manageVPCsWithWorkspace": "{workspaceName} 작업 공간의 VPC 관리",
+    "manageSubnets": "서브넷 관리",
+    "manageSubnetsWithWorkspace": "{workspaceName} 작업 공간의 서브넷 관리",
+    "manageSecurityGroups": "보안 그룹 관리",
+    "manageSecurityGroupsWithWorkspace": "{workspaceName} 작업 공간의 보안 그룹 관리",
+    "defaultVPC": "기본 VPC",
+    "customVPC": "사용자 정의 VPC",
+    "state": "상태",
+    "available": "사용 가능",
+    "pending": "대기 중",
+    "deleting": "삭제 중",
+    "selectVPCAndRegion": "VPC 및 리전 선택",
+    "selectVPCAndRegionMessage": "서브넷을 보려면 VPC와 리전을 선택해주세요",
+    "noSubnetsFoundForVPC": "선택한 VPC에 대한 서브넷을 찾을 수 없습니다. 첫 번째 서브넷을 생성하세요.",
+    "noSecurityGroupsFoundForVPC": "선택한 VPC에 대한 보안 그룹을 찾을 수 없습니다. 첫 번째 보안 그룹을 생성하세요.",
+    "selectRegionToFilterVPCs": "VPC를 필터링하려면 리전을 선택하세요",
+    "regionSelectionHandledInHeader": "리전 선택은 이제 헤더에서 처리됩니다",
+    "searchVPCsPlaceholder": "이름, ID 또는 상태로 VPC 검색..."
   },
   "emptyState": {
     "noResults": "결과가 없습니다",
     "noResultsFound": "결과를 찾을 수 없습니다",
     "tryAdjusting": "검색 또는 필터 조건을 조정해보세요",
+    "tryAdjustingWithQuery": "검색 또는 필터 조건을 조정해보세요. ({query})",
     "getStarted": "시작하려면",
-    "createFirst": "첫 번째 {{resource}}을(를) 생성하세요"
+    "createFirst": "첫 번째 {resource}을(를) 생성하세요",
+    "noResource": "{resource}이(가) 없습니다",
+    "noResourceFound": "{resource}을(를) 찾을 수 없습니다",
+    "createResource": "{resource} 생성"
   },
   "form": {
     "validation": {
-      "required": "{{field}}은(는) 필수입니다",
-      "minLength": "{{field}}은(는) 최소 {{min}}자 이상이어야 합니다",
-      "maxLength": "{{field}}은(는) 최대 {{max}}자 이하여야 합니다",
-      "invalid": "유효하지 않은 {{field}}입니다",
+      "required": "{field}은(는) 필수입니다",
+      "minLength": "{field}은(는) 최소 {min}자 이상이어야 합니다",
+      "maxLength": "{field}은(는) 최대 {max}자 이하여야 합니다",
+      "invalid": "유효하지 않은 {field}입니다",
       "looksGood": "좋습니다!"
     }
   },
@@ -141,7 +183,7 @@
     "bulkDelete": "일괄 삭제",
     "bulkTag": "일괄 태그",
     "confirmDelete": "삭제하시겠습니까?",
-    "confirmBulkDelete": "{{count}}개 항목을 삭제하시겠습니까?",
+    "confirmBulkDelete": "{count}개 항목을 삭제하시겠습니까?",
     "cannotUndo": "이 작업은 취소할 수 없습니다"
   },
   "status": {
@@ -156,12 +198,12 @@
     "stopped": "중지됨"
   },
   "messages": {
-    "created": "{{resource}}이(가) 생성되었습니다",
-    "updated": "{{resource}}이(가) 업데이트되었습니다",
-    "deleted": "{{resource}}이(가) 삭제되었습니다",
-    "creationInitiated": "{{resource}} 생성이 시작되었습니다",
-    "deletionInitiated": "{{resource}} 삭제가 시작되었습니다",
-    "updateInitiated": "{{resource}} 업데이트가 시작되었습니다",
+    "created": "{resource}이(가) 생성되었습니다",
+    "updated": "{resource}이(가) 업데이트되었습니다",
+    "deleted": "{resource}이(가) 삭제되었습니다",
+    "creationInitiated": "{resource} 생성이 시작되었습니다",
+    "deletionInitiated": "{resource} 삭제가 시작되었습니다",
+    "updateInitiated": "{resource} 업데이트가 시작되었습니다",
     "downloadSuccess": "다운로드가 완료되었습니다",
     "operationSuccess": "작업이 성공적으로 완료되었습니다",
     "operationFailed": "작업이 실패했습니다"
@@ -173,7 +215,209 @@
     "unauthorized": "인증이 필요합니다",
     "forbidden": "권한이 없습니다",
     "serverError": "서버 오류가 발생했습니다",
-    "unknown": "알 수 없는 오류가 발생했습니다"
+    "unknown": "알 수 없는 오류가 발생했습니다",
+    "networkConnectionFailed": "네트워크 연결에 실패했습니다. 인터넷 연결을 확인해주세요.",
+    "unableToConnect": "서버에 연결할 수 없습니다. 인터넷 연결을 확인하고 다시 시도해주세요.",
+    "unexpectedError": "예기치 않은 오류가 발생했습니다",
+    "invalidRequest": "잘못된 요청입니다. 입력 내용을 확인하고 다시 시도해주세요.",
+    "sessionExpired": "세션이 만료되었습니다. 다시 로그인해주세요.",
+    "noPermission": "이 작업을 수행할 권한이 없습니다.",
+    "resourceNotFound": "요청한 리소스를 찾을 수 없습니다.",
+    "resourceConflict": "이 리소스가 이미 존재하거나 다른 리소스와 충돌합니다.",
+    "validationFailed": "유효성 검사에 실패했습니다. 입력 내용을 확인해주세요.",
+    "tooManyRequests": "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.",
+    "serverErrorTryLater": "서버 오류가 발생했습니다. 나중에 다시 시도해주세요.",
+    "serviceUnavailable": "서비스가 일시적으로 사용할 수 없습니다. 나중에 다시 시도해주세요.",
+    "errorProcessingRequest": "요청을 처리하는 중 오류가 발생했습니다.",
+    "noInternetConnection": "인터넷 연결이 없습니다. 네트워크를 확인해주세요.",
+    "errorOccurredTryAgain": "오류가 발생했습니다. 다시 시도해주세요."
+  },
+  "dashboard": {
+    "title": "대시보드",
+    "welcome": "작업 공간에 오신 것을 환영합니다",
+    "welcomeWithWorkspace": "{workspaceName} 작업 공간에 오신 것을 환영합니다",
+    "reset": "초기화",
+    "resetConfirm": "대시보드를 기본 위젯으로 초기화하시겠습니까?",
+    "vms": "VMs",
+    "vmsDescription": "활성 가상 머신",
+    "credentials": "자격 증명",
+    "credentialsDescription": "클라우드 제공업체 자격 증명",
+    "members": "멤버",
+    "membersDescription": "작업 공간 멤버",
+    "widgets": "대시보드 위젯",
+    "widgetsDescription": "드래그하여 위젯을 재배치할 수 있습니다. 설정 아이콘을 클릭하여 구성하세요.",
+    "noWidgets": "위젯 없음",
+    "noWidgetsDescription": "대시보드에 위젯을 추가하여 시작하세요.",
+    "loading": "대시보드 로딩 중..."
+  },
+  "auth": {
+    "signIn": "로그인",
+    "signUp": "회원가입",
+    "signInTitle": "로그인",
+    "signUpTitle": "회원가입",
+    "signInDescription": "이메일과 비밀번호를 입력하여 계정에 로그인하세요",
+    "signUpDescription": "시작하려면 새 계정을 만드세요",
+    "email": "이메일",
+    "password": "비밀번호",
+    "fullName": "이름",
+    "emailPlaceholder": "이메일을 입력하세요",
+    "passwordPlaceholder": "비밀번호를 입력하세요",
+    "namePlaceholder": "이름을 입력하세요",
+    "signingIn": "로그인 중...",
+    "signingUp": "계정 생성 중...",
+    "dontHaveAccount": "계정이 없으신가요?",
+    "alreadyHaveAccount": "이미 계정이 있으신가요?",
+    "registrationSuccessful": "회원가입 성공!",
+    "registrationSuccessDescription": "계정이 생성되었습니다. 로그인 페이지로 이동합니다...",
+    "registrationFailed": "회원가입에 실패했습니다"
+  },
+  "components": {
+    "credentialRequired": {
+      "title": "자격 증명을 찾을 수 없습니다",
+      "description": "{serviceName}을(를) 사용하려면 먼저 클라우드 자격 증명을 등록해야 합니다.",
+      "registerButton": "자격 증명 등록"
+    },
+    "workspaceRequired": {
+      "loading": "작업 공간 로딩 중...",
+      "selectWorkspace": "계속하려면 작업 공간을 선택해주세요."
+    }
+  },
+  "widgets": {
+    "vmStatus": {
+      "title": "VM 상태 개요",
+      "description": "가상 머신 상태 개요",
+      "loading": "VM 상태 로딩 중...",
+      "totalMachines": "{total}개의 가상 머신",
+      "running": "실행 중",
+      "stopped": "중지됨",
+      "starting": "시작 중",
+      "stopping": "중지 중"
+    },
+    "costChart": {
+      "title": "비용 분석",
+      "description": "월별 비용 추이 및 세부 내역"
+    },
+    "resourceUsage": {
+      "title": "리소스 사용량",
+      "description": "CPU, 메모리 및 스토리지 사용률"
+    },
+    "recentActivity": {
+      "title": "최근 활동",
+      "description": "최신 시스템 이벤트 및 변경 사항"
+    },
+    "quickActions": {
+      "title": "빠른 작업",
+      "description": "일반 관리 작업"
+    },
+    "alerts": {
+      "title": "알림 및 알림",
+      "description": "시스템 알림 및 알림"
+    },
+    "performanceMetrics": {
+      "title": "성능 지표",
+      "description": "주요 성능 지표"
+    },
+    "regionDistribution": {
+      "title": "리전 분포",
+      "description": "리전별 리소스 분포"
+    },
+    "kubernetesStatus": {
+      "title": "Kubernetes 클러스터",
+      "description": "Kubernetes 클러스터 상태 및 개요"
+    },
+    "networkStatus": {
+      "title": "네트워크 리소스",
+      "description": "VPC, 서브넷 및 보안 그룹 개요"
+    },
+    "addWidget": {
+      "title": "위젯 추가",
+      "description": "대시보드에 추가할 위젯을 선택하세요",
+      "searchPlaceholder": "위젯 검색...",
+      "addButton": "위젯 추가",
+      "noWidgetsFound": "위젯을 찾을 수 없습니다",
+      "tryAdjusting": "검색 조건을 조정해보세요.",
+      "allAdded": "사용 가능한 모든 위젯이 대시보드에 추가되었습니다.",
+      "size": "크기",
+      "category": "카테고리",
+      "categories": {
+        "all": "전체",
+        "overview": "개요",
+        "monitoring": "모니터링",
+        "cost": "비용",
+        "management": "관리"
+      },
+      "sizes": {
+        "small": "소",
+        "medium": "중",
+        "large": "대",
+        "xlarge": "특대"
+      },
+      "notImplemented": "위젯이 구현되지 않았습니다",
+      "dragging": "드래그 중..."
+    }
+  },
+  "shortcuts": {
+    "title": "키보드 단축키",
+    "categories": {
+      "navigation": "내비게이션",
+      "action": "작업",
+      "general": "일반"
+    },
+    "shortcutsLabel": "단축키",
+    "description": "이 키보드 단축키를 사용하여 더 빠르게 탐색하고 작업을 수행하세요",
+    "tip": "팁: 입력 필드에서 입력 중일 때는 키보드 단축키가 비활성화됩니다"
+  },
+  "filters": {
+    "status": "상태",
+    "provider": "제공업체",
+    "region": "리전",
+    "running": "실행 중",
+    "stopped": "중지됨",
+    "starting": "시작 중",
+    "stopping": "중지 중",
+    "active": "활성",
+    "inactive": "비활성",
+    "ready": "준비됨",
+    "notReady": "준비 안 됨",
+    "available": "사용 가능",
+    "unavailable": "사용 불가"
+  },
+  "widgetConfig": {
+    "title": "위젯 설정",
+    "description": "이 위젯의 모양과 동작을 사용자 지정하세요",
+    "widgetTitle": "위젯 제목",
+    "widgetSize": "위젯 크기",
+    "refreshInterval": "자동 새로고침 간격 (초)",
+    "refreshIntervalHint": "비워두면 자동 새로고침이 비활성화됩니다",
+    "minMax": "최소: {min}, 최대: {max}",
+    "cancel": "취소",
+    "saveChanges": "변경 사항 저장"
+  },
+  "vm": {
+    "title": "가상 머신",
+    "create": "VM 생성",
+    "list": "VM 목록",
+    "manageVMs": "VM 관리",
+    "manageVMsWithWorkspace": "{workspaceName} 작업 공간의 VM 관리",
+    "noVMs": "VM이 없습니다",
+    "noVMsFound": "VM을 찾을 수 없습니다",
+    "createFirst": "첫 번째 VM을 생성하세요",
+    "name": "이름",
+    "status": "상태",
+    "type": "타입",
+    "region": "리전",
+    "images": "VM 이미지",
+    "imagesTitle": "VM 이미지",
+    "imagesDescription": "VM 이미지 관리",
+    "imagesDescriptionWithWorkspace": "{workspaceName} 작업 공간의 VM 이미지 관리",
+    "imagesComingSoon": "곧 출시 예정",
+    "imagesComingSoonDescription": "VM 이미지 관리 기능이 곧 출시됩니다. 이 페이지에서는 다양한 클라우드 제공업체의 VM 이미지를 관리하고 볼 수 있습니다.",
+    "snapshots": "VM 스냅샷",
+    "snapshotsTitle": "VM 스냅샷",
+    "snapshotsDescription": "VM 스냅샷 관리",
+    "snapshotsDescriptionWithWorkspace": "{workspaceName} 작업 공간의 VM 스냅샷 관리",
+    "snapshotsComingSoon": "곧 출시 예정",
+    "snapshotsComingSoonDescription": "VM 스냅샷 관리 기능이 곧 출시됩니다. 이 페이지에서는 다양한 클라우드 제공업체의 VM 스냅샷을 관리하고 볼 수 있습니다.",
+    "creationInitiated": "VM 생성이 시작되었습니다"
   }
 }
-

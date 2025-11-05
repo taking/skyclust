@@ -11,6 +11,7 @@ import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { LucideIcon, Plus, Server } from 'lucide-react';
+import { useTranslation } from '@/hooks/use-translation';
 
 export interface ResourceEmptyStateProps {
   /**
@@ -89,16 +90,22 @@ function ResourceEmptyStateComponent({
   showCreateButton = !!onCreateClick,
   withCard = false,
 }: ResourceEmptyStateProps) {
+  const { t } = useTranslation();
+  
   const defaultTitle = isSearching 
-    ? `No ${resourceName} found`
-    : `No ${resourceName}`;
+    ? t('emptyState.noResourceFound', { resource: resourceName })
+    : t('emptyState.noResource', { resource: resourceName });
   
   const defaultDescription = isSearching
-    ? `Try adjusting your search or filter criteria.${searchQuery ? ` (${searchQuery})` : ''}`
-    : `Get started by creating your first ${resourceName.toLowerCase()}.`;
+    ? searchQuery 
+      ? t('emptyState.tryAdjustingWithQuery', { query: searchQuery })
+      : t('emptyState.tryAdjusting')
+    : t('emptyState.createFirst', { resource: resourceName.toLowerCase() });
 
   const displayTitle = title || defaultTitle;
   const displayDescription = description || defaultDescription;
+  
+  const defaultCreateButtonText = createButtonText || t('emptyState.createResource', { resource: resourceName.slice(0, -1) });
 
   const content = (
     <div className="text-center py-12">
@@ -115,7 +122,7 @@ function ResourceEmptyStateComponent({
         <div className="mt-6">
           <Button onClick={onCreateClick}>
             <Plus className="mr-2 h-4 w-4" />
-            {createButtonText || `Create ${resourceName.slice(0, -1)}`}
+            {defaultCreateButtonText}
           </Button>
         </div>
       )}

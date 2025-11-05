@@ -26,6 +26,7 @@ type Container struct {
 	serviceModule        *ServiceModule
 	domainModule         *DomainModule
 	infrastructureModule *InfrastructureModule
+	workerModule         *WorkerModule
 
 	// Core dependencies
 	db     *gorm.DB
@@ -376,6 +377,28 @@ func (c *Container) GetComputeService() interface{} {
 	return c.serviceModule.GetContainer().ComputeService
 }
 
+// StartWorkers starts all background workers
+func (c *Container) StartWorkers(ctx context.Context) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.workerModule == nil {
+		return fmt.Errorf("worker module not initialized")
+	}
+
+	return c.workerModule.StartAll(ctx)
+}
+
+// StopWorkers stops all background workers
+func (c *Container) StopWorkers() {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.workerModule != nil {
+		c.workerModule.StopAll()
+	}
+}
+
 // Close closes all resources
 func (c *Container) Close() error {
 	c.mu.Lock()
@@ -383,6 +406,11 @@ func (c *Container) Close() error {
 
 	if !c.initialized {
 		return nil
+	}
+
+	// Stop workers first
+	if c.workerModule != nil {
+		c.workerModule.StopAll()
 	}
 
 	// Close database connection

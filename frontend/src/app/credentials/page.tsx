@@ -16,6 +16,7 @@ import { EVENTS } from '@/lib/constants';
 import { WorkspaceRequired } from '@/components/common/workspace-required';
 import { ResourceEmptyState } from '@/components/common/resource-empty-state';
 import { Key } from 'lucide-react';
+import { useTranslation } from '@/hooks/use-translation';
 import {
   useCredentialActions,
   CredentialsPageHeader,
@@ -41,6 +42,7 @@ const EditCredentialDialog = dynamic(
 );
 
 export default function CredentialsPage() {
+  const { t } = useTranslation();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useCreateDialog(EVENTS.CREATE_DIALOG.CREDENTIAL);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingCredential, setEditingCredential] = useState<Credential | null>(null);
@@ -74,7 +76,7 @@ export default function CredentialsPage() {
     if (data.provider === 'gcp' && gcpInputMode === 'file') {
       const file = (data.credentials as any)?._file as File; // eslint-disable-line @typescript-eslint/no-explicit-any
       if (!file) {
-        alert('Please select a GCP service account JSON file');
+        alert(t('credential.selectGCPFile') || 'Please select a GCP service account JSON file');
         return;
       }
       
@@ -114,7 +116,7 @@ export default function CredentialsPage() {
   };
 
   const handleDeleteCredential = (credentialId: string) => {
-    if (confirm('Are you sure you want to delete this credential?')) {
+    if (confirm(t('credential.confirmDelete'))) {
       deleteCredentialMutation.mutate(credentialId);
     }
   };
@@ -136,13 +138,13 @@ export default function CredentialsPage() {
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">
-            No Workspace Selected
+            {t('credential.noWorkspaceSelected')}
           </h2>
           <p className="text-gray-600 mb-6">
-            Please select a workspace to manage credentials.
+            {t('credential.selectWorkspaceMessage')}
           </p>
           <Button onClick={() => router.push('/workspaces')}>
-            Select Workspace
+            {t('credential.selectWorkspace')}
           </Button>
         </div>
       </div>
@@ -155,7 +157,7 @@ export default function CredentialsPage() {
         <div className="min-h-screen flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-            <p className="mt-2 text-gray-600">Loading credentials...</p>
+            <p className="mt-2 text-gray-600">{t('credential.loadingCredentials')}</p>
           </div>
         </div>
       </WorkspaceRequired>
@@ -174,9 +176,9 @@ export default function CredentialsPage() {
 
           {credentials.length === 0 ? (
             <ResourceEmptyState
-              resourceName="Credentials"
+              resourceName={t('credential.title')}
               icon={Key}
-              description="Add cloud provider credentials to start managing VMs."
+              description={t('credential.addCredentialsDescription')}
               onCreateClick={() => setIsCreateDialogOpen(true)}
             />
           ) : (

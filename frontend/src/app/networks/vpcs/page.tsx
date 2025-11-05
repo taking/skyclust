@@ -29,6 +29,7 @@ import { Layout } from '@/components/layout/layout';
 import { CredentialRequiredState } from '@/components/common/credential-required-state';
 import { ResourceEmptyState } from '@/components/common/resource-empty-state';
 import { BulkActionsToolbar } from '@/components/common/bulk-actions-toolbar';
+import { useTranslation } from '@/hooks/use-translation';
 import {
   useVPCs,
   useVPCActions,
@@ -54,6 +55,7 @@ const VPCTable = dynamic(
 );
 
 export default function VPCsPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { isLoading: authLoading } = useRequireAuth();
@@ -95,24 +97,24 @@ export default function VPCsPage() {
   const filterConfigs: FilterConfig[] = useMemo(() => [
     {
       id: 'state',
-      label: 'State',
+      label: t('filters.status'),
       type: 'select',
       options: [
-        { id: 'available', value: 'available', label: 'Available' },
-        { id: 'pending', value: 'pending', label: 'Pending' },
-        { id: 'deleting', value: 'deleting', label: 'Deleting' },
+        { id: 'available', value: 'available', label: t('filters.available') },
+        { id: 'pending', value: 'pending', label: t('status.pending') },
+        { id: 'deleting', value: 'deleting', label: t('status.deleting') },
       ],
     },
     {
       id: 'is_default',
-      label: 'Type',
+      label: t('common.type'),
       type: 'select',
       options: [
-        { id: 'true', value: 'true', label: 'Default VPC' },
-        { id: 'false', value: 'false', label: 'Custom VPC' },
+        { id: 'true', value: 'true', label: t('network.defaultVPC') },
+        { id: 'false', value: 'false', label: t('network.customVPC') },
       ],
     },
-  ], []);
+  ], [t]);
 
   // Custom filter function for VPC-specific filtering
   const filterFn = (vpc: VPC, filters: FilterValue): boolean => {
@@ -176,7 +178,7 @@ export default function VPCsPage() {
   const renderContent = () => {
     // Early Return: No credentials
     if (credentials.length === 0) {
-      return <CredentialRequiredState serviceName="Networks (VPCs)" />;
+      return <CredentialRequiredState serviceName={t('network.title')} />;
     }
 
     // Early Return: No provider or credential selected
@@ -186,12 +188,12 @@ export default function VPCsPage() {
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Network className="h-12 w-12 text-gray-400 mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              {!selectedProvider ? 'Select a Provider' : 'Select a Credential'}
+              {!selectedProvider ? t('credential.selectCredential') : t('credential.selectCredential')}
             </h3>
             <p className="text-sm text-gray-500 text-center">
               {!selectedProvider
-                ? 'Please select a cloud provider to view VPCs'
-                : 'Please select a credential to view VPCs. If you don\'t have any credentials, register one first.'}
+                ? t('credential.selectCredential')
+                : t('credential.selectCredential')}
             </p>
             {!selectedProvider ? null : (
               <Button
@@ -199,7 +201,7 @@ export default function VPCsPage() {
                 variant="default"
                 className="mt-4"
               >
-                Register Credentials
+                {t('components.credentialRequired.registerButton')}
               </Button>
             )}
           </CardContent>
@@ -211,7 +213,7 @@ export default function VPCsPage() {
     if (filteredVPCs.length === 0) {
       return (
         <ResourceEmptyState
-          resourceName="VPCs"
+          resourceName={t('network.vpcs')}
           icon={Network}
           onCreateClick={() => setIsCreateDialogOpen(true)}
           withCard={true}
@@ -265,7 +267,7 @@ export default function VPCsPage() {
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-              <p className="mt-2 text-gray-600">Loading...</p>
+              <p className="mt-2 text-gray-600">{t('common.loading')}</p>
             </div>
           </div>
         </Layout>
@@ -283,20 +285,20 @@ export default function VPCsPage() {
           {selectedProvider && selectedCredentialId && (
             <Card>
               <CardHeader>
-                <CardTitle>Configuration</CardTitle>
-                <CardDescription>Select region to filter VPCs</CardDescription>
+                <CardTitle>{t('common.configuration')}</CardTitle>
+                <CardDescription>{t('network.selectRegionToFilterVPCs')}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  <Label>Region</Label>
+                  <Label>{t('region.select')}</Label>
                   <Input
-                    placeholder="e.g., ap-northeast-2"
+                    placeholder={t('region.placeholder')}
                     value={selectedRegion || ''}
                     readOnly
                     className="bg-muted"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Region selection is now handled in Header
+                    {t('network.regionSelectionHandledInHeader')}
                   </p>
                 </div>
               </CardContent>
@@ -313,7 +315,7 @@ export default function VPCsPage() {
                       value={searchQuery}
                       onChange={setSearchQuery}
                       onClear={clearSearch}
-                      placeholder="Search VPCs by name, ID, or state..."
+                      placeholder={t('network.searchVPCsPlaceholder')}
                     />
                   </div>
                   <Button
@@ -322,7 +324,7 @@ export default function VPCsPage() {
                     className="flex items-center"
                   >
                     <Filter className="mr-2 h-4 w-4" />
-                    Filters
+                    {t('common.filter')}
                     {Object.keys(filters).length > 0 && (
                       <Badge variant="secondary" className="ml-2">
                         {Object.keys(filters).length}

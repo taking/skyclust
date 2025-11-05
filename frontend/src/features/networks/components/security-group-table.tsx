@@ -106,7 +106,7 @@ export function SecurityGroupTable({
                   <TableCell>
                     <Checkbox
                       checked={isSelected}
-                      onCheckedChange={(checked) => handleSelectOne(securityGroup.id, checked)}
+                      onCheckedChange={(checked) => handleSelectOne(securityGroup.id, checked === true)}
                     />
                   </TableCell>
                   <TableCell className="font-medium">{securityGroup.name}</TableCell>

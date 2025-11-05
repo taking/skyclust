@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { GripVertical, Settings, X, Maximize2, Minimize2 } from 'lucide-react';
 import { WidgetData, WidgetType, WidgetSize, WIDGET_CONFIGS, getWidgetSizeClasses } from '@/lib/widgets';
+import { useTranslation } from '@/hooks/use-translation';
+import { useWidgetConfigs } from '@/lib/widgets-utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -104,13 +106,15 @@ const DraggableWidget = React.memo(function DraggableWidget({ widget, onRemove, 
     transition,
     isDragging,
   } = useSortable({ id: widget.id });
+  const { t } = useTranslation();
+  const { getWidgetConfig } = useWidgetConfigs();
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
   };
 
-  const config = WIDGET_CONFIGS[widget.type];
+  const config = getWidgetConfig(widget.type);
   
   const sizeOptions: WidgetSize[] = ['small', 'medium', 'large', 'xlarge'];
   const availableSizes = sizeOptions.filter(s => {
@@ -141,7 +145,7 @@ const DraggableWidget = React.memo(function DraggableWidget({ widget, onRemove, 
       default:
         return (
           <div className="flex items-center justify-center h-32 text-gray-500">
-            Widget not implemented
+            {t('widgets.addWidget.notImplemented')}
           </div>
         );
     }
@@ -235,6 +239,8 @@ export function DraggableDashboard({
   onWidgetConfigure,
   onWidgetResize,
 }: DraggableDashboardProps) {
+  const { t } = useTranslation();
+  const { getWidgetConfig } = useWidgetConfigs();
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -285,14 +291,14 @@ export function DraggableDashboard({
                 <div className="flex items-center">
                   <GripVertical className="mr-2 h-4 w-4 text-gray-400" />
                   <div>
-                    <CardTitle className="text-sm">{WIDGET_CONFIGS[activeWidget.type].title}</CardTitle>
-                    <CardDescription className="text-xs">{WIDGET_CONFIGS[activeWidget.type].description}</CardDescription>
+                    <CardTitle className="text-sm">{getWidgetConfig(activeWidget.type).title}</CardTitle>
+                    <CardDescription className="text-xs">{getWidgetConfig(activeWidget.type).description}</CardDescription>
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
                 <div className="flex items-center justify-center h-32 text-gray-500">
-                  Dragging...
+                  {t('widgets.addWidget.dragging')}
                 </div>
               </CardContent>
             </Card>

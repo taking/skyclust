@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"skyclust/pkg/logger"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -23,6 +25,8 @@ type RedisConfig struct {
 type RedisService struct {
 	client *redis.Client
 	config RedisConfig
+	stats  *CacheStats
+	mu     sync.RWMutex
 }
 
 // NewRedisService creates a new Redis service
@@ -46,6 +50,7 @@ func NewRedisService(config RedisConfig) (*RedisService, error) {
 	return &RedisService{
 		client: client,
 		config: config,
+		stats:  &CacheStats{},
 	}, nil
 }
 
@@ -64,15 +69,19 @@ func (r *RedisService) Get(ctx context.Context, key string, dest interface{}) er
 	data, err := r.client.Get(ctx, key).Result()
 	if err != nil {
 		if err == redis.Nil {
+			r.recordMiss()
 			return ErrRedisCacheMiss
 		}
+		r.recordMiss()
 		return fmt.Errorf("failed to get value: %w", err)
 	}
 
 	if err := json.Unmarshal([]byte(data), dest); err != nil {
+		r.recordMiss()
 		return fmt.Errorf("failed to unmarshal value: %w", err)
 	}
 
+	r.recordHit()
 	return nil
 }
 
@@ -228,9 +237,7 @@ func (r *RedisService) ClearExpired() error {
 }
 
 // GetPerformanceStats returns cache performance statistics
-func (r *RedisService) GetPerformanceStats() (*CacheStats, error) {
-	ctx := context.Background()
-
+func (r *RedisService) GetPerformanceStats(ctx context.Context) (*CacheStats, error) {
 	// Use DBSIZE instead of KEYS to get key count efficiently (O(1) operation)
 	// This avoids blocking Redis by scanning the entire keyspace
 	dbSize, err := r.client.DBSize(ctx).Result()
@@ -238,16 +245,233 @@ func (r *RedisService) GetPerformanceStats() (*CacheStats, error) {
 		return nil, fmt.Errorf("failed to get database size: %w", err)
 	}
 
+	r.mu.RLock()
 	stats := &CacheStats{
-		Keys: dbSize,
+		Hits:   r.stats.Hits,
+		Misses: r.stats.Misses,
+		Keys:   dbSize,
 	}
-
-	// Parse hits and misses from Redis info
-	// This is a simplified implementation
-	stats.Hits = 0
-	stats.Misses = 0
+	r.mu.RUnlock()
 
 	return stats, nil
+}
+
+// GetMemoryUsage returns Redis memory usage in bytes
+func (r *RedisService) GetMemoryUsage(ctx context.Context) (int64, error) {
+	info, err := r.client.Info(ctx, "memory").Result()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get memory info: %w", err)
+	}
+
+	var usedMemory int64
+	// Parse used_memory from INFO output
+	// Simplified parsing - in production, use proper parsing
+	if _, err := fmt.Sscanf(info, "used_memory:%d", &usedMemory); err != nil {
+		// Try alternative parsing
+		lines := strings.Split(info, "\n")
+		for _, line := range lines {
+			if strings.HasPrefix(line, "used_memory:") {
+				fmt.Sscanf(line, "used_memory:%d", &usedMemory)
+				break
+			}
+		}
+	}
+
+	return usedMemory, nil
+}
+
+// ResetStats resets cache statistics
+func (r *RedisService) ResetStats() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.stats.Hits = 0
+	r.stats.Misses = 0
+}
+
+// recordHit records a cache hit
+func (r *RedisService) recordHit() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.stats.Hits++
+}
+
+// recordMiss records a cache miss
+func (r *RedisService) recordMiss() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.stats.Misses++
+}
+
+// Pipeline represents a Redis pipeline for batch operations
+type Pipeline struct {
+	pipe redis.Pipeliner
+	ctx  context.Context
+}
+
+// Exec executes all commands in the pipeline
+func (p *Pipeline) Exec() ([]redis.Cmder, error) {
+	return p.pipe.Exec(p.ctx)
+}
+
+// Pipeline creates a new Redis pipeline for batch operations
+func (r *RedisService) Pipeline(ctx context.Context) *Pipeline {
+	return &Pipeline{
+		pipe: r.client.Pipeline(),
+		ctx:  ctx,
+	}
+}
+
+// MGet retrieves multiple values from cache in a single operation
+func (r *RedisService) MGet(ctx context.Context, keys ...string) ([]interface{}, error) {
+	if len(keys) == 0 {
+		return []interface{}{}, nil
+	}
+
+	results, err := r.client.MGet(ctx, keys...).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to MGet values: %w", err)
+	}
+
+	values := make([]interface{}, len(results))
+	for i, result := range results {
+		if result == nil {
+			values[i] = nil
+			continue
+		}
+
+		var value interface{}
+		if err := json.Unmarshal([]byte(result.(string)), &value); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal value at index %d: %w", i, err)
+		}
+		values[i] = value
+	}
+
+	return values, nil
+}
+
+// MSet stores multiple key-value pairs in cache in a single operation
+func (r *RedisService) MSet(ctx context.Context, kvPairs map[string]interface{}, expiration time.Duration) error {
+	if len(kvPairs) == 0 {
+		return nil
+	}
+
+	pipe := r.client.Pipeline()
+	for key, value := range kvPairs {
+		data, err := json.Marshal(value)
+		if err != nil {
+			return fmt.Errorf("failed to marshal value for key %s: %w", key, err)
+		}
+		pipe.Set(ctx, key, data, expiration)
+	}
+
+	_, err := pipe.Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to MSet values: %w", err)
+	}
+
+	return nil
+}
+
+// Eval executes a Lua script with the given keys and arguments
+func (r *RedisService) Eval(ctx context.Context, script string, keys []string, args ...interface{}) (interface{}, error) {
+	return r.client.Eval(ctx, script, keys, args...).Result()
+}
+
+// EvalSha executes a Lua script by its SHA1 hash
+func (r *RedisService) EvalSha(ctx context.Context, sha1 string, keys []string, args ...interface{}) (interface{}, error) {
+	return r.client.EvalSha(ctx, sha1, keys, args...).Result()
+}
+
+// ScriptLoad loads a Lua script into Redis and returns its SHA1 hash
+func (r *RedisService) ScriptLoad(ctx context.Context, script string) (string, error) {
+	return r.client.ScriptLoad(ctx, script).Result()
+}
+
+// Common Lua scripts for atomic operations
+const (
+	// ScriptCompareAndSet compares current value and sets if matches (CAS operation)
+	ScriptCompareAndSet = `
+		local current = redis.call('GET', KEYS[1])
+		if current == ARGV[1] then
+			redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+			return 1
+		end
+		return 0
+	`
+
+	// ScriptIncrementWithLimit increments a counter with a maximum limit
+	ScriptIncrementWithLimit = `
+		local current = redis.call('GET', KEYS[1])
+		local limit = tonumber(ARGV[1])
+		local increment = tonumber(ARGV[2])
+		local ttl = tonumber(ARGV[3])
+		
+		if current == false then
+			current = 0
+		else
+			current = tonumber(current)
+		end
+		
+		if current + increment <= limit then
+			redis.call('SET', KEYS[1], current + increment, 'EX', ttl)
+			return current + increment
+		end
+		return current
+	`
+
+	// ScriptDeleteIfMatches deletes a key only if its value matches
+	ScriptDeleteIfMatches = `
+		local current = redis.call('GET', KEYS[1])
+		if current == ARGV[1] then
+			return redis.call('DEL', KEYS[1])
+		end
+		return 0
+	`
+)
+
+// CompareAndSet performs an atomic compare-and-set operation
+func (r *RedisService) CompareAndSet(ctx context.Context, key string, expectedValue, newValue string, expiration time.Duration) (bool, error) {
+	result, err := r.Eval(ctx, ScriptCompareAndSet, []string{key}, expectedValue, newValue, int(expiration.Seconds()))
+	if err != nil {
+		return false, fmt.Errorf("failed to execute compare-and-set: %w", err)
+	}
+
+	matched, ok := result.(int64)
+	if !ok {
+		return false, fmt.Errorf("unexpected result type: %T", result)
+	}
+
+	return matched == 1, nil
+}
+
+// IncrementWithLimit increments a counter with a maximum limit atomically
+func (r *RedisService) IncrementWithLimit(ctx context.Context, key string, limit int64, increment int64, expiration time.Duration) (int64, error) {
+	result, err := r.Eval(ctx, ScriptIncrementWithLimit, []string{key}, limit, increment, int(expiration.Seconds()))
+	if err != nil {
+		return 0, fmt.Errorf("failed to execute increment-with-limit: %w", err)
+	}
+
+	value, ok := result.(int64)
+	if !ok {
+		return 0, fmt.Errorf("unexpected result type: %T", result)
+	}
+
+	return value, nil
+}
+
+// DeleteIfMatches deletes a key only if its value matches
+func (r *RedisService) DeleteIfMatches(ctx context.Context, key string, expectedValue string) (bool, error) {
+	result, err := r.Eval(ctx, ScriptDeleteIfMatches, []string{key}, expectedValue)
+	if err != nil {
+		return false, fmt.Errorf("failed to execute delete-if-matches: %w", err)
+	}
+
+	deleted, ok := result.(int64)
+	if !ok {
+		return false, fmt.Errorf("unexpected result type: %T", result)
+	}
+
+	return deleted == 1, nil
 }
 
 // Redis-specific cache errors

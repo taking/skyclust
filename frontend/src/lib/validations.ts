@@ -127,12 +127,13 @@ export const updateSecurityGroupSchema = z.object({
 
 // VM validations
 export const createVMSchema = z.object({
-  credential_id: z.string().uuid('Invalid credential ID'),
+  credential_id: z.string().uuid('Invalid credential ID').optional(),
   name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),
   provider: z.enum(['aws', 'gcp', 'azure', 'ncp']),
-  type: z.string().min(1, 'Instance type is required'),
+  instance_type: z.string().min(1, 'Instance type is required'),
   region: z.string().min(1, 'Region is required'),
   image_id: z.string().optional(),
+  workspace_id: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 

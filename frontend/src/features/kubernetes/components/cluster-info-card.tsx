@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import dynamic from 'next/dynamic';
-import type { Cluster } from '@/lib/types';
+import type { KubernetesCluster } from '@/lib/types';
 
 const TagManager = dynamic(
   () => import('@/components/common/tag-manager').then(mod => ({ default: mod.TagManager })),
@@ -28,7 +28,7 @@ const TagManager = dynamic(
 );
 
 interface ClusterInfoCardProps {
-  cluster: Cluster | undefined;
+  cluster: KubernetesCluster | undefined;
   isLoading: boolean;
   selectedProvider?: string;
   clusterName: string;

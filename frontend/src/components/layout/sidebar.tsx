@@ -9,7 +9,7 @@ import { Form } from '@/components/ui/form';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useCredentialContextStore } from '@/store/credential-context';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Home,
@@ -90,6 +90,7 @@ function SidebarComponent() {
   const { currentWorkspace, setCurrentWorkspace, workspaces, setWorkspaces } = useWorkspaceStore();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { success, error: showError } = useToast();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -274,13 +275,23 @@ function SidebarComponent() {
   const displayWorkspaces = fetchedWorkspaces.length > 0 ? fetchedWorkspaces : workspaces;
 
   // Determine which accordion items should be open based on current path
-  const getDefaultOpenItems = () => {
-    const openItems: string[] = [];
-    if (pathname.startsWith('/compute')) openItems.push('compute');
-    if (pathname.startsWith('/kubernetes')) openItems.push('kubernetes');
-    if (pathname.startsWith('/networks')) openItems.push('networks');
-    return openItems;
-  };
+  // useState로 관리하여 pathname 변경 시 자동 업데이트
+  const [openItems, setOpenItems] = React.useState<string[]>(() => {
+    const items: string[] = [];
+    if (pathname.startsWith('/compute')) items.push('compute');
+    if (pathname.startsWith('/kubernetes')) items.push('kubernetes');
+    if (pathname.startsWith('/networks')) items.push('networks');
+    return items;
+  });
+
+  // pathname이 변경될 때마다 openItems 업데이트
+  React.useEffect(() => {
+    const items: string[] = [];
+    if (pathname.startsWith('/compute')) items.push('compute');
+    if (pathname.startsWith('/kubernetes')) items.push('kubernetes');
+    if (pathname.startsWith('/networks')) items.push('networks');
+    setOpenItems(items);
+  }, [pathname]);
 
   // Check if a navigation item is active
   const isItemActive = (item: NavigationItem): boolean => {
@@ -433,13 +444,30 @@ function SidebarComponent() {
 
           {/* Navigation Menu */}
           <div className="mt-4 flex-1" role="list">
-            <Accordion type="multiple" defaultValue={getDefaultOpenItems()} className="w-full">
-              {navigation.map((item) => {
+            <Accordion 
+              type="multiple" 
+              value={openItems} 
+              onValueChange={setOpenItems}
+              className="w-full"
+            >
+              {navigation.map((item, index) => {
                 if (item.children) {
                   // Parent item with children (accordion)
                   const isActive = isItemActive(item);
+                  
+                  // Determine accordion value based on pathname (not translated name)
+                  // This ensures consistent matching with openItems state
+                  let accordionValue = '';
+                  if (item.children.some(child => child.href?.startsWith('/compute'))) {
+                    accordionValue = 'compute';
+                  } else if (item.children.some(child => child.href?.startsWith('/kubernetes'))) {
+                    accordionValue = 'kubernetes';
+                  } else if (item.children.some(child => child.href?.startsWith('/networks'))) {
+                    accordionValue = 'networks';
+                  }
+                  
                   return (
-                    <AccordionItem key={item.name} value={item.name.toLowerCase()} className="border-none">
+                    <AccordionItem key={item.name} value={accordionValue} className="border-none">
                       <AccordionTrigger
                         className={cn(
                           'py-2 px-3 hover:no-underline',
@@ -455,10 +483,36 @@ function SidebarComponent() {
                         <div className="ml-4 space-y-1">
                           {item.children.map((child) => {
                             const isChildItemActive = isChildActive(child);
+                            const handleNavigation = () => {
+                              if (!child.href) return;
+                              
+                              // 현재 URL의 파라미터 유지 (workspaceId, credentialId, region)
+                              const params = new URLSearchParams(searchParams.toString());
+                              
+                              // workspaceId는 항상 유지
+                              if (currentWorkspace?.id) {
+                                params.set('workspaceId', currentWorkspace.id);
+                              }
+                              
+                              // credentialId와 region은 compute/kubernetes/networks 경로에서만 유지
+                              const shouldKeepParams = child.href.startsWith('/compute') || 
+                                                      child.href.startsWith('/kubernetes') || 
+                                                      child.href.startsWith('/networks');
+                              
+                              if (!shouldKeepParams) {
+                                params.delete('credentialId');
+                                params.delete('region');
+                              }
+                              
+                              const queryString = params.toString();
+                              const url = queryString ? `${child.href}?${queryString}` : child.href;
+                              router.push(url);
+                            };
+                            
                             return (
                               <Button
                                 key={child.name}
-                                onClick={() => router.push(child.href || '#')}
+                                onClick={handleNavigation}
                                 variant={isChildItemActive ? 'secondary' : 'ghost'}
                                 size="sm"
                                 className={cn(
@@ -481,10 +535,36 @@ function SidebarComponent() {
                 } else {
                   // Single item without children
                   const isActive = pathname === item.href;
+                  const handleNavigation = () => {
+                    if (!item.href) return;
+                    
+                    // 현재 URL의 파라미터 유지 (workspaceId, credentialId, region)
+                    const params = new URLSearchParams(searchParams.toString());
+                    
+                    // workspaceId는 항상 유지
+                    if (currentWorkspace?.id) {
+                      params.set('workspaceId', currentWorkspace.id);
+                    }
+                    
+                    // credentialId와 region은 compute/kubernetes/networks 경로에서만 유지
+                    const shouldKeepParams = item.href.startsWith('/compute') || 
+                                            item.href.startsWith('/kubernetes') || 
+                                            item.href.startsWith('/networks');
+                    
+                    if (!shouldKeepParams) {
+                      params.delete('credentialId');
+                      params.delete('region');
+                    }
+                    
+                    const queryString = params.toString();
+                    const url = queryString ? `${item.href}?${queryString}` : item.href;
+                    router.push(url);
+                  };
+                  
                   return (
                     <Button
                       key={item.name}
-                      onClick={() => item.href && router.push(item.href)}
+                      onClick={handleNavigation}
                       variant={isActive ? 'secondary' : 'ghost'}
                       className={cn(
                         'w-full justify-start mb-1',

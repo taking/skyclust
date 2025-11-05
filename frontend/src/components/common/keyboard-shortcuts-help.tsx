@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Keyboard } from 'lucide-react';
 import { KeyboardShortcut } from '@/hooks/use-keyboard-shortcuts';
 import { EVENTS } from '@/lib/constants';
+import { useTranslation } from '@/hooks/use-translation';
 
 interface KeyboardShortcutsHelpProps {
   shortcuts: KeyboardShortcut[];
@@ -13,6 +14,7 @@ interface KeyboardShortcutsHelpProps {
 }
 
 export function KeyboardShortcutsHelp({ shortcuts, trigger }: KeyboardShortcutsHelpProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = React.useState(false);
 
   // Listen for Shift + ? keyboard shortcut
@@ -57,9 +59,9 @@ export function KeyboardShortcutsHelp({ shortcuts, trigger }: KeyboardShortcutsH
 
   const groupedShortcuts = React.useMemo(() => {
     const groups: Record<string, KeyboardShortcut[]> = {
-      'Navigation': [],
-      'Action': [],
-      'General': [],
+      navigation: [],
+      action: [],
+      general: [],
     };
 
     shortcuts.forEach((shortcut) => {
@@ -67,25 +69,31 @@ export function KeyboardShortcutsHelp({ shortcuts, trigger }: KeyboardShortcutsH
       
       // Categorize based on description and key combination
       if (desc.includes('menu list') || desc.includes('menu')) {
-        groups['Navigation'].push(shortcut);
+        groups.navigation.push(shortcut);
       } else if (desc.includes('go to') || desc.includes('dashboard') || desc.includes('compute') || 
                  desc.includes('kubernetes') || desc.includes('networks') || desc.includes('credentials')) {
-        groups['General'].push(shortcut);
+        groups.general.push(shortcut);
       } else if (desc.includes('create') || desc.includes('new resource')) {
-        groups['Action'].push(shortcut);
+        groups.action.push(shortcut);
       } else if (desc.includes('show keyboard shortcuts') || desc.includes('keyboard shortcuts')) {
-        groups['General'].push(shortcut);
+        groups.general.push(shortcut);
       } else if (desc.includes('search') || desc.includes('open')) {
-        groups['Navigation'].push(shortcut);
+        groups.navigation.push(shortcut);
       } else if (desc.includes('delete') || desc.includes('save')) {
-        groups['Action'].push(shortcut);
+        groups.action.push(shortcut);
       } else {
-        groups['General'].push(shortcut);
+        groups.general.push(shortcut);
       }
     });
 
     return Object.entries(groups).filter(([_, shortcuts]) => shortcuts.length > 0);
-  }, [shortcuts]);
+  }, [shortcuts, t]);
+  
+  const categoryLabels: Record<string, string> = {
+    navigation: t('shortcuts.categories.navigation'),
+    action: t('shortcuts.categories.action'),
+    general: t('shortcuts.categories.general'),
+  };
 
   return (
     <>
@@ -101,22 +109,22 @@ export function KeyboardShortcutsHelp({ shortcuts, trigger }: KeyboardShortcutsH
           className="text-xs"
         >
           <Keyboard className="mr-2 h-4 w-4" />
-          Shortcuts
+          {t('shortcuts.shortcutsLabel')}
         </Button>
       )}
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Keyboard Shortcuts</DialogTitle>
+            <DialogTitle>{t('shortcuts.title')}</DialogTitle>
             <DialogDescription>
-              Use these keyboard shortcuts to navigate and perform actions faster
+              {t('shortcuts.description')}
             </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-6 mt-4">
             {groupedShortcuts.map(([groupName, groupShortcuts]) => (
               <div key={groupName}>
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">{groupName}</h3>
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">{categoryLabels[groupName] || groupName}</h3>
                 <div className="space-y-2">
                   {groupShortcuts.map((shortcut, index) => (
                     <div
@@ -136,7 +144,7 @@ export function KeyboardShortcutsHelp({ shortcuts, trigger }: KeyboardShortcutsH
           
           <div className="mt-6 pt-4 border-t">
             <p className="text-xs text-gray-500">
-              Tip: Keyboard shortcuts are disabled when typing in input fields
+              {t('shortcuts.tip')}
             </p>
           </div>
         </DialogContent>

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogTrigger } from '@/components/ui/dialog';
 import { Plus } from 'lucide-react';
+import { useTranslation } from '@/hooks/use-translation';
 import type { Credential, CloudProvider, CreateClusterForm } from '@/lib/types';
 
 // Dynamic import for CreateClusterDialog
@@ -137,6 +138,8 @@ function ClusterPageHeaderComponent({
   isCreateDialogOpen,
   onCreateDialogChange,
 }: ClusterPageHeaderProps) {
+  const { t } = useTranslation();
+  
   // Show region selector for GCP, AWS, and Azure
   const showRegionSelector = selectedProvider === 'gcp' || selectedProvider === 'aws' || selectedProvider === 'azure';
 
@@ -159,9 +162,12 @@ function ClusterPageHeaderComponent({
   return (
     <div className="flex items-center justify-between">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Kubernetes Clusters</h1>
+        <h1 className="text-3xl font-bold text-gray-900">{t('kubernetes.clusters')}</h1>
         <p className="text-gray-600">
-          Manage Kubernetes clusters{workspaceName ? ` for ${workspaceName}` : ''}
+          {workspaceName 
+            ? t('kubernetes.manageClustersWithWorkspace', { workspaceName }) 
+            : t('kubernetes.manageClusters')
+          }
         </p>
       </div>
       <div className="flex items-center space-x-2">
@@ -172,7 +178,7 @@ function ClusterPageHeaderComponent({
               disabled={!selectedCredentialId || credentials.length === 0}
             >
               <Plus className="mr-2 h-4 w-4" />
-              Create Cluster
+              {t('kubernetes.createCluster')}
             </Button>
           </DialogTrigger>
           <CreateClusterDialog

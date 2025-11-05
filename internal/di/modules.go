@@ -1,9 +1,12 @@
 package di
 
 import (
+	"context"
+	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 	auditlogservice "skyclust/internal/application/services/audit_log"
 	authservice "skyclust/internal/application/services/auth"
@@ -26,6 +29,8 @@ import (
 	"skyclust/internal/domain"
 	"skyclust/internal/infrastructure/database/postgres"
 	"skyclust/internal/infrastructure/messaging"
+	k8sworker "skyclust/internal/workers/kubernetes"
+	networkworker "skyclust/internal/workers/network"
 	"skyclust/pkg/cache"
 	"skyclust/pkg/logger"
 	"skyclust/pkg/security"
@@ -76,7 +81,13 @@ func (m *RepositoryModule) GetContainer() *RepositoryContainer {
 
 // ServiceModule initializes service dependencies
 type ServiceModule struct {
-	services *ServiceContainer
+	services     *ServiceContainer
+	messagingBus messaging.Bus
+}
+
+// GetMessagingBus returns the messaging bus used by services
+func (m *ServiceModule) GetMessagingBus() messaging.Bus {
+	return m.messagingBus
 }
 
 // NewServiceModule creates a new service module with actual service implementations
@@ -132,10 +143,10 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 	credentialService := credentialservice.NewService(repos.CredentialRepository, repos.AuditLogRepository, encryptor)
 
 	// Create Kubernetes service
-	k8sService := kubernetesservice.NewService(credentialService, logger.DefaultLogger.GetLogger())
+	k8sService := kubernetesservice.NewService(credentialService, config.Cache, messagingBus, logger.DefaultLogger.GetLogger())
 
 	// Create Network service (after credentialService is created)
-	networkService := networkservice.NewService(credentialService, logger.DefaultLogger.GetLogger())
+	networkService := networkservice.NewService(credentialService, config.Cache, messagingBus, logger.DefaultLogger.GetLogger())
 
 	// Create AuditLogService
 	auditLogService := auditlogservice.NewService(repos.AuditLogRepository)
@@ -168,12 +179,18 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 	computeService := computeservice.NewService()
 
 	// Create VMService
+	vmEventPublisher := messaging.NewPublisher(messagingBus, logger.DefaultLogger.GetLogger())
 	vmService := vmservice.NewService(
 		repos.VMRepository,
 		repos.WorkspaceRepository,
 		computeService,
 		eventService,
 		repos.AuditLogRepository,
+		config.Cache,
+		cache.NewCacheKeyBuilder(),
+		cache.NewInvalidatorWithEvents(config.Cache, vmEventPublisher),
+		vmEventPublisher,
+		logger.DefaultLogger.GetLogger(),
 	)
 
 	// Create ExportService
@@ -223,6 +240,7 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 			ComputeService:          computeService,
 			BusinessRuleService:     nil, // BusinessRuleService is in DomainContainer, not ServiceContainer
 		},
+		messagingBus: messagingBus,
 	}
 }
 
@@ -301,4 +319,127 @@ func NewInfrastructureModule(db *gorm.DB, redisClient *redis.Client) *Infrastruc
 // GetContainer returns the infrastructure container
 func (m *InfrastructureModule) GetContainer() *InfrastructureContainer {
 	return m.infrastructure
+}
+
+// WorkerModule initializes and manages background workers
+type WorkerModule struct {
+	workers *WorkerContainer
+}
+
+// WorkerContainer holds worker dependencies
+type WorkerContainer struct {
+	KubernetesSyncWorker *k8sworker.SyncWorker
+	NetworkSyncWorker    *networkworker.SyncWorker
+}
+
+// NewWorkerModule creates a new worker module
+func NewWorkerModule(
+	serviceModule *ServiceModule,
+	repositoryModule *RepositoryModule,
+	cacheService cache.Cache,
+	messagingBus interface{},
+	logger *zap.Logger,
+) *WorkerModule {
+	// Get required services
+	services := serviceModule.GetContainer()
+	repos := repositoryModule.GetContainer()
+
+	// Convert messaging bus
+	var eventBus messaging.Bus
+	if bus, ok := messagingBus.(messaging.Bus); ok {
+		eventBus = bus
+	} else {
+		// Fallback to LocalBus if messaging is not available
+		eventBus = messaging.NewLocalBus()
+		logger.Warn("Messaging bus not available, using LocalBus for workers")
+	}
+
+	// Get Kubernetes and Network services
+	var k8sService *kubernetesservice.Service
+	if k8s, ok := services.KubernetesService.(*kubernetesservice.Service); ok {
+		k8sService = k8s
+	}
+
+	var networkService *networkservice.Service
+	if net, ok := services.NetworkService.(*networkservice.Service); ok {
+		networkService = net
+	}
+
+	// Create Kubernetes sync worker
+	var k8sWorker *k8sworker.SyncWorker
+	if k8sService != nil {
+		k8sWorker = k8sworker.NewSyncWorker(
+			k8sService,
+			services.CredentialService,
+			repos.CredentialRepository,
+			repos.WorkspaceRepository,
+			cacheService,
+			eventBus,
+			logger,
+			k8sworker.SyncWorkerConfig{
+				SyncInterval:   5 * time.Minute,
+				MaxConcurrency: 5,
+			},
+		)
+		logger.Info("Kubernetes sync worker created")
+	}
+
+	// Create Network sync worker
+	var networkWorker *networkworker.SyncWorker
+	if networkService != nil {
+		networkWorker = networkworker.NewSyncWorker(
+			networkService,
+			services.CredentialService,
+			repos.CredentialRepository,
+			repos.WorkspaceRepository,
+			cacheService,
+			eventBus,
+			logger,
+			networkworker.SyncWorkerConfig{
+				SyncInterval:   5 * time.Minute,
+				MaxConcurrency: 5,
+			},
+		)
+		logger.Info("Network sync worker created")
+	}
+
+	return &WorkerModule{
+		workers: &WorkerContainer{
+			KubernetesSyncWorker: k8sWorker,
+			NetworkSyncWorker:    networkWorker,
+		},
+	}
+}
+
+// GetContainer returns the worker container
+func (m *WorkerModule) GetContainer() *WorkerContainer {
+	return m.workers
+}
+
+// StartAll starts all workers
+func (m *WorkerModule) StartAll(ctx context.Context) error {
+	if m.workers.KubernetesSyncWorker != nil {
+		if err := m.workers.KubernetesSyncWorker.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start Kubernetes sync worker: %w", err)
+		}
+	}
+
+	if m.workers.NetworkSyncWorker != nil {
+		if err := m.workers.NetworkSyncWorker.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start Network sync worker: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// StopAll stops all workers
+func (m *WorkerModule) StopAll() {
+	if m.workers.KubernetesSyncWorker != nil {
+		m.workers.KubernetesSyncWorker.Stop()
+	}
+
+	if m.workers.NetworkSyncWorker != nil {
+		m.workers.NetworkSyncWorker.Stop()
+	}
 }

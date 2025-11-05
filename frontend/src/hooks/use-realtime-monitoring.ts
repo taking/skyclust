@@ -1,7 +1,8 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useAuthStore } from '@/store/auth';
-import { webSocketService } from '@/services/websocket';
+import { sseService } from '@/services/sse';
 import { useToast } from '@/hooks/use-toast';
+import type { SSECallbacks } from '@/lib/types/sse';
 
 interface VMStatusUpdate {
   vmId: string;
@@ -50,92 +51,111 @@ interface SystemAlert {
 export function useRealtimeMonitoring() {
   const { token } = useAuthStore();
   const { success, error } = useToast();
-  const callbacksRef = useRef<{
-    onVMStatusUpdate?: (data: VMStatusUpdate) => void;
-    onVMResourceUpdate?: (data: VMResourceUpdate) => void;
-    onVMError?: (data: VMError) => void;
-    onProviderStatusUpdate?: (data: ProviderStatusUpdate) => void;
-    onProviderInstanceUpdate?: (data: ProviderInstanceUpdate) => void;
-    onSystemNotification?: (data: SystemNotification) => void;
-    onSystemAlert?: (data: SystemAlert) => void;
-  }>({});
+  const callbacksRef = useRef<SSECallbacks>({});
 
-  // WebSocket 연결
+  // SSE 연결
   useEffect(() => {
     if (token) {
-      webSocketService.connect(token);
+      sseService.connect(token, callbacksRef.current);
     }
 
     return () => {
-      webSocketService.disconnect();
+      sseService.disconnect();
     };
+  }, [token]);
+
+  // 자동 구독 설정
+  useEffect(() => {
+    if (sseService.isConnected()) {
+      sseService.subscribeToEvent('vm-status');
+      sseService.subscribeToEvent('vm-resource');
+      sseService.subscribeToEvent('provider-status');
+      sseService.subscribeToEvent('provider-instance');
+      sseService.subscribeToEvent('system-notification');
+      sseService.subscribeToEvent('system-alert');
+    }
   }, [token]);
 
   // VM 상태 업데이트 콜백 등록
   const onVMStatusUpdate = useCallback((callback: (data: VMStatusUpdate) => void) => {
-    callbacksRef.current.onVMStatusUpdate = callback;
-    webSocketService.onVMStatusUpdate(callback);
+    callbacksRef.current.onVMStatusUpdate = (data: unknown) => {
+      callback(data as VMStatusUpdate);
+    };
   }, []);
 
   // VM 리소스 업데이트 콜백 등록
   const onVMResourceUpdate = useCallback((callback: (data: VMResourceUpdate) => void) => {
-    callbacksRef.current.onVMResourceUpdate = callback;
-    webSocketService.onVMResourceUpdate(callback);
+    callbacksRef.current.onVMResourceUpdate = (data: unknown) => {
+      callback(data as VMResourceUpdate);
+    };
   }, []);
 
-  // VM 에러 콜백 등록
+  // VM 에러 콜백 등록 (SSE는 시스템 에러를 onError로 처리)
   const onVMError = useCallback((callback: (data: VMError) => void) => {
-    callbacksRef.current.onVMError = callback;
-    webSocketService.onVMError(callback);
+    callbacksRef.current.onError = (event: Event) => {
+      try {
+        const errorEvent = event as unknown as { data?: string };
+        if (errorEvent.data) {
+          const errorData = JSON.parse(errorEvent.data) as VMError;
+          callback(errorData);
+        }
+      } catch {
+        // Error parsing failed, ignore
+      }
+    };
   }, []);
 
   // Provider 상태 업데이트 콜백 등록
   const onProviderStatusUpdate = useCallback((callback: (data: ProviderStatusUpdate) => void) => {
-    callbacksRef.current.onProviderStatusUpdate = callback;
-    webSocketService.onProviderStatusUpdate(callback);
+    callbacksRef.current.onProviderStatusUpdate = (data: unknown) => {
+      callback(data as ProviderStatusUpdate);
+    };
   }, []);
 
   // Provider 인스턴스 업데이트 콜백 등록
   const onProviderInstanceUpdate = useCallback((callback: (data: ProviderInstanceUpdate) => void) => {
-    callbacksRef.current.onProviderInstanceUpdate = callback;
-    webSocketService.onProviderInstanceUpdate(callback);
+    callbacksRef.current.onProviderInstanceUpdate = (data: unknown) => {
+      callback(data as ProviderInstanceUpdate);
+    };
   }, []);
 
   // 시스템 알림 콜백 등록
   const onSystemNotification = useCallback((callback: (data: SystemNotification) => void) => {
-    callbacksRef.current.onSystemNotification = callback;
-    webSocketService.onSystemNotification(callback);
+    callbacksRef.current.onSystemNotification = (data: unknown) => {
+      callback(data as SystemNotification);
+    };
   }, []);
 
   // 시스템 알림 콜백 등록
   const onSystemAlert = useCallback((callback: (data: SystemAlert) => void) => {
-    callbacksRef.current.onSystemAlert = callback;
-    webSocketService.onSystemAlert(callback);
+    callbacksRef.current.onSystemAlert = (data: unknown) => {
+      callback(data as SystemAlert);
+    };
   }, []);
 
   // VM 구독
   const subscribeToVM = useCallback((vmId: string) => {
-    webSocketService.subscribeToVM(vmId);
+    sseService.subscribeToVM(vmId);
   }, []);
 
   // VM 구독 해제
   const unsubscribeFromVM = useCallback((vmId: string) => {
-    webSocketService.unsubscribeFromVM(vmId);
+    sseService.unsubscribeFromVM(vmId);
   }, []);
 
   // Provider 구독
   const subscribeToProvider = useCallback((provider: string) => {
-    webSocketService.subscribeToProvider(provider);
+    sseService.subscribeToEvent(`provider-${provider}`);
   }, []);
 
   // Provider 구독 해제
   const unsubscribeFromProvider = useCallback((provider: string) => {
-    webSocketService.unsubscribeFromProvider(provider);
+    sseService.unsubscribeFromEvent(`provider-${provider}`);
   }, []);
 
   // 연결 상태 확인
   const isConnected = useCallback(() => {
-    return webSocketService.isConnected();
+    return sseService.isConnected();
   }, []);
 
   // 기본 알림 설정
@@ -159,34 +179,7 @@ export function useRealtimeMonitoring() {
 
     onSystemNotification(handleSystemNotification);
     onSystemAlert(handleSystemAlert);
-
-    return () => {
-      webSocketService.offSystemNotification(handleSystemNotification);
-      webSocketService.offSystemAlert(handleSystemAlert);
-    };
   }, [success, error, onSystemNotification, onSystemAlert]);
-
-  // 컴포넌트 언마운트 시 이벤트 리스너 정리
-  useEffect(() => {
-    const callbacks = callbacksRef.current;
-    return () => {
-      if (callbacks.onVMStatusUpdate) {
-        webSocketService.offVMStatusUpdate(callbacks.onVMStatusUpdate);
-      }
-      if (callbacks.onVMResourceUpdate) {
-        webSocketService.offVMResourceUpdate(callbacks.onVMResourceUpdate);
-      }
-      if (callbacks.onVMError) {
-        webSocketService.offVMError(callbacks.onVMError);
-      }
-      if (callbacks.onProviderStatusUpdate) {
-        webSocketService.offProviderStatusUpdate(callbacks.onProviderStatusUpdate);
-      }
-      if (callbacks.onProviderInstanceUpdate) {
-        webSocketService.offProviderInstanceUpdate(callbacks.onProviderInstanceUpdate);
-      }
-    };
-  }, []);
 
   return {
     onVMStatusUpdate,
@@ -203,4 +196,3 @@ export function useRealtimeMonitoring() {
     isConnected,
   };
 }
-

@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -73,6 +73,7 @@ export function MobileNav() {
   const { currentWorkspace, setCurrentWorkspace, workspaces, setWorkspaces } = useWorkspaceStore();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { success, error: showError } = useToast();
 
@@ -156,7 +157,27 @@ export function MobileNav() {
   });
 
   const handleNavigation = (href: string) => {
-    router.push(href);
+    // 현재 URL의 파라미터 유지 (workspaceId, credentialId, region)
+    const params = new URLSearchParams(searchParams.toString());
+    
+    // workspaceId는 항상 유지
+    if (currentWorkspace?.id) {
+      params.set('workspaceId', currentWorkspace.id);
+    }
+    
+    // credentialId와 region은 compute/kubernetes/networks 경로에서만 유지
+    const shouldKeepParams = href.startsWith('/compute') || 
+                            href.startsWith('/kubernetes') || 
+                            href.startsWith('/networks');
+    
+    if (!shouldKeepParams) {
+      params.delete('credentialId');
+      params.delete('region');
+    }
+    
+    const queryString = params.toString();
+    const url = queryString ? `${href}?${queryString}` : href;
+    router.push(url);
     setOpen(false);
   };
 

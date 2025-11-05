@@ -29,6 +29,7 @@ import { VMPageHeader, useVMs, useVMFilters, useVMActions } from '@/features/vms
 import { ResourceEmptyState } from '@/components/common/resource-empty-state';
 import { Server } from 'lucide-react';
 import { TableSkeleton } from '@/components/ui/table-skeleton';
+import { useTranslation } from '@/hooks/use-translation';
 import type { CreateVMForm, VM } from '@/lib/types';
 import type { FilterConfig, FilterValue } from '@/components/ui/filter-panel';
 
@@ -49,7 +50,7 @@ export default function VMsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useCreateDialog(EVENTS.CREATE_DIALOG.VM);
   const [liveMessage, setLiveMessage] = useState('');
   const [selectedCredentialId, setSelectedCredentialId] = useState<string>('');
-  const [pageSize, setPageSize] = useState(UI.PAGINATION.DEFAULT_PAGE_SIZE);
+  const [pageSize, setPageSize] = useState<number>(UI.PAGINATION.DEFAULT_PAGE_SIZE);
   const [showFilters, setShowFilters] = useState(false);
 
   // Advanced filtering with presets
@@ -123,22 +124,24 @@ export default function VMsPage() {
     setLiveMessage,
   });
 
+  const { t } = useTranslation();
+  
   // Filter configurations
   const filterConfigs: FilterConfig[] = useMemo(() => [
     {
       id: 'status',
-      label: 'Status',
+      label: t('filters.status'),
       type: 'multiselect',
       options: [
-        { id: 'running', label: 'Running', value: 'running' },
-        { id: 'stopped', label: 'Stopped', value: 'stopped' },
-        { id: 'starting', label: 'Starting', value: 'starting' },
-        { id: 'stopping', label: 'Stopping', value: 'stopping' },
+        { id: 'running', label: t('filters.running'), value: 'running' },
+        { id: 'stopped', label: t('filters.stopped'), value: 'stopped' },
+        { id: 'starting', label: t('filters.starting'), value: 'starting' },
+        { id: 'stopping', label: t('filters.stopping'), value: 'stopping' },
       ],
     },
     {
       id: 'provider',
-      label: 'Provider',
+      label: t('filters.provider'),
       type: 'multiselect',
       options: [
         { id: 'aws', label: 'AWS', value: 'aws' },
@@ -148,7 +151,7 @@ export default function VMsPage() {
     },
     {
       id: 'region',
-      label: 'Region',
+      label: t('filters.region'),
       type: 'select',
       options: Array.from(new Set(vms.map(vm => vm.region)))
         .filter(Boolean)
@@ -158,7 +161,7 @@ export default function VMsPage() {
           value: region,
         })),
     },
-  ], [vms]);
+  ], [vms, t]);
 
   // Sync local filters with advanced filters
   useEffect(() => {
@@ -187,7 +190,7 @@ export default function VMsPage() {
         onSuccess: () => {
           setIsCreateDialogOpen(false);
           setSelectedCredentialId('');
-          showSuccess('VM creation initiated');
+          showSuccess(t('vm.creationInitiated'));
         },
         onError: (error: unknown) => {
           handleError(error, { operation: 'createVM', resource: 'VM' });
@@ -213,8 +216,8 @@ export default function VMsPage() {
 
   return (
     <ResourceListPage
-      title="Virtual Machines"
-      resourceName="VMs"
+      title={t('vm.title')}
+      resourceName={t('nav.vms')}
       storageKey="vms-page"
       header={
         <VMPageHeader

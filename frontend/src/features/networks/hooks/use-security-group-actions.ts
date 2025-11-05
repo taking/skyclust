@@ -8,7 +8,7 @@ import { networkService } from '@/services/network';
 import { queryKeys } from '@/lib/query-keys';
 import { useToast } from '@/hooks/use-toast';
 import { useErrorHandler } from '@/hooks/use-error-handler';
-import type { CreateSecurityGroupForm } from '@/lib/types';
+import type { CreateSecurityGroupForm, CloudProvider } from '@/lib/types';
 
 export interface UseSecurityGroupActionsOptions {
   selectedProvider: string | undefined;
@@ -28,7 +28,7 @@ export function useSecurityGroupActions({
   const createSecurityGroupMutation = useStandardMutation({
     mutationFn: (data: CreateSecurityGroupForm) => {
       if (!selectedProvider) throw new Error('Provider not selected');
-      return networkService.createSecurityGroup(selectedProvider, data);
+      return networkService.createSecurityGroup(selectedProvider as CloudProvider, data);
     },
     invalidateQueries: [queryKeys.securityGroups.all],
     successMessage: 'Security group creation initiated',
@@ -40,7 +40,7 @@ export function useSecurityGroupActions({
   const deleteSecurityGroupMutation = useStandardMutation({
     mutationFn: async ({ securityGroupId, credentialId, region }: { securityGroupId: string; credentialId: string; region: string }) => {
       if (!selectedProvider) throw new Error('Provider not selected');
-      return networkService.deleteSecurityGroup(selectedProvider, securityGroupId, credentialId, region);
+      return networkService.deleteSecurityGroup(selectedProvider as CloudProvider, securityGroupId, credentialId, region);
     },
     invalidateQueries: [queryKeys.securityGroups.all],
     successMessage: 'Security group deletion initiated',

@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Server, Play, Pause, Square } from 'lucide-react';
+import { useTranslation } from '@/hooks/use-translation';
 
 interface VMStatusWidgetProps {
   data?: {
@@ -18,15 +19,17 @@ interface VMStatusWidgetProps {
 }
 
 function VMStatusWidgetComponent({ data, isLoading }: VMStatusWidgetProps) {
+  const { t } = useTranslation();
+  
   if (isLoading) {
     return (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
             <Server className="mr-2 h-5 w-5" />
-            VM Status Overview
+            {t('widgets.vmStatus.title')}
           </CardTitle>
-          <CardDescription>Loading VM status...</CardDescription>
+          <CardDescription>{t('widgets.vmStatus.loading')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -55,10 +58,10 @@ function VMStatusWidgetComponent({ data, isLoading }: VMStatusWidgetProps) {
       <CardHeader>
         <CardTitle className="flex items-center">
           <Server className="mr-2 h-5 w-5" />
-          VM Status Overview
+          {t('widgets.vmStatus.title')}
         </CardTitle>
         <CardDescription>
-          {mockData.total} total virtual machines
+          {t('widgets.vmStatus.totalMachines', { total: mockData.total ?? 0 })}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -68,7 +71,7 @@ function VMStatusWidgetComponent({ data, isLoading }: VMStatusWidgetProps) {
             <div className="flex justify-between text-sm mb-2">
               <span className="flex items-center">
                 <Play className="mr-1 h-3 w-3 text-green-500" />
-                Running
+                {t('widgets.vmStatus.running')}
               </span>
               <span className="font-medium">{mockData.running}</span>
             </div>
@@ -80,7 +83,7 @@ function VMStatusWidgetComponent({ data, isLoading }: VMStatusWidgetProps) {
             <div className="flex items-center justify-between p-2 bg-green-50 rounded">
               <div className="flex items-center">
                 <Play className="mr-1 h-3 w-3 text-green-600" />
-                <span className="text-sm text-green-800">Running</span>
+                <span className="text-sm text-green-800">{t('widgets.vmStatus.running')}</span>
               </div>
               <Badge variant="secondary" className="bg-green-100 text-green-800">
                 {mockData.running}
@@ -90,7 +93,7 @@ function VMStatusWidgetComponent({ data, isLoading }: VMStatusWidgetProps) {
             <div className="flex items-center justify-between p-2 bg-red-50 rounded">
               <div className="flex items-center">
                 <Square className="mr-1 h-3 w-3 text-red-600" />
-                <span className="text-sm text-red-800">Stopped</span>
+                <span className="text-sm text-red-800">{t('widgets.vmStatus.stopped')}</span>
               </div>
               <Badge variant="secondary" className="bg-red-100 text-red-800">
                 {mockData.stopped}
@@ -100,7 +103,7 @@ function VMStatusWidgetComponent({ data, isLoading }: VMStatusWidgetProps) {
             <div className="flex items-center justify-between p-2 bg-yellow-50 rounded">
               <div className="flex items-center">
                 <Play className="mr-1 h-3 w-3 text-yellow-600" />
-                <span className="text-sm text-yellow-800">Starting</span>
+                <span className="text-sm text-yellow-800">{t('widgets.vmStatus.starting')}</span>
               </div>
               <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
                 {mockData.starting}
@@ -110,7 +113,7 @@ function VMStatusWidgetComponent({ data, isLoading }: VMStatusWidgetProps) {
             <div className="flex items-center justify-between p-2 bg-orange-50 rounded">
               <div className="flex items-center">
                 <Pause className="mr-1 h-3 w-3 text-orange-600" />
-                <span className="text-sm text-orange-800">Stopping</span>
+                <span className="text-sm text-orange-800">{t('widgets.vmStatus.stopping')}</span>
               </div>
               <Badge variant="secondary" className="bg-orange-100 text-orange-800">
                 {mockData.stopping}

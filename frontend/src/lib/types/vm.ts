@@ -18,11 +18,13 @@ export interface VM {
 }
 
 export interface CreateVMForm {
+  credential_id?: string;
   name: string;
-  provider: string;
+  provider: 'aws' | 'gcp' | 'azure' | 'ncp';
   instance_type: string;
   region: string;
-  image_id: string;
+  image_id?: string;
   workspace_id?: string;
+  metadata?: Record<string, unknown>;
 }
 

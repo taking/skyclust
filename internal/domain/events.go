@@ -60,6 +60,29 @@ const (
 
 	// Audit events
 	EventAuditLogCreated = "audit_log.created"
+
+	// Kubernetes events
+	EventKubernetesClusterCreated   = "kubernetes.cluster.created"
+	EventKubernetesClusterUpdated   = "kubernetes.cluster.updated"
+	EventKubernetesClusterDeleted   = "kubernetes.cluster.deleted"
+	EventKubernetesClusterStatusChanged = "kubernetes.cluster.status_changed"
+	EventKubernetesNodePoolCreated  = "kubernetes.node_pool.created"
+	EventKubernetesNodePoolUpdated  = "kubernetes.node_pool.updated"
+	EventKubernetesNodePoolDeleted  = "kubernetes.node_pool.deleted"
+	EventKubernetesNodeCreated      = "kubernetes.node.created"
+	EventKubernetesNodeUpdated      = "kubernetes.node.updated"
+	EventKubernetesNodeDeleted      = "kubernetes.node.deleted"
+
+	// Network events
+	EventNetworkVPCCreated          = "network.vpc.created"
+	EventNetworkVPCUpdated          = "network.vpc.updated"
+	EventNetworkVPCDeleted          = "network.vpc.deleted"
+	EventNetworkSubnetCreated       = "network.subnet.created"
+	EventNetworkSubnetUpdated       = "network.subnet.updated"
+	EventNetworkSubnetDeleted       = "network.subnet.deleted"
+	EventNetworkSecurityGroupCreated = "network.security_group.created"
+	EventNetworkSecurityGroupUpdated = "network.security_group.updated"
+	EventNetworkSecurityGroupDeleted = "network.security_group.deleted"
 )
 
 // NewDomainEvent creates a new domain event

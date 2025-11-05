@@ -34,9 +34,11 @@ import { ResourceEmptyState } from '@/components/common/resource-empty-state';
 import { useCredentialContext } from '@/hooks/use-credential-context';
 import { queryKeys } from '@/lib/query-keys';
 import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
+import { useTranslation } from '@/hooks/use-translation';
 import { UI } from '@/lib/constants';
 
 export default function NodesPage() {
+  const { t } = useTranslation();
   const { currentWorkspace } = useWorkspaceStore();
   const router = useRouter();
   const { isLoading: authLoading } = useRequireAuth();
@@ -57,17 +59,17 @@ export default function NodesPage() {
 
   // Fetch clusters for selection
   const { data: clusters = [] } = useQuery({
-    queryKey: queryKeys.clusters.list(selectedProvider, selectedCredentialId, selectedRegion),
+    queryKey: queryKeys.clusters.list(selectedProvider, selectedCredentialId || undefined, selectedRegion || undefined),
     queryFn: async () => {
       if (!selectedProvider || !selectedCredentialId) return [];
-      return kubernetesService.listClusters(selectedProvider, selectedCredentialId, selectedRegion);
+      return kubernetesService.listClusters(selectedProvider, selectedCredentialId, selectedRegion || '');
     },
     enabled: !!selectedProvider && !!selectedCredentialId && !!currentWorkspace,
   });
 
   // Fetch Nodes
   const { data: nodes = [], isLoading: isLoadingNodes } = useQuery({
-    queryKey: queryKeys.nodes.list(selectedProvider, selectedClusterName, selectedCredentialId, selectedRegion),
+    queryKey: queryKeys.nodes.list(selectedProvider, selectedClusterName, selectedCredentialId || undefined, selectedRegion || undefined),
     queryFn: async () => {
       if (!selectedProvider || !selectedCredentialId || !selectedClusterName || !selectedRegion) return [];
       return kubernetesService.listNodes(selectedProvider, selectedClusterName, selectedCredentialId, selectedRegion || '');
@@ -113,9 +115,12 @@ export default function NodesPage() {
   const header = (
     <div className="flex items-center justify-between">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Nodes</h1>
+        <h1 className="text-3xl font-bold text-gray-900">{t('kubernetes.nodes')}</h1>
         <p className="text-gray-600 mt-1">
-          Manage Kubernetes Nodes{currentWorkspace ? ` for ${currentWorkspace.name}` : ''}
+          {currentWorkspace 
+            ? t('kubernetes.manageNodesWithWorkspace', { workspaceName: currentWorkspace.name }) 
+            : t('kubernetes.manageNodes')
+          }
         </p>
       </div>
       <div className="flex items-center space-x-2">
@@ -126,30 +131,30 @@ export default function NodesPage() {
 
   // Empty state
   const emptyState = credentials.length === 0 ? (
-    <CredentialRequiredState serviceName="Kubernetes (Nodes)" />
+    <CredentialRequiredState serviceName={t('kubernetes.title')} />
   ) : !selectedProvider || !selectedCredentialId ? (
     <CredentialRequiredState
-      title="Select a Credential"
-      description="Please select a credential to view nodes. If you don't have any credentials, register one first."
-      serviceName="Kubernetes (Nodes)"
+      title={t('credential.selectCredential')}
+      description={t('credential.selectCredential')}
+      serviceName={t('kubernetes.title')}
     />
   ) : !selectedClusterName || !selectedRegion ? (
     <Card>
       <CardContent className="flex flex-col items-center justify-center py-12">
         <Building2 className="h-12 w-12 text-gray-400 mb-4" />
         <h3 className="text-lg font-medium text-gray-900 mb-2">
-          Select Cluster and Region
+          {t('kubernetes.selectClusterAndRegion')}
         </h3>
         <p className="text-sm text-gray-500 text-center">
-          Please select a cluster and region to view nodes
+          {t('kubernetes.selectClusterAndRegionMessage')}
         </p>
       </CardContent>
     </Card>
   ) : filteredNodes.length === 0 ? (
     <ResourceEmptyState
-      resourceName="Nodes"
+      resourceName={t('kubernetes.nodes')}
       icon={Building2}
-      description="No nodes found for the selected cluster."
+      description={t('kubernetes.noNodesFoundForCluster')}
       withCard={true}
     />
   ) : null;
@@ -229,7 +234,7 @@ export default function NodesPage() {
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-              <p className="mt-2 text-gray-600">Loading...</p>
+              <p className="mt-2 text-gray-600">{t('common.loading')}</p>
             </div>
           </div>
         </Layout>
@@ -247,18 +252,18 @@ export default function NodesPage() {
           {selectedProvider && selectedCredentialId && (
             <Card>
               <CardHeader>
-                <CardTitle>Configuration</CardTitle>
-                <CardDescription>Select cluster, region, and credential to view nodes</CardDescription>
+                <CardTitle>{t('common.configuration')}</CardTitle>
+                <CardDescription>{t('kubernetes.selectClusterRegionCredentialToViewNodes')}</CardDescription>
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Cluster *</Label>
+                  <Label>{t('kubernetes.cluster')} *</Label>
                   <Select
                     value={selectedClusterName}
                     onValueChange={setSelectedClusterName}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select Cluster" />
+                      <SelectValue placeholder={t('kubernetes.selectCluster')} />
                     </SelectTrigger>
                     <SelectContent>
                       {clusters.map((cluster) => (
@@ -270,15 +275,15 @@ export default function NodesPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Region *</Label>
+                  <Label>{t('region.select')} *</Label>
                   <Input
-                    placeholder="e.g., ap-northeast-2"
+                    placeholder={t('region.placeholder')}
                     value={selectedRegion || ''}
                     readOnly
                     className="bg-muted"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Region selection is now handled in Header
+                    {t('network.regionSelectionHandledInHeader')}
                   </p>
                 </div>
               </CardContent>

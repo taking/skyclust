@@ -13,6 +13,8 @@ import {
   ServerError,
 } from '@/lib/error-handler';
 import { useOffline } from './use-offline';
+import { useTranslation } from './use-translation';
+import { getErrorTranslationKey, getErrorCustomMessage } from '@/lib/error-translations';
 
 export interface UseErrorHandlerOptions {
   /**
@@ -94,6 +96,7 @@ export function useErrorHandler(options: UseErrorHandlerOptions = {}): UseErrorH
   
   const { error: showErrorToast, success: showSuccessToast } = useToast();
   const { isOffline } = useOffline();
+  const { t } = useTranslation();
 
   /**
    * 에러 처리 함수
@@ -113,19 +116,21 @@ export function useErrorHandler(options: UseErrorHandlerOptions = {}): UseErrorH
     // 오프라인 상태이면 별도 처리
     if (isOffline) {
       if (showToast) {
-        showErrorToast('No internet connection. Please check your network.');
+        showErrorToast(t('errors.noInternetConnection'));
       }
       return;
     }
 
-    // 사용자 친화적 메시지 가져오기
-    const message = ErrorHandler.getUserFriendlyMessage(error);
+    // 번역된 에러 메시지 가져오기
+    const customMessage = getErrorCustomMessage(error);
+    const translationKey = getErrorTranslationKey(error);
+    const message = customMessage || t(translationKey);
 
     // 토스트 표시
     if (showToast) {
       showErrorToast(message);
     }
-  }, [showToast, isOffline, showErrorToast, onLogError]);
+  }, [showToast, isOffline, showErrorToast, onLogError, t]);
 
   /**
    * 에러 처리 및 재시도 함수
@@ -151,7 +156,7 @@ export function useErrorHandler(options: UseErrorHandlerOptions = {}): UseErrorH
         await retryFn();
         
         if (showToast) {
-          showSuccessToast('Operation completed successfully after retry.');
+          showSuccessToast(t('messages.operationSuccess'));
         }
         
         return true;
@@ -165,14 +170,16 @@ export function useErrorHandler(options: UseErrorHandlerOptions = {}): UseErrorH
     }
 
     return false;
-  }, [autoRetry, maxRetries, retryDelay, showToast, isOffline, handleError, showSuccessToast]);
+  }, [autoRetry, maxRetries, retryDelay, showToast, isOffline, handleError, showSuccessToast, t]);
 
   /**
-   * 사용자 친화적 에러 메시지 가져오기
+   * 사용자 친화적 에러 메시지 가져오기 (번역 적용)
    */
   const getErrorMessage = useCallback((error: unknown): string => {
-    return ErrorHandler.getUserFriendlyMessage(error);
-  }, []);
+    const customMessage = getErrorCustomMessage(error);
+    const translationKey = getErrorTranslationKey(error);
+    return customMessage || t(translationKey);
+  }, [t]);
 
   /**
    * 재시도 가능 여부 확인

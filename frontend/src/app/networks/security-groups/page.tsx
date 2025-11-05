@@ -26,6 +26,7 @@ import { Layout } from '@/components/layout/layout';
 import { CredentialRequiredState } from '@/components/common/credential-required-state';
 import { ResourceEmptyState } from '@/components/common/resource-empty-state';
 import { BulkActionsToolbar } from '@/components/common/bulk-actions-toolbar';
+import { useTranslation } from '@/hooks/use-translation';
 import {
   useSecurityGroups,
   useSecurityGroupActions,
@@ -51,6 +52,7 @@ const SecurityGroupTable = dynamic(
 );
 
 export default function SecurityGroupsPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const { isLoading: authLoading } = useRequireAuth();
 
@@ -139,7 +141,7 @@ export default function SecurityGroupsPage() {
   const renderContent = () => {
     // Early Return: No credentials
     if (credentials.length === 0) {
-      return <CredentialRequiredState serviceName="Networks (Security Groups)" />;
+      return <CredentialRequiredState serviceName={t('network.title')} />;
     }
 
     // Early Return: No provider or credential selected
@@ -149,12 +151,10 @@ export default function SecurityGroupsPage() {
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Shield className="h-12 w-12 text-gray-400 mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              {!selectedProvider ? 'Select a Provider' : 'Select a Credential'}
+              {t('credential.selectCredential')}
             </h3>
             <p className="text-sm text-gray-500 text-center">
-              {!selectedProvider
-                ? 'Please select a cloud provider to view security groups'
-                : 'Please select a credential to view security groups. If you don\'t have any credentials, register one first.'}
+              {t('credential.selectCredential')}
             </p>
             {!selectedProvider ? null : (
               <Button
@@ -163,7 +163,7 @@ export default function SecurityGroupsPage() {
                 className="mt-4"
               >
                 <Plus className="mr-2 h-4 w-4" />
-                Register Credentials
+                {t('components.credentialRequired.registerButton')}
               </Button>
             )}
           </CardContent>
@@ -178,10 +178,10 @@ export default function SecurityGroupsPage() {
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Shield className="h-12 w-12 text-gray-400 mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Select VPC and Region
+              {t('network.selectVPCAndRegion')}
             </h3>
             <p className="text-sm text-gray-500 text-center">
-              Please select a VPC and region to view security groups
+              {t('network.selectVPCAndRegionMessage')}
             </p>
           </CardContent>
         </Card>
@@ -192,10 +192,10 @@ export default function SecurityGroupsPage() {
     if (filteredSecurityGroups.length === 0) {
       return (
         <ResourceEmptyState
-          resourceName="Security Groups"
+          resourceName={t('network.securityGroups')}
           icon={Shield}
           onCreateClick={() => setIsCreateDialogOpen(true)}
-          description="No security groups found for the selected VPC. Create your first security group."
+          description={t('network.noSecurityGroupsFoundForVPC')}
           withCard={true}
         />
       );

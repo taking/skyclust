@@ -11,7 +11,7 @@ import { ErrorBoundary, ErrorBoundaryPropsWithFallback } from 'react-error-bound
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertTriangle, RefreshCw, Home, Bug, Mail } from 'lucide-react';
-import { getUserFriendlyErrorMessage, NetworkError, ServerError } from '@/lib/error-handler';
+import { getUserFriendlyErrorMessage, NetworkError, ServerError, ErrorHandler } from '@/lib/error-handler';
 import { useState } from 'react';
 
 export interface ErrorFallbackProps {
@@ -222,7 +222,6 @@ export function AppErrorBoundary({
     const errorId = `err-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     // ErrorHandler를 통한 로깅 (Sentry 포함)
-    const { ErrorHandler } = require('@/lib/error-handler');
     ErrorHandler.logError(error, {
       componentStack: errorInfo.componentStack,
       errorType,

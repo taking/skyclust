@@ -13,16 +13,20 @@ import { KeyboardShortcutsHelp } from '@/components/common/keyboard-shortcuts-he
 import { KeyboardShortcut } from '@/hooks/use-keyboard-shortcuts';
 import { HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useSSEEvents } from '@/hooks/use-sse-events';
 
 interface LayoutProps {
   children: React.ReactNode;
 }
 
 export function Layout({ children }: LayoutProps) {
-  const { isAuthenticated, initialize } = useAuthStore();
+  const { isAuthenticated, initialize, token } = useAuthStore();
   const router = useRouter();
   const pathname = usePathname();
   const [isHydrated, setIsHydrated] = useState(false);
+
+  // SSE 이벤트 구독 및 React Query 통합
+  useSSEEvents(token);
 
   // Initialize auth store and wait for hydration
   useEffect(() => {

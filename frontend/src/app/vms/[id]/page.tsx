@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { vmService } from '@/features/vms';
 import { useToast } from '@/hooks/use-toast';
 import { useRequireAuth } from '@/hooks/use-auth';
+import { queryKeys } from '@/lib/query-keys';
 import { 
   ArrowLeft, 
   Play, 

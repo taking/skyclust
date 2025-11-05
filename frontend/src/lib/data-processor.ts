@@ -71,7 +71,7 @@ export class DataProcessor {
     }
 
     // 기본 필터링 로직
-    return items.filter((item: any) => {
+    return items.filter((item: T) => {
       for (const [key, value] of Object.entries(filters)) {
         if (value === null || value === undefined || value === '') {
           continue;

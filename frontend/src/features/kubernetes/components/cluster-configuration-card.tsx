@@ -17,6 +17,7 @@ interface ClusterConfigurationCardProps {
   onCredentialChange: (credentialId: string) => void;
   selectedRegion: string;
   onRegionChange: (region: string) => void;
+  onFormValueChange?: (field: string, value: string) => void;
 }
 
 export function ClusterConfigurationCard({
@@ -29,13 +30,13 @@ export function ClusterConfigurationCard({
 }: ClusterConfigurationCardProps) {
   const handleCredentialChange = (value: string) => {
     onCredentialChange(value);
-    onFormValueChange('credential_id', value);
+    onFormValueChange?.('credential_id', value);
   };
 
   const handleRegionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     onRegionChange(value);
-    onFormValueChange('region', value);
+    onFormValueChange?.('region', value);
   };
 
   return (

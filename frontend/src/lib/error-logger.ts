@@ -150,7 +150,15 @@ class ErrorLogger {
 
     // Development 환경에서만 콘솔에 로깅
     if (process.env.NODE_ENV === 'development') {
-      console.error('Error logged:', log);
+      // 순환 참조를 피하기 위해 JSON.stringify 사용, 하지만 에러 처리를 위해 try-catch 사용
+      try {
+        const logString = typeof log === 'object' && log !== null
+          ? JSON.stringify(log, null, 2)
+          : String(log);
+        console.error('Error logged:', logString);
+      } catch (_e) {
+        console.error('Error logged:', String(log));
+      }
     }
 
     // 외부 로깅 서비스로 전송 (Sentry)

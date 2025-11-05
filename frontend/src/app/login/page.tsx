@@ -19,6 +19,7 @@ import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-vali
 import { getUserFriendlyErrorMessage } from '@/lib/error-handler';
 import Link from 'next/link';
 import * as z from 'zod';
+import { useTranslation } from '@/hooks/use-translation';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -28,6 +29,7 @@ const loginSchema = z.object({
 export default function LoginPage() {
   const { login, initialize, isAuthenticated, token } = useAuthStore();
   const router = useRouter();
+  const { t } = useTranslation();
 
   // Check if already authenticated - only redirect if definitely authenticated
   useEffect(() => {
@@ -106,9 +108,9 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">Sign in</CardTitle>
+          <CardTitle className="text-2xl font-bold text-center">{t('auth.signInTitle')}</CardTitle>
           <CardDescription className="text-center">
-            Enter your email and password to sign in to your account
+            {t('auth.signInDescription')}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -116,18 +118,18 @@ export default function LoginPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <EnhancedField
                 name="email"
-                label="Email"
+                label={t('auth.email')}
                 type="email"
-                placeholder="Enter your email"
+                placeholder={t('auth.emailPlaceholder')}
                 required
                 getFieldError={getFieldError}
                 getFieldValidationState={getFieldValidationState}
               />
               <EnhancedField
                 name="password"
-                label="Password"
+                label={t('auth.password')}
                 type="password"
-                placeholder="Enter your password"
+                placeholder={t('auth.passwordPlaceholder')}
                 required
                 getFieldError={getFieldError}
                 getFieldValidationState={getFieldValidationState}
@@ -138,14 +140,14 @@ export default function LoginPage() {
                 </div>
               )}
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Signing in...' : 'Sign in'}
+                {isLoading ? t('auth.signingIn') : t('auth.signIn')}
               </Button>
             </form>
           </Form>
           <div className="mt-4 text-center text-sm">
-            Don&apos;t have an account?{' '}
+            {t('auth.dontHaveAccount')}{' '}
             <Link href="/register" className="text-blue-600 hover:underline">
-              Sign up
+              {t('auth.signUp')}
             </Link>
           </div>
         </CardContent>

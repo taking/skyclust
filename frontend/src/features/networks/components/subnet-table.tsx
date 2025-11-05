@@ -108,7 +108,7 @@ export function SubnetTable({
                   <TableCell>
                     <Checkbox
                       checked={isSelected}
-                      onCheckedChange={(checked) => handleSelectOne(subnet.id, checked)}
+                      onCheckedChange={(checked) => handleSelectOne(subnet.id, checked === true)}
                     />
                   </TableCell>
                   <TableCell className="font-medium">{subnet.name}</TableCell>

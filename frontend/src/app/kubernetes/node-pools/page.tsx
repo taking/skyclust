@@ -44,6 +44,7 @@ import { useCredentialContext } from '@/hooks/use-credential-context';
 import { queryKeys } from '@/lib/query-keys';
 import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
 import { useErrorHandler } from '@/hooks/use-error-handler';
+import { useTranslation } from '@/hooks/use-translation';
 import { UI } from '@/lib/constants';
 
 const createNodePoolSchema = z.object({
@@ -60,6 +61,7 @@ const createNodePoolSchema = z.object({
 });
 
 export default function NodePoolsPage() {
+  const { t } = useTranslation();
   const { currentWorkspace } = useWorkspaceStore();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -78,7 +80,8 @@ export default function NodePoolsPage() {
   useSSEMonitoring();
 
   const nodePoolForm = useForm<CreateNodePoolForm>({
-    resolver: zodResolver(createNodePoolSchema),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(createNodePoolSchema as any),
     defaultValues: {
       cluster_name: '',
       region: '',
@@ -95,17 +98,17 @@ export default function NodePoolsPage() {
 
   // Fetch clusters for selection
   const { data: clusters = [] } = useQuery({
-    queryKey: queryKeys.clusters.list(selectedProvider, selectedCredentialId, selectedRegion),
+    queryKey: queryKeys.clusters.list(selectedProvider, selectedCredentialId || undefined, selectedRegion || undefined),
     queryFn: async () => {
       if (!selectedProvider || !selectedCredentialId) return [];
-      return kubernetesService.listClusters(selectedProvider, selectedCredentialId, selectedRegion);
+      return kubernetesService.listClusters(selectedProvider, selectedCredentialId, selectedRegion || '');
     },
     enabled: !!selectedProvider && !!selectedCredentialId && !!currentWorkspace,
   });
 
   // Fetch Node Pools
   const { data: nodePools = [], isLoading: isLoadingNodePools } = useQuery({
-    queryKey: queryKeys.nodePools.list(selectedProvider, selectedCredentialId, selectedRegion, selectedClusterName),
+    queryKey: queryKeys.nodePools.list(selectedProvider, selectedCredentialId || undefined, selectedRegion || undefined, selectedClusterName),
     queryFn: async () => {
       if (!selectedProvider || !selectedCredentialId || !selectedClusterName || !selectedRegion) return [];
       return kubernetesService.listNodePools(selectedProvider, selectedClusterName, selectedCredentialId, selectedRegion || '');
@@ -151,7 +154,7 @@ export default function NodePoolsPage() {
       return kubernetesService.createNodePool(selectedProvider, selectedClusterName, data);
     },
     invalidateQueries: [queryKeys.kubernetesClusters.all],
-    successMessage: 'Node pool creation initiated',
+    successMessage: t('kubernetes.nodePoolCreationInitiated'),
     errorContext: { operation: 'createNodePool', resource: 'NodePool' },
     onSuccess: () => {
       setIsCreateDialogOpen(false);
@@ -166,7 +169,7 @@ export default function NodePoolsPage() {
       return kubernetesService.deleteNodePool(selectedProvider, selectedClusterName, nodePoolName, credentialId, region);
     },
     invalidateQueries: [queryKeys.kubernetesClusters.all],
-    successMessage: 'Node pool deletion initiated',
+    successMessage: t('kubernetes.nodePoolDeletionInitiated'),
     errorContext: { operation: 'deleteNodePool', resource: 'NodePool' },
   });
 
@@ -197,7 +200,7 @@ export default function NodePoolsPage() {
 
   const handleDeleteNodePool = (nodePoolName: string, region: string) => {
     if (!selectedCredentialId || !selectedProvider || !selectedClusterName) return;
-    if (confirm(`Are you sure you want to delete node pool ${nodePoolName}? This action cannot be undone.`)) {
+    if (confirm(t('kubernetes.confirmDeleteNodePool', { nodePoolName }))) {
       deleteNodePoolMutation.mutate({
         nodePoolName,
         credentialId: selectedCredentialId,
@@ -223,9 +226,12 @@ export default function NodePoolsPage() {
   const header = (
     <div className="flex items-center justify-between">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Node Pools</h1>
+        <h1 className="text-3xl font-bold text-gray-900">{t('kubernetes.nodePools')}</h1>
         <p className="text-gray-600 mt-1">
-          Manage Kubernetes Node Pools{currentWorkspace ? ` for ${currentWorkspace.name}` : ''}
+          {currentWorkspace 
+            ? t('kubernetes.manageNodePoolsWithWorkspace', { workspaceName: currentWorkspace.name }) 
+            : t('kubernetes.manageNodePools')
+          }
         </p>
       </div>
       <div className="flex items-center space-x-2">
@@ -236,31 +242,31 @@ export default function NodePoolsPage() {
 
   // Empty state
   const emptyState = credentials.length === 0 ? (
-    <CredentialRequiredState serviceName="Kubernetes (Node Pools)" />
+    <CredentialRequiredState serviceName={t('kubernetes.title')} />
   ) : !selectedProvider || !selectedCredentialId ? (
     <CredentialRequiredState
-      title="Select a Credential"
-      description="Please select a credential to view node pools. If you don't have any credentials, register one first."
-      serviceName="Kubernetes (Node Pools)"
+      title={t('credential.selectCredential')}
+      description={t('credential.selectCredential')}
+      serviceName={t('kubernetes.title')}
     />
   ) : !selectedClusterName || !selectedRegion ? (
     <Card>
       <CardContent className="flex flex-col items-center justify-center py-12">
         <Layers className="h-12 w-12 text-gray-400 mb-4" />
         <h3 className="text-lg font-medium text-gray-900 mb-2">
-          Select Cluster and Region
+          {t('kubernetes.selectClusterAndRegion')}
         </h3>
         <p className="text-sm text-gray-500 text-center">
-          Please select a cluster and region to view node pools
+          {t('kubernetes.selectClusterAndRegionMessage')}
         </p>
       </CardContent>
     </Card>
   ) : filteredNodePools.length === 0 ? (
     <ResourceEmptyState
-      resourceName="Node Pools"
+      resourceName={t('kubernetes.nodePools')}
       icon={Layers}
       onCreateClick={() => setIsCreateDialogOpen(true)}
-      description="No node pools found for the selected cluster. Create your first node pool."
+      description={t('kubernetes.noNodePoolsFoundForCluster')}
       withCard={true}
     />
   ) : null;
@@ -278,9 +284,9 @@ export default function NodePoolsPage() {
       
       <Card>
         <CardHeader>
-          <CardTitle>Node Pools</CardTitle>
+          <CardTitle>{t('kubernetes.nodePools')}</CardTitle>
           <CardDescription>
-            {filteredNodePools.length} of {nodePools.length} node pool{nodePools.length !== 1 ? 's' : ''} found
+            {t('kubernetes.nodePoolsFound', { filtered: filteredNodePools.length, total: nodePools.length })}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -289,7 +295,7 @@ export default function NodePoolsPage() {
               value={searchQuery}
               onChange={setSearchQuery}
               onClear={clearSearch}
-              placeholder="Search node pools by name, cluster, or status..."
+              placeholder={t('kubernetes.searchNodePoolsPlaceholder')}
             />
           </div>
           <Table>
@@ -345,9 +351,9 @@ export default function NodePoolsPage() {
                     <TableCell>{nodePool.instance_type}</TableCell>
                     <TableCell>
                       {nodePool.auto_scaling ? (
-                        <Badge variant="outline">Enabled</Badge>
+                        <Badge variant="outline">{t('common.enabled')}</Badge>
                       ) : (
-                        <Badge variant="secondary">Disabled</Badge>
+                        <Badge variant="secondary">{t('common.disabled')}</Badge>
                       )}
                     </TableCell>
                     <TableCell>
@@ -392,19 +398,19 @@ export default function NodePoolsPage() {
         <DialogTrigger asChild>
           <Button disabled={credentials.length === 0 || !selectedClusterName}>
             <Plus className="mr-2 h-4 w-4" />
-            Create Node Pool
+            {t('kubernetes.createNodePool')}
           </Button>
         </DialogTrigger>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Create Node Pool</DialogTitle>
+            <DialogTitle>{t('kubernetes.createNodePool')}</DialogTitle>
             <DialogDescription>
-              Create a new node pool on {selectedProvider?.toUpperCase()}
+              {t('kubernetes.createNodePoolOnProvider', { provider: selectedProvider?.toUpperCase() || '' })}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={nodePoolForm.handleSubmit(handleCreateNodePool)} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="nodepool-name">Name *</Label>
+              <Label htmlFor="nodepool-name">{t('vm.name')} *</Label>
               <Input id="nodepool-name" {...nodePoolForm.register('name')} placeholder="my-node-pool" />
               {nodePoolForm.formState.errors.name && (
                 <p className="text-sm text-red-600">{nodePoolForm.formState.errors.name.message}</p>
@@ -412,14 +418,14 @@ export default function NodePoolsPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="nodepool-instance-type">Instance Type *</Label>
+                <Label htmlFor="nodepool-instance-type">{t('vm.type')} *</Label>
                 <Input id="nodepool-instance-type" {...nodePoolForm.register('instance_type')} placeholder="n1-standard-2" />
                 {nodePoolForm.formState.errors.instance_type && (
                   <p className="text-sm text-red-600">{nodePoolForm.formState.errors.instance_type.message}</p>
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="nodepool-node-count">Node Count *</Label>
+                <Label htmlFor="nodepool-node-count">{t('kubernetes.nodeCount')} *</Label>
                 <Input 
                   id="nodepool-node-count" 
                   type="number"
@@ -434,10 +440,10 @@ export default function NodePoolsPage() {
             </div>
             <div className="flex justify-end space-x-2">
               <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button type="submit" disabled={createNodePoolMutation.isPending}>
-                {createNodePoolMutation.isPending ? 'Creating...' : 'Create Node Pool'}
+                {createNodePoolMutation.isPending ? t('kubernetes.creatingNodePool') : t('kubernetes.createNodePool')}
               </Button>
             </div>
           </form>
@@ -453,7 +459,7 @@ export default function NodePoolsPage() {
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-              <p className="mt-2 text-gray-600">Loading...</p>
+              <p className="mt-2 text-gray-600">{t('common.loading')}</p>
             </div>
           </div>
         </Layout>
@@ -471,12 +477,12 @@ export default function NodePoolsPage() {
           {selectedProvider && selectedCredentialId && (
             <Card>
               <CardHeader>
-                <CardTitle>Configuration</CardTitle>
-                <CardDescription>Select cluster, region, and credential to view node pools</CardDescription>
+                <CardTitle>{t('common.configuration')}</CardTitle>
+                <CardDescription>{t('kubernetes.selectClusterRegionCredentialToViewNodePools')}</CardDescription>
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Cluster *</Label>
+                  <Label>{t('kubernetes.cluster')} *</Label>
                   <Select
                     value={selectedClusterName}
                     onValueChange={(value) => {
@@ -485,7 +491,7 @@ export default function NodePoolsPage() {
                     }}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select Cluster" />
+                      <SelectValue placeholder={t('kubernetes.selectCluster')} />
                     </SelectTrigger>
                     <SelectContent>
                       {clusters.map((cluster) => (
@@ -497,15 +503,15 @@ export default function NodePoolsPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Region *</Label>
+                  <Label>{t('region.select')} *</Label>
                   <Input
-                    placeholder="e.g., ap-northeast-2"
+                    placeholder={t('region.placeholder')}
                     value={selectedRegion || ''}
                     readOnly
                     className="bg-muted"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Region selection is now handled in Header
+                    {t('network.regionSelectionHandledInHeader')}
                   </p>
                 </div>
               </CardContent>
