@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// SystemMonitoringService handles system monitoring and health checks
+// Service: 시스템 모니터링 및 헬스 체크를 처리하는 서비스
 type Service struct {
 	logger       *zap.Logger
 	config       *config.Config
@@ -24,7 +24,7 @@ type Service struct {
 	errorCount   int64
 }
 
-// NewService creates a new system monitoring service
+// NewService: 새로운 시스템 모니터링 서비스를 생성합니다
 func NewService(
 	logger *zap.Logger,
 	config *config.Config,
@@ -40,17 +40,17 @@ func NewService(
 	}
 }
 
-// IncrementRequestCount increments the request count
+// IncrementRequestCount: 요청 카운트를 증가시킵니다
 func (s *Service) IncrementRequestCount() {
 	s.requestCount++
 }
 
-// IncrementErrorCount increments the error count
+// IncrementErrorCount: 에러 카운트를 증가시킵니다
 func (s *Service) IncrementErrorCount() {
 	s.errorCount++
 }
 
-// GetHealthStatus returns comprehensive health status
+// GetHealthStatus: 포괄적인 헬스 상태를 반환합니다
 func (s *Service) GetHealthStatus() gin.H {
 	now := time.Now()
 	uptime := now.Sub(s.startTime)
@@ -91,7 +91,7 @@ func (s *Service) GetHealthStatus() gin.H {
 	}
 }
 
-// GetSystemMetrics returns system performance metrics
+// GetSystemMetrics: 시스템 성능 메트릭을 반환합니다
 func (s *Service) GetSystemMetrics() gin.H {
 	return gin.H{
 		"memory_usage": s.getMemoryMetrics(),
@@ -99,7 +99,7 @@ func (s *Service) GetSystemMetrics() gin.H {
 	}
 }
 
-// GetAlerts returns current alert status
+// GetAlerts: 현재 알림 상태를 반환합니다
 func (s *Service) GetAlerts() gin.H {
 	services := s.getServiceStatus()
 	dependencies := s.getDependenciesStatus()
@@ -115,7 +115,7 @@ func (s *Service) GetAlerts() gin.H {
 	}
 }
 
-// getServiceStatus returns the status of all services
+// getServiceStatus: 서비스 상태를 조회합니다
 func (s *Service) getServiceStatus() gin.H {
 	services := gin.H{
 		"database": s.checkDatabaseStatus(),
@@ -125,7 +125,7 @@ func (s *Service) getServiceStatus() gin.H {
 	return services
 }
 
-// isAllServicesHealthy checks if all services are healthy
+// isAllServicesHealthy: 모든 서비스가 정상인지 확인합니다
 func (s *Service) isAllServicesHealthy(services gin.H) bool {
 	for _, service := range services {
 		if status, ok := service.(gin.H); ok {
@@ -139,7 +139,7 @@ func (s *Service) isAllServicesHealthy(services gin.H) bool {
 	return true
 }
 
-// checkDatabaseStatus checks database connectivity
+// checkDatabaseStatus: 데이터베이스 연결 상태를 확인합니다
 func (s *Service) checkDatabaseStatus() gin.H {
 	// Measure response time for consistency
 	start := time.Now()
@@ -187,7 +187,7 @@ func (s *Service) checkDatabaseStatus() gin.H {
 	}
 }
 
-// checkRedisStatus checks Redis connectivity
+// checkRedisStatus: Redis 연결 상태를 확인합니다
 func (s *Service) checkRedisStatus() gin.H {
 	if s.cache == nil {
 		// Even when not configured, return consistent structure with 0 response time
@@ -256,7 +256,7 @@ func (s *Service) checkRedisStatus() gin.H {
 	}
 }
 
-// checkAuthServiceStatus checks authentication service status
+// checkAuthServiceStatus: 인증 서비스 상태를 확인합니다
 func (s *Service) checkAuthServiceStatus() gin.H {
 	// Measure response time for consistency
 	start := time.Now()
@@ -273,7 +273,7 @@ func (s *Service) checkAuthServiceStatus() gin.H {
 	}
 }
 
-// isDebugMode returns whether debug mode is enabled
+// isDebugMode: 디버그 모드가 활성화되어 있는지 반환합니다
 func (s *Service) isDebugMode() bool {
 	if s.config == nil {
 		return true // Default to debug mode when config is nil
@@ -281,7 +281,7 @@ func (s *Service) isDebugMode() bool {
 	return s.config.Server.Host == "0.0.0.0"
 }
 
-// getEnvironment returns the current environment
+// getEnvironment: 현재 환경을 반환합니다
 func (s *Service) getEnvironment() string {
 	if s.config == nil {
 		return "development"
@@ -292,7 +292,7 @@ func (s *Service) getEnvironment() string {
 	return "development"
 }
 
-// getDependenciesStatus checks external dependencies
+// getDependenciesStatus: 외부 의존성 상태를 확인합니다
 func (s *Service) getDependenciesStatus() gin.H {
 	return gin.H{
 		"postgres": s.checkPostgresDependency(),
@@ -300,7 +300,7 @@ func (s *Service) getDependenciesStatus() gin.H {
 	}
 }
 
-// isAllDependenciesHealthy checks if all dependencies are healthy
+// isAllDependenciesHealthy: 모든 의존성이 정상인지 확인합니다
 func (s *Service) isAllDependenciesHealthy(dependencies gin.H) bool {
 	for _, dep := range dependencies {
 		if status, ok := dep.(gin.H); ok {
@@ -314,7 +314,7 @@ func (s *Service) isAllDependenciesHealthy(dependencies gin.H) bool {
 	return true
 }
 
-// getMemoryMetrics returns memory usage metrics
+// getMemoryMetrics: 메모리 사용량 메트릭을 반환합니다
 func (s *Service) getMemoryMetrics() gin.H {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
@@ -331,7 +331,7 @@ func (s *Service) getMemoryMetrics() gin.H {
 	}
 }
 
-// getPerformanceMetrics returns performance metrics
+// getPerformanceMetrics: 성능 메트릭을 반환합니다
 func (s *Service) getPerformanceMetrics() gin.H {
 	return gin.H{
 		"goroutines":    runtime.NumGoroutine(),
@@ -343,7 +343,7 @@ func (s *Service) getPerformanceMetrics() gin.H {
 	}
 }
 
-// calculateErrorRate calculates the error rate percentage
+// calculateErrorRate: 에러율을 계산합니다
 func (s *Service) calculateErrorRate() float64 {
 	if s.requestCount == 0 {
 		return 0.0
@@ -351,7 +351,7 @@ func (s *Service) calculateErrorRate() float64 {
 	return float64(s.errorCount) / float64(s.requestCount) * serviceconstants.PercentageBase
 }
 
-// calculateRequestsPerSecond calculates requests per second
+// calculateRequestsPerSecond: 초당 요청 수를 계산합니다
 func (s *Service) calculateRequestsPerSecond() float64 {
 	uptimeSeconds := time.Since(s.startTime).Seconds()
 	if uptimeSeconds <= 0 {
@@ -360,7 +360,7 @@ func (s *Service) calculateRequestsPerSecond() float64 {
 	return float64(s.requestCount) / uptimeSeconds
 }
 
-// getAlertStatus returns current alert status
+// getAlertStatus: 알림 상태를 반환합니다
 func (s *Service) getAlertStatus(services, dependencies, metrics gin.H) gin.H {
 	alerts := s.collectAllAlerts(services, dependencies, metrics)
 
@@ -372,7 +372,7 @@ func (s *Service) getAlertStatus(services, dependencies, metrics gin.H) gin.H {
 	}
 }
 
-// collectAllAlerts collects all types of alerts
+// collectAllAlerts: 모든 알림을 수집합니다
 func (s *Service) collectAllAlerts(services, dependencies, metrics gin.H) []gin.H {
 	var alerts []gin.H
 
@@ -384,7 +384,7 @@ func (s *Service) collectAllAlerts(services, dependencies, metrics gin.H) []gin.
 	return alerts
 }
 
-// checkServiceAlerts checks for service-related alerts
+// checkServiceAlerts: 서비스 알림을 확인합니다
 func (s *Service) checkServiceAlerts(services gin.H) []gin.H {
 	if s.isAllServicesHealthy(services) {
 		return nil
@@ -397,7 +397,7 @@ func (s *Service) checkServiceAlerts(services gin.H) []gin.H {
 	}}
 }
 
-// checkDependencyAlerts checks for dependency-related alerts
+// checkDependencyAlerts: 의존성 알림을 확인합니다
 func (s *Service) checkDependencyAlerts(dependencies gin.H) []gin.H {
 	if s.isAllDependenciesHealthy(dependencies) {
 		return nil
@@ -410,7 +410,7 @@ func (s *Service) checkDependencyAlerts(dependencies gin.H) []gin.H {
 	}}
 }
 
-// checkPerformanceAlerts checks for performance-related alerts
+// checkPerformanceAlerts: 성능 알림을 확인합니다
 func (s *Service) checkPerformanceAlerts(metrics gin.H) []gin.H {
 	metricsMap, ok := metrics["performance"].(gin.H)
 	if !ok {
@@ -435,7 +435,7 @@ func (s *Service) checkPerformanceAlerts(metrics gin.H) []gin.H {
 	}}
 }
 
-// checkMemoryAlerts checks for memory-related alerts
+// checkMemoryAlerts: 메모리 알림을 확인합니다
 func (s *Service) checkMemoryAlerts(metrics gin.H) []gin.H {
 	metricsMap, ok := metrics["memory_usage"].(gin.H)
 	if !ok {
@@ -462,7 +462,7 @@ func (s *Service) checkMemoryAlerts(metrics gin.H) []gin.H {
 	return alerts
 }
 
-// checkHeapAllocationAlert checks for heap allocation alerts
+// checkHeapAllocationAlert: 힙 할당 알림을 확인합니다
 func (s *Service) checkHeapAllocationAlert(metricsMap gin.H) gin.H {
 	allocMB, exists := metricsMap["alloc_mb"]
 	if !exists {
@@ -483,7 +483,7 @@ func (s *Service) checkHeapAllocationAlert(metricsMap gin.H) gin.H {
 	}
 }
 
-// checkSystemMemoryAlert checks for system memory alerts
+// checkSystemMemoryAlert: 시스템 메모리 알림을 확인합니다
 func (s *Service) checkSystemMemoryAlert(metricsMap gin.H) gin.H {
 	sysMB, exists := metricsMap["sys_mb"]
 	if !exists {
@@ -504,7 +504,7 @@ func (s *Service) checkSystemMemoryAlert(metricsMap gin.H) gin.H {
 	}
 }
 
-// checkStackMemoryAlert checks for stack memory alerts
+// checkStackMemoryAlert: 스택 메모리 알림을 확인합니다
 func (s *Service) checkStackMemoryAlert(metricsMap gin.H) gin.H {
 	stackInuseMB, exists := metricsMap["stack_inuse_mb"]
 	if !exists {
@@ -525,7 +525,7 @@ func (s *Service) checkStackMemoryAlert(metricsMap gin.H) gin.H {
 	}
 }
 
-// getAlertThresholds returns alert threshold values
+// getAlertThresholds: 알림 임계값을 반환합니다
 func (s *Service) getAlertThresholds() gin.H {
 	return gin.H{
 		"error_rate":       serviceconstants.HighErrorRateThreshold,
@@ -536,7 +536,7 @@ func (s *Service) getAlertThresholds() gin.H {
 	}
 }
 
-// checkPostgresDependency checks PostgreSQL connection
+// checkPostgresDependency: PostgreSQL 의존성 상태를 확인합니다
 func (s *Service) checkPostgresDependency() gin.H {
 	// Measure response time for consistency
 	start := time.Now()
@@ -584,7 +584,7 @@ func (s *Service) checkPostgresDependency() gin.H {
 	}
 }
 
-// checkRedisDependency checks Redis connection
+// checkRedisDependency: Redis 의존성 상태를 확인합니다
 func (s *Service) checkRedisDependency() gin.H {
 	// Use the same logic as checkRedisStatus
 	return s.checkRedisStatus()

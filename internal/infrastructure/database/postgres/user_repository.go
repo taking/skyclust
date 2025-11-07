@@ -8,17 +8,17 @@ import (
 	"gorm.io/gorm"
 )
 
-// userRepository implements the UserRepository interface
+// userRepository: domain.UserRepository 인터페이스 구현체
 type userRepository struct {
 	db *gorm.DB
 }
 
-// NewUserRepository creates a new user repository
+// NewUserRepository: 새로운 UserRepository를 생성합니다
 func NewUserRepository(db *gorm.DB) domain.UserRepository {
 	return &userRepository{db: db}
 }
 
-// Create creates a new user
+// Create: 새로운 사용자를 생성합니다
 func (r *userRepository) Create(user *domain.User) error {
 	if err := r.db.Create(user).Error; err != nil {
 		logger.Errorf("Failed to create user: %v", err)
@@ -27,10 +27,10 @@ func (r *userRepository) Create(user *domain.User) error {
 	return nil
 }
 
-// GetByID retrieves a user by ID
+// GetByID: ID로 사용자를 조회합니다
 func (r *userRepository) GetByID(id uuid.UUID) (*domain.User, error) {
 	var user domain.User
-	if err := r.db.Where("id = ? AND deleted_at IS NULL", id).First(&user).Error; err != nil {
+	if err := r.db.Where("id = ?", id).First(&user).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
 		}
@@ -40,10 +40,10 @@ func (r *userRepository) GetByID(id uuid.UUID) (*domain.User, error) {
 	return &user, nil
 }
 
-// GetByUsername retrieves a user by username
+// GetByUsername: 사용자명으로 사용자를 조회합니다
 func (r *userRepository) GetByUsername(username string) (*domain.User, error) {
 	var user domain.User
-	if err := r.db.Where("username = ? AND deleted_at IS NULL", username).First(&user).Error; err != nil {
+	if err := r.db.Where("username = ?", username).First(&user).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
 		}
@@ -53,10 +53,10 @@ func (r *userRepository) GetByUsername(username string) (*domain.User, error) {
 	return &user, nil
 }
 
-// GetByEmail retrieves a user by email
+// GetByEmail: 이메일로 사용자를 조회합니다
 func (r *userRepository) GetByEmail(email string) (*domain.User, error) {
 	var user domain.User
-	if err := r.db.Where("email = ? AND deleted_at IS NULL", email).First(&user).Error; err != nil {
+	if err := r.db.Where("email = ?", email).First(&user).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
 		}
@@ -66,10 +66,10 @@ func (r *userRepository) GetByEmail(email string) (*domain.User, error) {
 	return &user, nil
 }
 
-// GetByOIDC retrieves a user by OIDC provider and subject
+// GetByOIDC: OIDC 프로바이더와 subject로 사용자를 조회합니다
 func (r *userRepository) GetByOIDC(provider, subject string) (*domain.User, error) {
 	var user domain.User
-	if err := r.db.Where("oidc_provider = ? AND oidc_subject = ? AND deleted_at IS NULL", provider, subject).First(&user).Error; err != nil {
+	if err := r.db.Where("oidc_provider = ? AND oidc_subject = ?", provider, subject).First(&user).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
 		}
@@ -79,7 +79,7 @@ func (r *userRepository) GetByOIDC(provider, subject string) (*domain.User, erro
 	return &user, nil
 }
 
-// Update updates a user
+// Update: 사용자 정보를 업데이트합니다
 func (r *userRepository) Update(user *domain.User) error {
 	if err := r.db.Save(user).Error; err != nil {
 		logger.Errorf("Failed to update user: %v", err)
@@ -88,22 +88,22 @@ func (r *userRepository) Update(user *domain.User) error {
 	return nil
 }
 
-// Delete soft deletes a user
+// Delete: 사용자를 영구 삭제합니다
 func (r *userRepository) Delete(id uuid.UUID) error {
-	if err := r.db.Where("id = ?", id).Delete(&domain.User{}).Error; err != nil {
+	if err := r.db.Unscoped().Where("id = ?", id).Delete(&domain.User{}).Error; err != nil {
 		logger.Errorf("Failed to delete user: %v", err)
 		return err
 	}
 	return nil
 }
 
-// List retrieves a list of users with pagination and filtering
+// List: 페이지네이션과 필터링을 포함한 사용자 목록을 조회합니다
 func (r *userRepository) List(limit, offset int, filters map[string]interface{}) ([]*domain.User, int64, error) {
 	var users []*domain.User
 	var total int64
 
 	// Build base query
-	query := r.db.Model(&domain.User{}).Where("deleted_at IS NULL")
+	query := r.db.Model(&domain.User{})
 
 	// Apply filters
 	if search, ok := filters["search"]; ok && search != "" {
@@ -141,10 +141,10 @@ func (r *userRepository) List(limit, offset int, filters map[string]interface{})
 	return users, total, nil
 }
 
-// Count returns the total number of users
+// Count: 전체 사용자 수를 반환합니다
 func (r *userRepository) Count() (int64, error) {
 	var count int64
-	if err := r.db.Model(&domain.User{}).Where("deleted_at IS NULL").Count(&count).Error; err != nil {
+	if err := r.db.Model(&domain.User{}).Count(&count).Error; err != nil {
 		logger.Errorf("Failed to count users: %v", err)
 		return 0, err
 	}

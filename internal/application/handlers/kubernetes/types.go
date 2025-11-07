@@ -65,3 +65,18 @@ type CreateNodePoolRequest struct {
 	SubnetIDs    []string          `json:"subnet_ids" validate:"required,min=1"`
 	Tags         map[string]string `json:"tags,omitempty"`
 }
+
+// GetEKSVersionsResponse represents the response for EKS versions
+type GetEKSVersionsResponse struct {
+	Versions []string `json:"versions"`
+}
+
+// GetAWSRegionsResponse represents the response for AWS regions
+type GetAWSRegionsResponse struct {
+	Regions []string `json:"regions"`
+}
+
+// GetAvailabilityZonesResponse represents the response for availability zones
+type GetAvailabilityZonesResponse struct {
+	Zones []string `json:"zones"`
+}

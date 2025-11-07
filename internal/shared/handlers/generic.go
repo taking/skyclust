@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"skyclust/internal/domain"
-	"skyclust/internal/shared/responses"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -264,10 +263,6 @@ func HandlePaginatedList[T any](baseHandler *BaseHandler, operation string, serv
 
 		// Send response with pagination
 		page := (offset / limit) + 1
-		responses.NewResponseBuilder(c).
-			WithData(result).
-			WithMessage("Resources retrieved successfully").
-			WithPagination(page, limit, total).
-			SendOK()
+		baseHandler.OKWithPagination(c, result, "Resources retrieved successfully", page, limit, total)
 	}
 }

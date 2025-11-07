@@ -29,3 +29,27 @@ type WorkspaceListResponse struct {
 	Workspaces []*WorkspaceResponse `json:"workspaces"`
 	Total      int64                `json:"total"`
 }
+
+// AddMemberRequest represents a request to add a member to a workspace
+type AddMemberRequest struct {
+	Email string `json:"email" validate:"required,email"`
+	Role  string `json:"role" validate:"required,oneof=admin member"`
+}
+
+// UpdateMemberRoleRequest represents a request to update a member's role
+type UpdateMemberRoleRequest struct {
+	Role string `json:"role" validate:"required,oneof=admin member"`
+}
+
+// WorkspaceMemberResponse represents a workspace member in API responses
+type WorkspaceMemberResponse struct {
+	UserID      string    `json:"user_id"`
+	WorkspaceID string    `json:"workspace_id"`
+	Role        string    `json:"role"`
+	JoinedAt    time.Time `json:"joined_at"`
+	User        struct {
+		ID       string `json:"id"`
+		Username string `json:"username"`
+		Email    string `json:"email"`
+	} `json:"user"`
+}

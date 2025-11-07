@@ -7,31 +7,32 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { Suspense } from 'react';
+import { useMemo, useCallback } from 'react';
 import * as React from 'react';
 import dynamic from 'next/dynamic';
 import { ResourceListPage } from '@/components/common/resource-list-page';
-import { FilterPresetsManager } from '@/components/common/filter-presets-manager';
-import { MultiSortIndicator } from '@/components/common/multi-sort-indicator';
-import { usePagination } from '@/hooks/use-pagination';
-import { useAdvancedFiltering } from '@/hooks/use-advanced-filtering';
-import { useKeyboardShortcuts, commonShortcuts } from '@/hooks/use-keyboard-shortcuts';
+import { BulkActionsToolbar } from '@/components/common/bulk-actions-toolbar';
 import { useToast } from '@/hooks/use-toast';
 import { useErrorHandler } from '@/hooks/use-error-handler';
+import { EVENTS } from '@/lib/constants';
 import { useWorkspaceStore } from '@/store/workspace';
-import { useCreateDialog } from '@/hooks/use-create-dialog';
-import { EVENTS, UI } from '@/lib/constants';
-import { LiveRegion } from '@/components/accessibility/live-region';
-import { GlobalKeyboardShortcuts } from '@/components/common/global-keyboard-shortcuts';
-import { FilterPanel } from '@/components/ui/filter-panel';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Filter } from 'lucide-react';
+import { FilterConfig, FilterValue } from '@/components/ui/filter-panel';
 import { CredentialRequiredState } from '@/components/common/credential-required-state';
-import { VMPageHeader, useVMs, useVMFilters, useVMActions } from '@/features/vms';
 import { ResourceEmptyState } from '@/components/common/resource-empty-state';
-import { Server } from 'lucide-react';
-import { TableSkeleton } from '@/components/ui/table-skeleton';
+import { useCredentialContext } from '@/hooks/use-credential-context';
+import { useCredentialAutoSelect } from '@/hooks/use-credential-auto-select';
+import { useCreateDialog } from '@/hooks/use-create-dialog';
 import { useTranslation } from '@/hooks/use-translation';
+import { useGenericResource } from '@/hooks/use-generic-resource';
+import { VMPageHeader, useVMs, useVMActions } from '@/features/vms';
+import { TableSkeleton } from '@/components/ui/table-skeleton';
+import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
+import { logger } from '@/lib/logger';
 import type { CreateVMForm, VM } from '@/lib/types';
-import type { FilterConfig, FilterValue } from '@/components/ui/filter-panel';
 
 // Dynamic import for VMTable
 const VMTable = dynamic(
@@ -42,45 +43,36 @@ const VMTable = dynamic(
   }
 );
 
-export default function VMsPage() {
+function VMsPageContent() {
   const { success: showSuccess } = useToast();
   const { handleError } = useErrorHandler();
-  
-  // Local state
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useCreateDialog(EVENTS.CREATE_DIALOG.VM);
-  const [liveMessage, setLiveMessage] = useState('');
-  const [selectedCredentialId, setSelectedCredentialId] = useState<string>('');
-  const [pageSize, setPageSize] = useState<number>(UI.PAGINATION.DEFAULT_PAGE_SIZE);
-  const [showFilters, setShowFilters] = useState(false);
-
-  // Advanced filtering with presets
-  const {
-    filters: advancedFilters,
-    sortConfig,
-    presets,
-    setAllFilters,
-    clearFilters,
-    savePreset,
-    loadPreset,
-    deletePreset,
-    toggleSort,
-    clearSort,
-  } = useAdvancedFiltering<VM>({
-    storageKey: 'vms-page',
-    defaultFilters: {},
-    defaultSort: [],
-  });
-
-  // Keep local filters state for FilterPanel compatibility
-  const [filters, setFilters] = useState<FilterValue>(advancedFilters as FilterValue);
-
-  // Keyboard shortcuts
-  useKeyboardShortcuts([
-    commonShortcuts.escape(() => setIsCreateDialogOpen(false)),
-  ]);
+  const { t } = useTranslation();
 
   // Get workspace from store
   const { currentWorkspace } = useWorkspaceStore();
+
+  // Get credential context from global store (Header에서 관리)
+  const { selectedCredentialId } = useCredentialContext();
+  
+  // Auto-select credential if not selected
+  useCredentialAutoSelect({
+    enabled: !!currentWorkspace,
+    resourceType: 'compute',
+    updateUrl: true,
+  });
+
+  // Local state
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useCreateDialog(EVENTS.CREATE_DIALOG.VM);
+  const [showFilters, setShowFilters] = React.useState(false);
+  const [deleteDialogState, setDeleteDialogState] = React.useState<{
+    open: boolean;
+    vmId: string | null;
+    vmName?: string;
+  }>({
+    open: false,
+    vmId: null,
+    vmName: undefined,
+  });
 
   // VMs hook
   const {
@@ -93,39 +85,9 @@ export default function VMsPage() {
     stopVMMutation,
   } = useVMs({
     workspaceId: currentWorkspace?.id,
-    selectedCredentialId,
+    selectedCredentialId: selectedCredentialId || '',
   });
 
-  // VM filters hook
-  const {
-    searchQuery,
-    setSearchQuery,
-    isSearching,
-    clearSearch,
-    filteredVMs,
-  } = useVMFilters({
-    vms,
-    advancedFilters: advancedFilters as FilterValue,
-    sortConfig,
-  });
-
-  // VM actions hook
-  const {
-    handleDeleteVM,
-    handleStartVM,
-    handleStopVM,
-  } = useVMActions({
-    workspaceId: currentWorkspace?.id,
-    deleteMutation: deleteVMMutation,
-    startMutation: startVMMutation,
-    stopMutation: stopVMMutation,
-    onSuccess: showSuccess,
-    onError: (error: unknown) => handleError(error, { operation: 'vmAction', resource: 'VM' }),
-    setLiveMessage,
-  });
-
-  const { t } = useTranslation();
-  
   // Filter configurations
   const filterConfigs: FilterConfig[] = useMemo(() => [
     {
@@ -163,33 +125,87 @@ export default function VMsPage() {
     },
   ], [vms, t]);
 
-  // Sync local filters with advanced filters
-  useEffect(() => {
-    setFilters(advancedFilters as FilterValue);
-  }, [advancedFilters]);
-
-  // Pagination
+  // Generic Resource Hook (검색, 필터, 페이지네이션 통합)
   const {
-    page,
-    totalPages,
+    searchQuery,
+    setSearchQuery,
+    isSearching,
+    clearSearch,
+    filters,
+    setFilters,
+    clearFilters,
+    filteredItems: filteredVMs,
     paginatedItems: paginatedVMs,
+    page,
+    pageSize,
     setPage,
-    setPageSize: setPaginationPageSize,
-  } = usePagination(filteredVMs, {
-    totalItems: filteredVMs.length,
-    initialPage: 1,
-    initialPageSize: pageSize,
+    setPageSize,
+    selectedIds: selectedVMIds,
+    setSelectedIds: setSelectedVMIds,
+    clearSelection: _clearSelection,
+  } = useGenericResource<VM>({
+    resourceName: 'vms',
+    items: vms,
+    isLoading,
+    searchKeys: ['name', 'id', 'region', 'instance_type', 'status', 'provider'],
+    filterConfigs: selectedCredentialId && vms.length > 0 ? filterConfigs : [],
+    filterFn: useCallback((vm: VM, filters: FilterValue): boolean => {
+      if (filters.status) {
+        const statusArray = Array.isArray(filters.status) ? filters.status : [filters.status];
+        if (!statusArray.includes(vm.status)) return false;
+      }
+      if (filters.provider) {
+        const providerArray = Array.isArray(filters.provider) ? filters.provider : [filters.provider];
+        if (!providerArray.includes(vm.provider)) return false;
+      }
+      if (filters.region && vm.region !== filters.region) return false;
+      return true;
+    }, []),
   });
 
+  // VM actions hook
+  const {
+    handleDeleteVM,
+    handleStartVM,
+    handleStopVM,
+  } = useVMActions({
+    workspaceId: currentWorkspace?.id,
+    deleteMutation: deleteVMMutation,
+    startMutation: startVMMutation,
+    stopMutation: stopVMMutation,
+    onSuccess: showSuccess,
+    onError: (error: unknown) => handleError(error, { operation: 'vmAction', resource: 'VM' }),
+  });
+
+  // VM 액션 핸들러 메모이제이션 (VMTable에 전달)
+  const handleVMStart = useCallback((vmId: string) => {
+    handleStartVM(vmId, vms);
+  }, [handleStartVM, vms]);
+
+  const handleVMStop = useCallback((vmId: string) => {
+    handleStopVM(vmId, vms);
+  }, [handleStopVM, vms]);
+
+  const handleVMDelete = useCallback((vmId: string) => {
+    const vm = vms.find(v => v.id === vmId);
+    setDeleteDialogState({ open: true, vmId, vmName: vm?.name });
+  }, [vms]);
+
+  const handleConfirmDelete = useCallback(() => {
+    if (deleteDialogState.vmId) {
+      handleDeleteVM(deleteDialogState.vmId, vms);
+      setDeleteDialogState({ open: false, vmId: null });
+    }
+  }, [deleteDialogState.vmId, handleDeleteVM, vms]);
+
   // Event handlers
-  const handleCreateVM = (data: CreateVMForm) => {
+  const handleCreateVM = useCallback((data: CreateVMForm) => {
     if (!currentWorkspace) return;
     createVMMutation.mutate(
       { workspaceId: currentWorkspace.id, data },
       {
         onSuccess: () => {
           setIsCreateDialogOpen(false);
-          setSelectedCredentialId('');
           showSuccess(t('vm.creationInitiated'));
         },
         onError: (error: unknown) => {
@@ -197,135 +213,181 @@ export default function VMsPage() {
         },
       }
     );
-  };
+  }, [currentWorkspace, createVMMutation, setIsCreateDialogOpen, showSuccess, t, handleError]);
 
-  const handlePageSizeChange = (newSize: number) => {
+  const handlePageSizeChange = useCallback((newSize: number) => {
     setPageSize(newSize);
-    setPaginationPageSize(newSize);
-  };
+  }, [setPageSize]);
 
-  const handleFiltersChange = (newFilters: FilterValue) => {
-    setFilters(newFilters);
-    setAllFilters(newFilters);
-  };
+  // Toggle filters handler (memoized)
+  const handleToggleFilters = useCallback(() => {
+    setShowFilters(prev => !prev);
+  }, []);
 
-  const handleFiltersClear = () => {
-    setFilters({});
-    clearFilters();
-  };
+  // Empty toggle sort handler (memoized)
+  const handleToggleSort = useCallback(() => {
+    // No-op for now
+  }, []);
+
+  // Determine empty state
+  const isEmpty = !selectedCredentialId || filteredVMs.length === 0;
+
+  // Empty state component
+  const emptyStateComponent = credentials.length === 0 ? (
+    <CredentialRequiredState serviceName={t('vm.title')} />
+  ) : !selectedCredentialId ? (
+    <CredentialRequiredState
+      title={t('credential.selectCredential')}
+      description={t('credential.selectCredential')}
+      serviceName={t('vm.title')}
+    />
+  ) : filteredVMs.length === 0 ? (
+    <ResourceEmptyState
+      resourceName={t('nav.vms')}
+      title={t('vm.noVMsFound')}
+      description={t('vm.createFirst')}
+      onCreateClick={() => setIsCreateDialogOpen(true)}
+      withCard={true}
+    />
+  ) : null;
 
   return (
+    <>
     <ResourceListPage
-      title={t('vm.title')}
-      resourceName={t('nav.vms')}
-      storageKey="vms-page"
-      header={
-        <VMPageHeader
-          workspaceName={currentWorkspace?.name}
-          credentials={credentials}
-          selectedCredentialId={selectedCredentialId || ''}
-          onCredentialChange={() => {}} // Handled by Header
-          onCreateVM={handleCreateVM}
-          isCreatePending={createVMMutation.isPending}
-          isCreateDialogOpen={isCreateDialogOpen}
-          onCreateDialogChange={setIsCreateDialogOpen}
-        />
-      }
+        title={t('vm.title')}
+        resourceName={t('nav.vms')}
+        storageKey="vms-page"
+        header={
+          <VMPageHeader
+            workspaceName={currentWorkspace?.name}
+            credentials={credentials}
+            selectedCredentialId={selectedCredentialId || ''}
+            onCredentialChange={() => {}} // Handled by Header
+            onCreateVM={handleCreateVM}
+            isCreatePending={createVMMutation.isPending}
+            isCreateDialogOpen={isCreateDialogOpen}
+            onCreateDialogChange={setIsCreateDialogOpen}
+          />
+        }
       items={filteredVMs}
       isLoading={isLoading}
-      isEmpty={filteredVMs.length === 0 && !isSearching}
+      isEmpty={isEmpty}
       searchQuery={searchQuery}
       onSearchChange={setSearchQuery}
       onSearchClear={clearSearch}
       isSearching={isSearching}
-      searchPlaceholder="Search VMs..."
-      filterConfigs={filterConfigs}
+      searchPlaceholder="Search VMs by name, provider, instance type, region, or status..."
+      filterConfigs={selectedCredentialId && vms.length > 0 ? filterConfigs : []}
       filters={filters}
-      onFiltersChange={handleFiltersChange}
-      onFiltersClear={handleFiltersClear}
+      onFiltersChange={setFilters}
+      onFiltersClear={clearFilters}
       showFilters={showFilters}
-      onToggleFilters={() => setShowFilters(!showFilters)}
+      onToggleFilters={useCallback(() => setShowFilters(prev => !prev), [])}
       filterCount={Object.keys(filters).length}
-      sortIndicator={
-        <MultiSortIndicator
-          sortConfig={sortConfig}
-          availableFields={[
-            { value: 'name', label: 'Name' },
-            { value: 'provider', label: 'Provider' },
-            { value: 'status', label: 'Status' },
-            { value: 'region', label: 'Region' },
-            { value: 'instance_type', label: 'Instance Type' },
-            { value: 'created_at', label: 'Created At' },
-          ]}
-          onToggleSort={toggleSort}
-          onClearSort={clearSort}
-        />
+      toolbar={
+        selectedCredentialId && filteredVMs.length > 0 ? (
+          <BulkActionsToolbar
+            items={filteredVMs}
+            selectedIds={selectedVMIds}
+            onSelectionChange={setSelectedVMIds}
+            onBulkDelete={(vmIds) => {
+              // TODO: Implement bulk delete
+              logger.debug('Bulk delete VMs', { vmIds });
+            }}
+            getItemDisplayName={(vm) => vm.name}
+          />
+        ) : null
       }
       additionalControls={
-        <>
-          <FilterPresetsManager
-            presets={presets}
-            currentFilters={filters}
-            onSavePreset={savePreset}
-            onLoadPreset={loadPreset}
-            onDeletePreset={deletePreset}
-          />
-          <FilterPanel
-            filters={filterConfigs}
-            values={filters}
-            onChange={handleFiltersChange}
-            onClear={handleFiltersClear}
-            onApply={() => {}}
-            title="Filter VMs"
-            description="Filter VMs by status, provider, and region"
-          />
-        </>
+        selectedCredentialId && vms.length > 0 ? (
+          <>
+            <Button
+              variant="outline"
+              onClick={handleToggleFilters}
+              className="flex items-center"
+            >
+              <Filter className="mr-2 h-4 w-4" />
+              Filters
+              {Object.keys(filters).length > 0 && (
+                <span className="ml-2 px-2 py-1 bg-gray-100 rounded text-sm">
+                  {Object.keys(filters).length}
+                </span>
+              )}
+            </Button>
+          </>
+        ) : null
       }
-      emptyState={
-        credentials.length === 0 ? (
-          <CredentialRequiredState serviceName="Compute (VMs)" />
-        ) : !selectedCredentialId ? (
-          <CredentialRequiredState
-            title="Select a Credential"
-            description="Please select a credential to view VMs. If you don't have any credentials, register one first."
-            serviceName="Compute (VMs)"
-          />
-        ) : (
-          <ResourceEmptyState
-            resourceName="VMs"
-            isSearching={isSearching}
-            searchQuery={searchQuery}
-            onCreateClick={() => setIsCreateDialogOpen(true)}
-            icon={Server}
-          />
-        )
-      }
+      emptyState={emptyStateComponent}
       content={
-        <VMTable
-          vms={paginatedVMs}
-          sortConfig={sortConfig}
-          onToggleSort={toggleSort}
-          onStart={(vmId) => handleStartVM(vmId, vms)}
-          onStop={(vmId) => handleStopVM(vmId, vms)}
-          onDelete={(vmId) => handleDeleteVM(vmId, vms)}
-          isStarting={startVMMutation.isPending}
-          isStopping={stopVMMutation.isPending}
-          isDeleting={deleteVMMutation.isPending}
-          page={page}
-          pageSize={pageSize}
-          total={filteredVMs.length}
-          onPageChange={setPage}
-          onPageSizeChange={handlePageSizeChange}
-        />
+        selectedCredentialId && filteredVMs.length > 0 ? (
+          <>
+            <Card>
+              <CardHeader>
+                <CardTitle>VMs</CardTitle>
+                <CardDescription>
+                  {filteredVMs.length} of {vms.length} VM{vms.length !== 1 ? 's' : ''} 
+                  {isSearching && ` (${searchQuery})`}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <VMTable
+                  vms={paginatedVMs}
+                  sortConfig={[]}
+                  onToggleSort={handleToggleSort}
+                  onStart={handleVMStart}
+                  onStop={handleVMStop}
+                  onDelete={handleVMDelete}
+                  isStarting={startVMMutation.isPending}
+                  isStopping={stopVMMutation.isPending}
+                  isDeleting={deleteVMMutation.isPending}
+                  page={page}
+                  pageSize={pageSize}
+                  total={filteredVMs.length}
+                  onPageChange={setPage}
+                  onPageSizeChange={handlePageSizeChange}
+                />
+              </CardContent>
+            </Card>
+          </>
+        ) : emptyStateComponent
       }
       pageSize={pageSize}
       onPageSizeChange={handlePageSizeChange}
       searchResultsCount={filteredVMs.length}
       skeletonColumns={7}
       skeletonRows={5}
-      keyboardShortcuts={<GlobalKeyboardShortcuts />}
-      liveRegion={<LiveRegion message={liveMessage} />}
+      skeletonShowCheckbox={true}
+      showFilterButton={false}
+      showSearchResultsInfo={false}
     />
+
+      {/* Delete VM Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        open={deleteDialogState.open}
+        onOpenChange={(open) => setDeleteDialogState({ ...deleteDialogState, open })}
+        onConfirm={handleConfirmDelete}
+        title={t('vm.deleteVM')}
+        description="이 VM을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다."
+        isLoading={deleteVMMutation.isPending}
+        resourceName={deleteDialogState.vmName}
+        resourceNameLabel="VM 이름"
+      />
+    </>
+  );
+}
+
+export default function VMsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-2 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <VMsPageContent />
+    </Suspense>
   );
 }
 

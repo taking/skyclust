@@ -30,6 +30,21 @@ export interface ResourceEmptyStateProps {
   searchQuery?: string;
   
   /**
+   * 필터가 적용되었는지 여부
+   */
+  hasFilters?: boolean;
+  
+  /**
+   * 필터 초기화 핸들러
+   */
+  onClearFilters?: () => void;
+  
+  /**
+   * 검색 초기화 핸들러
+   */
+  onClearSearch?: () => void;
+  
+  /**
    * 생성 버튼 클릭 핸들러
    */
   onCreateClick?: () => void;
@@ -63,6 +78,16 @@ export interface ResourceEmptyStateProps {
    * Card로 감싸기 여부 (기본값: false)
    */
   withCard?: boolean;
+  
+  /**
+   * 권한 문제인지 여부
+   */
+  isPermissionError?: boolean;
+  
+  /**
+   * 권한 문제 해결 액션 핸들러
+   */
+  onCheckCredentials?: () => void;
 }
 
 /**
@@ -82,6 +107,9 @@ function ResourceEmptyStateComponent({
   resourceName,
   isSearching = false,
   searchQuery,
+  hasFilters = false,
+  onClearFilters,
+  onClearSearch,
   onCreateClick,
   createButtonText,
   icon: Icon = Server,
@@ -89,23 +117,49 @@ function ResourceEmptyStateComponent({
   description,
   showCreateButton = !!onCreateClick,
   withCard = false,
+  isPermissionError = false,
+  onCheckCredentials,
 }: ResourceEmptyStateProps) {
   const { t } = useTranslation();
   
-  const defaultTitle = isSearching 
-    ? t('emptyState.noResourceFound', { resource: resourceName })
-    : t('emptyState.noResource', { resource: resourceName });
+  // 컨텍스트별 제목 결정
+  let defaultTitle: string;
+  if (isPermissionError) {
+    defaultTitle = t('emptyState.permissionError', { resource: resourceName });
+  } else if (hasFilters) {
+    defaultTitle = t('emptyState.noResourceMatchFilters', { resource: resourceName });
+  } else if (isSearching && searchQuery) {
+    defaultTitle = t('emptyState.noResourceFound', { resource: resourceName, query: searchQuery });
+  } else if (isSearching) {
+    defaultTitle = t('emptyState.noResourceFound', { resource: resourceName });
+  } else {
+    defaultTitle = t('emptyState.noResource', { resource: resourceName });
+  }
   
-  const defaultDescription = isSearching
-    ? searchQuery 
-      ? t('emptyState.tryAdjustingWithQuery', { query: searchQuery })
-      : t('emptyState.tryAdjusting')
-    : t('emptyState.createFirst', { resource: resourceName.toLowerCase() });
+  // 컨텍스트별 설명 결정
+  let defaultDescription: string;
+  if (isPermissionError) {
+    defaultDescription = t('emptyState.checkCredentialsMessage');
+  } else if (hasFilters) {
+    defaultDescription = t('emptyState.tryAdjustingFilters');
+  } else if (isSearching && searchQuery) {
+    defaultDescription = t('emptyState.tryAdjustingWithQuery', { query: searchQuery });
+  } else if (isSearching) {
+    defaultDescription = t('emptyState.tryAdjusting');
+  } else {
+    defaultDescription = t('emptyState.createFirst', { resource: resourceName });
+  }
 
   const displayTitle = title || defaultTitle;
   const displayDescription = description || defaultDescription;
   
-  const defaultCreateButtonText = createButtonText || t('emptyState.createResource', { resource: resourceName.slice(0, -1) });
+  // 복수형 제거 시도 (영어만 지원, 번역된 문자열은 그대로 사용)
+  // 영어 복수형 패턴: "s"로 끝나는 경우 (예: "VMs" -> "VM", "Clusters" -> "Cluster")
+  const singularResourceName = resourceName.endsWith('s') && resourceName.length > 1 && /^[A-Za-z]+$/.test(resourceName)
+    ? resourceName.slice(0, -1)
+    : resourceName;
+  
+  const defaultCreateButtonText = createButtonText || t('emptyState.createResource', { resource: singularResourceName });
 
   const content = (
     <div className="text-center py-12">
@@ -118,14 +172,36 @@ function ResourceEmptyStateComponent({
       <p className="mt-1 text-sm text-gray-500">
         {displayDescription}
       </p>
-      {showCreateButton && onCreateClick && (
-        <div className="mt-6">
+      <div className="mt-6 flex flex-col sm:flex-row gap-2 justify-center">
+        {/* 권한 문제인 경우 */}
+        {isPermissionError && onCheckCredentials && (
+          <Button onClick={onCheckCredentials} variant="default">
+            {t('emptyState.checkCredentials')}
+          </Button>
+        )}
+        
+        {/* 필터가 적용된 경우 */}
+        {hasFilters && onClearFilters && (
+          <Button onClick={onClearFilters} variant="outline">
+            {t('emptyState.clearFilters')}
+          </Button>
+        )}
+        
+        {/* 검색 중인 경우 */}
+        {isSearching && searchQuery && onClearSearch && (
+          <Button onClick={onClearSearch} variant="outline">
+            {t('emptyState.clearSearch')}
+          </Button>
+        )}
+        
+        {/* 생성 버튼 */}
+        {showCreateButton && onCreateClick && !isPermissionError && (
           <Button onClick={onCreateClick}>
             <Plus className="mr-2 h-4 w-4" />
             {defaultCreateButtonText}
           </Button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 

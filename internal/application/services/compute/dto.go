@@ -18,4 +18,3 @@ type CreateInstanceRequest struct {
 	ImageID  string                 `json:"image_id"`
 	Metadata map[string]interface{} `json:"metadata"`
 }
-

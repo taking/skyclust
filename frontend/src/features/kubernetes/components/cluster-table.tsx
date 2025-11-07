@@ -6,6 +6,7 @@
 'use client';
 
 import * as React from 'react';
+import { useMemo, useCallback } from 'react';
 import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Pagination } from '@/components/ui/pagination';
@@ -44,19 +45,43 @@ function ClusterTableComponent({
 }: ClusterTableProps) {
   // Virtual scrolling은 50개 이상일 때만 활성화
   const shouldUseVirtualScrolling = clusters.length >= 50;
-  const allSelected = selectedIds.length === clusters.length && clusters.length > 0;
+  const allSelected = useMemo(
+    () => selectedIds.length === clusters.length && clusters.length > 0,
+    [selectedIds.length, clusters.length]
+  );
 
-  const handleSelectAll = (checked: boolean) => {
+  const handleSelectAll = useCallback((checked: boolean) => {
     onSelectionChange(checked ? clusters.map(c => c.id || c.name) : []);
-  };
+  }, [clusters, onSelectionChange]);
 
-  const handleSelectCluster = (clusterId: string, checked: boolean) => {
+  const handleSelectCluster = useCallback((clusterId: string, checked: boolean) => {
     if (checked) {
       onSelectionChange([...selectedIds, clusterId]);
     } else {
       onSelectionChange(selectedIds.filter(id => id !== clusterId));
     }
-  };
+  }, [selectedIds, onSelectionChange]);
+
+  // renderRow를 조건문 밖에서 정의 (React Hook 규칙 준수)
+  const renderRow = useCallback((item: KubernetesCluster & { id?: string; [key: string]: unknown }) => {
+    const cluster = item as KubernetesCluster;
+    const clusterId = cluster.id || cluster.name;
+    const isSelected = selectedIds.includes(clusterId);
+    
+    return (
+      <TableRow key={clusterId}>
+        <ClusterRow
+          cluster={cluster}
+          isSelected={isSelected}
+          onSelect={(checked) => handleSelectCluster(clusterId, checked)}
+          onDelete={onDelete}
+          onDownloadKubeconfig={onDownloadKubeconfig}
+          isDeleting={isDeleting}
+          isDownloading={isDownloading}
+        />
+      </TableRow>
+    );
+  }, [selectedIds, handleSelectCluster, onDelete, onDownloadKubeconfig, isDeleting, isDownloading]);
 
   if (shouldUseVirtualScrolling) {
     return (
@@ -82,25 +107,7 @@ function ClusterTableComponent({
               <TableHead>Actions</TableHead>
             </TableRow>
           )}
-          renderRow={(item, index) => {
-            const cluster = item as KubernetesCluster;
-            const clusterId = cluster.id || cluster.name;
-            const isSelected = selectedIds.includes(clusterId);
-            
-            return (
-              <TableRow key={clusterId}>
-                <ClusterRow
-                  cluster={cluster}
-                  isSelected={isSelected}
-                  onSelect={(checked) => handleSelectCluster(clusterId, checked)}
-                  onDelete={onDelete}
-                  onDownloadKubeconfig={onDownloadKubeconfig}
-                  isDeleting={isDeleting}
-                  isDownloading={isDownloading}
-                />
-              </TableRow>
-            );
-          }}
+          renderRow={renderRow}
         />
         {total > 0 && (
           <div className="border-t">

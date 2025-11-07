@@ -29,8 +29,8 @@ type UpdateNotificationRequest struct {
 
 // UpdateNotificationsRequest represents a bulk update notifications request (RESTful)
 type UpdateNotificationsRequest struct {
-	Read            *bool     `json:"read,omitempty"`             // true to mark as read, false to mark as unread
-	NotificationIDs []string  `json:"notification_ids,omitempty"` // Optional: specific notification IDs to update. If not provided, updates all.
+	Read            *bool    `json:"read,omitempty"`             // true to mark as read, false to mark as unread
+	NotificationIDs []string `json:"notification_ids,omitempty"` // Optional: specific notification IDs to update. If not provided, updates all.
 }
 
 // UpdateNotificationsResponse represents a bulk update notifications response

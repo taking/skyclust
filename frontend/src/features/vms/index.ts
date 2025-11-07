@@ -9,6 +9,12 @@ export { VMTable } from './components/vm-table';
 export { VMRow } from './components/vm-row';
 export { VMEmptyState } from './components/vm-empty-state';
 export { CreateVMDialog } from './components/create-vm-dialog';
+export { VMOverviewTab } from './components/vm-overview-tab';
+export { VMMonitoringTab } from './components/vm-monitoring-tab';
+export { VMNetworkingTab } from './components/vm-networking-tab';
+export { VMStorageTab } from './components/vm-storage-tab';
+export { VMDetailHeader } from './components/vm-detail-header';
+export { VMActionsCard } from './components/vm-actions-card';
 
 // Hooks
 export { useVMs } from './hooks/use-vms';

@@ -5,16 +5,19 @@
 
 import type { SSECallbacks, SSEErrorInfo } from '@/lib/types/sse';
 import { API_CONFIG } from '@/lib/api-config';
+import { API_ENDPOINTS } from '@/lib/api-endpoints';
+import { CONNECTION, STORAGE_KEYS } from '@/lib/constants';
 import { getErrorLogger } from '@/lib/error-logger';
 import { parseSSEMessage } from '@/lib/sse-compression';
+import { logger } from '@/lib/logger';
 
 class SSEService {
   private eventSource: EventSource | null = null;
   private callbacks: SSECallbacks = {};
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 10;
-  private baseReconnectDelay = 1000;
-  private maxReconnectDelay = 30000;
+  private maxReconnectAttempts = CONNECTION.SSE.MAX_RECONNECT_ATTEMPTS;
+  private baseReconnectDelay = CONNECTION.SSE.BASE_RECONNECT_DELAY;
+  private maxReconnectDelay = CONNECTION.SSE.MAX_RECONNECT_DELAY;
   private isConnecting = false;
   private clientId: string | null = null;
   private subscribedEvents = new Set<string>();
@@ -32,7 +35,8 @@ class SSEService {
     this.isConnecting = true;
     this.callbacks = callbacks;
 
-    const url = `${API_CONFIG.BASE_URL}/api/events?token=${token}`;
+    const endpoint = `${API_ENDPOINTS.sse.connect()}?token=${token}`;
+    const url = `${API_CONFIG.BASE_URL}${API_CONFIG.API_PREFIX}/${API_CONFIG.VERSION}${endpoint}`;
     this.eventSource = new EventSource(url);
 
     this.setupEventListeners();
@@ -123,9 +127,7 @@ class SSEService {
 
     // 연결 성공
     this.eventSource.addEventListener('connected', (event) => {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('SSE connected:', event);
-      }
+      logger.debug('SSE connected', { event });
       try {
         const { data: parsedData } = this.parseSSEEvent(event);
         const data = this.extractEventData(parsedData);
@@ -251,33 +253,20 @@ class SSEService {
         message: errorMessage,
       };
       
-      if (process.env.NODE_ENV === 'development') {
-        const readyStateText = readyState === EventSource.CONNECTING ? 'CONNECTING' : 
-                              readyState === EventSource.OPEN ? 'OPEN' : 
-                              readyState === EventSource.CLOSED ? 'CLOSED' : 'UNKNOWN';
-        
-        const errorDetails = {
-          message: errorMessage,
-          readyState: readyState,
-          readyStateText: readyStateText,
-          url: url,
-          timestamp: errorInfo.timestamp,
-        };
-        
-        // Safari 등 일부 브라우저에서 객체가 제대로 표시되지 않을 수 있으므로 JSON으로 변환
-        try {
-          console.error('SSE error:', JSON.stringify(errorDetails, null, 2));
-        } catch (_e) {
-          // JSON.stringify 실패 시 각 속성을 개별 출력
-          console.error('SSE error:', errorMessage);
-          console.error('  ReadyState:', readyState, `(${readyStateText})`);
-          console.error('  URL:', url);
-          console.error('  Timestamp:', errorInfo.timestamp);
-        }
-      }
+      const readyStateText = readyState === EventSource.CONNECTING ? 'CONNECTING' : 
+                            readyState === EventSource.OPEN ? 'OPEN' : 
+                            readyState === EventSource.CLOSED ? 'CLOSED' : 'UNKNOWN';
       
       // Error 객체로 변환하여 ErrorLogger가 메시지를 인식할 수 있도록 함
       const error = new Error(errorMessage);
+      
+      logger.error(errorMessage, error, {
+        service: 'SSE',
+        readyState,
+        readyStateText,
+        url,
+        timestamp: errorInfo.timestamp,
+      });
       (error as Error & { readyState?: number; url?: string }).readyState = readyState;
       (error as Error & { readyState?: number; url?: string }).url = url;
       error.name = 'SSEError';
@@ -290,7 +279,7 @@ class SSEService {
 
     // 연결 해제
     this.eventSource.addEventListener('close', () => {
-      console.log('SSE connection closed');
+      logger.info('SSE connection closed');
       this.isConnecting = false;
       this.handleReconnect();
     });
@@ -298,10 +287,11 @@ class SSEService {
 
   private handleReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Max reconnection attempts reached');
-      }
-      getErrorLogger().log(new Error('Max reconnection attempts reached'), { service: 'SSE', attempts: this.reconnectAttempts });
+      const error = new Error('Max reconnection attempts reached');
+      logger.error('Max reconnection attempts reached', error, { 
+        service: 'SSE', 
+        attempts: this.reconnectAttempts 
+      });
       return;
     }
 
@@ -312,16 +302,18 @@ class SSEService {
     const jitter = Math.random() * 1000; // 0-1000ms jitter
     const delay = Math.min(exponentialDelay + jitter, this.maxReconnectDelay);
 
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`Reconnecting SSE in ${Math.round(delay)}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-    }
+    logger.debug(`Reconnecting SSE in ${Math.round(delay)}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`, {
+      delay: Math.round(delay),
+      attempt: this.reconnectAttempts,
+      maxAttempts: this.maxReconnectAttempts,
+    });
 
     setTimeout(() => {
       if (this.eventSource?.readyState === EventSource.CLOSED) {
         // 토큰을 다시 가져와서 재연결 (auth-storage에서 가져오기)
         let token: string | null = null;
         try {
-          const authStorage = localStorage.getItem('auth-storage');
+          const authStorage = localStorage.getItem(STORAGE_KEYS.AUTH_STORAGE);
           if (authStorage) {
             const parsed = JSON.parse(authStorage);
             token = parsed?.state?.token || null;
@@ -381,7 +373,7 @@ class SSEService {
       vms: Array.from(this.subscribedVMs),
     };
 
-    console.log('Subscription update:', subscriptionData);
+    logger.debug('Subscription update', { subscriptionData });
     // TODO: 서버에 구독 정보 전송
   }
 

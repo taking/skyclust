@@ -77,7 +77,8 @@ export class DataProcessor {
           continue;
         }
 
-        const itemValue = item[key];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const itemValue = (item as any)[key];
 
         // 배열 필터 (multiple values)
         if (Array.isArray(value)) {

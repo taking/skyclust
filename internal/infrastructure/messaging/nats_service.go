@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sync"
 	"skyclust/pkg/logger"
+	"sync"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -13,26 +13,26 @@ import (
 
 // NATSConfig holds NATS configuration
 type NATSConfig struct {
-	URL               string
-	Cluster           string
-	Subject           string
-	CompressionType   CompressionType
+	URL                  string
+	Cluster              string
+	Subject              string
+	CompressionType      CompressionType
 	CompressionThreshold int // Minimum size in bytes to compress
 }
 
 // QueueSubscription represents a queue subscription with management capabilities
 type QueueSubscription struct {
-	Subject     string
-	Queue       string
+	Subject      string
+	Queue        string
 	Subscription *nats.Subscription
-	Handler     func([]byte) error
-	Concurrency int
-	RetryMax    int
-	RetryDelay  time.Duration
-	mu          sync.RWMutex
-	activeCount int64
-	processed   int64
-	failed      int64
+	Handler      func([]byte) error
+	Concurrency  int
+	RetryMax     int
+	RetryDelay   time.Duration
+	mu           sync.RWMutex
+	activeCount  int64
+	processed    int64
+	failed       int64
 }
 
 // NATSService implements messaging using NATS
@@ -231,7 +231,7 @@ func (n *NATSService) SubscribeWithQueueAdvanced(
 
 		// 메시지 처리 (재시도 로직 포함)
 		err := n.processMessageWithRetry(sub, decompressed)
-		
+
 		sub.mu.Lock()
 		sub.activeCount--
 		if err != nil {

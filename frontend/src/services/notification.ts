@@ -4,6 +4,7 @@
  */
 
 import { BaseService } from '@/lib/service-base';
+import { API_ENDPOINTS } from '@/lib/api-endpoints';
 import type {
   Notification,
   NotificationPreferences,
@@ -20,59 +21,50 @@ class NotificationService extends BaseService {
     category?: string,
     priority?: string
   ): Promise<NotificationListResponse> {
-    const params = new URLSearchParams({
-      limit: limit.toString(),
-      offset: offset.toString(),
-      unread_only: unreadOnly.toString(),
-    });
-    
-    if (category) params.append('category', category);
-    if (priority) params.append('priority', priority);
-
-    return this.get<NotificationListResponse>(`/notifications?${params}`);
+    return this.get<NotificationListResponse>(API_ENDPOINTS.notifications.list(limit, offset, unreadOnly, category, priority));
   }
 
   // 알림 상세 조회
   async getNotification(notificationId: string): Promise<Notification> {
-    const data = await this.get<{ notification: Notification }>(`/notifications/${notificationId}`);
+    const data = await this.get<{ notification: Notification }>(API_ENDPOINTS.notifications.detail(notificationId));
     return data.notification;
   }
 
   // 알림 읽음 처리
   async markAsRead(notificationId: string): Promise<void> {
-    return this.put<void>(`/notifications/${notificationId}/read`);
+    return this.put<void>(API_ENDPOINTS.notifications.markAsRead(notificationId));
   }
 
   // 모든 알림 읽음 처리
   async markAllAsRead(): Promise<void> {
-    return this.put<void>('/notifications/read');
+    return this.put<void>(API_ENDPOINTS.notifications.markAllAsRead());
   }
 
   // 알림 삭제
   async deleteNotification(notificationId: string): Promise<void> {
-    return this.delete<void>(`/notifications/${notificationId}`);
+    return this.delete<void>(API_ENDPOINTS.notifications.delete(notificationId));
   }
 
   // 여러 알림 삭제
   async deleteNotifications(notificationIds: string[]): Promise<void> {
     // DELETE with body는 BaseService를 직접 사용
-    return this.request<void>('delete', '/notifications', { ids: notificationIds });
+    return this.request<void>('delete', API_ENDPOINTS.notifications.deleteMultiple(), { ids: notificationIds });
   }
 
   // 알림 설정 조회
   async getNotificationPreferences(): Promise<NotificationPreferences> {
-    const data = await this.get<{ preferences: NotificationPreferences }>('/notifications/preferences');
+    const data = await this.get<{ preferences: NotificationPreferences }>(API_ENDPOINTS.notifications.preferences());
     return data.preferences;
   }
 
   // 알림 설정 업데이트
   async updateNotificationPreferences(preferences: Partial<NotificationPreferences>): Promise<void> {
-    return this.put<void>('/notifications/preferences', preferences);
+    return this.put<void>(API_ENDPOINTS.notifications.updatePreferences(), preferences);
   }
 
   // 알림 통계 조회
   async getNotificationStats(): Promise<NotificationStats> {
-    const data = await this.get<{ stats: NotificationStats }>('/notifications/stats');
+    const data = await this.get<{ stats: NotificationStats }>(API_ENDPOINTS.notifications.stats());
     return data.stats;
   }
 
@@ -84,7 +76,7 @@ class NotificationService extends BaseService {
     category?: string;
     priority?: string;
   }): Promise<Notification> {
-    const result = await this.post<{ notification: Notification }>('/notifications/test', data);
+    const result = await this.post<{ notification: Notification }>(API_ENDPOINTS.notifications.test(), data);
     return result.notification;
   }
 }

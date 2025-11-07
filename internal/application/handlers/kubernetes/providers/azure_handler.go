@@ -137,3 +137,17 @@ func (h *AzureHandler) ExecuteNodeCommand(c *gin.Context) {
 	h.NotImplemented(c, "execute_node_command")
 }
 
+// GetEKSVersions handles EKS versions listing (AWS only)
+func (h *AzureHandler) GetEKSVersions(c *gin.Context) {
+	h.NotImplemented(c, "get_eks_versions")
+}
+
+// GetAWSRegions handles AWS regions listing (AWS only)
+func (h *AzureHandler) GetAWSRegions(c *gin.Context) {
+	h.NotImplemented(c, "get_aws_regions")
+}
+
+// GetAvailabilityZones handles availability zones listing (AWS only)
+func (h *AzureHandler) GetAvailabilityZones(c *gin.Context) {
+	h.NotImplemented(c, "get_availability_zones")
+}

@@ -4,11 +4,14 @@
  */
 
 import { useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useStandardMutation } from '@/hooks/use-standard-mutation';
 import { vmService } from '../services/vm';
-import type { VM, CreateVMForm } from '@/lib/types';
+import type { CreateVMForm } from '@/lib/types';
 import { queryKeys } from '@/lib/query-keys';
 import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
+import { TIME } from '@/lib/constants';
+import { useTranslation } from '@/hooks/use-translation';
 import { useCredentials } from '@/hooks/use-credentials';
 
 interface UseVMsOptions {
@@ -20,10 +23,10 @@ export function useVMs({
   workspaceId,
   selectedCredentialId,
 }: UseVMsOptions) {
-  const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   // Fetch credentials using unified hook
-  const { credentials, selectedCredential, selectedProvider } = useCredentials({
+  const { credentials, selectedProvider } = useCredentials({
     workspaceId,
     selectedCredentialId,
   });
@@ -35,7 +38,7 @@ export function useVMs({
     enabled: !!workspaceId,
     staleTime: CACHE_TIMES.REALTIME, // 30초 - VM 상태는 빠르게 변경될 수 있음
     gcTime: GC_TIMES.SHORT, // 5분 - GC 시간
-    refetchInterval: 30000, // Poll every 30 seconds
+    refetchInterval: TIME.POLLING.REALTIME, // Poll every 30 seconds
     refetchIntervalInBackground: false, // 백그라운드 polling 비활성화
   });
 
@@ -48,40 +51,40 @@ export function useVMs({
   }, [allVms, selectedCredentialId, selectedProvider]);
 
   // Create VM mutation
-  const createVMMutation = useMutation({
+  const createVMMutation = useStandardMutation({
     mutationFn: ({ workspaceId: wsId, data }: { workspaceId: string; data: CreateVMForm }) => {
       return vmService.createVM({
         ...data,
         workspace_id: wsId,
       } as CreateVMForm & { workspace_id: string });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.vms.all });
-    },
+    invalidateQueries: [queryKeys.vms.all],
+    successMessage: t('vm.creationInitiated'),
+    errorContext: { operation: 'createVM', resource: 'VM' },
   });
 
   // Delete VM mutation
-  const deleteVMMutation = useMutation({
+  const deleteVMMutation = useStandardMutation({
     mutationFn: (id: string) => vmService.deleteVM(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.vms.all });
-    },
+    invalidateQueries: [queryKeys.vms.all],
+    successMessage: t('messages.deletionInitiated', { resource: 'VM' }),
+    errorContext: { operation: 'deleteVM', resource: 'VM' },
   });
 
   // Start VM mutation
-  const startVMMutation = useMutation({
+  const startVMMutation = useStandardMutation({
     mutationFn: (id: string) => vmService.startVM(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.vms.all });
-    },
+    invalidateQueries: [queryKeys.vms.all],
+    successMessage: t('messages.operationSuccess'),
+    errorContext: { operation: 'startVM', resource: 'VM' },
   });
 
   // Stop VM mutation
-  const stopVMMutation = useMutation({
+  const stopVMMutation = useStandardMutation({
     mutationFn: (id: string) => vmService.stopVM(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.vms.all });
-    },
+    invalidateQueries: [queryKeys.vms.all],
+    successMessage: t('messages.operationSuccess'),
+    errorContext: { operation: 'stopVM', resource: 'VM' },
   });
 
   return {

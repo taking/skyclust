@@ -10,9 +10,9 @@ import { queryKeys } from '@/lib/query-keys';
 
 interface UseVMActionsOptions {
   workspaceId?: string;
-  deleteMutation: UseMutationResult<void, Error, string, unknown>;
-  startMutation: UseMutationResult<void, Error, string, unknown>;
-  stopMutation: UseMutationResult<void, Error, string, unknown>;
+  deleteMutation: UseMutationResult<void, unknown, string, unknown>;
+  startMutation: UseMutationResult<void, unknown, string, unknown>;
+  stopMutation: UseMutationResult<void, unknown, string, unknown>;
   onSuccess?: (message: string) => void;
   onError?: (message: string) => void;
   setLiveMessage?: (message: string) => void;
@@ -31,23 +31,23 @@ export function useVMActions({
 
   const handleDeleteVM = (vmId: string, vms: VM[]) => {
     const vm = vms.find(v => v.id === vmId);
-    if (confirm('Are you sure you want to delete this VM?')) {
-      deleteMutation.mutate(vmId, {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: queryKeys.vms.list(workspaceId) });
-          onSuccess?.('VM deleted successfully');
-          if (setLiveMessage) {
-            setLiveMessage(getLiveRegionMessage('deleted', vm?.name || 'VM', true));
-          }
-        },
-        onError: (error: Error) => {
-          onError?.(`Failed to delete VM: ${error.message}`);
-          if (setLiveMessage) {
-            setLiveMessage(getLiveRegionMessage('deleted', vm?.name || 'VM', false));
-          }
-        },
-      });
-    }
+    // 모달은 컴포넌트에서 관리하므로 여기서는 바로 삭제 실행
+    deleteMutation.mutate(vmId, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.vms.list(workspaceId) });
+        onSuccess?.('VM deleted successfully');
+        if (setLiveMessage) {
+          setLiveMessage(getLiveRegionMessage('deleted', vm?.name || 'VM', true));
+        }
+      },
+      onError: (error: unknown) => {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        onError?.(`Failed to delete VM: ${errorMessage}`);
+        if (setLiveMessage) {
+          setLiveMessage(getLiveRegionMessage('deleted', vm?.name || 'VM', false));
+        }
+      },
+    });
   };
 
   const handleStartVM = (vmId: string, vms: VM[]) => {
@@ -69,13 +69,14 @@ export function useVMActions({
           setLiveMessage(getLiveRegionMessage('started', vm?.name || 'VM', true));
         }
       },
-      onError: (error: Error) => {
+      onError: (error: unknown) => {
         // Rollback optimistic update
         queryClient.setQueryData(['vms', workspaceId], (old: VM[] | undefined) => {
           if (!old) return old;
           return old.map(v => v.id === vmId ? { ...v, status: vm.status } : v);
         });
-        onError?.(`Failed to start VM: ${error.message}`);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        onError?.(`Failed to start VM: ${errorMessage}`);
         if (setLiveMessage) {
           setLiveMessage(getLiveRegionMessage('started', vm?.name || 'VM', false));
         }
@@ -102,13 +103,14 @@ export function useVMActions({
           setLiveMessage(getLiveRegionMessage('stopped', vm?.name || 'VM', true));
         }
       },
-      onError: (error: Error) => {
+      onError: (error: unknown) => {
         // Rollback optimistic update
         queryClient.setQueryData(['vms', workspaceId], (old: VM[] | undefined) => {
           if (!old) return old;
           return old.map(v => v.id === vmId ? { ...v, status: vm.status } : v);
         });
-        onError?.(`Failed to stop VM: ${error.message}`);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        onError?.(`Failed to stop VM: ${errorMessage}`);
         if (setLiveMessage) {
           setLiveMessage(getLiveRegionMessage('stopped', vm?.name || 'VM', false));
         }

@@ -33,4 +33,3 @@ type NotificationService interface {
 	// 알림 정리
 	CleanupOldNotifications(ctx context.Context, olderThan time.Duration) error
 }
-

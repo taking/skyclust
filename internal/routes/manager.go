@@ -6,8 +6,10 @@ import (
 	"skyclust/internal/application/handlers/admin"
 	"skyclust/internal/application/handlers/audit"
 	"skyclust/internal/application/handlers/auth"
+	"skyclust/internal/application/handlers/common"
 	"skyclust/internal/application/handlers/cost_analysis"
 	"skyclust/internal/application/handlers/credential"
+	dashboard "skyclust/internal/application/handlers/dashboard"
 	"skyclust/internal/application/handlers/export"
 	"skyclust/internal/application/handlers/kubernetes"
 	"skyclust/internal/application/handlers/network"
@@ -18,6 +20,7 @@ import (
 	"skyclust/internal/application/handlers/system"
 	"skyclust/internal/application/handlers/workspace"
 	costanalysisservice "skyclust/internal/application/services/cost_analysis"
+	dashboardservice "skyclust/internal/application/services/dashboard"
 	exportservice "skyclust/internal/application/services/export"
 	kubernetesservice "skyclust/internal/application/services/kubernetes"
 	networkservice "skyclust/internal/application/services/network"
@@ -63,14 +66,14 @@ func (rm *RouteManager) SetupAllRoutes(router *gin.Engine) {
 func (rm *RouteManager) setupPublicRoutes(router *gin.Engine) {
 	// Health check endpoint (public)
 	router.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"status":    "healthy",
-			"message":   "SkyClust API is running",
-			"timestamp": "2025-10-28T11:13:34.246963+09:00",
+		common.SuccessResponse(c, gin.H{
+			"status":  "healthy",
+			"message": "SkyClust API is running",
 		})
 	})
 	// API v1 public routes
-	v1Public := router.Group("/api/v1")
+	apiVersion := common.CurrentAPIVersion()
+	v1Public := router.Group("/api/" + apiVersion)
 	{
 		// Authentication routes (public) - register and login
 		authGroup := v1Public.Group("/auth")
@@ -91,7 +94,8 @@ func (rm *RouteManager) setupPublicRoutes(router *gin.Engine) {
 // setupProtectedRoutes sets up protected routes that require authentication
 func (rm *RouteManager) setupProtectedRoutes(router *gin.Engine) {
 	// API v1 protected routes
-	v1Protected := router.Group("/api/v1")
+	apiVersion := common.CurrentAPIVersion()
+	v1Protected := router.Group("/api/" + apiVersion)
 	// Apply authentication middleware to all protected routes
 	v1Protected.Use(rm.middleware.AuthMiddleware())
 	{
@@ -112,6 +116,10 @@ func (rm *RouteManager) setupProtectedRoutes(router *gin.Engine) {
 		// Cost analysis routes (keep hyphenated name for single-word resource)
 		costAnalysisGroup := v1Protected.Group("/cost-analysis")
 		rm.setupCostAnalysisRoutes(costAnalysisGroup)
+
+		// Dashboard routes
+		dashboardGroup := v1Protected.Group("/dashboard")
+		rm.setupDashboardRoutes(dashboardGroup)
 		// Notification routes
 		notificationsGroup := v1Protected.Group("/notifications")
 		rm.setupNotificationRoutes(notificationsGroup)
@@ -130,7 +138,8 @@ func (rm *RouteManager) setupProtectedRoutes(router *gin.Engine) {
 // setupAdminRoutes sets up admin routes that require admin privileges
 func (rm *RouteManager) setupAdminRoutes(router *gin.Engine) {
 	// API v1 admin routes
-	v1Admin := router.Group("/api/v1/admin")
+	apiVersion := common.CurrentAPIVersion()
+	v1Admin := router.Group("/api/" + apiVersion + "/admin")
 	// Apply admin middleware to all admin routes
 	// TODO: Implement AdminMiddleware
 	// v1Admin.Use(rm.middleware.AdminMiddleware())
@@ -353,6 +362,21 @@ func (rm *RouteManager) setupCostAnalysisRoutes(router *gin.RouterGroup) {
 	}
 }
 
+// setupDashboardRoutes sets up dashboard routes
+func (rm *RouteManager) setupDashboardRoutes(router *gin.RouterGroup) {
+	dashboardService := rm.container.GetDashboardService()
+	if dashboardService == nil {
+		rm.logger.Warn("DashboardService not available, dashboard routes will not be set up")
+		return
+	}
+	// Type assert to *dashboardservice.Service
+	if svc, ok := dashboardService.(*dashboardservice.Service); ok {
+		dashboard.SetupRoutes(router, svc)
+	} else {
+		rm.logger.Warn("DashboardService type assertion failed, dashboard routes will not be set up")
+	}
+}
+
 // setupNotificationRoutes sets up notification routes
 func (rm *RouteManager) setupNotificationRoutes(router *gin.RouterGroup) {
 	if notificationService := rm.container.GetNotificationService(); notificationService != nil {
@@ -405,6 +429,12 @@ func (rm *RouteManager) setupSSERoutes(router *gin.RouterGroup) {
 // setupSystemRoutes sets up system monitoring routes
 func (rm *RouteManager) setupSystemRoutes(router *gin.RouterGroup) {
 	if systemMonitoringService := rm.container.GetSystemMonitoringService(); systemMonitoringService != nil {
+		// UserService가 있으면 초기화 상태 확인 엔드포인트 포함
+		if userService := rm.container.GetUserService(); userService != nil {
+			system.SetupRoutesWithUserService(router, systemMonitoringService, userService)
+			return
+		}
+		// UserService가 없으면 기본 라우트만 설정
 		system.SetupRoutes(router, systemMonitoringService)
 	}
 }

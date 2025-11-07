@@ -57,4 +57,12 @@ func SetupRoutes(router *gin.RouterGroup, k8sService *kubernetesservice.Service,
 	// Path: /api/v1/{provider}/kubernetes/clusters/:name/nodes/:node/ssh
 	router.GET("/clusters/:name/nodes/:node/ssh", handler.GetNodeSSHConfig)
 	router.POST("/clusters/:name/nodes/:node/ssh/execute", handler.ExecuteNodeCommand)
+
+	// Metadata endpoints (AWS only)
+	// Path: /api/v1/{provider}/kubernetes/metadata
+	if provider == "aws" {
+		router.GET("/metadata/versions", handler.GetEKSVersions)
+		router.GET("/metadata/regions", handler.GetAWSRegions)
+		router.GET("/metadata/availability-zones", handler.GetAvailabilityZones)
+	}
 }

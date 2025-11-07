@@ -7,7 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useStandardMutation } from '@/hooks/use-standard-mutation';
 import { workspaceService } from '../services/workspace';
 import { queryKeys } from '@/lib/query-keys';
-import type { CreateWorkspaceForm, Workspace } from '@/lib/types';
+import type { CreateWorkspaceForm } from '@/lib/types';
 
 interface UseWorkspaceActionsOptions {
   onSuccess?: () => void;
@@ -21,9 +21,8 @@ export function useWorkspaceActions(options: UseWorkspaceActionsOptions = {}) {
   // Create workspace mutation
   const createWorkspaceMutation = useStandardMutation({
     mutationFn: (data: CreateWorkspaceForm) => workspaceService.createWorkspace(data),
-    invalidateQueries: [{ queryKey: queryKeys.workspaces.all }],
+    invalidateQueries: [queryKeys.workspaces.all],
     successMessage: 'Workspace created successfully',
-    errorMessage: 'Failed to create workspace',
     onSuccess,
     onError,
   });
@@ -32,36 +31,36 @@ export function useWorkspaceActions(options: UseWorkspaceActionsOptions = {}) {
   const updateWorkspaceMutation = useStandardMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<CreateWorkspaceForm> }) =>
       workspaceService.updateWorkspace(id, data),
-    invalidateQueries: [
-      { queryKey: queryKeys.workspaces.all },
-      { queryKey: (variables: { id: string }) => queryKeys.workspaces.detail(variables.id) },
-    ],
+    invalidateQueries: [queryKeys.workspaces.all],
     successMessage: 'Workspace updated successfully',
-    errorMessage: 'Failed to update workspace',
-    onSuccess,
+    onSuccess: (data, variables) => {
+      // 특정 workspace detail도 무효화
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.detail(variables.id) });
+      onSuccess?.();
+    },
     onError,
   });
 
   // Delete workspace mutation
   const deleteWorkspaceMutation = useStandardMutation({
     mutationFn: (id: string) => workspaceService.deleteWorkspace(id),
-    invalidateQueries: [{ queryKey: queryKeys.workspaces.all }],
+    invalidateQueries: [queryKeys.workspaces.all],
     successMessage: 'Workspace deleted successfully',
-    errorMessage: 'Failed to delete workspace',
     onSuccess,
     onError,
   });
 
   // Add member mutation
   const addMemberMutation = useStandardMutation({
-    mutationFn: ({ workspaceId, userId, role }: { workspaceId: string; userId: string; role?: string }) =>
-      workspaceService.addMember(workspaceId, userId, role),
-    invalidateQueries: [
-      { queryKey: (variables: { workspaceId: string }) => queryKeys.workspaces.detail(variables.workspaceId) },
-    ],
+    mutationFn: ({ workspaceId, email, role }: { workspaceId: string; email: string; role?: string }) =>
+      workspaceService.addMember(workspaceId, email, role),
+    invalidateQueries: [queryKeys.workspaces.all],
     successMessage: 'Member added successfully',
-    errorMessage: 'Failed to add member',
-    onSuccess,
+    onSuccess: (data, variables) => {
+      // 특정 workspace detail도 무효화
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.detail(variables.workspaceId) });
+      onSuccess?.();
+    },
     onError,
   });
 
@@ -69,12 +68,13 @@ export function useWorkspaceActions(options: UseWorkspaceActionsOptions = {}) {
   const removeMemberMutation = useStandardMutation({
     mutationFn: ({ workspaceId, userId }: { workspaceId: string; userId: string }) =>
       workspaceService.removeMember(workspaceId, userId),
-    invalidateQueries: [
-      { queryKey: (variables: { workspaceId: string }) => queryKeys.workspaces.detail(variables.workspaceId) },
-    ],
+    invalidateQueries: [queryKeys.workspaces.all],
     successMessage: 'Member removed successfully',
-    errorMessage: 'Failed to remove member',
-    onSuccess,
+    onSuccess: (data, variables) => {
+      // 특정 workspace detail도 무효화
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.detail(variables.workspaceId) });
+      onSuccess?.();
+    },
     onError,
   });
 

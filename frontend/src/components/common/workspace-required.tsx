@@ -10,7 +10,7 @@ import { useTranslation } from '@/hooks/use-translation';
 
 interface WorkspaceRequiredProps {
   children: React.ReactNode;
-  allowAutoSelect?: boolean; // Allow waiting for auto-selection (for dashboard)
+  allowAutoSelect?: boolean; // 자동 선택 대기 허용 (대시보드용)
 }
 
 export function WorkspaceRequired({ children, allowAutoSelect = false }: WorkspaceRequiredProps) {
@@ -22,29 +22,29 @@ export function WorkspaceRequired({ children, allowAutoSelect = false }: Workspa
   const [hasRedirected, setHasRedirected] = useState(false);
 
   useEffect(() => {
-    // Prevent multiple redirects
+    // 여러 번 리다이렉트 방지
     if (hasRedirected) return;
 
-    // If auto-select is allowed, wait longer for workspace auto-selection
+    // 자동 선택이 허용된 경우 워크스페이스 자동 선택을 더 오래 대기
     if (allowAutoSelect && !currentWorkspace) {
       const timer = setTimeout(() => {
-        // Double-check workspace is still not set before redirecting
+        // 리다이렉트 전 워크스페이스가 여전히 설정되지 않았는지 재확인
         if (!currentWorkspace && pathname !== '/workspaces' && !hasRedirected) {
           setHasRedirected(true);
           router.replace('/workspaces');
         }
         setIsChecking(false);
-      }, 1500); // Wait 1.5s for workspace auto-selection to complete
+      }, 1500); // 워크스페이스 자동 선택 완료를 위해 1.5초 대기
       return () => clearTimeout(timer);
     } else if (!allowAutoSelect && !currentWorkspace) {
-      // Immediate redirect for other pages
+      // 다른 페이지는 즉시 리다이렉트
       if (pathname !== '/workspaces' && !hasRedirected) {
         setHasRedirected(true);
         router.replace('/workspaces');
       }
     } else if (currentWorkspace) {
       setIsChecking(false);
-      setHasRedirected(false); // Reset if workspace is set
+      setHasRedirected(false); // 워크스페이스가 설정되면 리셋
     }
   }, [currentWorkspace, router, pathname, allowAutoSelect, hasRedirected]);
 

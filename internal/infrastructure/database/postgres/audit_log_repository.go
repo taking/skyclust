@@ -9,17 +9,17 @@ import (
 	"gorm.io/gorm"
 )
 
-// auditLogRepository implements the AuditLogRepository interface
+// auditLogRepository: domain.AuditLogRepository 인터페이스 구현체
 type auditLogRepository struct {
 	db *gorm.DB
 }
 
-// NewAuditLogRepository creates a new audit log repository
+// NewAuditLogRepository: 새로운 AuditLogRepository를 생성합니다
 func NewAuditLogRepository(db *gorm.DB) domain.AuditLogRepository {
 	return &auditLogRepository{db: db}
 }
 
-// Create creates a new audit log entry
+// Create: 새로운 감사 로그 항목을 생성합니다
 func (r *auditLogRepository) Create(log *domain.AuditLog) error {
 	if err := r.db.Create(log).Error; err != nil {
 		logger.Errorf("Failed to create audit log: %v", err)
@@ -28,7 +28,7 @@ func (r *auditLogRepository) Create(log *domain.AuditLog) error {
 	return nil
 }
 
-// GetByID retrieves an audit log by ID
+// GetByID: ID로 감사 로그를 조회합니다
 func (r *auditLogRepository) GetByID(id uuid.UUID) (*domain.AuditLog, error) {
 	var log domain.AuditLog
 	if err := r.db.Where("id = ?", id).First(&log).Error; err != nil {
@@ -41,7 +41,7 @@ func (r *auditLogRepository) GetByID(id uuid.UUID) (*domain.AuditLog, error) {
 	return &log, nil
 }
 
-// GetByUserID retrieves audit logs for a user with pagination
+// GetByUserID: 사용자의 감사 로그를 페이지네이션과 함께 조회합니다
 func (r *auditLogRepository) GetByUserID(userID uuid.UUID, limit, offset int) ([]*domain.AuditLog, error) {
 	var logs []*domain.AuditLog
 	query := r.db.Where("user_id = ?", userID).Order("created_at DESC")
@@ -60,7 +60,7 @@ func (r *auditLogRepository) GetByUserID(userID uuid.UUID, limit, offset int) ([
 	return logs, nil
 }
 
-// GetByAction retrieves audit logs by action with pagination
+// GetByAction: 액션으로 감사 로그를 페이지네이션과 함께 조회합니다
 func (r *auditLogRepository) GetByAction(action string, limit, offset int) ([]*domain.AuditLog, error) {
 	var logs []*domain.AuditLog
 	query := r.db.Where("action = ?", action).Order("created_at DESC")
@@ -79,7 +79,7 @@ func (r *auditLogRepository) GetByAction(action string, limit, offset int) ([]*d
 	return logs, nil
 }
 
-// GetByDateRange retrieves audit logs within a date range with pagination
+// GetByDateRange: 날짜 범위 내의 감사 로그를 페이지네이션과 함께 조회합니다
 func (r *auditLogRepository) GetByDateRange(start, end time.Time, limit, offset int) ([]*domain.AuditLog, error) {
 	var logs []*domain.AuditLog
 	query := r.db.Where("created_at BETWEEN ? AND ?", start, end).Order("created_at DESC")
@@ -98,7 +98,7 @@ func (r *auditLogRepository) GetByDateRange(start, end time.Time, limit, offset 
 	return logs, nil
 }
 
-// CountByUserID returns the total number of audit logs for a user
+// CountByUserID: 사용자의 감사 로그 총 개수를 반환합니다
 func (r *auditLogRepository) CountByUserID(userID uuid.UUID) (int64, error) {
 	var count int64
 	if err := r.db.Model(&domain.AuditLog{}).Where("user_id = ?", userID).Count(&count).Error; err != nil {
@@ -108,7 +108,7 @@ func (r *auditLogRepository) CountByUserID(userID uuid.UUID) (int64, error) {
 	return count, nil
 }
 
-// CountByAction returns the total number of audit logs for an action
+// CountByAction: 액션별 감사 로그 총 개수를 반환합니다
 func (r *auditLogRepository) CountByAction(action string) (int64, error) {
 	var count int64
 	if err := r.db.Model(&domain.AuditLog{}).Where("action = ?", action).Count(&count).Error; err != nil {
@@ -118,7 +118,7 @@ func (r *auditLogRepository) CountByAction(action string) (int64, error) {
 	return count, nil
 }
 
-// DeleteOldLogs deletes audit logs older than the specified time and returns the count of deleted logs
+// DeleteOldLogs: 지정된 시간보다 오래된 감사 로그를 삭제하고 삭제된 로그 수를 반환합니다
 func (r *auditLogRepository) DeleteOldLogs(before time.Time) (int64, error) {
 	result := r.db.Where("created_at < ?", before).Delete(&domain.AuditLog{})
 	if result.Error != nil {
@@ -134,7 +134,7 @@ func (r *auditLogRepository) DeleteOldLogs(before time.Time) (int64, error) {
 	return deletedCount, nil
 }
 
-// GetTotalCount returns the total number of audit logs
+// GetTotalCount: 감사 로그의 총 개수를 반환합니다
 func (r *auditLogRepository) GetTotalCount(filters domain.AuditStatsFilters) (int64, error) {
 	var count int64
 	query := r.db.Model(&domain.AuditLog{})
@@ -152,7 +152,7 @@ func (r *auditLogRepository) GetTotalCount(filters domain.AuditStatsFilters) (in
 	return count, nil
 }
 
-// GetUniqueUsersCount returns the count of unique users in audit logs
+// GetUniqueUsersCount: 감사 로그의 고유 사용자 수를 반환합니다
 func (r *auditLogRepository) GetUniqueUsersCount(filters domain.AuditStatsFilters) (int64, error) {
 	var count int64
 	query := "SELECT COUNT(DISTINCT user_id) FROM audit_logs"
@@ -172,7 +172,7 @@ func (r *auditLogRepository) GetUniqueUsersCount(filters domain.AuditStatsFilter
 	return count, nil
 }
 
-// GetTopActions returns the top actions by count
+// GetTopActions: 개수별 상위 액션 목록을 반환합니다
 func (r *auditLogRepository) GetTopActions(filters domain.AuditStatsFilters, limit int) ([]map[string]interface{}, error) {
 	type Result struct {
 		Action string `gorm:"column:action"`
@@ -210,7 +210,7 @@ func (r *auditLogRepository) GetTopActions(filters domain.AuditStatsFilters, lim
 	return topActions, nil
 }
 
-// GetTopResources returns the top resources by count
+// GetTopResources: 개수별 상위 리소스 목록을 반환합니다
 func (r *auditLogRepository) GetTopResources(filters domain.AuditStatsFilters, limit int) ([]map[string]interface{}, error) {
 	type Result struct {
 		Resource string `gorm:"column:resource"`
@@ -242,14 +242,14 @@ func (r *auditLogRepository) GetTopResources(filters domain.AuditStatsFilters, l
 	for i, result := range results {
 		topResources[i] = map[string]interface{}{
 			"resource": result.Resource,
-			"count":     result.Count,
+			"count":    result.Count,
 		}
 	}
 
 	return topResources, nil
 }
 
-// GetEventsByDay returns the count of events grouped by day
+// GetEventsByDay: 일별로 그룹화된 이벤트 개수를 반환합니다
 func (r *auditLogRepository) GetEventsByDay(filters domain.AuditStatsFilters) ([]map[string]interface{}, error) {
 	type Result struct {
 		Date  string `gorm:"column:date"`
@@ -290,7 +290,7 @@ func (r *auditLogRepository) GetEventsByDay(filters domain.AuditStatsFilters) ([
 	return eventsByDay, nil
 }
 
-// GetMostActiveUser returns the most active user ID and their event count
+// GetMostActiveUser: 가장 활성화된 사용자 ID와 이벤트 개수를 반환합니다
 func (r *auditLogRepository) GetMostActiveUser(startTime, endTime time.Time) (uuid.UUID, int64, error) {
 	type Result struct {
 		UserID uuid.UUID `gorm:"column:user_id"`
@@ -316,7 +316,7 @@ func (r *auditLogRepository) GetMostActiveUser(startTime, endTime time.Time) (uu
 	return result.UserID, result.Count, nil
 }
 
-// GetSecurityEventsCount returns the count of security-related events
+// GetSecurityEventsCount: 보안 관련 이벤트 개수를 반환합니다
 func (r *auditLogRepository) GetSecurityEventsCount(startTime, endTime time.Time) (int64, error) {
 	var count int64
 	// Security-related actions: password_change, credential_create, credential_update, credential_delete, user_delete
@@ -340,15 +340,15 @@ func (r *auditLogRepository) GetSecurityEventsCount(startTime, endTime time.Time
 	return count, nil
 }
 
-// GetErrorEventsCount returns the count of error events
-// Error events are identified by checking if details JSONB contains error-related fields
+// GetErrorEventsCount: 에러 이벤트 개수를 반환합니다
+// 에러 이벤트는 details JSONB에 에러 관련 필드가 포함되어 있는지 확인하여 식별합니다
 func (r *auditLogRepository) GetErrorEventsCount(startTime, endTime time.Time) (int64, error) {
 	var count int64
 	// Check for error-related indicators in action or details
 	// Actions that typically indicate errors: failed login attempts, etc.
 	// For now, we'll check if action contains "error" or if details contains error fields
 	// This is a simplified approach - in production, you might want to check details JSONB more carefully
-	
+
 	// Count logs where action contains "error" or similar patterns
 	query := r.db.Model(&domain.AuditLog{}).
 		Where("created_at BETWEEN ? AND ?", startTime, endTime).

@@ -22,9 +22,26 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/costexplorer"
 	"github.com/aws/aws-sdk-go-v2/service/costexplorer/types"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 	"google.golang.org/api/option"
 )
 
+// 기간 상수 (일 단위)
+const (
+	DaysPerWeek    = 7
+	DaysPerMonth   = 30
+	DaysPerQuarter = 90
+	DaysPerYear    = 365
+	MonthsPerYear  = 12
+)
+
+// 비율 상수
+const (
+	PercentageBase  = 100.0
+	BudgetThreshold = 100.0
+)
+
+// Service: 비용 분석 서비스 구현체
 type Service struct {
 	vmRepo            domain.VMRepository
 	credentialRepo    domain.CredentialRepository
@@ -33,8 +50,10 @@ type Service struct {
 	credentialService domain.CredentialService
 	kubernetesService *kubernetesservice.Service
 	cache             cache.Cache
+	logger            *zap.Logger
 }
 
+// NewService: 새로운 비용 분석 서비스를 생성합니다
 func NewService(
 	vmRepo domain.VMRepository,
 	credentialRepo domain.CredentialRepository,
@@ -52,19 +71,22 @@ func NewService(
 		credentialService: credentialService,
 		kubernetesService: kubernetesService,
 		cache:             cache,
+		logger:            logger.DefaultLogger.GetLogger(),
 	}
 }
 
-// GetCostSummary retrieves cost summary for a workspace
-// resourceTypes: comma-separated list of resource types to include (vm,cluster,node_group,node_pool,all)
-// If empty or "all", includes all resource types
+// GetCostSummary: 워크스페이스의 비용 요약을 조회합니다
+// resourceTypes: 포함할 리소스 타입의 쉼표로 구분된 목록 (vm,cluster,node_group,node_pool,all)
+// 비어있거나 "all"인 경우 모든 리소스 타입을 포함합니다
 func (s *Service) GetCostSummary(ctx context.Context, workspaceID string, period string, resourceTypes string) (*CostSummary, error) {
 	cacheKey := fmt.Sprintf("cost_summary:%s:%s:%s", workspaceID, period, resourceTypes)
 
 	// Try to get from cache first
 	var cachedSummary CostSummary
 	if found, _ := s.getFromCache(ctx, cacheKey, &cachedSummary); found {
-		logger.Debugf("Cost summary cache hit for workspace %s, period %s", workspaceID, period)
+		s.logger.Debug("Cost summary cache hit",
+			zap.String("workspace_id", workspaceID),
+			zap.String("period", period))
 		return &cachedSummary, nil
 	}
 
@@ -120,8 +142,8 @@ func (s *Service) GetCostSummary(ctx context.Context, workspaceID string, period
 	return summary, nil
 }
 
-// parseResourceTypes parses resource types filter string
-// Returns: (includeVM, includeCluster, includeNodeGroups)
+// parseResourceTypes: 리소스 타입 필터 문자열을 파싱합니다
+// 반환값: (includeVM, includeCluster, includeNodeGroups)
 func (s *Service) parseResourceTypes(resourceTypes string) (bool, bool, bool) {
 	if resourceTypes == "" || resourceTypes == "all" {
 		return true, true, true
@@ -151,13 +173,15 @@ func (s *Service) parseResourceTypes(resourceTypes string) (bool, bool, bool) {
 	return includeVM, includeCluster, includeNodeGroups
 }
 
-// GetCostPredictions generates cost predictions for future periods
+// GetCostPredictions: 향후 기간에 대한 비용 예측을 생성합니다
 func (s *Service) GetCostPredictions(ctx context.Context, workspaceID string, days int, resourceTypes string) ([]CostPrediction, []CostWarning, error) {
 	cacheKey := fmt.Sprintf("cost_predictions:%s:%d:%s", workspaceID, days, resourceTypes)
 
 	var cachedPredictions []CostPrediction
 	if found, _ := s.getFromCache(ctx, cacheKey, &cachedPredictions); found {
-		logger.Debugf("Cost predictions cache hit for workspace %s, days %d", workspaceID, days)
+		s.logger.Debug("Cost predictions cache hit",
+			zap.String("workspace_id", workspaceID),
+			zap.Int("days", days))
 		return cachedPredictions, []CostWarning{}, nil
 	}
 
@@ -211,7 +235,7 @@ func (s *Service) GetCostPredictions(ctx context.Context, workspaceID string, da
 	return predictions, warnings, nil
 }
 
-// CheckBudgetAlerts checks if workspace exceeds budget limits
+// CheckBudgetAlerts: 워크스페이스가 예산 한도를 초과하는지 확인합니다
 func (s *Service) CheckBudgetAlerts(ctx context.Context, workspaceID string, budgetLimit float64) ([]BudgetAlert, error) {
 	summary, err := s.GetCostSummary(ctx, workspaceID, "1m", "all")
 	if err != nil {
@@ -219,9 +243,9 @@ func (s *Service) CheckBudgetAlerts(ctx context.Context, workspaceID string, bud
 	}
 
 	var alerts []BudgetAlert
-	percentage := (summary.TotalCost / budgetLimit) * 100
+	percentage := (summary.TotalCost / budgetLimit) * PercentageBase
 
-	if percentage >= 100 {
+	if percentage >= BudgetThreshold {
 		alerts = append(alerts, BudgetAlert{
 			ID:          fmt.Sprintf("budget-exceeded-%s", workspaceID),
 			WorkspaceID: workspaceID,
@@ -248,7 +272,7 @@ func (s *Service) CheckBudgetAlerts(ctx context.Context, workspaceID string, bud
 	return alerts, nil
 }
 
-// GetCostTrend retrieves cost trend for a workspace
+// GetCostTrend: 워크스페이스의 비용 추세를 조회합니다
 func (s *Service) GetCostTrend(ctx context.Context, workspaceID string, period string, resourceTypes string) (*CostTrend, error) {
 	// Generate cache key
 	cacheKey := fmt.Sprintf("cost_trend:%s:%s:%s", workspaceID, period, resourceTypes)
@@ -257,7 +281,9 @@ func (s *Service) GetCostTrend(ctx context.Context, workspaceID string, period s
 	if s.cache != nil {
 		var cachedTrend CostTrend
 		if err := s.cache.Get(ctx, cacheKey, &cachedTrend); err == nil {
-			logger.Debugf("Cost trend cache hit for workspace %s, period %s", workspaceID, period)
+			s.logger.Debug("Cost trend cache hit",
+				zap.String("workspace_id", workspaceID),
+				zap.String("period", period))
 			return &cachedTrend, nil
 		}
 	}
@@ -288,7 +314,9 @@ func (s *Service) GetCostTrend(ctx context.Context, workspaceID string, period s
 
 		allCredentials, err := s.credentialRepo.GetByWorkspaceID(workspaceUUID)
 		if err != nil {
-			logger.Warnf("Failed to get credentials for workspace %s: %v, will use estimated costs", workspaceID, err)
+			s.logger.Warn("Failed to get credentials for workspace, will use estimated costs",
+				zap.String("workspace_id", workspaceID),
+				zap.Error(err))
 			allCredentials = []*domain.Credential{}
 		}
 
@@ -303,7 +331,9 @@ func (s *Service) GetCostTrend(ctx context.Context, workspaceID string, period s
 		for _, vm := range vms {
 			costs, err := s.calculateVMCostsOptimized(ctx, vm, startDate, endDate, credentialsByProvider)
 			if err != nil {
-				logger.Warnf("Failed to calculate VM costs for VM %s: %v", vm.ID, err)
+				s.logger.Warn("Failed to calculate VM costs",
+					zap.String("vm_id", vm.ID),
+					zap.Error(err))
 				warnings = append(warnings, CostWarning{
 					Code:         "VM_COST_CALCULATION_FAILED",
 					Message:      fmt.Sprintf("Failed to calculate costs for VM %s: %v", vm.ID, err),
@@ -320,7 +350,7 @@ func (s *Service) GetCostTrend(ctx context.Context, workspaceID string, period s
 	if includeCluster {
 		clusterCosts, clusterWarnings, err := s.calculateKubernetesCosts(ctx, workspaceID, startDate, endDate, includeNodeGroups)
 		if err != nil {
-			logger.Warnf("Failed to calculate Kubernetes costs: %v", err)
+			s.logger.Warn("Failed to calculate Kubernetes costs", zap.Error(err))
 			warnings = append(warnings, CostWarning{
 				Code:         "KUBERNETES_COST_CALCULATION_FAILED",
 				Message:      fmt.Sprintf("Failed to calculate Kubernetes cluster costs: %v", err),
@@ -350,13 +380,16 @@ func (s *Service) GetCostTrend(ctx context.Context, workspaceID string, period s
 	return trend, nil
 }
 
-// GetCostBreakdown retrieves cost breakdown for a workspace
+// GetCostBreakdown: 워크스페이스의 비용 세부 내역을 조회합니다
 func (s *Service) GetCostBreakdown(ctx context.Context, workspaceID string, period string, dimension string, resourceTypes string) (*CostBreakdown, []CostWarning, error) {
 	cacheKey := fmt.Sprintf("cost_breakdown:%s:%s:%s:%s", workspaceID, period, dimension, resourceTypes)
 
 	var cachedBreakdown CostBreakdown
 	if found, _ := s.getFromCache(ctx, cacheKey, &cachedBreakdown); found {
-		logger.Debugf("Cost breakdown cache hit for workspace %s, period %s, dimension %s", workspaceID, period, dimension)
+		s.logger.Debug("Cost breakdown cache hit",
+			zap.String("workspace_id", workspaceID),
+			zap.String("period", period),
+			zap.String("dimension", dimension))
 		return &cachedBreakdown, []CostWarning{}, nil
 	}
 
@@ -379,7 +412,9 @@ func (s *Service) GetCostBreakdown(ctx context.Context, workspaceID string, peri
 		for _, vm := range vms {
 			costs, err := s.calculateVMCosts(ctx, vm, startDate, endDate)
 			if err != nil {
-				logger.Warnf("Failed to calculate VM costs for VM %s: %v", vm.ID, err)
+				s.logger.Warn("Failed to calculate VM costs",
+					zap.String("vm_id", vm.ID),
+					zap.Error(err))
 				warnings = append(warnings, CostWarning{
 					Code:         "VM_COST_CALCULATION_FAILED",
 					Message:      fmt.Sprintf("Failed to calculate costs for VM %s: %v", vm.ID, err),
@@ -410,7 +445,7 @@ func (s *Service) GetCostBreakdown(ctx context.Context, workspaceID string, peri
 	return breakdown, warnings, nil
 }
 
-// GetCostComparison retrieves cost comparison between periods
+// GetCostComparison: 기간 간 비용 비교를 조회합니다
 func (s *Service) GetCostComparison(ctx context.Context, workspaceID string, currentPeriod string, comparePeriod string) (*CostComparison, error) {
 	// Get current period summary
 	currentSummary, err := s.GetCostSummary(ctx, workspaceID, currentPeriod, "all")
@@ -422,21 +457,9 @@ func (s *Service) GetCostComparison(ctx context.Context, workspaceID string, cur
 	now := time.Now()
 	var compareStartDate, compareEndDate time.Time
 
-	switch comparePeriod {
-	case "7d":
-		compareEndDate = now.AddDate(0, 0, -7)
-		compareStartDate = compareEndDate.AddDate(0, 0, -7)
-	case "30d", "1m":
-		compareEndDate = now.AddDate(0, 0, -30)
-		compareStartDate = compareEndDate.AddDate(0, 0, -30)
-	case "90d", "3m":
-		compareEndDate = now.AddDate(0, 0, -90)
-		compareStartDate = compareEndDate.AddDate(0, 0, -90)
-	case "1y":
-		compareEndDate = now.AddDate(-1, 0, 0)
-		compareStartDate = compareEndDate.AddDate(-1, 0, 0)
-	default:
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported compare period: %s", comparePeriod), 400)
+	compareStartDate, compareEndDate, err = s.parseComparePeriod(comparePeriod, now)
+	if err != nil {
+		return nil, err
 	}
 
 	// Get VMs in workspace
@@ -453,7 +476,9 @@ func (s *Service) GetCostComparison(ctx context.Context, workspaceID string, cur
 
 	allCredentials, err := s.credentialRepo.GetByWorkspaceID(workspaceUUID)
 	if err != nil {
-		logger.Warnf("Failed to get credentials for workspace %s: %v, will use estimated costs", workspaceID, err)
+		s.logger.Warn("Failed to get credentials for workspace, will use estimated costs",
+			zap.String("workspace_id", workspaceID),
+			zap.Error(err))
 		allCredentials = []*domain.Credential{}
 	}
 
@@ -470,7 +495,9 @@ func (s *Service) GetCostComparison(ctx context.Context, workspaceID string, cur
 	for _, vm := range vms {
 		costs, err := s.calculateVMCostsOptimized(ctx, vm, compareStartDate, compareEndDate, credentialsByProvider)
 		if err != nil {
-			logger.Warnf("Failed to calculate VM costs for VM %s: %v", vm.ID, err)
+			s.logger.Warn("Failed to calculate VM costs",
+				zap.String("vm_id", vm.ID),
+				zap.Error(err))
 			continue
 		}
 		compareCosts = append(compareCosts, costs...)
@@ -486,7 +513,7 @@ func (s *Service) GetCostComparison(ctx context.Context, workspaceID string, cur
 	costChange := currentSummary.TotalCost - compareTotal
 	var percentageChange float64
 	if compareTotal > 0 {
-		percentageChange = (costChange / compareTotal) * 100
+		percentageChange = (costChange / compareTotal) * PercentageBase
 	}
 
 	return &CostComparison{
@@ -507,16 +534,37 @@ func (s *Service) GetCostComparison(ctx context.Context, workspaceID string, cur
 
 // Helper methods
 
+// parseComparePeriod: 비교 기간 문자열을 파싱하여 시작일과 종료일을 반환합니다
+func (s *Service) parseComparePeriod(period string, now time.Time) (time.Time, time.Time, error) {
+	switch period {
+	case "7d":
+		compareEndDate := now.AddDate(0, 0, -DaysPerWeek)
+		return compareEndDate.AddDate(0, 0, -DaysPerWeek), compareEndDate, nil
+	case "30d", "1m":
+		compareEndDate := now.AddDate(0, 0, -DaysPerMonth)
+		return compareEndDate.AddDate(0, 0, -DaysPerMonth), compareEndDate, nil
+	case "90d", "3m":
+		compareEndDate := now.AddDate(0, 0, -DaysPerQuarter)
+		return compareEndDate.AddDate(0, 0, -DaysPerQuarter), compareEndDate, nil
+	case "1y":
+		compareEndDate := now.AddDate(-1, 0, 0)
+		return compareEndDate.AddDate(-1, 0, 0), compareEndDate, nil
+	default:
+		return time.Time{}, time.Time{}, domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported compare period: %s", period), 400)
+	}
+}
+
+// parsePeriod: 기간 문자열을 파싱하여 시작일과 종료일을 반환합니다
 func (s *Service) parsePeriod(period string) (time.Time, time.Time, error) {
 	now := time.Now()
 
 	switch period {
 	case "7d":
-		return now.AddDate(0, 0, -7), now, nil
+		return now.AddDate(0, 0, -DaysPerWeek), now, nil
 	case "30d", "1m":
-		return now.AddDate(0, 0, -30), now, nil
+		return now.AddDate(0, 0, -DaysPerMonth), now, nil
 	case "90d", "3m":
-		return now.AddDate(0, 0, -90), now, nil
+		return now.AddDate(0, 0, -DaysPerQuarter), now, nil
 	case "1y":
 		return now.AddDate(-1, 0, 0), now, nil
 	default:
@@ -524,12 +572,14 @@ func (s *Service) parsePeriod(period string) (time.Time, time.Time, error) {
 	}
 }
 
-// calculateVMCostsOptimized calculates VM costs using pre-fetched credentials (optimized to avoid N+1 queries)
+// calculateVMCostsOptimized: 미리 가져온 자격증명을 사용하여 VM 비용을 계산합니다 (N+1 쿼리 방지를 위한 최적화)
 func (s *Service) calculateVMCostsOptimized(ctx context.Context, vm *domain.VM, startDate, endDate time.Time, credentialsByProvider map[string][]*domain.Credential) ([]CostData, error) {
 	// Get credentials from pre-fetched map
 	credentials, exists := credentialsByProvider[vm.Provider]
 	if !exists || len(credentials) == 0 {
-		logger.Warnf("No credentials found for provider %s in workspace %s, falling back to estimated costs", vm.Provider, vm.WorkspaceID)
+		s.logger.Warn("No credentials found for provider, falling back to estimated costs",
+			zap.String("provider", vm.Provider),
+			zap.String("workspace_id", vm.WorkspaceID))
 		return s.calculateEstimatedCosts(vm, startDate, endDate)
 	}
 
@@ -558,7 +608,7 @@ func (s *Service) calculateVMCostsOptimized(ctx context.Context, vm *domain.VM, 
 	}
 }
 
-// calculateVMCosts calculates VM costs (original method, kept for backward compatibility)
+// calculateVMCosts: VM 비용을 계산합니다 (원본 메서드, 하위 호환성을 위해 유지)
 func (s *Service) calculateVMCosts(ctx context.Context, vm *domain.VM, startDate, endDate time.Time) ([]CostData, error) {
 	// Get credentials for the provider and workspace
 	workspaceUUID, err := uuid.Parse(vm.WorkspaceID)
@@ -568,12 +618,16 @@ func (s *Service) calculateVMCosts(ctx context.Context, vm *domain.VM, startDate
 
 	credentials, err := s.credentialRepo.GetByWorkspaceIDAndProvider(workspaceUUID, vm.Provider)
 	if err != nil {
-		logger.Warnf("Failed to get credentials for provider %s: %v, falling back to estimated costs", vm.Provider, err)
+		s.logger.Warn("Failed to get credentials for provider, falling back to estimated costs",
+			zap.String("provider", vm.Provider),
+			zap.Error(err))
 		return s.calculateEstimatedCosts(vm, startDate, endDate)
 	}
 
 	if len(credentials) == 0 {
-		logger.Warnf("No credentials found for provider %s in workspace %s, falling back to estimated costs", vm.Provider, vm.WorkspaceID)
+		s.logger.Warn("No credentials found for provider, falling back to estimated costs",
+			zap.String("provider", vm.Provider),
+			zap.String("workspace_id", vm.WorkspaceID))
 		return s.calculateEstimatedCosts(vm, startDate, endDate)
 	}
 
@@ -602,7 +656,7 @@ func (s *Service) calculateVMCosts(ctx context.Context, vm *domain.VM, startDate
 	}
 }
 
-// calculateEstimatedCosts calculates costs based on VM specifications when API is unavailable
+// calculateEstimatedCosts: API를 사용할 수 없을 때 VM 사양을 기반으로 비용을 계산합니다
 func (s *Service) calculateEstimatedCosts(vm *domain.VM, startDate, endDate time.Time) ([]CostData, error) {
 	var costs []CostData
 	current := startDate
@@ -639,6 +693,7 @@ func (s *Service) calculateEstimatedCosts(vm *domain.VM, startDate, endDate time
 	return costs, nil
 }
 
+// getVMHourlyRate: VM의 시간당 요금을 반환합니다
 func (s *Service) getVMHourlyRate(vm *domain.VM) float64 {
 	// Mock pricing based on VM specifications
 	// In reality, this would come from cloud provider pricing APIs
@@ -664,7 +719,7 @@ func (s *Service) getVMHourlyRate(vm *domain.VM) float64 {
 	return (baseRate + cpuMultiplier + memoryMultiplier + storageMultiplier) * providerMultiplier
 }
 
-// getVMServiceName returns the service name for a VM based on provider
+// getVMServiceName: 프로바이더에 따라 VM의 서비스 이름을 반환합니다
 func (s *Service) getVMServiceName(provider string) string {
 	switch provider {
 	case ProviderAWS:
@@ -678,6 +733,7 @@ func (s *Service) getVMServiceName(provider string) string {
 	}
 }
 
+// aggregateCosts: 비용 데이터를 집계하여 요약을 생성합니다
 func (s *Service) aggregateCosts(costs []CostData, startDate, endDate time.Time, period string) *CostSummary {
 	summary := &CostSummary{
 		Currency:   CurrencyUSD,
@@ -695,6 +751,7 @@ func (s *Service) aggregateCosts(costs []CostData, startDate, endDate time.Time,
 	return summary
 }
 
+// generatePredictions: 과거 비용 데이터를 기반으로 예측을 생성합니다
 func (s *Service) generatePredictions(historicalCosts []CostData, days int) []CostPrediction {
 	// Simple linear regression for prediction
 	// In a real implementation, you might use more sophisticated ML models
@@ -772,6 +829,7 @@ func (s *Service) generatePredictions(historicalCosts []CostData, days int) []Co
 	return predictions
 }
 
+// calculateVariance: 값들의 분산을 계산합니다
 func (s *Service) calculateVariance(values []float64) float64 {
 	if len(values) < MinDataPointsForVariance {
 		return 0
@@ -794,7 +852,7 @@ func (s *Service) calculateVariance(values []float64) float64 {
 	return variance
 }
 
-// aggregateDailyCosts aggregates costs by day
+// aggregateDailyCosts: 비용을 일별로 집계합니다
 func (s *Service) aggregateDailyCosts(costs []CostData) []DailyCostData {
 	dailyMap := make(map[string]float64)
 	for _, cost := range costs {
@@ -819,7 +877,7 @@ func (s *Service) aggregateDailyCosts(costs []CostData) []DailyCostData {
 	return dailyCosts
 }
 
-// calculateTrendMetrics calculates trend direction and percentage change
+// calculateTrendMetrics: 추세 방향과 변화율을 계산합니다
 func (s *Service) calculateTrendMetrics(dailyCosts []DailyCostData) (string, float64) {
 	if len(dailyCosts) < MinDataPointsForPrediction {
 		return TrendDirectionStable, 0.0
@@ -860,7 +918,7 @@ func (s *Service) calculateTrendMetrics(dailyCosts []DailyCostData) (string, flo
 	return trendDirection, percentageChange
 }
 
-// aggregateCostBreakdown aggregates costs by dimension (service, provider, region)
+// aggregateCostBreakdown: 차원별로 비용을 집계합니다 (서비스, 프로바이더, 리전)
 func (s *Service) aggregateCostBreakdown(costs []CostData, dimension string) *CostBreakdown {
 	totalCost := 0.0
 	for _, cost := range costs {
@@ -938,7 +996,7 @@ func (s *Service) aggregateCostBreakdown(costs []CostData, dimension string) *Co
 	return &breakdown
 }
 
-// getAWSCosts retrieves actual costs from AWS Cost Explorer API
+// getAWSCosts: AWS Cost Explorer API에서 실제 비용을 조회합니다
 func (s *Service) getAWSCosts(ctx context.Context, credential *domain.Credential, vm *domain.VM, startDate, endDate time.Time) ([]CostData, error) {
 	ceClient, _, err := s.getAWSCostExplorerClient(ctx, credential, vm.Region)
 	if err != nil {
@@ -958,7 +1016,8 @@ func (s *Service) getAWSCosts(ctx context.Context, credential *domain.Credential
 
 	result, err := s.queryAWSCostExplorer(ctx, ceClient, startDate, endDate, filter, nil)
 	if err != nil {
-		logger.Warnf("Failed to get AWS costs from Cost Explorer API: %v, falling back to estimated costs", err)
+		s.logger.Warn("Failed to get AWS costs from Cost Explorer API, falling back to estimated costs",
+			zap.Error(err))
 		return s.calculateEstimatedCosts(vm, startDate, endDate)
 	}
 
@@ -966,14 +1025,14 @@ func (s *Service) getAWSCosts(ctx context.Context, credential *domain.Credential
 
 	// If no costs found, fall back to estimated costs
 	if len(costs) == 0 {
-		logger.Warnf("No AWS costs found from Cost Explorer API, falling back to estimated costs")
+		s.logger.Warn("No AWS costs found from Cost Explorer API, falling back to estimated costs")
 		return s.calculateEstimatedCosts(vm, startDate, endDate)
 	}
 
 	return costs, nil
 }
 
-// getAWSCostExplorerClient creates AWS Cost Explorer client from credential
+// getAWSCostExplorerClient: 자격증명으로부터 AWS Cost Explorer 클라이언트를 생성합니다
 func (s *Service) getAWSCostExplorerClient(ctx context.Context, credential *domain.Credential, defaultRegion string) (*costexplorer.Client, string, error) {
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
 	if err != nil {
@@ -1014,7 +1073,7 @@ func (s *Service) getAWSCostExplorerClient(ctx context.Context, credential *doma
 	return ceClient, region, nil
 }
 
-// queryAWSCostExplorer queries AWS Cost Explorer API with given parameters
+// queryAWSCostExplorer: 주어진 파라미터로 AWS Cost Explorer API를 조회합니다
 func (s *Service) queryAWSCostExplorer(ctx context.Context, ceClient *costexplorer.Client, startDate, endDate time.Time, filter *types.Expression, groupBy []types.GroupDefinition) (*costexplorer.GetCostAndUsageOutput, error) {
 	if groupBy == nil {
 		groupBy = []types.GroupDefinition{
@@ -1046,7 +1105,7 @@ func (s *Service) queryAWSCostExplorer(ctx context.Context, ceClient *costexplor
 	return ceClient.GetCostAndUsage(ctx, input)
 }
 
-// parseAWSCostExplorerResults parses AWS Cost Explorer API results into CostData slice
+// parseAWSCostExplorerResults: AWS Cost Explorer API 결과를 CostData 슬라이스로 파싱합니다
 func (s *Service) parseAWSCostExplorerResults(result *costexplorer.GetCostAndUsageOutput, resourceID, workspaceID, resourceType string) []CostData {
 	var costs []CostData
 
@@ -1054,7 +1113,9 @@ func (s *Service) parseAWSCostExplorerResults(result *costexplorer.GetCostAndUsa
 		dateStr := aws.ToString(resultByTime.TimePeriod.Start)
 		date, err := time.Parse(DateFormatISO, dateStr)
 		if err != nil {
-			logger.Warnf("Failed to parse date %s: %v", dateStr, err)
+			s.logger.Warn("Failed to parse date",
+				zap.String("date", dateStr),
+				zap.Error(err))
 			continue
 		}
 
@@ -1075,7 +1136,9 @@ func (s *Service) parseAWSCostExplorerResults(result *costexplorer.GetCostAndUsa
 				var parseErr error
 				amount, parseErr = parseFloat(amountStr)
 				if parseErr != nil {
-					logger.Warnf("Failed to parse cost amount %s: %v", amountStr, parseErr)
+					s.logger.Warn("Failed to parse cost amount",
+						zap.String("amount", amountStr),
+						zap.Error(parseErr))
 					continue
 				}
 				currency = aws.ToString(blendedCost.Unit)
@@ -1100,7 +1163,7 @@ func (s *Service) parseAWSCostExplorerResults(result *costexplorer.GetCostAndUsa
 	return costs
 }
 
-// getGCPCosts retrieves actual costs from GCP Cloud Billing API
+// getGCPCosts: GCP Cloud Billing API에서 실제 비용을 조회합니다
 func (s *Service) getGCPCosts(ctx context.Context, credential *domain.Credential, vm *domain.VM, startDate, endDate time.Time) ([]CostData, error) {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
@@ -1149,20 +1212,23 @@ func (s *Service) getGCPCosts(ctx context.Context, credential *domain.Credential
 
 	projectBillingInfo, err := billingClient.GetProjectBillingInfo(ctx, req)
 	if err != nil {
-		logger.Warnf("Failed to get GCP billing info: %v, falling back to estimated costs", err)
+		s.logger.Warn("Failed to get GCP billing info, falling back to estimated costs",
+			zap.Error(err))
 		return s.calculateEstimatedCosts(vm, startDate, endDate)
 	}
 
 	// Check if billing is enabled
 	if !projectBillingInfo.BillingEnabled {
-		logger.Warnf("Billing not enabled for project %s, falling back to estimated costs", projectID)
+		s.logger.Warn("Billing not enabled for project, falling back to estimated costs",
+			zap.String("project_id", projectID))
 		return s.calculateEstimatedCosts(vm, startDate, endDate)
 	}
 
 	// Get billing account name
 	billingAccountName := projectBillingInfo.BillingAccountName
 	if billingAccountName == "" {
-		logger.Warnf("No billing account found for project %s, falling back to estimated costs", projectID)
+		s.logger.Warn("No billing account found for project, falling back to estimated costs",
+			zap.String("project_id", projectID))
 		return s.calculateEstimatedCosts(vm, startDate, endDate)
 	}
 
@@ -1170,20 +1236,21 @@ func (s *Service) getGCPCosts(ctx context.Context, credential *domain.Credential
 	// For detailed cost data, we would need to use BigQuery Billing Export or Cloud Billing Budget API
 	// Since that requires additional setup, we'll use estimated costs based on VM specifications
 	// but mark it as coming from GCP pricing
-	logger.Infof("GCP billing account found: %s, using estimated costs based on VM specifications", billingAccountName)
+	s.logger.Info("GCP billing account found, using estimated costs based on VM specifications",
+		zap.String("billing_account", billingAccountName))
 
 	return s.calculateEstimatedCosts(vm, startDate, endDate)
 }
 
-// parseFloat parses a string to float64, handling various formats
+// parseFloat: 다양한 형식을 처리하여 문자열을 float64로 파싱합니다
 func parseFloat(s string) (float64, error) {
 	var result float64
 	_, err := fmt.Sscanf(s, "%f", &result)
 	return result, err
 }
 
-// calculateKubernetesCosts calculates costs for Kubernetes clusters in a workspace
-// Returns costs, warnings, and error
+// calculateKubernetesCosts: 워크스페이스의 Kubernetes 클러스터 비용을 계산합니다
+// 반환값: 비용, 경고, 에러
 func (s *Service) calculateKubernetesCosts(ctx context.Context, workspaceID string, startDate, endDate time.Time, includeNodeGroups bool) ([]CostData, []CostWarning, error) {
 	workspaceUUID, err := uuid.Parse(workspaceID)
 	if err != nil {
@@ -1220,7 +1287,7 @@ func (s *Service) calculateKubernetesCosts(ctx context.Context, workspaceID stri
 		case ProviderAWS:
 			costs, providerWarnings, err := s.getAWSKubernetesCosts(ctx, credential, workspaceID, startDate, endDate, includeNodeGroups)
 			if err != nil {
-				logger.Warnf("Failed to get AWS Kubernetes costs: %v", err)
+				s.logger.Warn("Failed to get AWS Kubernetes costs", zap.Error(err))
 				warnings = append(warnings, s.formatKubernetesErrorWarning(err, ProviderAWS, credential))
 				continue
 			}
@@ -1229,7 +1296,7 @@ func (s *Service) calculateKubernetesCosts(ctx context.Context, workspaceID stri
 		case ProviderGCP:
 			costs, providerWarnings, err := s.getGCPKubernetesCosts(ctx, credential, workspaceID, startDate, endDate, includeNodeGroups)
 			if err != nil {
-				logger.Warnf("Failed to get GCP Kubernetes costs: %v", err)
+				s.logger.Warn("Failed to get GCP Kubernetes costs", zap.Error(err))
 				warnings = append(warnings, s.formatKubernetesErrorWarning(err, ProviderGCP, credential))
 				continue
 			}
@@ -1244,7 +1311,7 @@ func (s *Service) calculateKubernetesCosts(ctx context.Context, workspaceID stri
 	return allCosts, warnings, nil
 }
 
-// formatKubernetesErrorWarning formats an error into a user-friendly warning
+// formatKubernetesErrorWarning: 에러를 사용자 친화적인 경고로 포맷합니다
 func (s *Service) formatKubernetesErrorWarning(err error, provider string, credential *domain.Credential) CostWarning {
 	errMsg := err.Error()
 
@@ -1258,7 +1325,7 @@ func (s *Service) formatKubernetesErrorWarning(err error, provider string, crede
 	}
 }
 
-// parseKubernetesError parses error message and returns appropriate error code and message
+// parseKubernetesError: 에러 메시지를 파싱하여 적절한 에러 코드와 메시지를 반환합니다
 func (s *Service) parseKubernetesError(errMsg, provider string) (string, string) {
 	if s.isPermissionError(errMsg) {
 		return s.getPermissionErrorMessage(provider)
@@ -1275,22 +1342,22 @@ func (s *Service) parseKubernetesError(errMsg, provider string) (string, string)
 	return "KUBERNETES_COST_API_ERROR", fmt.Sprintf("Failed to retrieve %s Kubernetes cluster costs", provider)
 }
 
-// isPermissionError checks if error is permission-related
+// isPermissionError: 에러가 권한 관련인지 확인합니다
 func (s *Service) isPermissionError(errMsg string) bool {
 	return strings.Contains(errMsg, "AccessDeniedException") || strings.Contains(errMsg, "not authorized")
 }
 
-// isAPIEnabledError checks if error is API-enabled-related
+// isAPIEnabledError: 에러가 API 활성화 관련인지 확인합니다
 func (s *Service) isAPIEnabledError(errMsg string) bool {
 	return strings.Contains(errMsg, "SERVICE_DISABLED") || strings.Contains(errMsg, "not been used") || strings.Contains(errMsg, "disabled")
 }
 
-// isCredentialError checks if error is credential-related
+// isCredentialError: 에러가 자격증명 관련인지 확인합니다
 func (s *Service) isCredentialError(errMsg string) bool {
 	return strings.Contains(errMsg, "credentials") || strings.Contains(errMsg, "authentication")
 }
 
-// getPermissionErrorMessage returns permission error code and message for provider
+// getPermissionErrorMessage: 프로바이더에 대한 권한 에러 코드와 메시지를 반환합니다
 func (s *Service) getPermissionErrorMessage(provider string) (string, string) {
 	code := "API_PERMISSION_DENIED"
 	var message string
@@ -1307,7 +1374,7 @@ func (s *Service) getPermissionErrorMessage(provider string) (string, string) {
 	return code, message
 }
 
-// getAPIEnabledErrorMessage returns API-enabled error code and message for provider
+// getAPIEnabledErrorMessage: 프로바이더에 대한 API 활성화 에러 코드와 메시지를 반환합니다
 func (s *Service) getAPIEnabledErrorMessage(provider string) (string, string) {
 	code := "API_NOT_ENABLED"
 	var message string
@@ -1324,8 +1391,8 @@ func (s *Service) getAPIEnabledErrorMessage(provider string) (string, string) {
 	return code, message
 }
 
-// getAWSKubernetesCosts retrieves EKS costs from AWS Cost Explorer API
-// Returns costs, warnings, and error
+// getAWSKubernetesCosts: AWS Cost Explorer API에서 EKS 비용을 조회합니다
+// 반환값: 비용, 경고, 에러
 func (s *Service) getAWSKubernetesCosts(ctx context.Context, credential *domain.Credential, workspaceID string, startDate, endDate time.Time, includeNodeGroups bool) ([]CostData, []CostWarning, error) {
 	ceClient, _, err := s.getAWSCostExplorerClient(ctx, credential, AWSDefaultRegion)
 	if err != nil {
@@ -1372,8 +1439,8 @@ func (s *Service) getAWSKubernetesCosts(ctx context.Context, credential *domain.
 	return costs, warnings, nil
 }
 
-// getGCPKubernetesCosts retrieves GKE costs from GCP Cloud Billing API
-// Returns costs, warnings, and error
+// getGCPKubernetesCosts: GCP Cloud Billing API에서 GKE 비용을 조회합니다
+// 반환값: 비용, 경고, 에러
 func (s *Service) getGCPKubernetesCosts(ctx context.Context, credential *domain.Credential, workspaceID string, startDate, endDate time.Time, includeNodeGroups bool) ([]CostData, []CostWarning, error) {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
@@ -1447,7 +1514,9 @@ func (s *Service) getGCPKubernetesCosts(ctx context.Context, credential *domain.
 	// Since GCP Billing API is complex, we'll use a simplified approach
 	// and estimate based on cluster count (similar to VM estimation)
 	// In production, you would use Cloud Billing Export to BigQuery for detailed costs
-	logger.Infof("GKE costs retrieved for project %s (billing account: %s)", projectID, projectInfo.BillingAccountName)
+	s.logger.Info("GKE costs retrieved",
+		zap.String("project_id", projectID),
+		zap.String("billing_account", projectInfo.BillingAccountName))
 
 	// Return empty costs for now - GCP Billing API requires more complex setup
 	// In production, use Cloud Billing Export API or BigQuery

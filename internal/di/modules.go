@@ -14,6 +14,7 @@ import (
 	computeservice "skyclust/internal/application/services/compute"
 	costanalysisservice "skyclust/internal/application/services/cost_analysis"
 	credentialservice "skyclust/internal/application/services/credential"
+	dashboardservice "skyclust/internal/application/services/dashboard"
 	eventservice "skyclust/internal/application/services/event"
 	exportservice "skyclust/internal/application/services/export"
 	kubernetesservice "skyclust/internal/application/services/kubernetes"
@@ -56,6 +57,7 @@ func NewRepositoryModule(db *gorm.DB, redisClient *redis.Client) *RepositoryModu
 	notificationRepo := postgres.NewNotificationRepository(db)
 	notificationPreferencesRepo := postgres.NewNotificationPreferencesRepository(db)
 	rbacRepo := postgres.NewRBACRepository(db)
+	outboxRepo := postgres.NewOutboxRepository(db)
 
 	logger.Info("Repository module initialized")
 
@@ -70,6 +72,7 @@ func NewRepositoryModule(db *gorm.DB, redisClient *redis.Client) *RepositoryModu
 			NotificationPreferencesRepository: notificationPreferencesRepo,
 			OIDCProviderRepository:            nil, // Will be set later after encryptor is available
 			RBACRepository:                    rbacRepo,
+			OutboxRepository:                  outboxRepo,
 		},
 	}
 }
@@ -139,14 +142,15 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 	// Create UserService
 	userService := userservice.NewService(repos.UserRepository, hasher, repos.AuditLogRepository)
 
-	// Create CredentialService
-	credentialService := credentialservice.NewService(repos.CredentialRepository, repos.AuditLogRepository, encryptor)
+	// Create CredentialService with event publisher
+	credentialEventPublisher := messaging.NewPublisher(messagingBus, logger.DefaultLogger.GetLogger())
+	credentialService := credentialservice.NewService(repos.CredentialRepository, repos.AuditLogRepository, encryptor, credentialEventPublisher)
 
 	// Create Kubernetes service
-	k8sService := kubernetesservice.NewService(credentialService, config.Cache, messagingBus, logger.DefaultLogger.GetLogger())
+	k8sService := kubernetesservice.NewService(credentialService, config.Cache, messagingBus, repos.AuditLogRepository, logger.DefaultLogger.GetLogger())
 
 	// Create Network service (after credentialService is created)
-	networkService := networkservice.NewService(credentialService, config.Cache, messagingBus, logger.DefaultLogger.GetLogger())
+	networkService := networkservice.NewService(credentialService, config.Cache, messagingBus, repos.AuditLogRepository, logger.DefaultLogger.GetLogger())
 
 	// Create AuditLogService
 	auditLogService := auditlogservice.NewService(repos.AuditLogRepository)
@@ -161,8 +165,9 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 	// Create OIDCService
 	oidcService := oidcservice.NewService(repos.UserRepository, repos.AuditLogRepository, authService, cacheService, oidcProviderRepo)
 
-	// Create WorkspaceService
-	workspaceService := workspaceservice.NewService(repos.WorkspaceRepository, repos.UserRepository, eventService, repos.AuditLogRepository)
+	// Create WorkspaceService with event publisher
+	workspaceEventPublisher := messaging.NewPublisher(messagingBus, logger.DefaultLogger.GetLogger())
+	workspaceService := workspaceservice.NewService(repos.WorkspaceRepository, repos.UserRepository, eventService, repos.AuditLogRepository, workspaceEventPublisher)
 
 	// Create NotificationService
 	notificationService := notificationservice.NewService(
@@ -189,7 +194,6 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 		config.Cache,
 		cache.NewCacheKeyBuilder(),
 		cache.NewInvalidatorWithEvents(config.Cache, vmEventPublisher),
-		vmEventPublisher,
 		logger.DefaultLogger.GetLogger(),
 	)
 
@@ -220,6 +224,16 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 		repos.AuditLogRepository,
 	)
 
+	// Create DashboardService
+	dashboardService := dashboardservice.NewService(
+		repos.WorkspaceRepository,
+		repos.VMRepository,
+		repos.CredentialRepository,
+		k8sService,
+		networkService,
+		logger.DefaultLogger.GetLogger(),
+	)
+
 	return &ServiceModule{
 		services: &ServiceContainer{
 			AuthService:             authService,
@@ -238,6 +252,7 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 			ExportService:           exportService,
 			CostAnalysisService:     costAnalysisService,
 			ComputeService:          computeService,
+			DashboardService:        dashboardService,
 			BusinessRuleService:     nil, // BusinessRuleService is in DomainContainer, not ServiceContainer
 		},
 		messagingBus: messagingBus,
@@ -304,6 +319,9 @@ type InfrastructureModule struct {
 func NewInfrastructureModule(db *gorm.DB, redisClient *redis.Client) *InfrastructureModule {
 	logger.Info("Initializing infrastructure module...")
 
+	// Create transaction manager
+	transactionManager := postgres.NewTransactionManager(db)
+
 	// Note: Messaging bus and notification service are initialized in ServiceModule
 	// as they require application-level dependencies
 
@@ -311,6 +329,7 @@ func NewInfrastructureModule(db *gorm.DB, redisClient *redis.Client) *Infrastruc
 
 	return &InfrastructureModule{
 		infrastructure: &InfrastructureContainer{
+			TransactionManager: transactionManager,
 			// Infrastructure-level components can be added here in the future
 		},
 	}

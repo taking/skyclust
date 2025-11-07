@@ -17,9 +17,31 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ExportDialog } from '@/components/export/ExportDialog';
-import { ExportHistory } from '@/components/export/ExportHistory';
+import dynamic from 'next/dynamic';
 import { useRequireAuth } from '@/hooks/use-auth';
+
+// Dynamic imports for heavy components
+const ExportDialog = dynamic(
+  () => import('@/components/export/ExportDialog').then(mod => ({ default: mod.ExportDialog })),
+  { 
+    ssr: false,
+    loading: () => null,
+  }
+);
+
+const ExportHistory = dynamic(
+  () => import('@/components/export/ExportHistory').then(mod => ({ default: mod.ExportHistory })),
+  { 
+    ssr: false,
+    loading: () => (
+      <Card>
+        <CardContent className="p-6">
+          <div className="h-64 bg-gray-200 rounded animate-pulse" />
+        </CardContent>
+      </Card>
+    ),
+  }
+);
 
 export default function ExportsPage() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);

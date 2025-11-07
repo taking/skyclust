@@ -4,6 +4,7 @@
  */
 
 import { BaseService } from '@/lib/service-base';
+import { API_ENDPOINTS } from '@/lib/api-endpoints';
 import type {
   CostData,
   CostSummary,
@@ -16,17 +17,17 @@ import type {
 class CostAnalysisService extends BaseService {
   // 비용 요약 조회
   async getCostSummary(workspaceId: string, period: string = '30d'): Promise<CostSummary> {
-    return this.get<CostSummary>(`/cost-analysis/workspaces/${workspaceId}/summary?period=${period}`);
+    return this.get<CostSummary>(API_ENDPOINTS.costAnalysis.summary(workspaceId, period));
   }
 
   // 비용 예측 조회
   async getCostPredictions(workspaceId: string, days: number = 30): Promise<CostPrediction[]> {
-    return this.get<CostPrediction[]>(`/cost-analysis/workspaces/${workspaceId}/predictions?days=${days}`);
+    return this.get<CostPrediction[]>(API_ENDPOINTS.costAnalysis.predictions(workspaceId, days));
   }
 
   // 예산 알림 조회
   async getBudgetAlerts(workspaceId: string, budgetLimit: number): Promise<BudgetAlert[]> {
-    return this.get<BudgetAlert[]>(`/cost-analysis/workspaces/${workspaceId}/budget-alerts?budget_limit=${budgetLimit}`);
+    return this.get<BudgetAlert[]>(API_ENDPOINTS.costAnalysis.budgetAlerts(workspaceId, budgetLimit));
   }
 
   // 비용 트렌드 조회
@@ -40,17 +41,17 @@ class CostAnalysisService extends BaseService {
     end_date: string;
     daily_costs: CostData[];
   }> {
-    return this.get(`/cost-analysis/workspaces/${workspaceId}/trend?period=${period}`);
+    return this.get(API_ENDPOINTS.costAnalysis.trend(workspaceId, period));
   }
 
   // 비용 분석 조회
   async getCostBreakdown(workspaceId: string, period: string = '30d', dimension: string = 'service'): Promise<CostBreakdown> {
-    return this.get<CostBreakdown>(`/cost-analysis/workspaces/${workspaceId}/breakdown?period=${period}&dimension=${dimension}`);
+    return this.get<CostBreakdown>(API_ENDPOINTS.costAnalysis.breakdown(workspaceId, period, dimension));
   }
 
   // 비용 비교 조회
   async getCostComparison(workspaceId: string, currentPeriod: string = '30d', comparePeriod: string = '30d'): Promise<CostComparison> {
-    return this.get<CostComparison>(`/cost-analysis/workspaces/${workspaceId}/comparison?current_period=${currentPeriod}&compare_period=${comparePeriod}`);
+    return this.get<CostComparison>(API_ENDPOINTS.costAnalysis.comparison(workspaceId, currentPeriod, comparePeriod));
   }
 }
 

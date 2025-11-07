@@ -30,4 +30,3 @@ type OIDCUserInfo struct {
 	Name     string `json:"name"`
 	Avatar   string `json:"avatar_url"`
 }
-

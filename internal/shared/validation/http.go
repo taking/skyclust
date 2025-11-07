@@ -1,4 +1,4 @@
-package handlers
+package validation
 
 import (
 	"regexp"
@@ -52,7 +52,7 @@ func ValidateRequired(fields map[string]string) map[string]string {
 	return errors
 }
 
-// ValidatePagination validates pagination parameters
+// ValidatePagination validates pagination parameters from HTTP request
 func ValidatePagination(c *gin.Context) (limit, offset int, errors map[string]string) {
 	errors = make(map[string]string)
 
@@ -77,7 +77,7 @@ func ValidatePagination(c *gin.Context) (limit, offset int, errors map[string]st
 	return limit, offset, errors
 }
 
-// ValidateSort validates sort parameters
+// ValidateSort validates sort parameters from HTTP request
 func ValidateSort(c *gin.Context, allowedFields []string) (sortBy, sortOrder string, errors map[string]string) {
 	errors = make(map[string]string)
 
@@ -118,7 +118,7 @@ func ValidateSearch(query string) bool {
 	return len(trimmed) >= 2 && len(trimmed) <= 100
 }
 
-// ValidateFilters validates filter parameters
+// ValidateFilters validates filter parameters from HTTP request
 func ValidateFilters(c *gin.Context, allowedFilters []string) (filters map[string]interface{}, errors map[string]string) {
 	errors = make(map[string]string)
 	filters = make(map[string]interface{})

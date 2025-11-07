@@ -4,20 +4,20 @@ import (
 	"time"
 )
 
-// VMStatus represents the status of a virtual machine
+// VMStatus: 가상 머신의 상태를 나타내는 타입
 type VMStatus string
 
 const (
-	VMStatusPending    VMStatus = "pending"
-	VMStatusRunning    VMStatus = "running"
-	VMStatusStopped    VMStatus = "stopped"
-	VMStatusStopping   VMStatus = "stopping"
-	VMStatusStarting   VMStatus = "starting"
-	VMStatusTerminated VMStatus = "terminated"
-	VMStatusError      VMStatus = "error"
+	VMStatusPending    VMStatus = "pending"    // 대기 중
+	VMStatusRunning    VMStatus = "running"    // 실행 중
+	VMStatusStopped    VMStatus = "stopped"    // 중지됨
+	VMStatusStopping   VMStatus = "stopping"   // 중지 중
+	VMStatusStarting   VMStatus = "starting"   // 시작 중
+	VMStatusTerminated VMStatus = "terminated" // 종료됨
+	VMStatusError      VMStatus = "error"      // 오류
 )
 
-// VM represents a virtual machine in the system
+// VM: 시스템의 가상 머신을 나타내는 도메인 엔티티
 type VM struct {
 	ID          string                 `json:"id" gorm:"primaryKey"`
 	Name        string                 `json:"name" gorm:"not null;size:100"`
@@ -29,61 +29,59 @@ type VM struct {
 	Region      string                 `json:"region" gorm:"size:50;not null"`
 	ImageID     string                 `json:"image_id" gorm:"size:255"`
 	CPUs        int                    `json:"cpus" gorm:"not null"`
-	Memory      int                    `json:"memory" gorm:"not null"`   // in MB
+	Memory      int                    `json:"memory" gorm:"not null"`  // in MB
 	Storage     int                    `json:"storage" gorm:"not null"` // in GB
 	CreatedAt   time.Time              `json:"created_at" gorm:"autoCreateTime;index"`
 	UpdatedAt   time.Time              `json:"updated_at" gorm:"autoUpdateTime"`
 	Metadata    map[string]interface{} `json:"metadata" gorm:"type:jsonb"`
 }
 
-// TableName specifies the table name for VM
+// TableName: VM의 테이블 이름을 반환합니다
 func (VM) TableName() string {
 	return "vms"
 }
 
-// Business methods for VM entity
-
-// IsRunning checks if the VM is running
+// IsRunning: VM이 실행 중인지 확인합니다
 func (v *VM) IsRunning() bool {
 	return v.Status == VMStatusRunning
 }
 
-// IsStopped checks if the VM is stopped
+// IsStopped: VM이 중지되었는지 확인합니다
 func (v *VM) IsStopped() bool {
 	return v.Status == VMStatusStopped
 }
 
-// IsPending checks if the VM is pending
+// IsPending: VM이 대기 중인지 확인합니다
 func (v *VM) IsPending() bool {
 	return v.Status == VMStatusPending
 }
 
-// IsError checks if the VM is in error state
+// IsError: VM이 오류 상태인지 확인합니다
 func (v *VM) IsError() bool {
 	return v.Status == VMStatusError
 }
 
-// CanStart checks if the VM can be started
+// CanStart: VM을 시작할 수 있는지 확인합니다
 func (v *VM) CanStart() bool {
 	return v.Status == VMStatusStopped || v.Status == VMStatusError
 }
 
-// CanStop checks if the VM can be stopped
+// CanStop: VM을 중지할 수 있는지 확인합니다
 func (v *VM) CanStop() bool {
 	return v.Status == VMStatusRunning
 }
 
-// CanRestart checks if the VM can be restarted
+// CanRestart: VM을 재시작할 수 있는지 확인합니다
 func (v *VM) CanRestart() bool {
 	return v.Status == VMStatusRunning || v.Status == VMStatusStopped
 }
 
-// CanTerminate checks if the VM can be terminated
+// CanTerminate: VM을 종료할 수 있는지 확인합니다
 func (v *VM) CanTerminate() bool {
 	return v.Status != VMStatusTerminated
 }
 
-// Start changes VM status to starting
+// Start: VM 상태를 시작 중으로 변경합니다
 func (v *VM) Start() error {
 	if !v.CanStart() {
 		return NewDomainError(ErrCodeValidationFailed, "VM cannot be started in current status", 400)
@@ -93,7 +91,7 @@ func (v *VM) Start() error {
 	return nil
 }
 
-// Stop changes VM status to stopping
+// Stop: VM 상태를 중지 중으로 변경합니다
 func (v *VM) Stop() error {
 	if !v.CanStop() {
 		return NewDomainError(ErrCodeValidationFailed, "VM cannot be stopped in current status", 400)
@@ -103,7 +101,7 @@ func (v *VM) Stop() error {
 	return nil
 }
 
-// Restart changes VM status to starting
+// Restart: VM 상태를 시작 중으로 변경합니다 (재시작)
 func (v *VM) Restart() error {
 	if !v.CanRestart() {
 		return NewDomainError(ErrCodeValidationFailed, "VM cannot be restarted in current status", 400)
@@ -113,7 +111,7 @@ func (v *VM) Restart() error {
 	return nil
 }
 
-// Terminate changes VM status to terminated
+// Terminate: VM 상태를 종료됨으로 변경합니다
 func (v *VM) Terminate() error {
 	if !v.CanTerminate() {
 		return NewDomainError(ErrCodeValidationFailed, "VM cannot be terminated in current status", 400)
@@ -123,19 +121,19 @@ func (v *VM) Terminate() error {
 	return nil
 }
 
-// SetStatus sets the VM status
+// SetStatus: VM 상태를 설정합니다
 func (v *VM) SetStatus(status VMStatus) {
 	v.Status = status
 	v.UpdatedAt = time.Now()
 }
 
-// SetInstanceID sets the cloud instance ID
+// SetInstanceID: 클라우드 인스턴스 ID를 설정합니다
 func (v *VM) SetInstanceID(instanceID string) {
 	v.InstanceID = instanceID
 	v.UpdatedAt = time.Now()
 }
 
-// UpdateSpecs updates VM specifications
+// UpdateSpecs: VM 사양을 업데이트합니다
 func (v *VM) UpdateSpecs(cpus, memory, storage int) error {
 	if cpus <= 0 {
 		return NewDomainError(ErrCodeValidationFailed, "CPU count must be positive", 400)
@@ -154,7 +152,7 @@ func (v *VM) UpdateSpecs(cpus, memory, storage int) error {
 	return nil
 }
 
-// SetMetadata sets VM metadata
+// SetMetadata: VM 메타데이터를 설정합니다
 func (v *VM) SetMetadata(key string, value interface{}) {
 	if v.Metadata == nil {
 		v.Metadata = make(map[string]interface{})
@@ -163,7 +161,7 @@ func (v *VM) SetMetadata(key string, value interface{}) {
 	v.UpdatedAt = time.Now()
 }
 
-// GetMetadata gets VM metadata
+// GetMetadata: VM 메타데이터를 조회합니다
 func (v *VM) GetMetadata(key string) (interface{}, bool) {
 	if v.Metadata == nil {
 		return nil, false
@@ -172,7 +170,7 @@ func (v *VM) GetMetadata(key string) (interface{}, bool) {
 	return value, exists
 }
 
-// RemoveMetadata removes VM metadata
+// RemoveMetadata: VM 메타데이터를 제거합니다
 func (v *VM) RemoveMetadata(key string) {
 	if v.Metadata != nil {
 		delete(v.Metadata, key)
@@ -180,12 +178,12 @@ func (v *VM) RemoveMetadata(key string) {
 	}
 }
 
-// GetDisplayName returns the display name for the VM
+// GetDisplayName: VM의 표시 이름을 반환합니다
 func (v *VM) GetDisplayName() string {
 	return v.Name
 }
 
-// GetStatusDisplayName returns a human-readable status
+// GetStatusDisplayName: 사람이 읽을 수 있는 상태 이름을 반환합니다
 func (v *VM) GetStatusDisplayName() string {
 	switch v.Status {
 	case VMStatusPending:
@@ -207,7 +205,7 @@ func (v *VM) GetStatusDisplayName() string {
 	}
 }
 
-// CreateVMRequest represents the request to create a new VM
+// CreateVMRequest: VM 생성 요청 DTO
 type CreateVMRequest struct {
 	Name        string                 `json:"name" validate:"required,min=3,max=100"`
 	WorkspaceID string                 `json:"workspace_id" validate:"required"`
@@ -218,14 +216,14 @@ type CreateVMRequest struct {
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
-// UpdateVMRequest represents the request to update a VM
+// UpdateVMRequest: VM 업데이트 요청 DTO
 type UpdateVMRequest struct {
 	Name     *string                `json:"name,omitempty" validate:"omitempty,min=3,max=100"`
 	Type     *string                `json:"type,omitempty"`
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
-// Validate performs validation on the CreateVMRequest
+// Validate: CreateVMRequest의 유효성을 검사합니다
 func (r *CreateVMRequest) Validate() error {
 	if len(r.Name) < 3 || len(r.Name) > 100 {
 		return NewDomainError(ErrCodeValidationFailed, "name must be between 3 and 100 characters", 400)
@@ -245,7 +243,7 @@ func (r *CreateVMRequest) Validate() error {
 	return nil
 }
 
-// Validate performs validation on the UpdateVMRequest
+// Validate: UpdateVMRequest의 유효성을 검사합니다
 func (r *UpdateVMRequest) Validate() error {
 	if r.Name != nil && (len(*r.Name) < 3 || len(*r.Name) > 100) {
 		return NewDomainError(ErrCodeValidationFailed, "name must be between 3 and 100 characters", 400)

@@ -131,12 +131,12 @@ func (b *CacheKeyBuilder) BuildVMItemKey(vmID string) string {
 
 // Cache TTL constants
 const (
-	TTLShort     = 30 * time.Second   // For frequently changing data
-	TTLMedium    = 5 * time.Minute    // For moderately changing data
-	TTLLong      = 30 * time.Minute   // For stable data
-	TTLVeryLong  = 1 * time.Hour      // For rarely changing data
-	TTLLockShort = 10 * time.Second   // For short-lived locks
-	TTLLockLong  = 5 * time.Minute    // For long-lived locks
+	TTLShort     = 30 * time.Second // For frequently changing data
+	TTLMedium    = 5 * time.Minute  // For moderately changing data
+	TTLLong      = 30 * time.Minute // For stable data
+	TTLVeryLong  = 1 * time.Hour    // For rarely changing data
+	TTLLockShort = 10 * time.Second // For short-lived locks
+	TTLLockLong  = 5 * time.Minute  // For long-lived locks
 )
 
 // GetDefaultTTL returns the default TTL for a resource type
@@ -154,4 +154,3 @@ func GetDefaultTTL(resource string) time.Duration {
 		return TTLMedium
 	}
 }
-

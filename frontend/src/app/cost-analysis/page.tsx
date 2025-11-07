@@ -9,8 +9,6 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useCostBreakdown } from '@/hooks/use-cost-analysis';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { DollarSign, TrendingUp, PieChart as PieChartIcon, BarChart3 } from 'lucide-react';
 
 // Dynamic imports for cost analysis components
@@ -80,6 +78,61 @@ const BudgetAlerts = dynamic(
       </Card>
     ),
   }
+);
+
+// Dynamic import for charts (recharts is heavy)
+const CostBreakdownPieChart = dynamic(
+  () => import('recharts').then(mod => ({
+    default: ({ data, colors }: { data: Array<{ name?: string; value: number; percent?: number }>; colors: string[] }) => (
+      <mod.ResponsiveContainer width="100%" height="100%">
+        <mod.PieChart>
+          <mod.Pie
+            data={data}
+            cx="50%"
+            cy="50%"
+            labelLine={false}
+            label={(entry: { name?: string; percent?: number }) => `${entry.name || 'Unknown'} (${entry.percent?.toFixed(1) || 0}%)`}
+            outerRadius={80}
+            fill="#8884d8"
+            dataKey="value"
+          >
+            {data.map((entry, index) => (
+              <mod.Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
+            ))}
+          </mod.Pie>
+          <mod.Tooltip formatter={(value: number) => [`$${value.toFixed(2)}`, 'Cost']} />
+          <mod.Legend />
+        </mod.PieChart>
+      </mod.ResponsiveContainer>
+    ),
+  })),
+  { ssr: false, loading: () => <div className="h-64 bg-gray-100 animate-pulse rounded" /> }
+);
+
+const CostBreakdownBarChart = dynamic(
+  () => import('recharts').then(mod => ({
+    default: ({ data }: { data: Array<{ name?: string; value: number }> }) => (
+      <mod.ResponsiveContainer width="100%" height="100%">
+        <mod.BarChart data={data}>
+          <mod.CartesianGrid strokeDasharray="3 3" />
+          <mod.XAxis 
+            dataKey="name" 
+            tick={{ fontSize: 12 }}
+            angle={-45}
+            textAnchor="end"
+            height={60}
+          />
+          <mod.YAxis 
+            tick={{ fontSize: 12 }}
+            tickFormatter={(value) => `$${value.toFixed(0)}`}
+          />
+          <mod.Tooltip formatter={(value: number) => [`$${value.toFixed(2)}`, 'Cost']} />
+          <mod.Bar dataKey="value" fill="#8884d8" />
+        </mod.BarChart>
+      </mod.ResponsiveContainer>
+    ),
+  })),
+  { ssr: false, loading: () => <div className="h-64 bg-gray-100 animate-pulse rounded" /> }
 );
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
@@ -235,26 +288,7 @@ export default function CostAnalysisPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={breakdown.breakdown}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={false}
-                            label={(entry: { name?: string; percent?: number }) => `${entry.name || 'Unknown'} (${entry.percent?.toFixed(1) || 0}%)`}
-                            outerRadius={80}
-                            fill="#8884d8"
-                            dataKey="value"
-                          >
-                            {breakdown.breakdown.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                            ))}
-                          </Pie>
-                          <Tooltip formatter={(value: number) => [`$${value.toFixed(2)}`, 'Cost']} />
-                          <Legend />
-                        </PieChart>
-                      </ResponsiveContainer>
+                      <CostBreakdownPieChart data={breakdown.breakdown} colors={COLORS} />
                     </div>
                   </CardContent>
                 </Card>
@@ -266,24 +300,7 @@ export default function CostAnalysisPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={breakdown.breakdown}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis 
-                            dataKey="name" 
-                            tick={{ fontSize: 12 }}
-                            angle={-45}
-                            textAnchor="end"
-                            height={60}
-                          />
-                          <YAxis 
-                            tick={{ fontSize: 12 }}
-                            tickFormatter={(value) => `$${value.toFixed(0)}`}
-                          />
-                          <Tooltip formatter={(value: number) => [`$${value.toFixed(2)}`, 'Cost']} />
-                          <Bar dataKey="value" fill="#8884d8" />
-                        </BarChart>
-                      </ResponsiveContainer>
+                      <CostBreakdownBarChart data={breakdown.breakdown} />
                     </div>
                   </CardContent>
                 </Card>

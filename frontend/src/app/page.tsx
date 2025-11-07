@@ -1,60 +1,48 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuthHydration } from '@/hooks/use-auth-hydration';
+import { useSystemInitialized } from '@/hooks/use-system-initialized';
 import { useAuthStore } from '@/store/auth';
 import { Spinner } from '@/components/ui/spinner';
 
 export default function HomePage() {
-  const { isAuthenticated, token, initialize } = useAuthStore();
   const router = useRouter();
-  const [isChecking, setIsChecking] = useState(true);
+  const { isAuthenticated } = useAuthStore();
+  const { isHydrated, isLoading: isAuthLoading } = useAuthHydration({
+    hydrationDelay: 300,
+    checkLegacyToken: true,
+  });
+
+  // 시스템 초기화 상태 확인
+  const { data: initStatus, isLoading: isLoadingStatus } = useSystemInitialized({
+    enabled: isHydrated && !isAuthLoading,
+  });
 
   useEffect(() => {
-    // Initialize auth store (syncs with localStorage)
-    initialize();
+    // hydration 또는 초기화 상태 확인 중이면 대기
+    if (!isHydrated || isAuthLoading || isLoadingStatus || !initStatus) {
+      return;
+    }
 
-    // Wait for Zustand persist to hydrate, then check auth
-    const checkAuth = () => {
-      // Check localStorage directly to avoid Zustand hydration timing issues
-      // Check auth-storage first (primary source), then legacy token
-      let storedToken: string | null = null;
-      let parsedAuth: { state?: { isAuthenticated?: boolean; token?: string } } = {};
-      
-      if (typeof window !== 'undefined') {
-        try {
-          const authStorage = localStorage.getItem('auth-storage');
-          if (authStorage) {
-            parsedAuth = JSON.parse(authStorage);
-            storedToken = parsedAuth?.state?.token || null;
-          }
-          // Fallback to legacy token for backward compatibility
-          if (!storedToken) {
-            storedToken = localStorage.getItem('token');
-          }
-        } catch {
-          // If parse fails, try legacy token
-          storedToken = localStorage.getItem('token');
-        }
-      }
-      
-      const isAuth = storedToken || (parsedAuth?.state?.isAuthenticated && parsedAuth?.state?.token);
+    // 1. 초기화되지 않음 → /setup으로 리다이렉트
+    if (!initStatus.initialized) {
+      router.replace('/setup');
+      return;
+    }
 
-      if (isAuth) {
-        router.replace('/dashboard');
-      } else {
-        router.replace('/login');
-      }
-      setIsChecking(false);
-    };
+    // 2. 초기화됨 + 인증됨 → /dashboard로 리다이렉트
+    if (isAuthenticated) {
+      router.replace('/dashboard');
+      return;
+    }
 
-    // Small delay to allow Zustand persist to hydrate
-    const timer = setTimeout(checkAuth, 500);
-    
-    return () => clearTimeout(timer);
-  }, [router, initialize]); // Remove frequently changing dependencies
+    // 3. 초기화됨 + 미인증 → /login으로 리다이렉트
+    router.replace('/login');
+  }, [router, isHydrated, isAuthLoading, isLoadingStatus, initStatus, isAuthenticated]);
 
-  if (isChecking) {
+  if (!isHydrated || isAuthLoading || isLoadingStatus || !initStatus) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center space-y-4">

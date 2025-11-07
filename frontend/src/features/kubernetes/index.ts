@@ -30,6 +30,9 @@ export { useKubernetesClusters } from './hooks/use-kubernetes-clusters';
 export { useClusterFilters } from './hooks/use-cluster-filters';
 export { useClusterBulkActions } from './hooks/use-cluster-bulk-actions';
 export { useClusterDetail } from './hooks/use-cluster-detail';
+export { useClusterTagDialog } from './hooks/use-cluster-tag-dialog';
+export { useEKSVersions, useAWSRegions, useAvailabilityZones } from './hooks/use-kubernetes-metadata';
+export { useClusterMetadata } from './hooks/use-cluster-metadata';
 
 // Services
 export { kubernetesService } from './services/kubernetes';

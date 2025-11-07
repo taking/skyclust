@@ -9,17 +9,17 @@ import (
 	"skyclust/pkg/logger"
 )
 
-// VMRepository implements the domain.VMRepository interface
+// VMRepository: domain.VMRepository 인터페이스 구현체
 type VMRepository struct {
 	db *gorm.DB
 }
 
-// NewVMRepository creates a new VMRepository
+// NewVMRepository: 새로운 VMRepository를 생성합니다
 func NewVMRepository(db *gorm.DB) *VMRepository {
 	return &VMRepository{db: db}
 }
 
-// Create creates a new VM
+// Create: 새로운 VM을 생성합니다
 func (r *VMRepository) Create(ctx context.Context, vm *domain.VM) error {
 	result := r.db.WithContext(ctx).Create(vm)
 	if result.Error != nil {
@@ -30,7 +30,7 @@ func (r *VMRepository) Create(ctx context.Context, vm *domain.VM) error {
 	return nil
 }
 
-// GetByID retrieves a VM by ID
+// GetByID: ID로 VM을 조회합니다
 func (r *VMRepository) GetByID(ctx context.Context, id string) (*domain.VM, error) {
 	var vm domain.VM
 	result := r.db.WithContext(ctx).Where("id = ?", id).First(&vm)
@@ -44,7 +44,7 @@ func (r *VMRepository) GetByID(ctx context.Context, id string) (*domain.VM, erro
 	return &vm, nil
 }
 
-// GetByWorkspaceID retrieves VMs by workspace ID
+// GetByWorkspaceID: 워크스페이스 ID로 VM 목록을 조회합니다
 func (r *VMRepository) GetByWorkspaceID(ctx context.Context, workspaceID string) ([]*domain.VM, error) {
 	var vms []*domain.VM
 	result := r.db.WithContext(ctx).
@@ -59,12 +59,12 @@ func (r *VMRepository) GetByWorkspaceID(ctx context.Context, workspaceID string)
 	return vms, nil
 }
 
-// GetVMsByWorkspace retrieves VMs by workspace ID (alias for GetByWorkspaceID)
+// GetVMsByWorkspace: 워크스페이스 ID로 VM 목록을 조회합니다 (GetByWorkspaceID의 별칭)
 func (r *VMRepository) GetVMsByWorkspace(ctx context.Context, workspaceID string) ([]*domain.VM, error) {
 	return r.GetByWorkspaceID(ctx, workspaceID)
 }
 
-// GetByProvider retrieves VMs by provider
+// GetByProvider: 프로바이더로 VM 목록을 조회합니다
 func (r *VMRepository) GetByProvider(ctx context.Context, provider string) ([]*domain.VM, error) {
 	var vms []*domain.VM
 	result := r.db.WithContext(ctx).
@@ -79,7 +79,7 @@ func (r *VMRepository) GetByProvider(ctx context.Context, provider string) ([]*d
 	return vms, nil
 }
 
-// Update updates a VM
+// Update: VM 정보를 업데이트합니다
 func (r *VMRepository) Update(ctx context.Context, vm *domain.VM) error {
 	result := r.db.WithContext(ctx).Save(vm)
 	if result.Error != nil {
@@ -94,7 +94,7 @@ func (r *VMRepository) Update(ctx context.Context, vm *domain.VM) error {
 	return nil
 }
 
-// Delete deletes a VM
+// Delete: VM을 삭제합니다
 func (r *VMRepository) Delete(ctx context.Context, id string) error {
 	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&domain.VM{})
 	if result.Error != nil {
@@ -109,7 +109,7 @@ func (r *VMRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// List retrieves a list of VMs with pagination
+// List: 페이지네이션을 포함한 VM 목록을 조회합니다
 func (r *VMRepository) List(ctx context.Context, workspaceID string, limit, offset int) ([]*domain.VM, error) {
 	var vms []*domain.VM
 	result := r.db.WithContext(ctx).
@@ -126,7 +126,7 @@ func (r *VMRepository) List(ctx context.Context, workspaceID string, limit, offs
 	return vms, nil
 }
 
-// UpdateStatus updates VM status
+// UpdateStatus: VM 상태를 업데이트합니다
 func (r *VMRepository) UpdateStatus(ctx context.Context, id string, status domain.VMStatus) error {
 	result := r.db.WithContext(ctx).
 		Model(&domain.VM{}).

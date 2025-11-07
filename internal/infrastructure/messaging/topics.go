@@ -9,6 +9,8 @@ const (
 	ResourceNetwork    = "network"
 	ResourceVM         = "vm"
 	ResourceCost       = "cost"
+	ResourceWorkspace  = "workspace"
+	ResourceCredential = "credential"
 )
 
 // Event actions
@@ -86,21 +88,40 @@ func BuildVMTopic(provider, credentialID, region, action string) string {
 
 // Legacy topic patterns (for backward compatibility with existing SSE handler)
 const (
-	TopicVMStatusUpdate       = "vm.status.update"
-	TopicVMResourceUpdate     = "vm.resource.update"
-	TopicProviderStatusUpdate = "provider.status.update"
+	TopicVMStatusUpdate         = "vm.status.update"
+	TopicVMResourceUpdate       = "vm.resource.update"
+	TopicProviderStatusUpdate   = "provider.status.update"
 	TopicProviderInstanceUpdate = "provider.instance.update"
-	TopicSystemNotification  = "system.notification"
-	TopicSystemAlert          = "system.alert"
+	TopicSystemNotification     = "system.notification"
+	TopicSystemAlert            = "system.alert"
 )
+
+// Workspace topic builders
+// Format: workspace.{workspace_id}.{action}
+// Example: workspace.ws-123.created
+
+// BuildWorkspaceTopic builds a NATS topic for Workspace events
+func BuildWorkspaceTopic(workspaceID, action string) string {
+	return ResourceWorkspace + "." + workspaceID + "." + action
+}
+
+// Credential topic builders
+// Format: credential.{workspace_id}.{provider}.{action}
+// Example: credential.ws-123.aws.created
+
+// BuildCredentialTopic builds a NATS topic for Credential events
+func BuildCredentialTopic(workspaceID, provider, action string) string {
+	return ResourceCredential + "." + workspaceID + "." + provider + "." + action
+}
 
 // Topic patterns for wildcard subscriptions
 const (
-	PatternKubernetesAll = "kubernetes.*"
-	PatternKubernetesProvider = "kubernetes.%s.*"
+	PatternKubernetesAll        = "kubernetes.*"
+	PatternKubernetesProvider   = "kubernetes.%s.*"
 	PatternKubernetesCredential = "kubernetes.%s.%s.*"
-	PatternNetworkAll = "network.*"
-	PatternNetworkProvider = "network.%s.*"
-	PatternVMAll = "vm.*"
+	PatternNetworkAll           = "network.*"
+	PatternNetworkProvider      = "network.%s.*"
+	PatternVMAll                = "vm.*"
+	PatternWorkspaceAll         = "workspace.*"
+	PatternCredentialAll        = "credential.*"
 )
-

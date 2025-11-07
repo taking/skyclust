@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Handler handles admin user management operations using improved patterns
+// Handler: 관리자 사용자 관리 작업을 처리하는 핸들러
 type Handler struct {
 	*handlers.BaseHandler
 	userService       domain.UserService
@@ -21,7 +21,7 @@ type Handler struct {
 	readabilityHelper *readability.ReadabilityHelper
 }
 
-// NewHandler creates a new admin user handler
+// NewHandler: 새로운 관리자 사용자 핸들러를 생성합니다
 func NewHandler(userService domain.UserService, rbacService domain.RBACService) *Handler {
 	return &Handler{
 		BaseHandler:       handlers.NewBaseHandler("admin"),
@@ -31,7 +31,7 @@ func NewHandler(userService domain.UserService, rbacService domain.RBACService) 
 	}
 }
 
-// GetUsers retrieves all users with pagination and filtering using decorator pattern
+// GetUsers: 페이지네이션과 필터링을 포함한 모든 사용자를 조회합니다 (데코레이터 패턴 사용)
 func (h *Handler) GetUsers(c *gin.Context) {
 	handler := h.Compose(
 		h.getUsersHandler(),
@@ -41,7 +41,7 @@ func (h *Handler) GetUsers(c *gin.Context) {
 	handler(c)
 }
 
-// getUsersHandler is the core business logic for getting users
+// getUsersHandler: 사용자 조회의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) getUsersHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if !h.checkAdminPermission(c) {
@@ -68,7 +68,7 @@ func (h *Handler) getUsersHandler() handlers.HandlerFunc {
 	}
 }
 
-// GetUser retrieves a specific user by ID
+// GetUser: ID로 특정 사용자를 조회합니다
 func (h *Handler) GetUser(c *gin.Context) {
 	// Check admin permission
 	if !h.checkAdminPermission(c) {
@@ -90,7 +90,7 @@ func (h *Handler) GetUser(c *gin.Context) {
 	h.OK(c, user, "User retrieved successfully")
 }
 
-// UpdateUser updates a specific user
+// UpdateUser: 특정 사용자를 업데이트합니다
 func (h *Handler) UpdateUser(c *gin.Context) {
 	// Check admin permission
 	if !h.checkAdminPermission(c) {
@@ -146,7 +146,7 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 	h.OK(c, updatedUser, "User updated successfully")
 }
 
-// DeleteUser deletes a specific user
+// DeleteUser: 특정 사용자를 삭제합니다
 func (h *Handler) DeleteUser(c *gin.Context) {
 	// Check admin permission
 	if !h.checkAdminPermission(c) {
@@ -176,8 +176,7 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 	h.OK(c, gin.H{"message": "User deleted successfully"}, "User deleted successfully")
 }
 
-
-// GetUserStats retrieves user statistics
+// GetUserStats: 사용자 통계를 조회합니다
 func (h *Handler) GetUserStats(c *gin.Context) {
 	// Check admin permission
 	if !h.checkAdminPermission(c) {
@@ -207,7 +206,7 @@ func (h *Handler) GetUserStats(c *gin.Context) {
 	}, "User statistics retrieved successfully")
 }
 
-// checkAdminPermission checks if the current user has admin permission
+// checkAdminPermission: 현재 사용자가 관리자 권한을 가지고 있는지 확인합니다
 func (h *Handler) checkAdminPermission(c *gin.Context) bool {
 	// Get current user role from token for authorization
 	userRole, err := h.GetUserRoleFromToken(c)
@@ -233,8 +232,9 @@ func (h *Handler) checkAdminPermission(c *gin.Context) bool {
 	return true
 }
 
-// Helper methods for better readability
+// 헬퍼 메서드들
 
+// parseUserFilters: 쿼리 파라미터로부터 사용자 필터를 파싱합니다
 func (h *Handler) parseUserFilters(c *gin.Context) domain.UserFilters {
 	limitStr := c.DefaultQuery("limit", "10")
 	pageStr := c.DefaultQuery("page", "1")
@@ -261,9 +261,9 @@ func (h *Handler) parseUserFilters(c *gin.Context) domain.UserFilters {
 	}
 }
 
+// 로깅 헬퍼 메서드들
 
-// Logging helper methods
-
+// logAdminUsersRequest: 관리자 사용자 조회 요청 로그를 기록합니다
 func (h *Handler) logAdminUsersRequest(c *gin.Context) {
 	h.LogBusinessEvent(c, "admin_users_requested", "", "", map[string]interface{}{
 		"operation": "get_users",

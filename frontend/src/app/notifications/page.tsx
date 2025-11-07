@@ -5,10 +5,7 @@
 
 'use client';
 
-import { useState } from 'react';
-import { Bell, Settings, BarChart3, TrendingUp, Mail, Smartphone, Monitor } from 'lucide-react';
-
-import { Button } from '@/components/ui/button';
+import { Bell, BarChart3, TrendingUp, Mail, Monitor } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -17,10 +14,38 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { NotificationList } from '@/components/notifications/NotificationList';
-import { NotificationPreferencesComponent } from '@/components/notifications/NotificationPreferences';
+import dynamic from 'next/dynamic';
 import { useRequireAuth } from '@/hooks/use-auth';
 import { useNotificationStats } from '@/hooks/use-notifications';
+
+// Dynamic imports for heavy components
+const NotificationList = dynamic(
+  () => import('@/components/notifications/NotificationList').then(mod => ({ default: mod.NotificationList })),
+  { 
+    ssr: false,
+    loading: () => (
+      <Card>
+        <CardContent className="p-6">
+          <div className="h-64 bg-gray-200 rounded animate-pulse" />
+        </CardContent>
+      </Card>
+    ),
+  }
+);
+
+const NotificationPreferencesComponent = dynamic(
+  () => import('@/components/notifications/NotificationPreferences').then(mod => ({ default: mod.NotificationPreferencesComponent })),
+  { 
+    ssr: false,
+    loading: () => (
+      <Card>
+        <CardContent className="p-6">
+          <div className="h-64 bg-gray-200 rounded animate-pulse" />
+        </CardContent>
+      </Card>
+    ),
+  }
+);
 
 export default function NotificationsPage() {
   // 인증 확인

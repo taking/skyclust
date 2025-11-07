@@ -19,7 +19,7 @@ auth:bearer {
 }
 
 script:post-response {
-  bru.setEnvVar("workspaceId", res.body.data.workspaces[1].id);
+  bru.setEnvVar("workspaceId", res.body.data.workspaces[0].id);
   
   const rowData = res.body.data.workspaces;
   

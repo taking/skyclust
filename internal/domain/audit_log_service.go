@@ -22,4 +22,3 @@ type AuditLogService interface {
 	CleanupAuditLogs(retentionDays int) (int64, error)
 	GetAuditLogSummary(startTime, endTime time.Time) (*AuditLogSummary, error)
 }
-

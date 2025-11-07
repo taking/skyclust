@@ -17,6 +17,7 @@ import { WorkspaceRequired } from '@/components/common/workspace-required';
 import { ResourceEmptyState } from '@/components/common/resource-empty-state';
 import { Key } from 'lucide-react';
 import { useTranslation } from '@/hooks/use-translation';
+import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
 import {
   useCredentialActions,
   CredentialsPageHeader,
@@ -48,6 +49,15 @@ export default function CredentialsPage() {
   const [editingCredential, setEditingCredential] = useState<Credential | null>(null);
   const [showCredentials, setShowCredentials] = useState<Record<string, boolean>>({});
   const [gcpInputMode, setGcpInputMode] = useState<'json' | 'file'>('json');
+  const [deleteDialogState, setDeleteDialogState] = useState<{
+    open: boolean;
+    credentialId: string | null;
+    credentialName?: string;
+  }>({
+    open: false,
+    credentialId: null,
+    credentialName: undefined,
+  });
   const { currentWorkspace } = useWorkspaceStore();
   const router = useRouter();
 
@@ -89,17 +99,18 @@ export default function CredentialsPage() {
       return;
     }
     
-    // Transform credentials object to data field (remove _file if present)
+    // Transform credentials object (remove _file if present)
     const credentials = { ...data.credentials };
     delete (credentials as any)._file; // eslint-disable-line @typescript-eslint/no-explicit-any
     
-    const requestData = {
-      workspace_id: currentWorkspace.id,
-      name: data.name || `${data.provider.toUpperCase()} Credential`,
+    // Create request data in CreateCredentialForm format
+    const requestData: CreateCredentialForm & { workspace_id?: string; name?: string } = {
       provider: data.provider,
-      data: credentials || {},
+      credentials: credentials || {},
+      name: data.name || `${data.provider.toUpperCase()} Credential`,
+      workspace_id: currentWorkspace.id,
     };
-    createCredentialMutation.mutate(requestData as any); // eslint-disable-line @typescript-eslint/no-explicit-any
+    createCredentialMutation.mutate(requestData);
   };
 
   const handleEditCredential = (credential: Credential) => {
@@ -116,8 +127,14 @@ export default function CredentialsPage() {
   };
 
   const handleDeleteCredential = (credentialId: string) => {
-    if (confirm(t('credential.confirmDelete'))) {
-      deleteCredentialMutation.mutate(credentialId);
+    const credential = credentials.find(c => c.id === credentialId);
+    setDeleteDialogState({ open: true, credentialId, credentialName: credential?.name });
+  };
+
+  const handleConfirmDelete = () => {
+    if (deleteDialogState.credentialId) {
+      deleteCredentialMutation.mutate(deleteDialogState.credentialId);
+      setDeleteDialogState({ open: false, credentialId: null, credentialName: undefined });
     }
   };
 
@@ -208,6 +225,18 @@ export default function CredentialsPage() {
             onSubmit={handleUpdateCredential}
             onClose={handleCloseEdit}
             isPending={updateCredentialMutation.isPending}
+          />
+
+          {/* Delete Credential Confirmation Dialog */}
+          <DeleteConfirmationDialog
+            open={deleteDialogState.open}
+            onOpenChange={(open) => setDeleteDialogState({ ...deleteDialogState, open })}
+            onConfirm={handleConfirmDelete}
+            title={t('credential.deleteCredential')}
+            description={t('credential.confirmDelete')}
+            isLoading={deleteCredentialMutation.isPending}
+            resourceName={deleteDialogState.credentialName}
+            resourceNameLabel="자격 증명 이름"
           />
         </div>
       </div>

@@ -1,0 +1,67 @@
+meta {
+  name: 역할 권한 제거
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{baseUrl}}/api/{{apiVersion}}/admin/rbac/roles/{{role}}/permissions/{{permission}}
+  body: none
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains success message", function() {
+    expect(res.getBody()).to.have.property('success');
+    expect(res.getBody().success).to.equal(true);
+  });
+}
+
+docs {
+  # 역할 권한 제거
+  
+  역할로부터 권한을 제거합니다.
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "message": "Permission revoked successfully"
+    },
+    "message": "Permission revoked successfully"
+  }
+  ```
+  
+  ## Path Parameters
+  
+  - `role`: 권한을 제거할 역할 (`admin`, `user`, `viewer`)
+  - `permission`: 제거할 권한 (예: `user:create`, `workspace:manage`)
+  
+  ## 에러 응답
+  
+  ### 권한이 없는 경우 (404)
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "NOT_FOUND",
+      "message": "role admin does not have permission user:create"
+    }
+  }
+  ```
+}
+

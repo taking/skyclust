@@ -79,17 +79,30 @@ export function InlineError({
   compact = false,
   showIcon = true,
 }: InlineErrorProps) {
+  // 1. 사용자 친화적인 에러 메시지 가져오기
   const message = getUserFriendlyErrorMessage(error);
+  
+  // 2. 재시도 가능 여부 확인: onRetry 함수가 있고 에러가 재시도 가능한 타입인지 확인
   const retryable = onRetry && isRetryableError(error);
+  
+  // 3. 에러 타입 확인
   const isNetworkError = error instanceof NetworkError;
   const isServerError = error instanceof ServerError;
 
+  /**
+   * 에러 타입에 따른 아이콘 반환
+   * 네트워크 에러: WifiOff, 서버 에러: ServerOff, 기타: AlertCircle
+   */
   const getIcon = () => {
     if (isNetworkError) return <WifiOff className="h-4 w-4" />;
     if (isServerError) return <ServerOff className="h-4 w-4" />;
     return <AlertCircle className="h-4 w-4" />;
   };
 
+  /**
+   * 에러 타입에 따른 Alert variant 반환
+   * 네트워크 에러: default, 서버/기타 에러: destructive
+   */
   const getVariant = () => {
     if (isNetworkError) return 'default';
     if (isServerError) return 'destructive';
@@ -105,28 +118,33 @@ export function InlineError({
       )}
     >
       <div className="flex items-start gap-3">
+        {/* 4. 아이콘 표시 (옵션이 활성화된 경우) */}
         {showIcon && (
           <div className="flex-shrink-0 mt-0.5">
             {getIcon()}
           </div>
         )}
         <div className="flex-1 min-w-0">
+          {/* 5. 제목 표시 (제공된 경우) */}
           {title && (
             <AlertTitle className={compact ? 'text-sm' : ''}>
               {title}
             </AlertTitle>
           )}
+          {/* 6. 에러 메시지 표시 */}
           <AlertDescription className={cn(
             'text-sm',
             compact && 'text-xs'
           )}>
             {message}
           </AlertDescription>
+          {/* 7. 액션 버튼: 재시도 또는 닫기 */}
           {(retryable || onDismiss) && (
             <div className={cn(
               'flex items-center gap-2 mt-3',
               compact && 'mt-2'
             )}>
+              {/* 7-1. 재시도 버튼 (재시도 가능한 경우) */}
               {retryable && (
                 <Button
                   variant="outline"
@@ -142,6 +160,7 @@ export function InlineError({
                   {isRetrying ? 'Retrying...' : 'Retry'}
                 </Button>
               )}
+              {/* 7-2. 닫기 버튼 (onDismiss가 제공된 경우) */}
               {onDismiss && (
                 <Button
                   variant="ghost"
@@ -183,11 +202,20 @@ export function ErrorCard({
   isRetrying = false,
   className,
 }: ErrorCardProps) {
+  // 1. 사용자 친화적인 에러 메시지 가져오기
   const message = getUserFriendlyErrorMessage(error);
+  
+  // 2. 재시도 가능 여부 확인
   const retryable = onRetry && isRetryableError(error);
+  
+  // 3. 에러 타입 확인
   const isNetworkError = error instanceof NetworkError;
   const isServerError = error instanceof ServerError;
 
+  /**
+   * 에러 타입에 따른 아이콘 반환 (카드용 큰 아이콘)
+   * 네트워크 에러: WifiOff (노란색), 서버 에러: ServerOff (빨간색), 기타: AlertTriangle (빨간색)
+   */
   const getIcon = () => {
     if (isNetworkError) return <WifiOff className="h-8 w-8 text-yellow-500" />;
     if (isServerError) return <ServerOff className="h-8 w-8 text-red-500" />;
@@ -198,17 +226,21 @@ export function ErrorCard({
     <Card className={className}>
       <CardHeader>
         <div className="flex items-center gap-4">
+          {/* 4. 에러 아이콘 표시 */}
           {getIcon()}
           <div className="flex-1">
+            {/* 5. 제목: 제공된 title이 있으면 사용, 없으면 에러 타입에 따라 기본 제목 */}
             <CardTitle>
               {title || (isNetworkError ? 'Connection Error' : 'Error')}
             </CardTitle>
+            {/* 6. 설명 (제공된 경우) */}
             {description && (
               <CardDescription className="mt-1">
                 {description}
               </CardDescription>
             )}
           </div>
+          {/* 7. 닫기 버튼 (onDismiss가 제공된 경우) */}
           {onDismiss && (
             <Button
               variant="ghost"
@@ -222,10 +254,12 @@ export function ErrorCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* 8. 에러 메시지 표시 (배경색이 있는 박스) */}
         <div className="bg-muted rounded-lg p-3">
           <p className="text-sm">{message}</p>
         </div>
         
+        {/* 9. 재시도 버튼 (재시도 가능한 경우) */}
         {retryable && (
           <Button
             onClick={onRetry}

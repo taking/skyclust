@@ -1,65 +1,50 @@
 /**
  * Workspace Service
- * Workspace 관련 API 호출
+ * Clean Architecture: Application 계층 - Repository를 통한 데이터 접근
  */
 
-import { BaseService } from '@/lib/service-base';
-import type { Workspace, CreateWorkspaceForm } from '@/lib/types';
+import { workspaceRepository } from '@/infrastructure/repositories';
+import type { Workspace, CreateWorkspaceForm, WorkspaceMember } from '@/lib/types';
 
-class WorkspaceService extends BaseService {
+class WorkspaceService {
   // Get all workspaces
   async getWorkspaces(): Promise<Workspace[]> {
-    const data = await this.get<{ workspaces: Workspace[] }>('workspaces');
-    return data.workspaces || [];
+    return workspaceRepository.list();
   }
 
   // Get workspace by ID
   async getWorkspace(id: string): Promise<Workspace> {
-    // Backend returns { success: true, data: Workspace, ... }
-    // The BaseService.get already extracts the data field
-    const workspace = await this.get<Workspace>(`workspaces/${id}`);
-    if (!workspace) {
-      throw new Error('Workspace not found');
-    }
-    return workspace;
+    return workspaceRepository.getById(id);
   }
 
   // Create workspace
   async createWorkspace(data: CreateWorkspaceForm): Promise<Workspace> {
-    // Backend returns { success: true, data: Workspace, ... }
-    const workspace = await this.post<Workspace>('workspaces', data);
-    if (!workspace) {
-      throw new Error('Failed to create workspace');
-    }
-    return workspace;
+    return workspaceRepository.create(data);
   }
 
   // Update workspace
   async updateWorkspace(id: string, data: Partial<CreateWorkspaceForm>): Promise<Workspace> {
-    // Backend returns { success: true, data: Workspace, ... }
-    const workspace = await this.put<Workspace>(`workspaces/${id}`, data);
-    if (!workspace) {
-      throw new Error('Failed to update workspace');
-    }
-    return workspace;
+    return workspaceRepository.update(id, data);
   }
 
   // Delete workspace
   async deleteWorkspace(id: string): Promise<void> {
-    return this.delete<void>(`workspaces/${id}`);
+    return workspaceRepository.delete(id);
   }
 
-  // Add member to workspace
-  async addMember(workspaceId: string, userId: string, role: string = 'member'): Promise<void> {
-    return this.post<void>(`workspaces/${workspaceId}/members`, {
-      user_id: userId,
-      role,
-    });
+  // Get workspace members
+  async getMembers(workspaceId: string): Promise<WorkspaceMember[]> {
+    return workspaceRepository.getMembers(workspaceId);
+  }
+
+  // Add member to workspace by email
+  async addMember(workspaceId: string, email: string, role: string = 'member'): Promise<void> {
+    return workspaceRepository.addMember(workspaceId, email, role);
   }
 
   // Remove member from workspace
   async removeMember(workspaceId: string, userId: string): Promise<void> {
-    return this.delete<void>(`workspaces/${workspaceId}/members/${userId}`);
+    return workspaceRepository.removeMember(workspaceId, userId);
   }
 }
 

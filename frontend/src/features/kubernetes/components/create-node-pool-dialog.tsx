@@ -12,8 +12,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createNodePoolSchema } from '@/lib/validations';
+import { createValidationSchemas } from '@/lib/validations';
 import type { CreateNodePoolForm } from '@/lib/types';
+import { useTranslation } from '@/hooks/use-translation';
 
 interface CreateNodePoolDialogProps {
   open: boolean;
@@ -38,8 +39,10 @@ export function CreateNodePoolDialog({
   onRegionChange,
   isPending,
 }: CreateNodePoolDialogProps) {
+  const { t } = useTranslation();
+  const schemas = createValidationSchemas(t);
   const form = useForm<CreateNodePoolForm>({
-    resolver: zodResolver(createNodePoolSchema),
+    resolver: zodResolver(schemas.createNodePoolSchema),
     defaultValues: {
       cluster_name: clusterName,
       region: defaultRegion,

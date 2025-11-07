@@ -24,7 +24,7 @@ func NewService(auditLogRepo domain.AuditLogRepository) domain.AuditLogService {
 	}
 }
 
-// LogAction logs a user action
+// LogAction: 사용자 액션을 로깅합니다
 func (s *Service) LogAction(userID uuid.UUID, action, resource string, details map[string]interface{}) error {
 	log := &domain.AuditLog{
 		UserID:   userID,
@@ -35,29 +35,29 @@ func (s *Service) LogAction(userID uuid.UUID, action, resource string, details m
 	return s.auditLogRepo.Create(log)
 }
 
-// GetUserLogs retrieves audit log entries for a user with pagination
+// GetUserLogs: 사용자의 감사 로그 항목을 페이지네이션과 함께 조회합니다
 func (s *Service) GetUserLogs(userID uuid.UUID, limit, offset int) ([]*domain.AuditLog, error) {
 	return s.auditLogRepo.GetByUserID(userID, limit, offset)
 }
 
-// GetLogsByAction retrieves audit log entries by action with pagination
+// GetLogsByAction: 액션별 감사 로그 항목을 페이지네이션과 함께 조회합니다
 func (s *Service) GetLogsByAction(action string, limit, offset int) ([]*domain.AuditLog, error) {
 	return s.auditLogRepo.GetByAction(action, limit, offset)
 }
 
-// GetLogsByDateRange retrieves audit log entries by date range with pagination
+// GetLogsByDateRange: 날짜 범위별 감사 로그 항목을 페이지네이션과 함께 조회합니다
 func (s *Service) GetLogsByDateRange(start, end time.Time, limit, offset int) ([]*domain.AuditLog, error) {
 	return s.auditLogRepo.GetByDateRange(start, end, limit, offset)
 }
 
-// CleanupOldLogs removes old audit log entries
+// CleanupOldLogs: 오래된 감사 로그 항목을 제거합니다
 func (s *Service) CleanupOldLogs(retentionDays int) error {
 	cutoffDate := time.Now().AddDate(0, 0, -retentionDays)
 	_, err := s.auditLogRepo.DeleteOldLogs(cutoffDate)
 	return err
 }
 
-// GetAuditLogs retrieves audit logs with filters (admin method)
+// GetAuditLogs: 필터를 사용하여 감사 로그를 조회합니다 (관리자 메서드)
 func (s *Service) GetAuditLogs(filters domain.AuditLogFilters) ([]*domain.AuditLog, int64, error) {
 	// Use existing repository methods based on filters
 	var logs []*domain.AuditLog
@@ -128,7 +128,7 @@ func (s *Service) GetAuditLogs(filters domain.AuditLogFilters) ([]*domain.AuditL
 	return logs, total, nil
 }
 
-// GetAuditLogByID retrieves a specific audit log by ID (admin method)
+// GetAuditLogByID: ID로 특정 감사 로그를 조회합니다 (관리자 메서드)
 func (s *Service) GetAuditLogByID(id uuid.UUID) (*domain.AuditLog, error) {
 	log, err := s.auditLogRepo.GetByID(id)
 	if err != nil {
@@ -137,7 +137,7 @@ func (s *Service) GetAuditLogByID(id uuid.UUID) (*domain.AuditLog, error) {
 	return log, nil
 }
 
-// GetAuditStats retrieves audit log statistics (admin method)
+// GetAuditStats: 감사 로그 통계를 조회합니다 (관리자 메서드)
 func (s *Service) GetAuditStats(filters domain.AuditStatsFilters) (*domain.AuditStats, error) {
 	// Get total events count
 	totalEvents, err := s.auditLogRepo.GetTotalCount(filters)
@@ -178,7 +178,7 @@ func (s *Service) GetAuditStats(filters domain.AuditStatsFilters) (*domain.Audit
 	}, nil
 }
 
-// ExportAuditLogs exports audit logs in various formats (admin method)
+// ExportAuditLogs: 다양한 형식으로 감사 로그를 내보냅니다 (관리자 메서드)
 func (s *Service) ExportAuditLogs(filters domain.AuditLogFilters, format string) ([]byte, error) {
 	// Validate date range if both are provided
 	if filters.StartTime != nil && filters.EndTime != nil {
@@ -234,7 +234,7 @@ func (s *Service) ExportAuditLogs(filters domain.AuditLogFilters, format string)
 	}
 }
 
-// exportAuditLogsToCSV exports audit logs to CSV format
+// exportAuditLogsToCSV: 감사 로그를 CSV 형식으로 내보냅니다
 func (s *Service) exportAuditLogsToCSV(logs []*domain.AuditLog) ([]byte, error) {
 	var buf strings.Builder
 	writer := csv.NewWriter(&buf)
@@ -278,7 +278,7 @@ func (s *Service) exportAuditLogsToCSV(logs []*domain.AuditLog) ([]byte, error) 
 	return []byte(buf.String()), nil
 }
 
-// exportAuditLogsToJSON exports audit logs to JSON format
+// exportAuditLogsToJSON: 감사 로그를 JSON 형식으로 내보냅니다
 func (s *Service) exportAuditLogsToJSON(logs []*domain.AuditLog) ([]byte, error) {
 	data, err := json.MarshalIndent(logs, "", "  ")
 	if err != nil {
@@ -287,7 +287,7 @@ func (s *Service) exportAuditLogsToJSON(logs []*domain.AuditLog) ([]byte, error)
 	return data, nil
 }
 
-// CleanupAuditLogs removes old audit logs based on retention policy (admin method)
+// CleanupAuditLogs: 보존 정책에 따라 오래된 감사 로그를 제거합니다 (관리자 메서드)
 func (s *Service) CleanupAuditLogs(retentionDays int) (int64, error) {
 	if retentionDays < 0 {
 		return 0, domain.NewDomainError(domain.ErrCodeValidationFailed, "retention days must be non-negative", 400)
@@ -308,7 +308,7 @@ func (s *Service) CleanupAuditLogs(retentionDays int) (int64, error) {
 	return deletedCount, nil
 }
 
-// GetAuditLogSummary retrieves audit log summary (admin method)
+// GetAuditLogSummary: 감사 로그 요약을 조회합니다 (관리자 메서드)
 func (s *Service) GetAuditLogSummary(startTime, endTime time.Time) (*domain.AuditLogSummary, error) {
 	filters := domain.AuditStatsFilters{
 		StartTime: &startTime,

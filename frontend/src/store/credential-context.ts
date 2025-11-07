@@ -24,12 +24,28 @@ interface CredentialContextState {
 }
 
 const storeCreator: StateCreator<CredentialContextState> = (set) => ({
+  // 초기 상태
   selectedCredentialId: null,
   selectedRegion: null,
+  
+  /**
+   * 선택된 자격 증명 ID 설정
+   * @param credentialId - 자격 증명 ID (null이면 선택 해제)
+   */
   setSelectedCredential: (credentialId) => 
     set({ selectedCredentialId: credentialId }),
+  
+  /**
+   * 선택된 리전 설정
+   * @param region - 리전 (null이면 선택 해제)
+   */
   setSelectedRegion: (region) => 
     set({ selectedRegion: region }),
+  
+  /**
+   * 선택 초기화
+   * 자격 증명과 리전 선택을 모두 초기화합니다.
+   */
   clearSelection: () => 
     set({ selectedCredentialId: null, selectedRegion: null }),
 });
@@ -47,9 +63,11 @@ const persistedStore = persist(
 );
 
 // 개발 환경에서만 devtools 적용
-export const useCredentialContextStore = create<CredentialContextState>()(
-  isDevelopment 
-    ? (devtools(persistedStore, { name: 'CredentialContextStore' }) as StateCreator<CredentialContextState>)
-    : persistedStore
-);
+export const useCredentialContextStore = (isDevelopment 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ? create<CredentialContextState>()(devtools(persistedStore as any, { name: 'CredentialContextStore' }) as any)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  : create<CredentialContextState>()(persistedStore as any)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+) as any;
 

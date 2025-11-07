@@ -12,9 +12,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createCredentialSchema } from '@/lib/validations';
+import { createValidationSchemas } from '@/lib/validations';
 import { ProviderFormFields } from './provider-form-fields';
 import type { CreateCredentialForm, Credential } from '@/lib/types';
+import { useTranslation } from '@/hooks/use-translation';
 
 interface EditCredentialDialogProps {
   open: boolean;
@@ -33,13 +34,15 @@ export function EditCredentialDialog({
   onClose,
   isPending,
 }: EditCredentialDialogProps) {
+  const { t } = useTranslation();
+  const schemas = createValidationSchemas(t);
   const {
     register,
     handleSubmit,
     reset,
     setValue,
   } = useForm<CreateCredentialForm>({
-    resolver: zodResolver(createCredentialSchema),
+    resolver: zodResolver(schemas.createCredentialSchema),
   });
 
   // Initialize form when credential changes

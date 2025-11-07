@@ -39,6 +39,7 @@
 
 'use client';
 
+import * as React from 'react';
 import { ReactNode } from 'react';
 import { Layout } from '@/components/layout/layout';
 import { Card, CardContent } from '@/components/ui/card';
@@ -51,28 +52,28 @@ import { useRequireAuth } from '@/hooks/use-auth';
 import { useSSEMonitoring } from '@/hooks/use-sse-monitoring';
 
 export interface ResourceListPageProps<TItem = unknown> {
-  // Page configuration
+  // 페이지 설정
   title: string;
   description?: string;
-  resourceName: string; // For search placeholder, empty state messages
-  storageKey?: string; // For localStorage persistence (optional)
+  resourceName: string; // 검색 플레이스홀더, 빈 상태 메시지용
+  storageKey?: string; // localStorage 영속성용 (선택사항)
 
-  // Header component
+  // 헤더 컴포넌트
   header: ReactNode;
 
-  // Data and loading
+  // 데이터 및 로딩
   items: TItem[];
   isLoading?: boolean;
   isEmpty?: boolean;
 
-  // Search
+  // 검색
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onSearchClear: () => void;
   isSearching?: boolean;
   searchPlaceholder?: string;
 
-  // Filtering
+  // 필터링
   filterConfigs?: FilterConfig[];
   filters?: FilterValue;
   onFiltersChange?: (filters: FilterValue) => void;
@@ -81,43 +82,42 @@ export interface ResourceListPageProps<TItem = unknown> {
   onToggleFilters?: () => void;
   filterCount?: number;
 
-  // Sorting (optional - for pages that support it)
+  // 정렬 (선택사항 - 지원하는 페이지용)
   sortIndicator?: ReactNode;
 
-  // Additional toolbar (e.g., BulkActionsToolbar, BulkOperationProgress)
+  // 추가 툴바 (예: BulkActionsToolbar, BulkOperationProgress)
   toolbar?: ReactNode;
 
-  // Additional controls (e.g., TagFilter, FilterPresetsManager)
+  // 추가 컨트롤 (예: TagFilter, FilterPresetsManager)
   additionalControls?: ReactNode;
 
-  // Content
+  // 콘텐츠
   emptyState?: ReactNode;
-  content: ReactNode; // Table or list component
+  content: ReactNode; // 테이블 또는 리스트 컴포넌트
 
-  // Pagination
+  // 페이지네이션
   pageSize?: number;
   onPageSizeChange?: (size: number) => void;
   showPagination?: boolean;
 
-  // Optional features
+  // 선택적 기능
   showFilterButton?: boolean;
   showSearchResultsInfo?: boolean;
   searchResultsCount?: number;
   keyboardShortcuts?: ReactNode;
   liveRegion?: ReactNode;
   
-  // Custom skeleton columns (for loading state)
+  // 커스텀 스켈레톤 컬럼 (로딩 상태용)
   skeletonColumns?: number;
   skeletonRows?: number;
   skeletonShowCheckbox?: boolean;
 }
 
-export function ResourceListPage<TItem = unknown>({
+function ResourceListPageComponent<TItem = unknown>({
   title,
   description,
   resourceName,
   header,
-  items,
   isLoading = false,
   isEmpty = false,
   searchQuery,
@@ -137,9 +137,6 @@ export function ResourceListPage<TItem = unknown>({
   additionalControls,
   emptyState,
   content,
-  pageSize = 20,
-  onPageSizeChange,
-  showPagination = true,
   showFilterButton = true,
   showSearchResultsInfo = true,
   searchResultsCount,
@@ -149,16 +146,17 @@ export function ResourceListPage<TItem = unknown>({
   skeletonRows = 5,
   skeletonShowCheckbox = false,
 }: ResourceListPageProps<TItem>) {
-  const { currentWorkspace } = useWorkspaceStore();
+  // 1. 인증 상태 확인 및 SSE 모니터링 활성화
   const { isLoading: authLoading } = useRequireAuth();
   useSSEMonitoring();
 
-  // Loading state
+  // 2. 로딩 상태: 인증 로딩 중이거나 데이터 로딩 중이면 스켈레톤 표시
   if (authLoading || isLoading) {
     return (
       <WorkspaceRequired>
         <Layout>
           <div className="space-y-6">
+            {/* 2-1. 페이지 헤더 (제목 및 설명) */}
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
@@ -167,6 +165,7 @@ export function ResourceListPage<TItem = unknown>({
                 )}
               </div>
             </div>
+            {/* 2-2. 테이블 스켈레톤 로딩 UI */}
             <Card>
               <CardContent className="pt-6">
                 <TableSkeleton 
@@ -186,17 +185,18 @@ export function ResourceListPage<TItem = unknown>({
     <WorkspaceRequired>
       <Layout>
         <div className="space-y-6">
-          {/* Header */}
+          {/* 3. 페이지 헤더 컴포넌트 (제목, 설명, 액션 버튼 등) */}
           {header}
 
-          {/* Toolbar (e.g., Bulk Actions) */}
+          {/* 4. 툴바 (예: Bulk Actions Toolbar) */}
           {toolbar}
 
-          {/* Search and Filter Controls */}
+          {/* 5. 검색 및 필터 컨트롤: 검색 쿼리, 필터 설정, 추가 컨트롤이 있으면 표시 */}
           {(searchQuery || filterConfigs.length > 0 || additionalControls) && (
             <Card>
               <CardContent className="pt-6">
                 <div className="space-y-4">
+                  {/* 5-1. 검색 바 및 추가 컨트롤 */}
                   <div className="flex flex-col sm:flex-row gap-4">
                     <div className="flex-1">
                       <SearchBar
@@ -209,6 +209,7 @@ export function ResourceListPage<TItem = unknown>({
                         filterCount={filterCount}
                       />
                     </div>
+                    {/* 5-2. 추가 컨트롤 (예: TagFilter, FilterPresetsManager) */}
                     {additionalControls && (
                       <div className="flex items-center gap-2">
                         {additionalControls}
@@ -216,10 +217,11 @@ export function ResourceListPage<TItem = unknown>({
                     )}
                   </div>
 
-                  {/* Search Results Info and Sort */}
+                  {/* 5-3. 검색 결과 정보 및 정렬 표시기 */}
                   {(isSearching || searchResultsCount !== undefined || sortIndicator) && (
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
+                        {/* 검색 결과 개수 표시 */}
                         {showSearchResultsInfo && isSearching && searchResultsCount !== undefined && (
                           <div className="text-sm text-gray-600">
                             Found {searchResultsCount} {resourceName}{searchResultsCount !== 1 ? 's' : ''}
@@ -227,6 +229,7 @@ export function ResourceListPage<TItem = unknown>({
                           </div>
                         )}
                       </div>
+                      {/* 정렬 표시기 (MultiSortIndicator 등) */}
                       {sortIndicator && (
                         <div className="flex items-center">
                           {sortIndicator}
@@ -235,7 +238,7 @@ export function ResourceListPage<TItem = unknown>({
                     </div>
                   )}
 
-                  {/* Filter Panel */}
+                  {/* 5-4. 필터 패널: showFilters가 true이고 필터 설정이 있으면 표시 */}
                   {showFilters && filterConfigs.length > 0 && (
                     <div className="mt-4">
                       <FilterPanel
@@ -254,8 +257,9 @@ export function ResourceListPage<TItem = unknown>({
             </Card>
           )}
 
-          {/* Content: Empty State or Table/List */}
+          {/* 6. 콘텐츠: 빈 상태 또는 테이블/리스트 */}
           {isEmpty ? (
+            // 6-1. 빈 상태: emptyState가 제공되면 사용, 없으면 기본 메시지 표시
             emptyState || (
               <Card>
                 <CardContent className="pt-6">
@@ -271,13 +275,18 @@ export function ResourceListPage<TItem = unknown>({
               </Card>
             )
           ) : (
+            // 6-2. 데이터가 있으면 테이블/리스트 컴포넌트 표시
             content
           )}
         </div>
       </Layout>
+      {/* 7. 키보드 단축키 및 Live Region (접근성) */}
       {keyboardShortcuts}
       {liveRegion}
     </WorkspaceRequired>
   );
 }
+
+// React.memo로 최적화: props가 변경되지 않으면 리렌더링 방지
+export const ResourceListPage = React.memo(ResourceListPageComponent) as typeof ResourceListPageComponent;
 

@@ -2,13 +2,12 @@
 
 import * as React from 'react';
 import { useFormContext, Controller } from 'react-hook-form';
-import { CheckCircle2, XCircle, Loader2, Info } from 'lucide-react';
+import { CheckCircle2, XCircle, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useFormValidation } from '@/hooks/use-form-validation';
 
 type ValidationState = 'idle' | 'validating' | 'valid' | 'invalid';
 
@@ -34,8 +33,6 @@ export function EnhancedFormField({
   description,
   options,
   className,
-  validateOnChange = true,
-  validateOnBlur = true,
 }: EnhancedFormFieldProps) {
   const { control, formState: { errors, touchedFields } } = useFormContext();
   const error = errors[name];

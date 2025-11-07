@@ -20,7 +20,7 @@ import api from '@/lib/api';
  * ```
  */
 export function useOfflineQueue(): {
-  queue: QueuedRequest[];
+  queue: readonly QueuedRequest[];
   queueSize: number;
   clearQueue: () => void;
 } {

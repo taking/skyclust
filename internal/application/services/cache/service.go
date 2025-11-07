@@ -9,42 +9,42 @@ import (
 	"time"
 )
 
-// cacheService implements the cache business logic
+// cacheService: 캐시 비즈니스 로직 구현체
 type cacheService struct {
 	cache cache.Cache
 }
 
-// NewService creates a new cache service
+// NewService: 새로운 캐시 서비스를 생성합니다
 func NewService(cache cache.Cache) domain.CacheService {
 	return &cacheService{
 		cache: cache,
 	}
 }
 
-// Get retrieves a value from cache
+// Get: 캐시에서 값을 조회합니다
 func (s *cacheService) Get(ctx context.Context, key string) (interface{}, error) {
 	var result interface{}
 	err := s.cache.Get(ctx, key, &result)
 	return result, err
 }
 
-// Set stores a value in cache
+// Set: 캐시에 값을 저장합니다
 func (s *cacheService) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
 	return s.cache.Set(ctx, key, value, ttl)
 }
 
-// Delete removes a value from cache
+// Delete: 캐시에서 값을 제거합니다
 func (s *cacheService) Delete(ctx context.Context, key string) error {
 	return s.cache.Delete(ctx, key)
 }
 
-// Clear removes all values from cache
+// Clear: 캐시의 모든 값을 제거합니다
 func (s *cacheService) Clear(ctx context.Context) error {
 	// Redis doesn't have a direct clear method, we'll return an error
 	return domain.NewDomainError(domain.ErrCodeNotImplemented, "clear operation not supported", 501)
 }
 
-// GetOrSet retrieves a value from cache or sets it if not found
+// GetOrSet: 캐시에서 값을 조회하거나 없으면 설정합니다
 func (s *cacheService) GetOrSet(ctx context.Context, key string, setter func() (interface{}, error), ttl time.Duration) (interface{}, error) {
 	// Try to get from cache first
 	value, err := s.Get(ctx, key)
@@ -70,14 +70,14 @@ func (s *cacheService) GetOrSet(ctx context.Context, key string, setter func() (
 	return value, nil
 }
 
-// InvalidatePattern removes all keys matching a pattern
+// InvalidatePattern: 패턴과 일치하는 모든 키를 제거합니다
 func (s *cacheService) InvalidatePattern(ctx context.Context, pattern string) error {
 	// This would need to be implemented in the cache interface
 	// For now, we'll just return nil
 	return nil
 }
 
-// GetStats returns cache statistics
+// GetStats: 캐시 통계를 반환합니다
 func (s *cacheService) GetStats(ctx context.Context) (map[string]interface{}, error) {
 	// Return basic stats since GetStats was removed from cache interface
 	return map[string]interface{}{
@@ -86,7 +86,7 @@ func (s *cacheService) GetStats(ctx context.Context) (map[string]interface{}, er
 	}, nil
 }
 
-// Health checks cache health
+// Health: 캐시 상태를 확인합니다
 func (s *cacheService) Health(ctx context.Context) error {
 	// Simple health check by trying to get a non-existent key
 	err := s.cache.Get(ctx, "health_check", nil)

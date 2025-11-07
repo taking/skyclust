@@ -1,0 +1,84 @@
+meta {
+  name: 사용자 역할 제거
+  type: http
+  seq: 2
+}
+
+delete {
+  url: {{baseUrl}}/api/{{apiVersion}}/admin/rbac/users/{{userId}}/roles
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "role": "admin"
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains success message", function() {
+    expect(res.getBody()).to.have.property('success');
+    expect(res.getBody().success).to.equal(true);
+  });
+}
+
+docs {
+  # 사용자 역할 제거
+  
+  사용자로부터 역할을 제거합니다.
+  
+  ## Request Body
+  
+  ```json
+  {
+    "role": "admin"
+  }
+  ```
+  
+  ## Request 필드
+  
+  - `role` (required): 제거할 역할 (`admin`, `user`, `viewer`)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "message": "Role removed successfully"
+    },
+    "message": "Role removed successfully"
+  }
+  ```
+  
+  ## Path Parameters
+  
+  - `userId`: 역할을 제거할 사용자 ID
+  
+  ## 에러 응답
+  
+  ### 역할이 없는 경우 (404)
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "NOT_FOUND",
+      "message": "user does not have role admin"
+    }
+  }
+  ```
+}
+

@@ -3,6 +3,7 @@ package logout
 import (
 	"context"
 	"fmt"
+	"skyclust/internal/application/services/common"
 	"skyclust/internal/domain"
 	"skyclust/pkg/cache"
 	"skyclust/pkg/logger"
@@ -11,14 +12,14 @@ import (
 	"github.com/google/uuid"
 )
 
-// Service handles unified logout for both JWT and OIDC authentication
+// Service: JWT와 OIDC 인증 모두를 위한 통합 로그아웃을 처리하는 서비스
 type Service struct {
 	blacklist    *cache.TokenBlacklist
 	oidcService  domain.OIDCService
 	auditLogRepo domain.AuditLogRepository
 }
 
-// NewService creates a new unified logout service
+// NewService: 새로운 통합 로그아웃 서비스를 생성합니다
 func NewService(
 	blacklist *cache.TokenBlacklist,
 	oidcService domain.OIDCService,
@@ -31,7 +32,7 @@ func NewService(
 	}
 }
 
-// Logout handles simple logout (for backward compatibility with domain interface)
+// Logout: 간단한 로그아웃을 처리합니다 (domain 인터페이스와의 하위 호환성을 위해)
 func (ls *Service) Logout(userID uuid.UUID, token string) error {
 	ctx := context.Background()
 	req := LogoutRequest{
@@ -43,7 +44,7 @@ func (ls *Service) Logout(userID uuid.UUID, token string) error {
 	return err
 }
 
-// LogoutWithContext handles unified logout for both JWT and OIDC authentication
+// LogoutWithContext: JWT와 OIDC 인증 모두를 위한 통합 로그아웃을 처리합니다
 func (ls *Service) LogoutWithContext(ctx context.Context, req LogoutRequest) (*LogoutResponse, error) {
 	switch req.AuthType {
 	case "jwt":
@@ -55,7 +56,7 @@ func (ls *Service) LogoutWithContext(ctx context.Context, req LogoutRequest) (*L
 	}
 }
 
-// handleJWTLogout handles JWT token logout
+// handleJWTLogout: JWT 토큰 로그아웃을 처리합니다
 func (ls *Service) handleJWTLogout(ctx context.Context, req LogoutRequest) (*LogoutResponse, error) {
 	// Add token to blacklist
 	// Set expiry to 15 minutes (matching JWT expiry for better security)
@@ -66,15 +67,13 @@ func (ls *Service) handleJWTLogout(ctx context.Context, req LogoutRequest) (*Log
 	}
 
 	// Log JWT logout
-	_ = ls.auditLogRepo.Create(&domain.AuditLog{
-		UserID:   req.UserID,
-		Action:   domain.ActionUserLogout,
-		Resource: "POST /api/v1/auth/logout",
-		Details: map[string]interface{}{
+	common.LogAction(ctx, ls.auditLogRepo, &req.UserID, domain.ActionUserLogout,
+		"POST /api/v1/auth/logout",
+		map[string]interface{}{
 			"auth_type":  "jwt",
 			"token_hash": ls.hashToken(req.Token),
 		},
-	})
+	)
 
 	logger.Infof("JWT logout successful for user: %s", req.UserID.String())
 
@@ -84,7 +83,7 @@ func (ls *Service) handleJWTLogout(ctx context.Context, req LogoutRequest) (*Log
 	}, nil
 }
 
-// handleOIDCLogout handles OIDC logout
+// handleOIDCLogout: OIDC 로그아웃을 처리합니다
 func (ls *Service) handleOIDCLogout(ctx context.Context, req LogoutRequest) (*LogoutResponse, error) {
 	// Call OIDC provider's end_session_endpoint
 	if err := ls.oidcService.EndSession(ctx, req.UserID, req.Provider, req.IDToken, req.PostLogoutRedirectURI); err != nil {
@@ -109,7 +108,7 @@ func (ls *Service) handleOIDCLogout(ctx context.Context, req LogoutRequest) (*Lo
 	}, nil
 }
 
-// BatchLogout handles logout for multiple tokens (useful for multi-device logout)
+// BatchLogout: 여러 토큰에 대한 로그아웃을 처리합니다 (다중 기기 로그아웃에 유용)
 func (ls *Service) BatchLogout(ctx context.Context, userID uuid.UUID, tokens []string) error {
 	var errors []error
 
@@ -135,7 +134,7 @@ func (ls *Service) BatchLogout(ctx context.Context, userID uuid.UUID, tokens []s
 	return nil
 }
 
-// GetLogoutStats returns statistics about logout operations
+// GetLogoutStats: 로그아웃 작업에 대한 통계를 반환합니다
 func (ls *Service) GetLogoutStats(ctx context.Context) (map[string]interface{}, error) {
 	// Get blacklist statistics
 	blacklistStats, err := ls.blacklist.GetBlacklistStats(ctx)
@@ -152,7 +151,7 @@ func (ls *Service) GetLogoutStats(ctx context.Context) (map[string]interface{}, 
 	return stats, nil
 }
 
-// CleanupExpiredTokens removes expired tokens from blacklist
+// CleanupExpiredTokens: 블랙리스트에서 만료된 토큰을 제거합니다
 func (ls *Service) CleanupExpiredTokens(ctx context.Context) error {
 	if err := ls.blacklist.CleanupExpiredTokens(ctx); err != nil {
 		logger.Errorf("Failed to cleanup expired tokens: %v", err)
@@ -163,7 +162,7 @@ func (ls *Service) CleanupExpiredTokens(ctx context.Context) error {
 	return nil
 }
 
-// hashToken creates a secure hash of the token for logging
+// hashToken: 로깅을 위해 토큰의 안전한 해시를 생성합니다
 func (ls *Service) hashToken(token string) string {
 	// Use the same hashing method as TokenBlacklist
 	// This is for logging purposes only

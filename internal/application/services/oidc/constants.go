@@ -19,4 +19,3 @@ const (
 	// StateMaxAge is the maximum age for OIDC state before expiration
 	StateMaxAge = 10 * time.Minute
 )
-

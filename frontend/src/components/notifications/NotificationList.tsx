@@ -1,32 +1,17 @@
 /**
  * Notification List Component
  * 알림 목록 컴포넌트
+ * 
+ * 리팩토링: 커스텀 훅과 작은 컴포넌트로 분리하여 가독성과 유지보수성 향상
  */
 
 'use client';
 
-import { useState } from 'react';
-import { format } from 'date-fns';
-import { ko } from 'date-fns/locale';
-import {
-  Bell,
-  Check,
-  CheckCheck,
-  Trash2,
-  Filter,
-  Search,
-  MoreHorizontal,
-  AlertCircle,
-  Info,
-  AlertTriangle,
-  CheckCircle,
-} from 'lucide-react';
-
+import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
-  TableCell,
   TableHead,
   TableHeader,
   TableRow,
@@ -38,203 +23,121 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
+import { CheckCheck, Trash2 } from 'lucide-react';
+import { useNotifications } from '@/hooks/use-notifications';
+import { useNotificationFilters } from '@/hooks/use-notification-filters';
+import { useNotificationSelection } from '@/hooks/use-notification-selection';
+import { useNotificationPagination } from '@/hooks/use-notification-pagination';
+import { useNotificationActions } from '@/hooks/use-notification-actions';
+import { NotificationFilters } from './notification-filters';
+import { NotificationRow } from './notification-row';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  useNotifications,
-  useMarkAsRead,
-  useMarkAllAsRead,
-  useDeleteNotification,
-  useDeleteNotifications,
-} from '@/hooks/use-notifications';
-import type { Notification } from '@/lib/types/notification';
+  NotificationListLoading,
+  NotificationListError,
+  NotificationListEmpty,
+} from './notification-list-states';
 
-interface NotificationListProps {
+export interface NotificationListProps {
+  /** 페이지당 항목 수 */
   limit?: number;
+  /** 액션 버튼 표시 여부 */
   showActions?: boolean;
+  /** 필터 UI 표시 여부 */
   showFilters?: boolean;
 }
 
-export function NotificationList({ 
+/**
+ * 알림 목록 컴포넌트
+ */
+function NotificationListComponent({ 
   limit = 20, 
   showActions = true, 
   showFilters = true 
 }: NotificationListProps) {
-  const [offset, setOffset] = useState(0);
-  const [unreadOnly, setUnreadOnly] = useState(false);
-  const [category, setCategory] = useState<string>('');
-  const [priority, setPriority] = useState<string>('');
-  const [selectedNotifications, setSelectedNotifications] = useState<string[]>([]);
+  // 필터링 상태 관리
+  const {
+    unreadOnly,
+    category,
+    priority,
+    setUnreadOnly,
+    setCategory,
+    setPriority,
+  } = useNotificationFilters();
 
+  // 페이지네이션 상태 관리 (초기 total은 0)
+  const pagination = useNotificationPagination({
+    limit,
+    total: 0,
+  });
+
+  // 알림 데이터 조회 (offset은 페이지네이션 훅에서 관리)
   const { data, isLoading, error, refetch } = useNotifications(
     limit,
-    offset,
+    pagination.offset,
     unreadOnly,
     category || undefined,
     priority || undefined
   );
 
-  const markAsReadMutation = useMarkAsRead();
-  const markAllAsReadMutation = useMarkAllAsRead();
-  const deleteNotificationMutation = useDeleteNotification();
-  const deleteNotificationsMutation = useDeleteNotifications();
+  // 페이지네이션 total 업데이트 (data 로드 후)
+  const updatedPagination = useNotificationPagination({
+    limit,
+    total: data?.total || 0,
+    initialOffset: pagination.offset,
+  });
 
-  const handleSelectNotification = (notificationId: string, checked: boolean) => {
-    if (checked) {
-      setSelectedNotifications(prev => [...prev, notificationId]);
-    } else {
-      setSelectedNotifications(prev => prev.filter(id => id !== notificationId));
+  // 선택 상태 관리
+  const {
+    selectedNotifications,
+    handleSelectNotification,
+    handleSelectAll,
+    clearSelection,
+  } = useNotificationSelection({
+    notifications: data?.notifications,
+  });
+
+  // 액션 핸들러
+  const {
+    handleMarkAsRead,
+    handleMarkAllAsRead,
+    handleDeleteNotification,
+    handleDeleteSelected,
+    isMarkingAllAsRead,
+    isDeletingSelected,
+    isMarkingAsRead,
+    isDeleting,
+  } = useNotificationActions({
+    selectedNotifications,
+    onSelectionClear: clearSelection,
+  });
+
+  // 전체 선택 여부 계산
+  const allSelected = useMemo(() => {
+    if (!data?.notifications || data.notifications.length === 0) {
+      return false;
     }
-  };
+    return selectedNotifications.length === data.notifications.length;
+  }, [selectedNotifications.length, data?.notifications]);
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked && data) {
-      setSelectedNotifications(data.notifications.map(n => n.id));
-    } else {
-      setSelectedNotifications([]);
-    }
-  };
+  // 읽지 않은 알림 수 계산
+  const unreadCount = useMemo(() => {
+    return data?.notifications.filter(n => !n.is_read).length || 0;
+  }, [data?.notifications]);
 
-  const handleMarkAsRead = async (notificationId: string) => {
-    await markAsReadMutation.mutateAsync(notificationId);
-  };
-
-  const handleMarkAllAsRead = async () => {
-    await markAllAsReadMutation.mutateAsync();
-  };
-
-  const handleDeleteNotification = async (notificationId: string) => {
-    await deleteNotificationMutation.mutateAsync(notificationId);
-  };
-
-  const handleDeleteSelected = async () => {
-    if (selectedNotifications.length > 0) {
-      await deleteNotificationsMutation.mutateAsync(selectedNotifications);
-      setSelectedNotifications([]);
-    }
-  };
-
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case 'success':
-        return <CheckCircle className="h-4 w-4 text-green-600" />;
-      case 'warning':
-        return <AlertTriangle className="h-4 w-4 text-yellow-600" />;
-      case 'error':
-        return <AlertCircle className="h-4 w-4 text-red-600" />;
-      case 'info':
-      default:
-        return <Info className="h-4 w-4 text-blue-600" />;
-    }
-  };
-
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case 'success':
-        return 'bg-green-100 text-green-800';
-      case 'warning':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'error':
-        return 'bg-red-100 text-red-800';
-      case 'info':
-      default:
-        return 'bg-blue-100 text-blue-800';
-    }
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'urgent':
-        return 'bg-red-100 text-red-800';
-      case 'high':
-        return 'bg-orange-100 text-orange-800';
-      case 'medium':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'low':
-        return 'bg-green-100 text-green-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
+  // 로딩 상태
   if (isLoading) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>알림</CardTitle>
-          <CardDescription>시스템 알림을 확인하세요.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex items-center space-x-4">
-                <Skeleton className="h-4 w-4" />
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-4 w-48" />
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-4 w-16" />
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    );
+    return <NotificationListLoading />;
   }
 
+  // 에러 상태
   if (error) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>알림</CardTitle>
-          <CardDescription>시스템 알림을 확인하세요.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center py-8">
-            <div className="text-center">
-              <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-              <p className="text-red-600 mb-4">알림을 불러올 수 없습니다.</p>
-              <Button onClick={() => refetch()} variant="outline">
-                다시 시도
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
+    return <NotificationListError onRetry={() => refetch()} />;
   }
 
+  // 빈 상태
   if (!data || data.notifications.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>알림</CardTitle>
-          <CardDescription>시스템 알림을 확인하세요.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center py-8">
-            <div className="text-center">
-              <Bell className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">알림이 없습니다.</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
+    return <NotificationListEmpty />;
   }
 
   return (
@@ -245,7 +148,7 @@ export function NotificationList({
             <CardTitle>알림</CardTitle>
             <CardDescription>
               총 {data.total}개의 알림
-              {unreadOnly && ` (읽지 않음: ${data.notifications.filter(n => !n.is_read).length}개)`}
+              {unreadOnly && unreadCount > 0 && ` (읽지 않음: ${unreadCount}개)`}
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -255,7 +158,7 @@ export function NotificationList({
                   onClick={handleMarkAllAsRead}
                   variant="outline"
                   size="sm"
-                  disabled={markAllAsReadMutation.isPending}
+                  disabled={isMarkingAllAsRead}
                 >
                   <CheckCheck className="mr-2 h-4 w-4" />
                   모두 읽음
@@ -265,7 +168,7 @@ export function NotificationList({
                     onClick={handleDeleteSelected}
                     variant="outline"
                     size="sm"
-                    disabled={deleteNotificationsMutation.isPending}
+                    disabled={isDeletingSelected}
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
                     선택 삭제
@@ -277,44 +180,14 @@ export function NotificationList({
         </div>
 
         {showFilters && (
-          <div className="flex items-center gap-4 pt-4">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="unread-only"
-                checked={unreadOnly}
-                onCheckedChange={(checked) => setUnreadOnly(checked as boolean)}
-              />
-              <label htmlFor="unread-only" className="text-sm font-medium">
-                읽지 않음만
-              </label>
-            </div>
-            
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="w-32">
-                <SelectValue placeholder="카테고리" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">전체</SelectItem>
-                <SelectItem value="system">시스템</SelectItem>
-                <SelectItem value="vm">VM</SelectItem>
-                <SelectItem value="cost">비용</SelectItem>
-                <SelectItem value="security">보안</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={priority} onValueChange={setPriority}>
-              <SelectTrigger className="w-32">
-                <SelectValue placeholder="우선순위" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">전체</SelectItem>
-                <SelectItem value="urgent">긴급</SelectItem>
-                <SelectItem value="high">높음</SelectItem>
-                <SelectItem value="medium">보통</SelectItem>
-                <SelectItem value="low">낮음</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <NotificationFilters
+            unreadOnly={unreadOnly}
+            category={category}
+            priority={priority}
+            onUnreadOnlyChange={setUnreadOnly}
+            onCategoryChange={setCategory}
+            onPriorityChange={setPriority}
+          />
         )}
       </CardHeader>
 
@@ -325,7 +198,7 @@ export function NotificationList({
               {showActions && (
                 <TableHead className="w-12">
                   <Checkbox
-                    checked={selectedNotifications.length === data.notifications.length && data.notifications.length > 0}
+                    checked={allSelected}
                     onCheckedChange={handleSelectAll}
                   />
                 </TableHead>
@@ -340,91 +213,17 @@ export function NotificationList({
           </TableHeader>
           <TableBody>
             {data.notifications.map((notification) => (
-              <TableRow key={notification.id}>
-                {showActions && (
-                  <TableCell>
-                    <Checkbox
-                      checked={selectedNotifications.includes(notification.id)}
-                      onCheckedChange={(checked) => 
-                        handleSelectNotification(notification.id, checked as boolean)
-                      }
-                    />
-                  </TableCell>
-                )}
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    {getTypeIcon(notification.type)}
-                    <Badge
-                      variant="outline"
-                      className={getTypeColor(notification.type)}
-                    >
-                      {notification.type}
-                    </Badge>
-                    {!notification.is_read && (
-                      <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="font-medium">{notification.title}</div>
-                  <div className="text-sm text-gray-600 truncate max-w-xs">
-                    {notification.message}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {notification.category && (
-                    <Badge variant="secondary">
-                      {notification.category}
-                    </Badge>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {notification.priority && (
-                    <Badge
-                      variant="outline"
-                      className={getPriorityColor(notification.priority)}
-                    >
-                      {notification.priority}
-                    </Badge>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {format(new Date(notification.created_at), 'MM-dd HH:mm', {
-                    locale: ko,
-                  })}
-                </TableCell>
-                {showActions && (
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {!notification.is_read && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleMarkAsRead(notification.id)}
-                          disabled={markAsReadMutation.isPending}
-                        >
-                          <Check className="h-4 w-4" />
-                        </Button>
-                      )}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button size="sm" variant="outline">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                          <DropdownMenuItem
-                            onClick={() => handleDeleteNotification(notification.id)}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            삭제
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </TableCell>
-                )}
-              </TableRow>
+              <NotificationRow
+                key={notification.id}
+                notification={notification}
+                isSelected={selectedNotifications.includes(notification.id)}
+                onSelectChange={(checked) => handleSelectNotification(notification.id, checked)}
+                onMarkAsRead={handleMarkAsRead}
+                onDelete={handleDeleteNotification}
+                showActions={showActions}
+                isMarkingAsRead={isMarkingAsRead}
+                isDeleting={isDeleting}
+              />
             ))}
           </TableBody>
         </Table>
@@ -433,22 +232,22 @@ export function NotificationList({
         {data.total > limit && (
           <div className="flex items-center justify-between pt-4">
             <div className="text-sm text-gray-600">
-              {offset + 1}-{Math.min(offset + limit, data.total)} / {data.total}
+              {updatedPagination.startIndex}-{updatedPagination.endIndex} / {data.total}
             </div>
             <div className="flex gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setOffset(Math.max(0, offset - limit))}
-                disabled={offset === 0}
+                onClick={updatedPagination.goToPreviousPage}
+                disabled={!updatedPagination.canGoPrevious}
               >
                 이전
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setOffset(offset + limit)}
-                disabled={offset + limit >= data.total}
+                onClick={updatedPagination.goToNextPage}
+                disabled={!updatedPagination.canGoNext}
               >
                 다음
               </Button>
@@ -459,3 +258,5 @@ export function NotificationList({
     </Card>
   );
 }
+
+export const NotificationList = NotificationListComponent;

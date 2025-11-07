@@ -273,7 +273,8 @@ func (h *Handler) createVPCHandler(req CreateVPCRequest) handlers.HandlerFunc {
 		serviceReq := ToServiceCreateVPCRequest(req, credential.ID.String())
 		h.logVPCCreationAttempt(c, userID, serviceReq)
 
-		vpc, err := h.networkService.CreateVPC(c.Request.Context(), credential, serviceReq)
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		vpc, err := h.networkService.CreateVPC(ctx, credential, serviceReq)
 		if err != nil {
 			h.HandleError(c, err, "create_vpc")
 			return
@@ -328,7 +329,8 @@ func (h *Handler) updateVPCHandler(req UpdateVPCRequest) handlers.HandlerFunc {
 
 		region := c.Query("region") // Optional for VPC
 
-		vpc, err := h.networkService.UpdateVPC(c.Request.Context(), credential, serviceReq, vpcID, region)
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		vpc, err := h.networkService.UpdateVPC(ctx, credential, serviceReq, vpcID, region)
 		if err != nil {
 			h.HandleError(c, err, "update_vpc")
 			return
@@ -381,7 +383,8 @@ func (h *Handler) deleteVPCHandler() handlers.HandlerFunc {
 		}
 		serviceReq := ToServiceDeleteVPCRequest(handlerReq, credential.ID.String())
 
-		if err := h.networkService.DeleteVPC(c.Request.Context(), credential, serviceReq); err != nil {
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		if err := h.networkService.DeleteVPC(ctx, credential, serviceReq); err != nil {
 			h.HandleError(c, err, "delete_vpc")
 			return
 		}
@@ -484,7 +487,8 @@ func (h *Handler) createSubnetHandler(req CreateSubnetRequest) handlers.HandlerF
 		serviceReq := ToServiceCreateSubnetRequest(req, credential.ID.String())
 		h.logSubnetCreationAttempt(c, userID, serviceReq)
 
-		subnet, err := h.networkService.CreateSubnet(c.Request.Context(), credential, serviceReq)
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		subnet, err := h.networkService.CreateSubnet(ctx, credential, serviceReq)
 		if err != nil {
 			h.HandleError(c, err, "create_subnet")
 			return
@@ -543,7 +547,8 @@ func (h *Handler) updateSubnetHandler(req UpdateSubnetRequest) handlers.HandlerF
 		serviceReq := ToServiceUpdateSubnetRequest(req)
 		h.logSubnetUpdateAttempt(c, userID, subnetID, serviceReq)
 
-		subnet, err := h.networkService.UpdateSubnet(c.Request.Context(), credential, serviceReq, subnetID, region)
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		subnet, err := h.networkService.UpdateSubnet(ctx, credential, serviceReq, subnetID, region)
 		if err != nil {
 			h.HandleError(c, err, "update_subnet")
 			return
@@ -600,7 +605,8 @@ func (h *Handler) deleteSubnetHandler() handlers.HandlerFunc {
 		}
 		serviceReq := ToServiceDeleteSubnetRequest(handlerReq, credential.ID.String())
 
-		if err := h.networkService.DeleteSubnet(c.Request.Context(), credential, serviceReq); err != nil {
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		if err := h.networkService.DeleteSubnet(ctx, credential, serviceReq); err != nil {
 			h.HandleError(c, err, "delete_subnet")
 			return
 		}
@@ -703,7 +709,8 @@ func (h *Handler) createSecurityGroupHandler(req CreateSecurityGroupRequest) han
 		serviceReq := ToServiceCreateSecurityGroupRequest(req, credential.ID.String())
 		h.logSecurityGroupCreationAttempt(c, userID, serviceReq)
 
-		securityGroup, err := h.networkService.CreateSecurityGroup(c.Request.Context(), credential, serviceReq)
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		securityGroup, err := h.networkService.CreateSecurityGroup(ctx, credential, serviceReq)
 		if err != nil {
 			h.HandleError(c, err, "create_security_group")
 			return
@@ -762,7 +769,8 @@ func (h *Handler) updateSecurityGroupHandler(req UpdateSecurityGroupRequest) han
 		serviceReq := ToServiceUpdateSecurityGroupRequest(req)
 		h.logSecurityGroupUpdateAttempt(c, userID, securityGroupID, serviceReq)
 
-		securityGroup, err := h.networkService.UpdateSecurityGroup(c.Request.Context(), credential, serviceReq, securityGroupID, region)
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		securityGroup, err := h.networkService.UpdateSecurityGroup(ctx, credential, serviceReq, securityGroupID, region)
 		if err != nil {
 			h.HandleError(c, err, "update_security_group")
 			return
@@ -819,7 +827,8 @@ func (h *Handler) deleteSecurityGroupHandler() handlers.HandlerFunc {
 		}
 		serviceReq := ToServiceDeleteSecurityGroupRequest(handlerReq, credential.ID.String())
 
-		if err := h.networkService.DeleteSecurityGroup(c.Request.Context(), credential, serviceReq); err != nil {
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		if err := h.networkService.DeleteSecurityGroup(ctx, credential, serviceReq); err != nil {
 			h.HandleError(c, err, "delete_security_group")
 			return
 		}

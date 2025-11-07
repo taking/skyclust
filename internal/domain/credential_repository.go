@@ -13,11 +13,4 @@ type CredentialRepository interface {
 	Update(credential *Credential) error
 	Delete(id uuid.UUID) error
 	DeleteByWorkspaceID(workspaceID uuid.UUID) error
-	// Deprecated: Use GetByWorkspaceID instead
-	GetByUserID(userID uuid.UUID) ([]*Credential, error)
-	// Deprecated: Use GetByWorkspaceIDAndProvider instead
-	GetByUserIDAndProvider(userID uuid.UUID, provider string) ([]*Credential, error)
-	// Deprecated: Use DeleteByWorkspaceID instead
-	DeleteByUserID(userID uuid.UUID) error
 }
-

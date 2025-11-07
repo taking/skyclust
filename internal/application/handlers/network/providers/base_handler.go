@@ -58,4 +58,3 @@ func (h *BaseHandler) parseVPCID(c *gin.Context) string {
 func (h *BaseHandler) NotImplemented(c *gin.Context, operation string) {
 	h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotImplemented, operation+" not yet implemented", 501), operation)
 }
-

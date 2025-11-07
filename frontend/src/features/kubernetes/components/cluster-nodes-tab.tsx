@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ResourceEmptyState } from '@/components/common/resource-empty-state';
 import { Server } from 'lucide-react';
 import type { Node } from '@/lib/types';
+import { useTranslation } from '@/hooks/use-translation';
 
 interface ClusterNodesTabProps {
   nodes: Node[];
@@ -18,6 +19,8 @@ interface ClusterNodesTabProps {
 }
 
 export function ClusterNodesTab({ nodes, isLoading }: ClusterNodesTabProps) {
+  const { t } = useTranslation();
+
   if (isLoading) {
     return (
       <Card>
@@ -31,9 +34,9 @@ export function ClusterNodesTab({ nodes, isLoading }: ClusterNodesTabProps) {
   if (nodes.length === 0) {
     return (
       <ResourceEmptyState
-        resourceName="Nodes"
+        resourceName={t('kubernetes.nodes')}
         icon={Server}
-        description="No nodes found in this cluster."
+        description={t('kubernetes.noNodesFoundForCluster')}
         withCard={true}
       />
     );
@@ -42,18 +45,18 @@ export function ClusterNodesTab({ nodes, isLoading }: ClusterNodesTabProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Nodes</CardTitle>
-        <CardDescription>{nodes.length} node{nodes.length !== 1 ? 's' : ''}</CardDescription>
+        <CardTitle>{t('kubernetes.nodes')}</CardTitle>
+        <CardDescription>{t('kubernetes.nodeCount', { count: nodes.length })}</CardDescription>
       </CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Instance Type</TableHead>
-              <TableHead>Zone</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Private IP</TableHead>
+              <TableHead>{t('common.name')}</TableHead>
+              <TableHead>{t('common.instanceType')}</TableHead>
+              <TableHead>{t('common.zone')}</TableHead>
+              <TableHead>{t('common.status')}</TableHead>
+              <TableHead>{t('common.privateIP')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

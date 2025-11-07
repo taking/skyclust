@@ -14,6 +14,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { Trash2, Tag, MoreVertical, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
 
 interface BulkActionsToolbarProps<T extends { id: string }> {
   items: T[];
@@ -22,6 +24,14 @@ interface BulkActionsToolbarProps<T extends { id: string }> {
   onBulkDelete?: (ids: string[]) => void;
   onBulkTag?: (ids: string[]) => void;
   getItemDisplayName?: (item: T) => string;
+  /**
+   * 고정 위치로 표시할지 여부 (기본값: false)
+   */
+  fixed?: boolean;
+  /**
+   * 항상 표시할지 여부 (기본값: false, 선택된 항목이 있을 때만 표시)
+   */
+  alwaysVisible?: boolean;
 }
 
 function BulkActionsToolbarComponent<T extends { id: string }>({
@@ -30,19 +40,12 @@ function BulkActionsToolbarComponent<T extends { id: string }>({
   onSelectionChange,
   onBulkDelete,
   onBulkTag,
-  getItemDisplayName = (item: T) => {
-    const itemWithName = item as T & { name?: string };
-    return itemWithName.name || item.id;
-  },
+  fixed = false,
+  alwaysVisible = false,
 }: BulkActionsToolbarProps<T>) {
-  const [isSelectMode, setIsSelectMode] = useState(false);
-
-  const toggleSelectMode = () => {
-    setIsSelectMode(!isSelectMode);
-    if (isSelectMode) {
-      onSelectionChange([]);
-    }
-  };
+  const hasSelection = selectedIds.length > 0;
+  const showToolbar = alwaysVisible || hasSelection;
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const toggleSelectAll = () => {
     if (selectedIds.length === items.length) {
@@ -52,21 +55,21 @@ function BulkActionsToolbarComponent<T extends { id: string }>({
     }
   };
 
-  const toggleSelectItem = (id: string) => {
-    if (selectedIds.includes(id)) {
-      onSelectionChange(selectedIds.filter(selectedId => selectedId !== id));
-    } else {
-      onSelectionChange([...selectedIds, id]);
-    }
+  const handleClearSelection = () => {
+    onSelectionChange([]);
   };
 
   const handleBulkDelete = () => {
     if (onBulkDelete && selectedIds.length > 0) {
-      if (confirm(`Are you sure you want to delete ${selectedIds.length} item(s)? This action cannot be undone.`)) {
-        onBulkDelete(selectedIds);
-        onSelectionChange([]);
-        setIsSelectMode(false);
-      }
+      setIsDeleteDialogOpen(true);
+    }
+  };
+
+  const handleConfirmBulkDelete = () => {
+    if (onBulkDelete && selectedIds.length > 0) {
+      onBulkDelete(selectedIds);
+      onSelectionChange([]);
+      setIsDeleteDialogOpen(false);
     }
   };
 
@@ -76,79 +79,104 @@ function BulkActionsToolbarComponent<T extends { id: string }>({
     }
   };
 
-  if (!isSelectMode) {
-    return (
-      <Button variant="outline" onClick={toggleSelectMode}>
-        Select Items
-      </Button>
-    );
+  if (!showToolbar) {
+    return null;
   }
 
-  return (
-    <div className="flex items-center justify-between p-4 bg-blue-50 border border-blue-200 rounded-lg">
+  const toolbarContent = (
+    <div className={cn(
+      "flex items-center justify-between p-3 bg-primary/5 border border-primary/20 rounded-lg shadow-sm",
+      fixed && "sticky top-0 z-50 backdrop-blur-sm bg-primary/10"
+    )}>
       <div className="flex items-center space-x-4">
-        <Button variant="ghost" size="sm" onClick={toggleSelectMode}>
-          <X className="h-4 w-4 mr-2" />
-          Cancel
-        </Button>
-        <Checkbox
-          checked={selectedIds.length === items.length && items.length > 0}
-          onCheckedChange={toggleSelectAll}
-          id="select-all"
-        />
-        <label htmlFor="select-all" className="text-sm font-medium cursor-pointer">
-          Select All ({items.length})
-        </label>
-        <Badge variant="secondary" className="ml-2">
-          {selectedIds.length} selected
-        </Badge>
-      </div>
-
-      <div className="flex items-center space-x-2">
-        {selectedIds.length > 0 && (
+        {hasSelection && (
           <>
-            {onBulkDelete && (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleBulkDelete}
-                disabled={selectedIds.length === 0}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete ({selectedIds.length})
-              </Button>
-            )}
-            {onBulkTag && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleBulkTag}
-                disabled={selectedIds.length === 0}
-              >
-                <Tag className="h-4 w-4 mr-2" />
-                Tag ({selectedIds.length})
-              </Button>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>More Actions</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleBulkTag} disabled={!onBulkTag || selectedIds.length === 0}>
-                  <Tag className="mr-2 h-4 w-4" />
-                  Add Tags
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Button variant="ghost" size="sm" onClick={handleClearSelection}>
+              <X className="h-4 w-4 mr-2" />
+              Clear
+            </Button>
+            <Checkbox
+              checked={selectedIds.length === items.length && items.length > 0}
+              onCheckedChange={toggleSelectAll}
+              id="select-all"
+            />
+            <label htmlFor="select-all" className="text-sm font-medium cursor-pointer">
+              Select All ({items.length})
+            </label>
+            <Badge variant="secondary" className="ml-2">
+              {selectedIds.length} selected
+            </Badge>
           </>
         )}
+        {!hasSelection && alwaysVisible && (
+          <span className="text-sm text-muted-foreground">
+            Select items to perform bulk actions
+          </span>
+        )}
       </div>
+
+      {hasSelection && (
+        <div className="flex items-center space-x-2">
+          {onBulkDelete && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleBulkDelete}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete ({selectedIds.length})
+            </Button>
+          )}
+          {onBulkTag && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBulkTag}
+            >
+              <Tag className="h-4 w-4 mr-2" />
+              Tag ({selectedIds.length})
+            </Button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>More Actions</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleBulkTag} disabled={!onBulkTag}>
+                <Tag className="mr-2 h-4 w-4" />
+                Add Tags
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
     </div>
   );
+
+  const toolbarWithDialog = (
+    <>
+      {fixed ? (
+        <div className="sticky top-0 z-50 mb-4">
+          {toolbarContent}
+        </div>
+      ) : (
+        toolbarContent
+      )}
+      <DeleteConfirmationDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+        onConfirm={handleConfirmBulkDelete}
+        title="일괄 삭제 확인"
+        description={`선택한 ${selectedIds.length}개 항목을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`}
+      />
+    </>
+  );
+
+  return toolbarWithDialog;
 }
 
 export const BulkActionsToolbar = React.memo(BulkActionsToolbarComponent) as typeof BulkActionsToolbarComponent;

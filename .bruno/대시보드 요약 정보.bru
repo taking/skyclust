@@ -1,0 +1,256 @@
+meta {
+  name: 대시보드 요약 정보
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/dashboard/summary?workspace_id={{workspaceId}}&credential_id={{aws_credentialsId}}&region=ap-northeast-3
+  body: none
+  auth: bearer
+}
+
+params:query {
+  workspace_id: {{workspaceId}}
+  credential_id: {{aws_credentialsId}}
+  region: ap-northeast-3
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+script:post-response {
+  const summary = res.body.data;
+  
+  const statsData = [
+    { category: 'VMs', total: summary.vms.total, running: summary.vms.running, stopped: summary.vms.stopped },
+    { category: 'Clusters', total: summary.clusters.total, healthy: summary.clusters.healthy },
+    { category: 'Networks', vpcs: summary.networks.vpcs, subnets: summary.networks.subnets, securityGroups: summary.networks.security_groups },
+    { category: 'Credentials', total: summary.credentials.total },
+    { category: 'Members', total: summary.members.total }
+  ];
+  
+  const columnDefinitions = [
+    { field: "category", filter: true, floatingFilter: true },
+    { field: "total", filter: true, floatingFilter: true, type: "numberColumn" },
+    { field: "running", filter: true, floatingFilter: true, type: "numberColumn" },
+    { field: "stopped", filter: true, floatingFilter: true, type: "numberColumn" },
+    { field: "healthy", filter: true, floatingFilter: true, type: "numberColumn" },
+    { field: "vpcs", filter: true, floatingFilter: true, type: "numberColumn" },
+    { field: "subnets", filter: true, floatingFilter: true, type: "numberColumn" },
+    { field: "securityGroups", filter: true, floatingFilter: true, type: "numberColumn" }
+  ];
+  
+  bru.visualize('table', {
+    name: 'Dashboard Summary',
+    provider: 'ag-grid',
+    props: { rowData: statsData, columnDefinitions }
+  });
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains dashboard summary data", function() {
+    const body = res.getBody();
+    expect(body).to.have.property('success');
+    expect(body).to.have.property('data');
+    expect(body.data).to.have.property('workspace_id');
+    expect(body.data).to.have.property('vms');
+    expect(body.data).to.have.property('clusters');
+    expect(body.data).to.have.property('networks');
+    expect(body.data).to.have.property('credentials');
+    expect(body.data).to.have.property('members');
+    expect(body.data).to.have.property('last_updated');
+  });
+  
+  test("VM stats have valid structure", function() {
+    const vms = res.getBody().data.vms;
+    expect(vms).to.have.property('total');
+    expect(vms).to.have.property('running');
+    expect(vms).to.have.property('stopped');
+    expect(vms).to.have.property('by_provider');
+    expect(vms.total).to.be.a('number');
+    expect(vms.running).to.be.a('number');
+    expect(vms.stopped).to.be.a('number');
+    expect(vms.by_provider).to.be.an('object');
+  });
+  
+  test("Cluster stats have valid structure", function() {
+    const clusters = res.getBody().data.clusters;
+    expect(clusters).to.have.property('total');
+    expect(clusters).to.have.property('healthy');
+    expect(clusters).to.have.property('by_provider');
+    expect(clusters.total).to.be.a('number');
+    expect(clusters.healthy).to.be.a('number');
+    expect(clusters.by_provider).to.be.an('object');
+  });
+  
+  test("Network stats have valid structure", function() {
+    const networks = res.getBody().data.networks;
+    expect(networks).to.have.property('vpcs');
+    expect(networks).to.have.property('subnets');
+    expect(networks).to.have.property('security_groups');
+    expect(networks.vpcs).to.be.a('number');
+    expect(networks.subnets).to.be.a('number');
+    expect(networks.security_groups).to.be.a('number');
+  });
+  
+  test("Credential stats have valid structure", function() {
+    const credentials = res.getBody().data.credentials;
+    expect(credentials).to.have.property('total');
+    expect(credentials).to.have.property('by_provider');
+    expect(credentials.total).to.be.a('number');
+    expect(credentials.by_provider).to.be.an('object');
+  });
+  
+  test("Member stats have valid structure", function() {
+    const members = res.getBody().data.members;
+    expect(members).to.have.property('total');
+    expect(members.total).to.be.a('number');
+  });
+  
+  test("Last updated is valid timestamp", function() {
+    const lastUpdated = res.getBody().data.last_updated;
+    expect(lastUpdated).to.be.a('string');
+    // RFC3339 형식 검증
+    const date = new Date(lastUpdated);
+    expect(date.getTime()).to.not.be.NaN;
+  });
+}
+
+docs {
+  # 대시보드 요약 정보 조회
+  
+  워크스페이스의 대시보드 요약 정보를 조회합니다. VM, Kubernetes 클러스터, 네트워크 리소스, 자격 증명, 멤버에 대한 통계를 제공합니다.
+  
+  ## 쿼리 파라미터
+  
+  ### 필수 파라미터
+  - `workspace_id` (string): 워크스페이스 ID
+  
+  ### 선택 파라미터
+  - `credential_id` (string): 자격 증명 ID로 필터링 (지정하지 않으면 모든 자격 증명 포함)
+  - `region` (string): 리전으로 필터링 (지정하지 않으면 모든 리전 포함)
+  
+  ## 응답 구조
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "workspace_id": "123e4567-e89b-12d3-a456-426614174000",
+      "vms": {
+        "total": 10,
+        "running": 7,
+        "stopped": 3,
+        "by_provider": {
+          "aws": 5,
+          "gcp": 3,
+          "azure": 2
+        }
+      },
+      "clusters": {
+        "total": 3,
+        "healthy": 2,
+        "by_provider": {
+          "aws": 2,
+          "gcp": 1
+        }
+      },
+      "networks": {
+        "vpcs": 5,
+        "subnets": 12,
+        "security_groups": 8
+      },
+      "credentials": {
+        "total": 4,
+        "by_provider": {
+          "aws": 2,
+          "gcp": 1,
+          "azure": 1
+        }
+      },
+      "members": {
+        "total": 5
+      },
+      "last_updated": "2025-01-27T10:30:00Z"
+    },
+    "message": "Dashboard summary retrieved successfully",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-01-27T10:30:00.606589+09:00"
+  }
+  ```
+  
+  ## 응답 필드 설명
+  
+  ### workspace_id (string)
+  - 조회된 워크스페이스 ID
+  
+  ### vms (VMStats)
+  - `total`: 전체 VM 수
+  - `running`: 실행 중인 VM 수
+  - `stopped`: 중지된 VM 수
+  - `by_provider`: 프로바이더별 VM 수 (예: `{"aws": 5, "gcp": 3}`)
+  
+  ### clusters (ClusterStats)
+  - `total`: 전체 Kubernetes 클러스터 수
+  - `healthy`: 정상 상태인 클러스터 수
+  - `by_provider`: 프로바이더별 클러스터 수 (예: `{"aws": 2, "gcp": 1}`)
+  
+  ### networks (NetworkStats)
+  - `vpcs`: VPC 수
+  - `subnets`: 서브넷 수
+  - `security_groups`: 보안 그룹 수
+  
+  ### credentials (CredentialStats)
+  - `total`: 전체 자격 증명 수
+  - `by_provider`: 프로바이더별 자격 증명 수 (예: `{"aws": 2, "gcp": 1}`)
+  
+  ### members (MemberStats)
+  - `total`: 워크스페이스 멤버 수
+  
+  ### last_updated (string)
+  - 마지막 업데이트 시간 (RFC3339 형식)
+  
+  ## 사용 예시
+  
+  ### 기본 조회 (모든 자격 증명 및 리전)
+  ```bash
+  GET /api/v1/dashboard/summary?workspace_id=123e4567-e89b-12d3-a456-426614174000
+  Authorization: Bearer your-jwt-token
+  ```
+  
+  ### 특정 자격 증명으로 필터링
+  ```bash
+  GET /api/v1/dashboard/summary?workspace_id=123e4567-e89b-12d3-a456-426614174000&credential_id=456e7890-e89b-12d3-a456-426614174001
+  Authorization: Bearer your-jwt-token
+  ```
+  
+  ### 특정 리전으로 필터링
+  ```bash
+  GET /api/v1/dashboard/summary?workspace_id=123e4567-e89b-12d3-a456-426614174000&region=ap-northeast-3
+  Authorization: Bearer your-jwt-token
+  ```
+  
+  ### 자격 증명 및 리전 모두 필터링
+  ```bash
+  GET /api/v1/dashboard/summary?workspace_id=123e4567-e89b-12d3-a456-426614174000&credential_id=456e7890-e89b-12d3-a456-426614174001&region=ap-northeast-3
+  Authorization: Bearer your-jwt-token
+  ```
+  
+  ## 주의사항
+  
+  - `workspace_id`는 필수 파라미터입니다. 제공하지 않으면 400 Bad Request 에러가 반환됩니다.
+  - `credential_id`와 `region`은 선택 사항이며, 둘 다 제공하지 않으면 워크스페이스의 모든 자격 증명과 리전에 대한 통계를 반환합니다.
+  - Kubernetes 클러스터 통계는 실제 클라우드 프로바이더 API를 호출하여 조회하므로, 자격 증명에 적절한 권한이 필요합니다.
+  - 네트워크 리소스 통계도 실제 클라우드 프로바이더 API를 호출하여 조회합니다.
+  - 응답의 `last_updated`는 API 호출 시점의 시간입니다.
+}

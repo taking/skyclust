@@ -15,14 +15,14 @@ import (
 	"go.uber.org/zap"
 )
 
-// Handler handles credential management operations using improved patterns
+// Handler: 자격증명 관리 작업을 처리하는 핸들러
 type Handler struct {
 	*handlers.BaseHandler
 	credentialService domain.CredentialService
 	readabilityHelper *readability.ReadabilityHelper
 }
 
-// NewHandler creates a new credential handler
+// NewHandler: 새로운 자격증명 핸들러를 생성합니다
 func NewHandler(credentialService domain.CredentialService) *Handler {
 	return &Handler{
 		BaseHandler:       handlers.NewBaseHandler("credential"),
@@ -31,7 +31,7 @@ func NewHandler(credentialService domain.CredentialService) *Handler {
 	}
 }
 
-// CreateCredential handles credential creation using decorator pattern
+// CreateCredential: 자격증명 생성 요청을 처리합니다 (데코레이터 패턴 사용)
 func (h *Handler) CreateCredential(c *gin.Context) {
 	var req domain.CreateCredentialRequest
 
@@ -43,7 +43,7 @@ func (h *Handler) CreateCredential(c *gin.Context) {
 	handler(c)
 }
 
-// createCredentialHandler is the core business logic for credential creation
+// createCredentialHandler: 자격증명 생성의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) createCredentialHandler(req domain.CreateCredentialRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		var req domain.CreateCredentialRequest
@@ -67,7 +67,8 @@ func (h *Handler) createCredentialHandler(req domain.CreateCredentialRequest) ha
 
 		h.logCredentialCreationAttempt(c, userID, req)
 
-		credential, err := h.credentialService.CreateCredential(c.Request.Context(), workspaceID, userID, req)
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		credential, err := h.credentialService.CreateCredential(ctx, workspaceID, userID, req)
 		if err != nil {
 			h.HandleError(c, err, "create_credential")
 			return
@@ -78,7 +79,7 @@ func (h *Handler) createCredentialHandler(req domain.CreateCredentialRequest) ha
 	}
 }
 
-// GetCredentials handles credential listing using decorator pattern
+// GetCredentials: 자격증명 목록을 조회합니다 (데코레이터 패턴 사용)
 func (h *Handler) GetCredentials(c *gin.Context) {
 	handler := h.Compose(
 		h.getCredentialsHandler(),
@@ -88,7 +89,7 @@ func (h *Handler) GetCredentials(c *gin.Context) {
 	handler(c)
 }
 
-// getCredentialsHandler is the core business logic for getting credentials
+// getCredentialsHandler: 자격증명 조회의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) getCredentialsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := h.ExtractUserIDFromContext(c)
@@ -118,11 +119,17 @@ func (h *Handler) getCredentialsHandler() handlers.HandlerFunc {
 			return
 		}
 
+		// Support provider filter via query parameter (RESTful)
+		providerFilter := c.Query("provider")
+		if providerFilter != "" {
+			credentials = h.filterCredentialsByProvider(credentials, providerFilter)
+		}
+
 		h.OK(c, gin.H{"credentials": credentials}, "Credentials retrieved successfully")
 	}
 }
 
-// GetCredential handles single credential retrieval using decorator pattern
+// GetCredential: 단일 자격증명을 조회합니다 (데코레이터 패턴 사용)
 func (h *Handler) GetCredential(c *gin.Context) {
 	handler := h.Compose(
 		h.getCredentialHandler(),
@@ -132,7 +139,7 @@ func (h *Handler) GetCredential(c *gin.Context) {
 	handler(c)
 }
 
-// getCredentialHandler is the core business logic for getting a single credential
+// getCredentialHandler: 단일 자격증명 조회의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) getCredentialHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		credentialID, err := h.ExtractPathParam(c, "id")
@@ -172,7 +179,7 @@ func (h *Handler) getCredentialHandler() handlers.HandlerFunc {
 	}
 }
 
-// UpdateCredential handles credential updates using decorator pattern
+// UpdateCredential: 자격증명 업데이트 요청을 처리합니다 (데코레이터 패턴 사용)
 func (h *Handler) UpdateCredential(c *gin.Context) {
 	var req domain.UpdateCredentialRequest
 
@@ -184,7 +191,7 @@ func (h *Handler) UpdateCredential(c *gin.Context) {
 	handler(c)
 }
 
-// updateCredentialHandler is the core business logic for updating credentials
+// updateCredentialHandler: 자격증명 업데이트의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) updateCredentialHandler(req domain.UpdateCredentialRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		credentialID, err := h.ExtractPathParam(c, "id")
@@ -220,7 +227,8 @@ func (h *Handler) updateCredentialHandler(req domain.UpdateCredentialRequest) ha
 
 		h.logCredentialUpdateAttempt(c, userID, credentialID)
 
-		credential, err := h.credentialService.UpdateCredential(c.Request.Context(), workspaceID, credentialID, req)
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		credential, err := h.credentialService.UpdateCredential(ctx, workspaceID, credentialID, req)
 		if err != nil {
 			h.HandleError(c, err, "update_credential")
 			return
@@ -231,7 +239,7 @@ func (h *Handler) updateCredentialHandler(req domain.UpdateCredentialRequest) ha
 	}
 }
 
-// DeleteCredential handles credential deletion using decorator pattern
+// DeleteCredential: 자격증명 삭제 요청을 처리합니다 (데코레이터 패턴 사용)
 func (h *Handler) DeleteCredential(c *gin.Context) {
 	handler := h.Compose(
 		h.deleteCredentialHandler(),
@@ -241,7 +249,7 @@ func (h *Handler) DeleteCredential(c *gin.Context) {
 	handler(c)
 }
 
-// deleteCredentialHandler is the core business logic for deleting credentials
+// deleteCredentialHandler: 자격증명 삭제의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) deleteCredentialHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		credentialID, err := h.ExtractPathParam(c, "id")
@@ -271,7 +279,8 @@ func (h *Handler) deleteCredentialHandler() handlers.HandlerFunc {
 
 		h.logCredentialDeletionAttempt(c, userID, credentialID)
 
-		err = h.credentialService.DeleteCredential(c.Request.Context(), workspaceID, credentialID)
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		err = h.credentialService.DeleteCredential(ctx, workspaceID, credentialID)
 		if err != nil {
 			h.HandleError(c, err, "delete_credential")
 			return
@@ -282,7 +291,7 @@ func (h *Handler) deleteCredentialHandler() handlers.HandlerFunc {
 	}
 }
 
-// CreateCredentialFromFile handles credential creation from uploaded file using decorator pattern
+// CreateCredentialFromFile: 업로드된 파일로부터 자격증명을 생성합니다 (데코레이터 패턴 사용)
 func (h *Handler) CreateCredentialFromFile(c *gin.Context) {
 	handler := h.Compose(
 		h.createCredentialFromFileHandler(),
@@ -292,7 +301,7 @@ func (h *Handler) CreateCredentialFromFile(c *gin.Context) {
 	handler(c)
 }
 
-// createCredentialFromFileHandler is the core business logic for creating credentials from file
+// createCredentialFromFileHandler: 파일로부터 자격증명 생성의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) createCredentialFromFileHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := h.ExtractUserIDFromContext(c)
@@ -359,66 +368,9 @@ func (h *Handler) createCredentialFromFileHandler() handlers.HandlerFunc {
 	}
 }
 
-// GetCredentialsByProvider handles getting credentials by provider using decorator pattern
-func (h *Handler) GetCredentialsByProvider(c *gin.Context) {
-	handler := h.Compose(
-		h.getCredentialsByProviderHandler(),
-		h.StandardCRUDDecorators("get_credentials_by_provider")...,
-	)
+// 헬퍼 메서드들
 
-	handler(c)
-}
-
-// getCredentialsByProviderHandler is the core business logic for getting credentials by provider
-func (h *Handler) getCredentialsByProviderHandler() handlers.HandlerFunc {
-	return func(c *gin.Context) {
-		provider := h.extractProviderParam(c)
-		userID, err := h.ExtractUserIDFromContext(c)
-		if err != nil {
-			h.HandleError(c, err, "get_credentials_by_provider")
-			return
-		}
-
-		// Get workspace ID from query parameter
-		workspaceIDStr, err := h.ExtractRequiredQueryParam(c, "workspace_id")
-		if err != nil {
-			h.HandleError(c, err, "get_credentials_by_provider")
-			return
-		}
-
-		workspaceID, err := uuid.Parse(workspaceIDStr)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid workspace ID format", 400), "get_credentials_by_provider")
-			return
-		}
-
-		h.logCredentialsByProviderRequest(c, userID, provider)
-
-		credentials, err := h.credentialService.GetCredentials(c.Request.Context(), workspaceID)
-		if err != nil {
-			h.HandleError(c, err, "get_credentials_by_provider")
-			return
-		}
-
-		filteredCredentials := h.filterCredentialsByProvider(credentials, provider)
-		h.OK(c, gin.H{
-			"credentials": filteredCredentials,
-			"provider":    provider,
-		}, "Credentials retrieved successfully")
-	}
-}
-
-// Helper methods for better readability
-
-func (h *Handler) extractProviderParam(c *gin.Context) string {
-	provider := c.Param("provider")
-	if provider == "" {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Provider parameter is required", 400), "extract_provider")
-		return ""
-	}
-	return provider
-}
-
+// filterCredentialsByProvider: 제공자별로 자격증명을 필터링합니다
 func (h *Handler) filterCredentialsByProvider(credentials []*domain.Credential, provider string) []*domain.Credential {
 	var filteredCredentials []*domain.Credential
 	for _, cred := range credentials {
@@ -429,6 +381,7 @@ func (h *Handler) filterCredentialsByProvider(credentials []*domain.Credential, 
 	return filteredCredentials
 }
 
+// parseFormData: 폼 데이터를 파싱합니다
 func (h *Handler) parseFormData(c *gin.Context) (map[string]string, error) {
 	name := c.PostForm("name")
 	provider := c.PostForm("provider")
@@ -445,6 +398,7 @@ func (h *Handler) parseFormData(c *gin.Context) (map[string]string, error) {
 	}, nil
 }
 
+// readUploadedFile: 업로드된 파일을 읽습니다
 func (h *Handler) readUploadedFile(c *gin.Context) ([]byte, error) {
 	// Check Content-Type
 	contentType := c.GetHeader("Content-Type")
@@ -518,6 +472,7 @@ func (h *Handler) readUploadedFile(c *gin.Context) ([]byte, error) {
 	return fileContent, nil
 }
 
+// parseJSONContent: JSON 파일 내용을 파싱합니다
 func (h *Handler) parseJSONContent(fileContent []byte) (map[string]interface{}, error) {
 	var credentialData map[string]interface{}
 	if err := json.Unmarshal(fileContent, &credentialData); err != nil {
@@ -526,6 +481,7 @@ func (h *Handler) parseJSONContent(fileContent []byte) (map[string]interface{}, 
 	return credentialData, nil
 }
 
+// buildCredentialRequest: 폼 데이터와 자격증명 데이터로부터 요청 객체를 생성합니다
 func (h *Handler) buildCredentialRequest(formData map[string]string, credentialData map[string]interface{}) domain.CreateCredentialRequest {
 	return domain.CreateCredentialRequest{
 		WorkspaceID: formData["workspace_id"],
@@ -535,8 +491,9 @@ func (h *Handler) buildCredentialRequest(formData map[string]string, credentialD
 	}
 }
 
-// Logging helper methods
+// 로깅 헬퍼 메서드들
 
+// logCredentialCreationAttempt: 자격증명 생성 시도 로그를 기록합니다
 func (h *Handler) logCredentialCreationAttempt(c *gin.Context, userID uuid.UUID, req domain.CreateCredentialRequest) {
 	h.LogBusinessEvent(c, "credential_creation_attempted", userID.String(), "", map[string]interface{}{
 		"provider": req.Provider,
@@ -544,6 +501,7 @@ func (h *Handler) logCredentialCreationAttempt(c *gin.Context, userID uuid.UUID,
 	})
 }
 
+// logCredentialCreationSuccess: 자격증명 생성 성공 로그를 기록합니다
 func (h *Handler) logCredentialCreationSuccess(c *gin.Context, userID uuid.UUID, credential *domain.Credential) {
 	h.LogBusinessEvent(c, "credential_created", userID.String(), credential.ID.String(), map[string]interface{}{
 		"credential_id": credential.ID.String(),
@@ -552,42 +510,49 @@ func (h *Handler) logCredentialCreationSuccess(c *gin.Context, userID uuid.UUID,
 	})
 }
 
+// logCredentialsRequest: 자격증명 목록 조회 요청 로그를 기록합니다
 func (h *Handler) logCredentialsRequest(c *gin.Context, userID uuid.UUID) {
 	h.LogBusinessEvent(c, "credentials_requested", userID.String(), "", map[string]interface{}{
 		"operation": "get_credentials",
 	})
 }
 
+// logCredentialRequest: 자격증명 조회 요청 로그를 기록합니다
 func (h *Handler) logCredentialRequest(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID) {
 	h.LogBusinessEvent(c, "credential_requested", userID.String(), credentialID.String(), map[string]interface{}{
 		"credential_id": credentialID.String(),
 	})
 }
 
+// logCredentialUpdateAttempt: 자격증명 업데이트 시도 로그를 기록합니다
 func (h *Handler) logCredentialUpdateAttempt(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID) {
 	h.LogBusinessEvent(c, "credential_update_attempted", userID.String(), credentialID.String(), map[string]interface{}{
 		"credential_id": credentialID.String(),
 	})
 }
 
+// logCredentialUpdateSuccess: 자격증명 업데이트 성공 로그를 기록합니다
 func (h *Handler) logCredentialUpdateSuccess(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID) {
 	h.LogBusinessEvent(c, "credential_updated", userID.String(), credentialID.String(), map[string]interface{}{
 		"credential_id": credentialID.String(),
 	})
 }
 
+// logCredentialDeletionAttempt: 자격증명 삭제 시도 로그를 기록합니다
 func (h *Handler) logCredentialDeletionAttempt(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID) {
 	h.LogBusinessEvent(c, "credential_deletion_attempted", userID.String(), credentialID.String(), map[string]interface{}{
 		"credential_id": credentialID.String(),
 	})
 }
 
+// logCredentialDeletionSuccess: 자격증명 삭제 성공 로그를 기록합니다
 func (h *Handler) logCredentialDeletionSuccess(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID) {
 	h.LogBusinessEvent(c, "credential_deleted", userID.String(), credentialID.String(), map[string]interface{}{
 		"credential_id": credentialID.String(),
 	})
 }
 
+// logCredentialFromFileCreationAttempt: 파일로부터 자격증명 생성 시도 로그를 기록합니다
 func (h *Handler) logCredentialFromFileCreationAttempt(c *gin.Context, userID uuid.UUID, formData map[string]string) {
 	h.LogBusinessEvent(c, "credential_from_file_creation_attempted", userID.String(), "", map[string]interface{}{
 		"provider": formData["provider"],
@@ -595,16 +560,11 @@ func (h *Handler) logCredentialFromFileCreationAttempt(c *gin.Context, userID uu
 	})
 }
 
+// logCredentialFromFileCreationSuccess: 파일로부터 자격증명 생성 성공 로그를 기록합니다
 func (h *Handler) logCredentialFromFileCreationSuccess(c *gin.Context, userID uuid.UUID, credential *domain.Credential) {
 	h.LogBusinessEvent(c, "credential_from_file_created", userID.String(), credential.ID.String(), map[string]interface{}{
 		"credential_id": credential.ID.String(),
 		"provider":      credential.Provider,
 		"name":          credential.Name,
-	})
-}
-
-func (h *Handler) logCredentialsByProviderRequest(c *gin.Context, userID uuid.UUID, provider string) {
-	h.LogBusinessEvent(c, "credentials_by_provider_requested", userID.String(), "", map[string]interface{}{
-		"provider": provider,
 	})
 }

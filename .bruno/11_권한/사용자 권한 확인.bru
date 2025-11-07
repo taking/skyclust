@@ -1,0 +1,79 @@
+meta {
+  name: 사용자 권한 확인
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/admin/rbac/users/{{userId}}/permissions/check?permission={{permission}}
+  body: none
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains has_permission", function() {
+    expect(res.getBody()).to.have.property('data');
+    expect(res.getBody().data).to.have.property('has_permission');
+    expect(res.getBody().data.has_permission).to.be.a('boolean');
+  });
+}
+
+docs {
+  # 사용자 권한 확인
+  
+  사용자가 특정 권한을 가지고 있는지 확인합니다.
+  
+  ## Query Parameters
+  
+  - `permission` (required): 확인할 권한 (예: `user:create`, `workspace:manage`)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "user_id": "123e4567-e89b-12d3-a456-426614174000",
+      "permission": "user:create",
+      "has_permission": true
+    },
+    "message": "Permission check completed"
+  }
+  ```
+  
+  ## Path Parameters
+  
+  - `userId`: 권한을 확인할 사용자 ID
+  
+  ## Response 필드
+  
+  - `user_id`: 사용자 ID
+  - `permission`: 확인한 권한
+  - `has_permission`: 권한 보유 여부 (boolean)
+  
+  ## 에러 응답
+  
+  ### 권한 파라미터 누락 (400)
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "BAD_REQUEST",
+      "message": "Permission parameter required"
+    }
+  }
+  ```
+}
+

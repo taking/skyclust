@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef } from 'react';
 import { useAuthStore } from '@/store/auth';
 import { sseService } from '@/services/sse';
 import { useToast } from '@/hooks/use-toast';
-import type { SSECallbacks } from '@/lib/types/sse';
+import type { SSECallbacks, SSEErrorInfo } from '@/lib/types/sse';
 
 interface VMStatusUpdate {
   vmId: string;
@@ -92,9 +92,14 @@ export function useRealtimeMonitoring() {
 
   // VM 에러 콜백 등록 (SSE는 시스템 에러를 onError로 처리)
   const onVMError = useCallback((callback: (data: VMError) => void) => {
-    callbacksRef.current.onError = (event: Event) => {
+    callbacksRef.current.onError = (error: Event | SSEErrorInfo) => {
       try {
-        const errorEvent = event as unknown as { data?: string };
+        if ('type' in error && error.type === 'SSE') {
+          // SSEErrorInfo 타입인 경우
+          return;
+        }
+        // Event 타입인 경우
+        const errorEvent = error as unknown as { data?: string };
         if (errorEvent.data) {
           const errorData = JSON.parse(errorEvent.data) as VMError;
           callback(errorData);

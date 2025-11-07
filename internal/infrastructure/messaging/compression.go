@@ -50,16 +50,16 @@ func Decompress(data []byte, compressionType CompressionType) ([]byte, error) {
 func compressGzip(data []byte) ([]byte, error) {
 	var buf bytes.Buffer
 	writer := gzip.NewWriter(&buf)
-	
+
 	if _, err := writer.Write(data); err != nil {
 		writer.Close()
 		return nil, fmt.Errorf("failed to write to gzip writer: %w", err)
 	}
-	
+
 	if err := writer.Close(); err != nil {
 		return nil, fmt.Errorf("failed to close gzip writer: %w", err)
 	}
-	
+
 	return buf.Bytes(), nil
 }
 
@@ -70,12 +70,12 @@ func decompressGzip(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("failed to create gzip reader: %w", err)
 	}
 	defer reader.Close()
-	
+
 	decompressed, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read from gzip reader: %w", err)
 	}
-	
+
 	return decompressed, nil
 }
 
@@ -90,7 +90,7 @@ func decompressSnappy(data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode snappy data: %w", err)
 	}
-	
+
 	return decompressed, nil
 }
 
@@ -101,4 +101,3 @@ func ShouldCompress(data []byte, threshold int, compressionType CompressionType)
 	}
 	return len(data) >= threshold
 }
-

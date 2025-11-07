@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// DomainEvent represents a domain event
+// DomainEvent: 도메인 이벤트를 나타내는 타입
 type DomainEvent struct {
 	ID        string                 `json:"id"`
 	Type      string                 `json:"type"`
@@ -15,36 +15,36 @@ type DomainEvent struct {
 	Version   int                    `json:"version"`
 }
 
-// DomainEventHandler handles domain events
+// DomainEventHandler: 도메인 이벤트를 처리하는 인터페이스
 type DomainEventHandler interface {
 	Handle(event DomainEvent) error
 }
 
-// DomainEventPublisher publishes domain events
+// DomainEventPublisher: 도메인 이벤트를 발행하는 인터페이스
 type DomainEventPublisher interface {
 	Publish(event DomainEvent) error
 }
 
-// DomainEventSubscriber subscribes to domain events
+// DomainEventSubscriber: 도메인 이벤트를 구독하는 인터페이스
 type DomainEventSubscriber interface {
 	Subscribe(eventType string, handler DomainEventHandler) error
 }
 
-// Event types
+// 이벤트 타입 상수
 const (
-	// User events
+	// 사용자 관련 이벤트
 	EventUserCreated     = "user.created"
 	EventUserUpdated     = "user.updated"
 	EventUserDeleted     = "user.deleted"
 	EventUserActivated   = "user.activated"
 	EventUserDeactivated = "user.deactivated"
 
-	// Workspace events
+	// 워크스페이스 관련 이벤트
 	EventWorkspaceCreated = "workspace.created"
 	EventWorkspaceUpdated = "workspace.updated"
 	EventWorkspaceDeleted = "workspace.deleted"
 
-	// VM events
+	// VM 관련 이벤트
 	EventVMCreated       = "vm.created"
 	EventVMUpdated       = "vm.updated"
 	EventVMDeleted       = "vm.deleted"
@@ -53,39 +53,39 @@ const (
 	EventVMRestarted     = "vm.restarted"
 	EventVMStatusChanged = "vm.status_changed"
 
-	// Credential events
+	// 자격증명 관련 이벤트
 	EventCredentialCreated = "credential.created"
 	EventCredentialUpdated = "credential.updated"
 	EventCredentialDeleted = "credential.deleted"
 
-	// Audit events
+	// 감사 로그 관련 이벤트
 	EventAuditLogCreated = "audit_log.created"
 
-	// Kubernetes events
-	EventKubernetesClusterCreated   = "kubernetes.cluster.created"
-	EventKubernetesClusterUpdated   = "kubernetes.cluster.updated"
-	EventKubernetesClusterDeleted   = "kubernetes.cluster.deleted"
+	// Kubernetes 관련 이벤트
+	EventKubernetesClusterCreated       = "kubernetes.cluster.created"
+	EventKubernetesClusterUpdated       = "kubernetes.cluster.updated"
+	EventKubernetesClusterDeleted       = "kubernetes.cluster.deleted"
 	EventKubernetesClusterStatusChanged = "kubernetes.cluster.status_changed"
-	EventKubernetesNodePoolCreated  = "kubernetes.node_pool.created"
-	EventKubernetesNodePoolUpdated  = "kubernetes.node_pool.updated"
-	EventKubernetesNodePoolDeleted  = "kubernetes.node_pool.deleted"
-	EventKubernetesNodeCreated      = "kubernetes.node.created"
-	EventKubernetesNodeUpdated      = "kubernetes.node.updated"
-	EventKubernetesNodeDeleted      = "kubernetes.node.deleted"
+	EventKubernetesNodePoolCreated      = "kubernetes.node_pool.created"
+	EventKubernetesNodePoolUpdated      = "kubernetes.node_pool.updated"
+	EventKubernetesNodePoolDeleted      = "kubernetes.node_pool.deleted"
+	EventKubernetesNodeCreated          = "kubernetes.node.created"
+	EventKubernetesNodeUpdated          = "kubernetes.node.updated"
+	EventKubernetesNodeDeleted          = "kubernetes.node.deleted"
 
-	// Network events
-	EventNetworkVPCCreated          = "network.vpc.created"
-	EventNetworkVPCUpdated          = "network.vpc.updated"
-	EventNetworkVPCDeleted          = "network.vpc.deleted"
-	EventNetworkSubnetCreated       = "network.subnet.created"
-	EventNetworkSubnetUpdated       = "network.subnet.updated"
-	EventNetworkSubnetDeleted       = "network.subnet.deleted"
+	// 네트워크 관련 이벤트
+	EventNetworkVPCCreated           = "network.vpc.created"
+	EventNetworkVPCUpdated           = "network.vpc.updated"
+	EventNetworkVPCDeleted           = "network.vpc.deleted"
+	EventNetworkSubnetCreated        = "network.subnet.created"
+	EventNetworkSubnetUpdated        = "network.subnet.updated"
+	EventNetworkSubnetDeleted        = "network.subnet.deleted"
 	EventNetworkSecurityGroupCreated = "network.security_group.created"
 	EventNetworkSecurityGroupUpdated = "network.security_group.updated"
 	EventNetworkSecurityGroupDeleted = "network.security_group.deleted"
 )
 
-// NewDomainEvent creates a new domain event
+// NewDomainEvent: 새로운 도메인 이벤트를 생성합니다
 func NewDomainEvent(eventType string, data map[string]interface{}) DomainEvent {
 	return DomainEvent{
 		ID:        uuid.New().String(),
@@ -96,7 +96,7 @@ func NewDomainEvent(eventType string, data map[string]interface{}) DomainEvent {
 	}
 }
 
-// UserCreatedEvent creates a user created event
+// UserCreatedEvent: 사용자 생성 이벤트를 생성합니다
 func UserCreatedEvent(user *User) DomainEvent {
 	return NewDomainEvent(EventUserCreated, map[string]interface{}{
 		"user_id":   user.ID.String(),
@@ -106,7 +106,7 @@ func UserCreatedEvent(user *User) DomainEvent {
 	})
 }
 
-// UserUpdatedEvent creates a user updated event
+// UserUpdatedEvent: 사용자 업데이트 이벤트를 생성합니다
 func UserUpdatedEvent(user *User, changes map[string]interface{}) DomainEvent {
 	data := map[string]interface{}{
 		"user_id":   user.ID.String(),
@@ -123,7 +123,7 @@ func UserUpdatedEvent(user *User, changes map[string]interface{}) DomainEvent {
 	return NewDomainEvent(EventUserUpdated, data)
 }
 
-// UserDeletedEvent creates a user deleted event
+// UserDeletedEvent: 사용자 삭제 이벤트를 생성합니다
 func UserDeletedEvent(userID uuid.UUID, username string) DomainEvent {
 	return NewDomainEvent(EventUserDeleted, map[string]interface{}{
 		"user_id":  userID.String(),
@@ -131,7 +131,7 @@ func UserDeletedEvent(userID uuid.UUID, username string) DomainEvent {
 	})
 }
 
-// WorkspaceCreatedEvent creates a workspace created event
+// WorkspaceCreatedEvent: 워크스페이스 생성 이벤트를 생성합니다
 func WorkspaceCreatedEvent(workspace *Workspace) DomainEvent {
 	return NewDomainEvent(EventWorkspaceCreated, map[string]interface{}{
 		"workspace_id": workspace.ID,
@@ -141,7 +141,7 @@ func WorkspaceCreatedEvent(workspace *Workspace) DomainEvent {
 	})
 }
 
-// WorkspaceUpdatedEvent creates a workspace updated event
+// WorkspaceUpdatedEvent: 워크스페이스 업데이트 이벤트를 생성합니다
 func WorkspaceUpdatedEvent(workspace *Workspace, changes map[string]interface{}) DomainEvent {
 	data := map[string]interface{}{
 		"workspace_id": workspace.ID,
@@ -158,7 +158,7 @@ func WorkspaceUpdatedEvent(workspace *Workspace, changes map[string]interface{})
 	return NewDomainEvent(EventWorkspaceUpdated, data)
 }
 
-// WorkspaceDeletedEvent creates a workspace deleted event
+// WorkspaceDeletedEvent: 워크스페이스 삭제 이벤트를 생성합니다
 func WorkspaceDeletedEvent(workspaceID string, name string, ownerID string) DomainEvent {
 	return NewDomainEvent(EventWorkspaceDeleted, map[string]interface{}{
 		"workspace_id": workspaceID,
@@ -167,7 +167,7 @@ func WorkspaceDeletedEvent(workspaceID string, name string, ownerID string) Doma
 	})
 }
 
-// VMCreatedEvent creates a VM created event
+// VMCreatedEvent: VM 생성 이벤트를 생성합니다
 func VMCreatedEvent(vm *VM) DomainEvent {
 	return NewDomainEvent(EventVMCreated, map[string]interface{}{
 		"vm_id":        vm.ID,
@@ -181,7 +181,7 @@ func VMCreatedEvent(vm *VM) DomainEvent {
 	})
 }
 
-// VMUpdatedEvent creates a VM updated event
+// VMUpdatedEvent: VM 업데이트 이벤트를 생성합니다
 func VMUpdatedEvent(vm *VM, changes map[string]interface{}) DomainEvent {
 	data := map[string]interface{}{
 		"vm_id":        vm.ID,
@@ -202,7 +202,7 @@ func VMUpdatedEvent(vm *VM, changes map[string]interface{}) DomainEvent {
 	return NewDomainEvent(EventVMUpdated, data)
 }
 
-// VMStatusChangedEvent creates a VM status changed event
+// VMStatusChangedEvent: VM 상태 변경 이벤트를 생성합니다
 func VMStatusChangedEvent(vmID string, oldStatus VMStatus, newStatus VMStatus, reason string) DomainEvent {
 	return NewDomainEvent(EventVMStatusChanged, map[string]interface{}{
 		"vm_id":      vmID,
@@ -212,7 +212,7 @@ func VMStatusChangedEvent(vmID string, oldStatus VMStatus, newStatus VMStatus, r
 	})
 }
 
-// VMDeletedEvent creates a VM deleted event
+// VMDeletedEvent: VM 삭제 이벤트를 생성합니다
 func VMDeletedEvent(vmID string, name string, workspaceID string, provider string) DomainEvent {
 	return NewDomainEvent(EventVMDeleted, map[string]interface{}{
 		"vm_id":        vmID,
@@ -222,7 +222,7 @@ func VMDeletedEvent(vmID string, name string, workspaceID string, provider strin
 	})
 }
 
-// CredentialCreatedEvent creates a credential created event
+// CredentialCreatedEvent: 자격증명 생성 이벤트를 생성합니다
 func CredentialCreatedEvent(credential *Credential) DomainEvent {
 	return NewDomainEvent(EventCredentialCreated, map[string]interface{}{
 		"credential_id": credential.ID,
@@ -232,7 +232,7 @@ func CredentialCreatedEvent(credential *Credential) DomainEvent {
 	})
 }
 
-// CredentialUpdatedEvent creates a credential updated event
+// CredentialUpdatedEvent: 자격증명 업데이트 이벤트를 생성합니다
 func CredentialUpdatedEvent(credential *Credential, changes map[string]interface{}) DomainEvent {
 	data := map[string]interface{}{
 		"credential_id": credential.ID,
@@ -249,7 +249,7 @@ func CredentialUpdatedEvent(credential *Credential, changes map[string]interface
 	return NewDomainEvent(EventCredentialUpdated, data)
 }
 
-// CredentialDeletedEvent creates a credential deleted event
+// CredentialDeletedEvent: 자격증명 삭제 이벤트를 생성합니다
 func CredentialDeletedEvent(credentialID string, userID string, provider string) DomainEvent {
 	return NewDomainEvent(EventCredentialDeleted, map[string]interface{}{
 		"credential_id": credentialID,
@@ -258,7 +258,7 @@ func CredentialDeletedEvent(credentialID string, userID string, provider string)
 	})
 }
 
-// AuditLogCreatedEvent creates an audit log created event
+// AuditLogCreatedEvent: 감사 로그 생성 이벤트를 생성합니다
 func AuditLogCreatedEvent(auditLog *AuditLog) DomainEvent {
 	return NewDomainEvent(EventAuditLogCreated, map[string]interface{}{
 		"audit_log_id": auditLog.ID,

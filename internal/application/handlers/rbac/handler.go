@@ -10,13 +10,13 @@ import (
 	"github.com/google/uuid"
 )
 
-// Handler handles RBAC (Role-Based Access Control) operations
+// Handler: RBAC (역할 기반 접근 제어) 작업을 처리하는 핸들러
 type Handler struct {
 	rbacService domain.RBACService
 	*handlers.BaseHandler
 }
 
-// NewHandler creates a new RBAC handler
+// NewHandler: 새로운 RBAC 핸들러를 생성합니다
 func NewHandler(rbacService domain.RBACService) *Handler {
 	return &Handler{
 		BaseHandler: handlers.NewBaseHandler("rbac"),
@@ -24,7 +24,7 @@ func NewHandler(rbacService domain.RBACService) *Handler {
 	}
 }
 
-// AssignRole assigns a role to a user
+// AssignRole: 사용자에게 역할을 할당합니다
 func (h *Handler) AssignRole(c *gin.Context) {
 	if !h.checkAdminPermission(c) {
 		return
@@ -61,7 +61,7 @@ func (h *Handler) AssignRole(c *gin.Context) {
 	h.OK(c, gin.H{"message": "Role assigned successfully"}, "Role assigned successfully")
 }
 
-// RemoveRole removes a role from a user
+// RemoveRole: 사용자로부터 역할을 제거합니다
 func (h *Handler) RemoveRole(c *gin.Context) {
 	if !h.checkAdminPermission(c) {
 		return
@@ -98,24 +98,24 @@ func (h *Handler) RemoveRole(c *gin.Context) {
 	h.OK(c, gin.H{"message": "Role removed successfully"}, "Role removed successfully")
 }
 
-// GrantPermission grants a permission to a role
+// GrantPermission: 역할에 권한을 부여합니다 (RESTful: POST /roles/:role/permissions)
 func (h *Handler) GrantPermission(c *gin.Context) {
 	if !h.checkAdminPermission(c) {
 		return
 	}
 
-	var req struct {
-		Role       string `json:"role" binding:"required"`
-		Permission string `json:"permission" binding:"required"`
-	}
-
-	if err := h.ValidateRequest(c, &req); err != nil {
+	roleStr := c.Param("role")
+	roleType, err := h.parseRole(roleStr)
+	if err != nil {
 		h.HandleError(c, err, "grant_permission")
 		return
 	}
 
-	roleType, err := h.parseRole(req.Role)
-	if err != nil {
+	var req struct {
+		Permission string `json:"permission" binding:"required"`
+	}
+
+	if err := h.ValidateRequest(c, &req); err != nil {
 		h.HandleError(c, err, "grant_permission")
 		return
 	}
@@ -131,29 +131,21 @@ func (h *Handler) GrantPermission(c *gin.Context) {
 	h.OK(c, gin.H{"message": "Permission granted successfully"}, "Permission granted successfully")
 }
 
-// RevokePermission revokes a permission from a role
+// RevokePermission: 역할로부터 권한을 회수합니다 (RESTful: DELETE /roles/:role/permissions/:permission)
 func (h *Handler) RevokePermission(c *gin.Context) {
 	if !h.checkAdminPermission(c) {
 		return
 	}
 
-	var req struct {
-		Role       string `json:"role" binding:"required"`
-		Permission string `json:"permission" binding:"required"`
-	}
-
-	if err := h.ValidateRequest(c, &req); err != nil {
-		h.HandleError(c, err, "revoke_permission")
-		return
-	}
-
-	roleType, err := h.parseRole(req.Role)
+	roleStr := c.Param("role")
+	roleType, err := h.parseRole(roleStr)
 	if err != nil {
 		h.HandleError(c, err, "revoke_permission")
 		return
 	}
 
-	permission := domain.Permission(req.Permission)
+	permissionStr := c.Param("permission")
+	permission := domain.Permission(permissionStr)
 
 	err = h.rbacService.RevokePermission(roleType, permission)
 	if err != nil {
@@ -164,7 +156,7 @@ func (h *Handler) RevokePermission(c *gin.Context) {
 	h.OK(c, gin.H{"message": "Permission revoked successfully"}, "Permission revoked successfully")
 }
 
-// GetRolePermissions returns all permissions for a role
+// GetRolePermissions: 역할의 모든 권한을 반환합니다
 func (h *Handler) GetRolePermissions(c *gin.Context) {
 	if !h.checkAdminPermission(c) {
 		return
@@ -189,7 +181,7 @@ func (h *Handler) GetRolePermissions(c *gin.Context) {
 	}, "Role permissions retrieved successfully")
 }
 
-// CheckUserPermission checks if a user has a specific permission
+// CheckUserPermission: 사용자가 특정 권한을 가지고 있는지 확인합니다
 func (h *Handler) CheckUserPermission(c *gin.Context) {
 	if !h.checkAdminPermission(c) {
 		return
@@ -223,7 +215,7 @@ func (h *Handler) CheckUserPermission(c *gin.Context) {
 	}, "Permission check completed")
 }
 
-// GetUserEffectivePermissions returns all effective permissions for a user
+// GetUserEffectivePermissions: 사용자의 모든 유효 권한을 반환합니다
 func (h *Handler) GetUserEffectivePermissions(c *gin.Context) {
 	if !h.checkAdminPermission(c) {
 		return
@@ -248,7 +240,7 @@ func (h *Handler) GetUserEffectivePermissions(c *gin.Context) {
 	}, "User effective permissions retrieved successfully")
 }
 
-// GetUserRoles returns all roles for a user
+// GetUserRoles: 사용자의 모든 역할을 반환합니다
 func (h *Handler) GetUserRoles(c *gin.Context) {
 	if !h.checkAdminPermission(c) {
 		return
@@ -274,13 +266,13 @@ func (h *Handler) GetUserRoles(c *gin.Context) {
 
 	h.OK(c, gin.H{
 		"user_id": userIDStr,
-		"roles":    roleStrings,
+		"roles":   roleStrings,
 	}, "User roles retrieved successfully")
 }
 
-// Helper methods
+// 헬퍼 메서드들
 
-// parseRole parses a role string and returns the corresponding domain.Role
+// parseRole: 역할 문자열을 파싱하여 해당하는 domain.Role을 반환합니다
 func (h *Handler) parseRole(roleStr string) (domain.Role, error) {
 	switch roleStr {
 	case "admin":
@@ -294,7 +286,7 @@ func (h *Handler) parseRole(roleStr string) (domain.Role, error) {
 	}
 }
 
-// roleToString converts a domain.Role to its string representation
+// roleToString: domain.Role을 문자열 표현으로 변환합니다
 func (h *Handler) roleToString(role domain.Role) string {
 	switch role {
 	case domain.AdminRoleType:
@@ -308,7 +300,7 @@ func (h *Handler) roleToString(role domain.Role) string {
 	}
 }
 
-// checkAdminPermission checks if the current user has admin permission
+// checkAdminPermission: 현재 사용자가 관리자 권한을 가지고 있는지 확인합니다
 func (h *Handler) checkAdminPermission(c *gin.Context) bool {
 	userRole, err := h.GetUserRoleFromToken(c)
 	if err != nil {
@@ -327,4 +319,3 @@ func (h *Handler) checkAdminPermission(c *gin.Context) bool {
 
 	return true
 }
-

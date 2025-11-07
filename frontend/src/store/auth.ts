@@ -24,50 +24,75 @@ interface AuthState {
   initialize: () => void;
 }
 
-// Persist 미들웨어 설정
+// Persist 미들웨어 설정 (localStorage에 자동 저장)
 const persistedStore = persist<AuthState>(
   (set, get) => ({
+    // 초기 상태
     user: null,
     token: null,
     isAuthenticated: false,
+    
+    /**
+     * 로그인 처리
+     * 인증 응답을 받아서 사용자 정보와 토큰을 저장합니다.
+     * Zustand persist가 자동으로 localStorage에 저장하므로 수동 저장 불필요
+     */
     login: (authResponse: AuthResponse) => {
       set({
         user: authResponse.user,
         token: authResponse.token,
         isAuthenticated: true,
       });
-      // Zustand persist will automatically save to auth-storage
-      // No need to manually save token to localStorage
+      // Zustand persist가 자동으로 auth-storage에 저장함
+      // localStorage에 토큰을 수동으로 저장할 필요 없음
     },
+    
+    /**
+     * 로그아웃 처리
+     * 사용자 정보와 토큰을 초기화합니다.
+     * Zustand persist가 자동으로 localStorage에서 제거하며, 레거시 토큰도 함께 제거합니다.
+     */
     logout: () => {
       set({
         user: null,
         token: null,
         isAuthenticated: false,
       });
-      // Zustand persist will automatically remove from auth-storage
-      // Also remove legacy token if it exists
+      // Zustand persist가 자동으로 auth-storage에서 제거함
+      // 레거시 토큰이 있으면 함께 제거
       if (typeof window !== 'undefined') {
         localStorage.removeItem('token');
       }
     },
+    
+    /**
+     * 사용자 정보 업데이트
+     * 로그인한 사용자의 정보를 업데이트합니다.
+     */
     updateUser: (user: User) => {
       set({ user });
     },
+    
+    /**
+     * 스토어 초기화
+     * Zustand persist가 자동으로 rehydration을 처리하지만,
+     * 하위 호환성을 위해 레거시 토큰 마이그레이션을 수행합니다.
+     */
     initialize: () => {
-      // Zustand persist automatically handles rehydration
-      // This method is kept for backward compatibility but should rely on persist
+      // Zustand persist가 자동으로 rehydration을 처리함
+      // 이 메서드는 하위 호환성을 위해 유지되지만 persist에 의존해야 함
       if (typeof window !== 'undefined') {
         const state = get();
         
-        // If state is not hydrated yet, try to migrate from legacy token
+        // 1. 토큰이 없으면 레거시 토큰에서 마이그레이션 시도
         if (!state.token) {
           try {
+            // 2. auth-storage에서 토큰 확인
             const authStorage = localStorage.getItem('auth-storage');
             if (authStorage) {
               const parsed = JSON.parse(authStorage);
               if (parsed?.state?.token && !state.token) {
-                // State will be rehydrated by persist, but we can ensure it here
+                // persist에 의해 상태가 rehydrated되지만, 여기서도 확인 가능
                 set({
                   token: parsed.state.token,
                   user: parsed.state.user || null,
@@ -76,18 +101,18 @@ const persistedStore = persist<AuthState>(
               }
             }
             
-            // Migrate legacy token to auth-storage if it exists
+            // 3. 레거시 토큰('token')이 있으면 auth-storage로 마이그레이션
             const legacyToken = localStorage.getItem('token');
             if (legacyToken && !state.token) {
               set({
                 token: legacyToken,
                 isAuthenticated: !!legacyToken,
               });
-              // Remove legacy token after migration
+              // 마이그레이션 후 레거시 토큰 제거
               localStorage.removeItem('token');
             }
           } catch (_e) {
-            // Ignore parse errors
+            // 파싱 에러 무시
           }
         }
       }
@@ -96,26 +121,31 @@ const persistedStore = persist<AuthState>(
   {
     name: 'auth-storage',
     storage: createJSONStorage(() => localStorage),
-    partialize: (state) => ({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    partialize: (state: AuthState): any => ({
       user: state.user,
       token: state.token,
       isAuthenticated: state.isAuthenticated,
     }),
+    /**
+     * Rehydration 후 콜백
+     * localStorage에서 상태를 복원한 후 레거시 토큰을 마이그레이션합니다.
+     */
     onRehydrateStorage: () => (state) => {
-      // After rehydration, migrate legacy token if it exists
+      // rehydration 후 레거시 토큰이 있으면 마이그레이션
       if (state && typeof window !== 'undefined') {
         const legacyToken = localStorage.getItem('token');
         
-        // If we have a legacy token but no state token, migrate it
+        // 1. 레거시 토큰이 있고 상태에 토큰이 없으면 마이그레이션
         if (legacyToken && !state.token) {
           state.token = legacyToken;
           state.isAuthenticated = !!state.user && !!legacyToken;
-          // Remove legacy token after migration
+          // 마이그레이션 후 레거시 토큰 제거
           localStorage.removeItem('token');
         }
-        // If state has token, ensure legacy token is removed (we use auth-storage only)
+        // 2. 상태에 토큰이 있으면 레거시 토큰 제거 (auth-storage만 사용)
         else if (state.token && legacyToken) {
-          // Remove legacy token to avoid conflicts
+          // 충돌 방지를 위해 레거시 토큰 제거
           localStorage.removeItem('token');
         }
       }
@@ -124,8 +154,10 @@ const persistedStore = persist<AuthState>(
 );
 
 // 개발 환경에서만 devtools 적용
-export const useAuthStore = create<AuthState>()(
-  isDevelopment 
-    ? devtools(persistedStore, { name: 'AuthStore' })
-    : persistedStore
-);
+export const useAuthStore = (isDevelopment 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ? create<AuthState>()(devtools(persistedStore as any, { name: 'AuthStore' }) as any)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  : create<AuthState>()(persistedStore as any)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+) as any;

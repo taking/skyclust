@@ -17,10 +17,10 @@ func SetupRoutes(router *gin.RouterGroup, notificationService domain.Notificatio
 	router.GET("/:id", notificationHandler.GetNotification)
 
 	// 알림 읽음 처리 (RESTful: PATCH for partial update)
-	router.PATCH("/:id", notificationHandler.UpdateNotification)  // PATCH /notifications/:id (read 상태 업데이트)
+	router.PATCH("/:id", notificationHandler.UpdateNotification) // PATCH /notifications/:id (read 상태 업데이트)
 
 	// 알림 읽음 처리 (여러 개) (RESTful: PATCH for bulk update)
-	router.PATCH("", notificationHandler.UpdateNotifications)     // PATCH /notifications (bulk read 상태 업데이트)
+	router.PATCH("", notificationHandler.UpdateNotifications) // PATCH /notifications (bulk read 상태 업데이트)
 
 	// 알림 삭제
 	router.DELETE("/:id", notificationHandler.DeleteNotification)

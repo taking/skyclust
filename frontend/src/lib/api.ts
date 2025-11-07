@@ -65,7 +65,7 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
+  (_error) => {
     // Request interceptor error - network failure
     return Promise.reject(new NetworkError('Failed to send request'));
   }

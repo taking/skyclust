@@ -36,6 +36,21 @@ const eslintConfig = [
       "react-hooks/exhaustive-deps": "warn",
       // 접근성 관련 경고는 유지 (중요한 규칙)
       "jsx-a11y/role-supports-aria-props": "warn",
+      // console.log 사용 금지 (logger 사용 강제)
+      // 개발 환경에서만 허용되는 console 사용은 lib/logger.ts, lib/error-logger.ts에만 허용
+      "no-console": [
+        "error",
+        {
+          allow: ["warn", "error"],
+        },
+      ],
+    },
+  },
+  // 로깅 시스템 파일에서만 console 사용 허용
+  {
+    files: ["src/lib/logger.ts", "src/lib/error-logger.ts"],
+    rules: {
+      "no-console": "off",
     },
   },
 ];

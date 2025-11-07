@@ -1,15 +1,10 @@
-/**
- * Notification Domain Models
- * 알림 관련 도메인 모델
- */
-
 package domain
 
 import (
 	"time"
 )
 
-// Notification 알림 모델
+// Notification: 알림을 나타내는 도메인 엔티티
 type Notification struct {
 	ID        string     `json:"id" gorm:"primaryKey"`
 	UserID    string     `json:"user_id" gorm:"not null;index"`
@@ -24,7 +19,7 @@ type Notification struct {
 	ReadAt    *time.Time `json:"read_at,omitempty"`
 }
 
-// NotificationPreferences 알림 설정 모델
+// NotificationPreferences: 알림 설정을 나타내는 도메인 엔티티
 type NotificationPreferences struct {
 	ID             string `json:"id" gorm:"primaryKey"`
 	UserID         string `json:"user_id" gorm:"not null;uniqueIndex"`
@@ -54,7 +49,7 @@ type NotificationPreferences struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// NotificationStats 알림 통계 모델
+// NotificationStats: 알림 통계를 나타내는 도메인 엔티티
 type NotificationStats struct {
 	TotalNotifications  int `json:"total_notifications"`
 	UnreadNotifications int `json:"unread_notifications"`
@@ -77,7 +72,7 @@ type NotificationStats struct {
 	Last30DaysCount int `json:"last_30_days_count"`
 }
 
-// CreateNotificationRequest 알림 생성 요청
+// CreateNotificationRequest: 알림 생성 요청 DTO
 type CreateNotificationRequest struct {
 	UserID   string `json:"user_id" binding:"required"`
 	Type     string `json:"type" binding:"required,oneof=info warning error success"`
@@ -88,7 +83,7 @@ type CreateNotificationRequest struct {
 	Data     string `json:"data"`
 }
 
-// UpdateNotificationPreferencesRequest 알림 설정 업데이트 요청
+// UpdateNotificationPreferencesRequest: 알림 설정 업데이트 요청 DTO
 type UpdateNotificationPreferencesRequest struct {
 	EmailEnabled          *bool  `json:"email_enabled"`
 	PushEnabled           *bool  `json:"push_enabled"`
@@ -106,4 +101,3 @@ type UpdateNotificationPreferencesRequest struct {
 	QuietHoursEnd         string `json:"quiet_hours_end"`
 	Timezone              string `json:"timezone"`
 }
-

@@ -3,6 +3,8 @@
  * 에러 로깅 유틸리티
  * 
  * 에러를 구조화하여 로깅하고, 필요시 외부 서비스로 전송
+ * 
+ * Note: 순환 참조를 피하기 위해 logger를 import하지 않고 직접 console을 사용합니다.
  */
 
 export interface ErrorLog {
@@ -148,17 +150,16 @@ class ErrorLogger {
     // localStorage에 저장
     this.saveToStorage();
 
-    // Development 환경에서만 콘솔에 로깅
+    // 에러 로깅 (개발 환경에서만 콘솔에 표시)
+    // 순환 참조를 피하기 위해 직접 console 사용
     if (process.env.NODE_ENV === 'development') {
-      // 순환 참조를 피하기 위해 JSON.stringify 사용, 하지만 에러 처리를 위해 try-catch 사용
-      try {
-        const logString = typeof log === 'object' && log !== null
-          ? JSON.stringify(log, null, 2)
-          : String(log);
-        console.error('Error logged:', logString);
-      } catch (_e) {
-        console.error('Error logged:', String(log));
-      }
+      console.error('[ERROR] Error logged', error, {
+        ...context,
+        errorId: log.id,
+        errorType: log.type,
+        errorCode: log.code,
+        statusCode: log.statusCode,
+      });
     }
 
     // 외부 로깅 서비스로 전송 (Sentry)
@@ -178,8 +179,9 @@ class ErrorLogger {
     try {
       localStorage.setItem(this.storageKey, JSON.stringify(this.logs));
     } catch (error) {
+      // 순환 참조를 피하기 위해 직접 console 사용
       if (process.env.NODE_ENV === 'development') {
-        console.warn('Failed to save error logs to localStorage:', error);
+        console.warn('[WARN] Failed to save error logs to localStorage', error);
       }
     }
   }
@@ -197,8 +199,9 @@ class ErrorLogger {
         return [...this.logs];
       }
     } catch (error) {
+      // 순환 참조를 피하기 위해 직접 console 사용
       if (process.env.NODE_ENV === 'development') {
-        console.warn('Failed to load error logs from localStorage:', error);
+        console.warn('[WARN] Failed to load error logs from localStorage', error);
       }
     }
 
@@ -296,8 +299,9 @@ class ErrorLogger {
       });
     } catch (error) {
       // Sentry 전송 실패는 조용히 무시 (무한 루프 방지)
+      // 순환 참조를 피하기 위해 직접 console 사용
       if (process.env.NODE_ENV === 'development') {
-        console.warn('Failed to send error log to Sentry:', error);
+        console.warn('[WARN] Failed to send error log to Sentry', error);
       }
     }
   }

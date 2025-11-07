@@ -335,6 +335,53 @@ class KubernetesService extends BaseService {
     );
     return data.nodes || [];
   }
+
+  // Metadata endpoints (AWS only)
+  async getEKSVersions(
+    provider: CloudProvider,
+    credentialId: string,
+    region: string
+  ): Promise<string[]> {
+    const params = new URLSearchParams({
+      credential_id: credentialId,
+      region,
+    });
+    
+    const data = await this.get<{ versions: string[] }>(
+      `/api/v1/${provider}/kubernetes/metadata/versions?${params.toString()}`
+    );
+    return data.versions || [];
+  }
+
+  async getAWSRegions(
+    provider: CloudProvider,
+    credentialId: string
+  ): Promise<string[]> {
+    const params = new URLSearchParams({
+      credential_id: credentialId,
+    });
+    
+    const data = await this.get<{ regions: string[] }>(
+      `/api/v1/${provider}/kubernetes/metadata/regions?${params.toString()}`
+    );
+    return data.regions || [];
+  }
+
+  async getAvailabilityZones(
+    provider: CloudProvider,
+    credentialId: string,
+    region: string
+  ): Promise<string[]> {
+    const params = new URLSearchParams({
+      credential_id: credentialId,
+      region,
+    });
+    
+    const data = await this.get<{ zones: string[] }>(
+      `/api/v1/${provider}/kubernetes/metadata/availability-zones?${params.toString()}`
+    );
+    return data.zones || [];
+  }
 }
 
 export const kubernetesService = new KubernetesService();

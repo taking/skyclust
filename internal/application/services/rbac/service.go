@@ -6,29 +6,37 @@ import (
 	"skyclust/pkg/logger"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
-// rbacService implements the RBACService interface
+// rbacService: domain.RBACService 인터페이스 구현체
 type rbacService struct {
 	rbacRepo domain.RBACRepository
+	logger   *zap.Logger
 }
 
-// NewService creates a new RBAC service
+// NewService: 새로운 RBAC 서비스를 생성합니다
 func NewService(rbacRepo domain.RBACRepository) domain.RBACService {
 	// Initialize default role permissions
-	service := &rbacService{rbacRepo: rbacRepo}
+	service := &rbacService{
+		rbacRepo: rbacRepo,
+		logger:   logger.DefaultLogger.GetLogger(),
+	}
 	service.initializeDefaultPermissions()
 	return service
 }
 
-// initializeDefaultPermissions sets up default role permissions
+// initializeDefaultPermissions: 기본 역할 권한을 설정합니다
 func (r *rbacService) initializeDefaultPermissions() {
 	for role, permissions := range domain.DefaultRolePermissions {
 		for _, permission := range permissions {
 			// Check if permission already exists
 			existing, err := r.rbacRepo.GetRolePermission(role, permission)
 			if err != nil {
-				logger.Warnf("Failed to check role permission %s for role %s: %v", permission, role, err)
+				r.logger.Warn("Failed to check role permission",
+					zap.String("permission", string(permission)),
+					zap.String("role", string(role)),
+					zap.Error(err))
 				continue
 			}
 			if existing == nil {
@@ -38,14 +46,17 @@ func (r *rbacService) initializeDefaultPermissions() {
 					Permission: permission,
 				}
 				if err := r.rbacRepo.CreateRolePermission(rolePermission); err != nil {
-					logger.Errorf("Failed to create role permission %s for role %s: %v", permission, role, err)
+					r.logger.Error("Failed to create role permission",
+						zap.String("permission", string(permission)),
+						zap.String("role", string(role)),
+						zap.Error(err))
 				}
 			}
 		}
 	}
 }
 
-// AssignRole assigns a role to a user
+// AssignRole: 사용자에게 역할을 할당합니다
 func (r *rbacService) AssignRole(userID uuid.UUID, role domain.Role) error {
 	// Check if user already has this role
 	existing, err := r.rbacRepo.GetUserRole(userID, role)
@@ -65,11 +76,13 @@ func (r *rbacService) AssignRole(userID uuid.UUID, role domain.Role) error {
 		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to assign role: %v", err), 500)
 	}
 
-	logger.Infof("Assigned role %s to user %s", role, userID)
+	r.logger.Info("Assigned role to user",
+		zap.String("role", string(role)),
+		zap.String("user_id", userID.String()))
 	return nil
 }
 
-// RemoveRole removes a role from a user
+// RemoveRole: 사용자로부터 역할을 제거합니다
 func (r *rbacService) RemoveRole(userID uuid.UUID, role domain.Role) error {
 	rowsAffected, err := r.rbacRepo.DeleteUserRole(userID, role)
 	if err != nil {
@@ -80,11 +93,13 @@ func (r *rbacService) RemoveRole(userID uuid.UUID, role domain.Role) error {
 		return domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("user does not have role %s", role), 404)
 	}
 
-	logger.Infof("Removed role %s from user %s", role, userID)
+	r.logger.Info("Removed role from user",
+		zap.String("role", string(role)),
+		zap.String("user_id", userID.String()))
 	return nil
 }
 
-// GetUserRoles returns all roles assigned to a user
+// GetUserRoles: 사용자에게 할당된 모든 역할을 반환합니다
 func (r *rbacService) GetUserRoles(userID uuid.UUID) ([]domain.Role, error) {
 	userRoles, err := r.rbacRepo.GetUserRolesByUserID(userID)
 	if err != nil {
@@ -99,7 +114,31 @@ func (r *rbacService) GetUserRoles(userID uuid.UUID) ([]domain.Role, error) {
 	return roles, nil
 }
 
-// HasRole checks if a user has a specific role
+// GetUsersRoles: 여러 사용자에게 할당된 모든 역할을 배치로 반환합니다 (N+1 쿼리 방지)
+func (r *rbacService) GetUsersRoles(userIDs []uuid.UUID) (map[uuid.UUID][]domain.Role, error) {
+	if len(userIDs) == 0 {
+		return make(map[uuid.UUID][]domain.Role), nil
+	}
+
+	userRolesMap, err := r.rbacRepo.GetUserRolesByUserIDs(userIDs)
+	if err != nil {
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to get user roles: %v", err), 500)
+	}
+
+	// Convert UserRole to Role
+	result := make(map[uuid.UUID][]domain.Role, len(userRolesMap))
+	for userID, userRoles := range userRolesMap {
+		roles := make([]domain.Role, len(userRoles))
+		for i, userRole := range userRoles {
+			roles[i] = userRole.Role
+		}
+		result[userID] = roles
+	}
+
+	return result, nil
+}
+
+// HasRole: 사용자가 특정 역할을 가지고 있는지 확인합니다
 func (r *rbacService) HasRole(userID uuid.UUID, role domain.Role) (bool, error) {
 	count, err := r.rbacRepo.CountUserRoles(userID, role)
 	if err != nil {
@@ -109,7 +148,7 @@ func (r *rbacService) HasRole(userID uuid.UUID, role domain.Role) (bool, error) 
 	return count > 0, nil
 }
 
-// GrantPermission grants a permission to a role
+// GrantPermission: 역할에 권한을 부여합니다
 func (r *rbacService) GrantPermission(role domain.Role, permission domain.Permission) error {
 	// Check if permission already exists
 	existing, err := r.rbacRepo.GetRolePermission(role, permission)
@@ -129,11 +168,13 @@ func (r *rbacService) GrantPermission(role domain.Role, permission domain.Permis
 		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to grant permission: %v", err), 500)
 	}
 
-	logger.Infof("Granted permission %s to role %s", permission, role)
+	r.logger.Info("Granted permission to role",
+		zap.String("permission", string(permission)),
+		zap.String("role", string(role)))
 	return nil
 }
 
-// RevokePermission revokes a permission from a role
+// RevokePermission: 역할로부터 권한을 취소합니다
 func (r *rbacService) RevokePermission(role domain.Role, permission domain.Permission) error {
 	rowsAffected, err := r.rbacRepo.DeleteRolePermission(role, permission)
 	if err != nil {
@@ -144,11 +185,13 @@ func (r *rbacService) RevokePermission(role domain.Role, permission domain.Permi
 		return domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("role %s does not have permission %s", role, permission), 404)
 	}
 
-	logger.Infof("Revoked permission %s from role %s", permission, role)
+	r.logger.Info("Revoked permission from role",
+		zap.String("permission", string(permission)),
+		zap.String("role", string(role)))
 	return nil
 }
 
-// GetRolePermissions returns all permissions for a role
+// GetRolePermissions: 역할의 모든 권한을 반환합니다
 func (r *rbacService) GetRolePermissions(role domain.Role) ([]domain.Permission, error) {
 	rolePermissions, err := r.rbacRepo.GetRolePermissionsByRole(role)
 	if err != nil {
@@ -163,7 +206,7 @@ func (r *rbacService) GetRolePermissions(role domain.Role) ([]domain.Permission,
 	return permissions, nil
 }
 
-// CheckPermission checks if a user has a specific permission
+// CheckPermission: 사용자가 특정 권한을 가지고 있는지 확인합니다
 func (r *rbacService) CheckPermission(userID uuid.UUID, permission domain.Permission) (bool, error) {
 	// Get user roles
 	roles, err := r.GetUserRoles(userID)
@@ -185,7 +228,7 @@ func (r *rbacService) CheckPermission(userID uuid.UUID, permission domain.Permis
 	return false, nil
 }
 
-// CheckAnyPermission checks if a user has any of the specified permissions
+// CheckAnyPermission: 사용자가 지정된 권한 중 하나라도 가지고 있는지 확인합니다
 func (r *rbacService) CheckAnyPermission(userID uuid.UUID, permissions []domain.Permission) (bool, error) {
 	for _, permission := range permissions {
 		hasPermission, err := r.CheckPermission(userID, permission)
@@ -200,7 +243,7 @@ func (r *rbacService) CheckAnyPermission(userID uuid.UUID, permissions []domain.
 	return false, nil
 }
 
-// CheckAllPermissions checks if a user has all of the specified permissions
+// CheckAllPermissions: 사용자가 지정된 모든 권한을 가지고 있는지 확인합니다
 func (r *rbacService) CheckAllPermissions(userID uuid.UUID, permissions []domain.Permission) (bool, error) {
 	for _, permission := range permissions {
 		hasPermission, err := r.CheckPermission(userID, permission)
@@ -215,7 +258,7 @@ func (r *rbacService) CheckAllPermissions(userID uuid.UUID, permissions []domain
 	return true, nil
 }
 
-// GetUserEffectivePermissions returns all effective permissions for a user
+// GetUserEffectivePermissions: 사용자의 모든 유효 권한을 반환합니다
 func (r *rbacService) GetUserEffectivePermissions(userID uuid.UUID) ([]domain.Permission, error) {
 	// Get user roles
 	roles, err := r.GetUserRoles(userID)
@@ -245,7 +288,7 @@ func (r *rbacService) GetUserEffectivePermissions(userID uuid.UUID) ([]domain.Pe
 	return permissions, nil
 }
 
-// roleHasPermission checks if a role has a specific permission
+// roleHasPermission: 역할이 특정 권한을 가지고 있는지 확인합니다
 func (r *rbacService) roleHasPermission(role domain.Role, permission domain.Permission) (bool, error) {
 	count, err := r.rbacRepo.CountRolePermissions(role, permission)
 	if err != nil {
@@ -255,7 +298,7 @@ func (r *rbacService) roleHasPermission(role domain.Role, permission domain.Perm
 	return count > 0, nil
 }
 
-// GetRoleDistribution returns the distribution of roles across users
+// GetRoleDistribution: 사용자 간 역할 분포를 반환합니다
 func (r *rbacService) GetRoleDistribution() (map[domain.Role]int, error) {
 	distribution, err := r.rbacRepo.GetRoleDistribution()
 	if err != nil {
@@ -265,7 +308,7 @@ func (r *rbacService) GetRoleDistribution() (map[domain.Role]int, error) {
 	return distribution, nil
 }
 
-// GetInheritedRoles returns all roles that inherit from the given role
+// GetInheritedRoles: 주어진 역할로부터 상속된 모든 역할을 반환합니다
 func (r *rbacService) GetInheritedRoles(role domain.Role) ([]domain.Role, error) {
 	inheritedRoles, exists := domain.RoleHierarchy[role]
 	if !exists {
@@ -288,7 +331,7 @@ func (r *rbacService) GetInheritedRoles(role domain.Role) ([]domain.Role, error)
 	return allInheritedRoles, nil
 }
 
-// HasInheritedRole checks if a user has a role through inheritance
+// HasInheritedRole: 사용자가 상속을 통해 역할을 가지고 있는지 확인합니다
 func (r *rbacService) HasInheritedRole(userID uuid.UUID, role domain.Role) (bool, error) {
 	// Get user's direct roles
 	userRoles, err := r.GetUserRoles(userID)

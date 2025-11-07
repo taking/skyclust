@@ -76,7 +76,7 @@ export function useClusterBulkActions(
           completed,
           isComplete: completed + failed + cancelled === total,
         } : null);
-      } catch (error) {
+      } catch (_error) {
         failed++;
         setBulkOperationProgress(prev => prev ? {
           ...prev,
@@ -177,7 +177,7 @@ export function useClusterBulkActions(
           completed,
           isComplete: completed + failed + (prev.cancelled || 0) === total,
         } : null);
-      } catch (error) {
+      } catch (_error) {
         failed++;
         setBulkOperationProgress(prev => prev ? {
           ...prev,

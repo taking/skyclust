@@ -8,28 +8,31 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 	"skyclust/pkg/logger"
 	"skyclust/pkg/security"
 )
 
-// Service implements the Service interface
+// Service: 사용자 서비스 인터페이스 구현체
 type Service struct {
 	userRepo     domain.UserRepository
 	hasher       security.PasswordHasher
 	auditLogRepo domain.AuditLogRepository
+	logger       *zap.Logger
 }
 
-// NewService creates a new Service
+// NewService: 새로운 사용자 서비스를 생성합니다
 func NewService(userRepo domain.UserRepository, hasher security.PasswordHasher, auditLogRepo domain.AuditLogRepository) *Service {
 	return &Service{
 		userRepo:     userRepo,
 		hasher:       hasher,
 		auditLogRepo: auditLogRepo,
+		logger:       logger.DefaultLogger.GetLogger(),
 	}
 }
 
-// CreateUser creates a new user
+// CreateUser: 새로운 사용자를 생성합니다
 func (s *Service) CreateUser(ctx context.Context, req domain.CreateUserRequest) (*domain.User, error) {
 	// Validate request
 	if err := req.Validate(); err != nil {
@@ -66,7 +69,7 @@ func (s *Service) CreateUser(ctx context.Context, req domain.CreateUserRequest) 
 	}
 
 	if err := s.userRepo.Create(user); err != nil {
-		logger.Error(fmt.Sprintf("Failed to create user: %v", err))
+		s.logger.Error("Failed to create user", zap.Error(err))
 		// Check for unique constraint violation
 		errStr := err.Error()
 		if strings.Contains(errStr, "duplicate key") || strings.Contains(errStr, "unique constraint") {
@@ -80,11 +83,11 @@ func (s *Service) CreateUser(ctx context.Context, req domain.CreateUserRequest) 
 		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to create user: %v", err), 500)
 	}
 
-	logger.Info(fmt.Sprintf("User created successfully: %s (%s)", user.ID, user.Username))
+	s.logger.Info("User created successfully", zap.String("user_id", user.ID.String()), zap.String("username", user.Username))
 	return user, nil
 }
 
-// GetUser retrieves a user by ID
+// GetUser: ID로 사용자를 조회합니다
 func (s *Service) GetUser(ctx context.Context, id string) (*domain.User, error) {
 	userID, err := uuid.Parse(id)
 	if err != nil {
@@ -101,18 +104,18 @@ func (s *Service) GetUser(ctx context.Context, id string) (*domain.User, error) 
 	return user, nil
 }
 
-// GetUsers retrieves a list of users with pagination and filtering
+// GetUsers: 페이지네이션과 필터링을 포함한 사용자 목록을 조회합니다
 func (s *Service) GetUsers(ctx context.Context, limit, offset int, filters map[string]interface{}) ([]*domain.User, int64, error) {
 	users, total, err := s.userRepo.List(limit, offset, filters)
 	if err != nil {
 		return nil, 0, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to get users: %v", err), 500)
 	}
 
-	logger.Info(fmt.Sprintf("Retrieved %d users (limit: %d, offset: %d)", len(users), limit, offset))
+	s.logger.Debug("Users retrieved", zap.Int("count", len(users)), zap.Int("limit", limit), zap.Int("offset", offset))
 	return users, total, nil
 }
 
-// UpdateUser updates a user
+// UpdateUser: 사용자 정보를 업데이트합니다
 func (s *Service) UpdateUser(ctx context.Context, id string, req domain.UpdateUserRequest) (*domain.User, error) {
 	// Validate request
 	if err := req.Validate(); err != nil {
@@ -159,7 +162,7 @@ func (s *Service) UpdateUser(ctx context.Context, id string, req domain.UpdateUs
 	user.UpdatedAt = time.Now()
 
 	if err := s.userRepo.Update(user); err != nil {
-		logger.Error(fmt.Sprintf("Failed to update user: %v", err))
+		s.logger.Error("Failed to update user", zap.Error(err), zap.String("user_id", user.ID.String()))
 		// Check for unique constraint violation
 		errStr := err.Error()
 		if strings.Contains(errStr, "duplicate key") || strings.Contains(errStr, "unique constraint") {
@@ -173,11 +176,11 @@ func (s *Service) UpdateUser(ctx context.Context, id string, req domain.UpdateUs
 		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to update user: %v", err), 500)
 	}
 
-	logger.Info(fmt.Sprintf("User updated successfully: %s", user.ID))
+	s.logger.Info("User updated successfully", zap.String("user_id", user.ID.String()))
 	return user, nil
 }
 
-// DeleteUser deletes a user
+// DeleteUser: 사용자를 삭제합니다
 func (s *Service) DeleteUser(ctx context.Context, id string) error {
 	// Check if user exists
 	userID, err := uuid.Parse(id)
@@ -194,15 +197,15 @@ func (s *Service) DeleteUser(ctx context.Context, id string) error {
 	}
 
 	if err := s.userRepo.Delete(userID); err != nil {
-		logger.Error(fmt.Sprintf("Failed to delete user: %v", err))
+		s.logger.Error("Failed to delete user", zap.Error(err), zap.String("user_id", id))
 		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to delete user: %v", err), 500)
 	}
 
-	logger.Info(fmt.Sprintf("User deleted successfully: %s", id))
+	s.logger.Info("User deleted successfully", zap.String("user_id", id))
 	return nil
 }
 
-// Authenticate authenticates a user
+// Authenticate: 사용자를 인증합니다
 func (s *Service) Authenticate(ctx context.Context, email, password string) (*domain.User, error) {
 	user, err := s.userRepo.GetByEmail(email)
 	if err != nil {
@@ -221,11 +224,11 @@ func (s *Service) Authenticate(ctx context.Context, email, password string) (*do
 		return nil, domain.ErrInvalidCredentials
 	}
 
-	logger.Info(fmt.Sprintf("User authenticated successfully: %s (%s)", user.ID, user.Email))
+	s.logger.Info("User authenticated successfully", zap.String("user_id", user.ID.String()), zap.String("email", user.Email))
 	return user, nil
 }
 
-// ChangePassword changes a user's password
+// ChangePassword: 사용자 비밀번호를 변경합니다
 func (s *Service) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
 	// Get user
 	userUUID, err := uuid.Parse(userID)
@@ -257,15 +260,15 @@ func (s *Service) ChangePassword(ctx context.Context, userID, oldPassword, newPa
 	user.UpdatedAt = time.Now()
 
 	if err := s.userRepo.Update(user); err != nil {
-		logger.Error(fmt.Sprintf("Failed to update password: %v", err))
+		s.logger.Error("Failed to update password", zap.Error(err), zap.String("user_id", userID))
 		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to update password: %v", err), 500)
 	}
 
-	logger.Info(fmt.Sprintf("Password changed successfully: %s", userID))
+	s.logger.Info("Password changed successfully", zap.String("user_id", userID))
 	return nil
 }
 
-// GetUserByID retrieves a user by ID (admin method)
+// GetUserByID: ID로 사용자를 조회합니다 (관리자 메서드)
 func (s *Service) GetUserByID(id uuid.UUID) (*domain.User, error) {
 	user, err := s.userRepo.GetByID(id)
 	if err != nil {
@@ -277,7 +280,7 @@ func (s *Service) GetUserByID(id uuid.UUID) (*domain.User, error) {
 	return user, nil
 }
 
-// GetUsersWithFilters retrieves users with filters (admin method)
+// GetUsersWithFilters: 필터를 사용하여 사용자 목록을 조회합니다 (관리자 메서드)
 func (s *Service) GetUsersWithFilters(filters domain.UserFilters) ([]*domain.User, int64, error) {
 	// Convert filters to map for repository
 	filterMap := make(map[string]interface{})
@@ -300,8 +303,8 @@ func (s *Service) GetUsersWithFilters(filters domain.UserFilters) ([]*domain.Use
 	return users, total, nil
 }
 
-// UpdateUserDirect updates a user (admin method)
-// Note: Password should already be hashed before calling this method
+// UpdateUserDirect: 사용자 정보를 직접 업데이트합니다 (관리자 메서드)
+// 주의: 비밀번호는 이 메서드를 호출하기 전에 이미 해시되어 있어야 합니다
 func (s *Service) UpdateUserDirect(user *domain.User) (*domain.User, error) {
 	// Check if username is being changed and if it conflicts with existing user
 	if user.Username != "" {
@@ -322,7 +325,7 @@ func (s *Service) UpdateUserDirect(user *domain.User) (*domain.User, error) {
 	user.UpdatedAt = time.Now()
 
 	if err := s.userRepo.Update(user); err != nil {
-		logger.Error(fmt.Sprintf("Failed to update user: %v - user: %+v", err, user))
+		s.logger.Error("Failed to update user", zap.Error(err), zap.String("user_id", user.ID.String()))
 
 		// Check for unique constraint violation
 		errStr := err.Error()
@@ -340,16 +343,16 @@ func (s *Service) UpdateUserDirect(user *domain.User) (*domain.User, error) {
 		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to update user: %v", err), 500)
 	}
 
-	logger.Info(fmt.Sprintf("User updated successfully: %s", user.ID))
+	s.logger.Info("User updated successfully", zap.String("user_id", user.ID.String()))
 	return user, nil
 }
 
-// HashPassword hashes a password using the service's hasher
+// HashPassword: 서비스의 해셔를 사용하여 비밀번호를 해시합니다
 func (s *Service) HashPassword(password string) (string, error) {
 	return s.hasher.HashPassword(password)
 }
 
-// DeleteUserByID deletes a user (admin method)
+// DeleteUserByID: ID로 사용자를 삭제합니다 (관리자 메서드)
 func (s *Service) DeleteUserByID(id uuid.UUID) error {
 	// Check if user exists
 	_, err := s.userRepo.GetByID(id)
@@ -361,15 +364,15 @@ func (s *Service) DeleteUserByID(id uuid.UUID) error {
 	}
 
 	if err := s.userRepo.Delete(id); err != nil {
-		logger.Error(fmt.Sprintf("Failed to delete user: %v", err))
+		s.logger.Error("Failed to delete user", zap.Error(err), zap.String("user_id", id.String()))
 		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to delete user: %v", err), 500)
 	}
 
-	logger.Info(fmt.Sprintf("User deleted successfully: %s", id))
+	s.logger.Info("User deleted successfully", zap.String("user_id", id.String()))
 	return nil
 }
 
-// GetUserStats retrieves user statistics (admin method)
+// GetUserStats: 사용자 통계를 조회합니다 (관리자 메서드)
 func (s *Service) GetUserStats() (*domain.UserStats, error) {
 	// Get all users to calculate stats
 	users, total, err := s.userRepo.List(1000, 0, map[string]interface{}{})
@@ -402,4 +405,13 @@ func (s *Service) GetUserStats() (*domain.UserStats, error) {
 		InactiveUsers: inactiveUsers,
 		NewUsersToday: newUsersToday,
 	}, nil
+}
+
+// GetUserCount: 전체 사용자 수를 반환합니다 (시스템 초기화 확인용)
+func (s *Service) GetUserCount() (int64, error) {
+	count, err := s.userRepo.Count()
+	if err != nil {
+		return 0, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to get user count: %v", err), 500)
+	}
+	return count, nil
 }

@@ -317,4 +317,3 @@ type CreateGCPVPCRequest struct {
 	MTU               int64             `json:"mtu,omitempty"`
 	Tags              map[string]string `json:"tags,omitempty"`
 }
-

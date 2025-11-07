@@ -16,4 +16,3 @@ type VMService interface {
 	RestartVM(ctx context.Context, id string) error
 	GetVMStatus(ctx context.Context, id string) (VMStatus, error)
 }
-

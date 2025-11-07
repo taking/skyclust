@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"skyclust/internal/application/services/common"
 	"skyclust/internal/domain"
 	"skyclust/internal/infrastructure/messaging"
 	"skyclust/pkg/cache"
@@ -23,18 +24,19 @@ import (
 	"google.golang.org/api/option"
 )
 
-// Service handles network resource operations
+// Service: 네트워크 리소스 작업을 처리하는 서비스
 type Service struct {
 	credentialService domain.CredentialService
 	cache             cache.Cache
 	keyBuilder        *cache.CacheKeyBuilder
 	invalidator       *cache.Invalidator
 	eventPublisher    *messaging.Publisher
+	auditLogRepo      domain.AuditLogRepository
 	logger            *zap.Logger
 }
 
-// NewService creates a new network service
-func NewService(credentialService domain.CredentialService, cacheService cache.Cache, eventBus messaging.Bus, logger *zap.Logger) *Service {
+// NewService: 새로운 네트워크 서비스를 생성합니다
+func NewService(credentialService domain.CredentialService, cacheService cache.Cache, eventBus messaging.Bus, auditLogRepo domain.AuditLogRepository, logger *zap.Logger) *Service {
 	eventPublisher := messaging.NewPublisher(eventBus, logger)
 	return &Service{
 		credentialService: credentialService,
@@ -42,11 +44,12 @@ func NewService(credentialService domain.CredentialService, cacheService cache.C
 		keyBuilder:        cache.NewCacheKeyBuilder(),
 		invalidator:       cache.NewInvalidatorWithEvents(cacheService, eventPublisher),
 		eventPublisher:    eventPublisher,
+		auditLogRepo:      auditLogRepo,
 		logger:            logger,
 	}
 }
 
-// ListVPCs lists VPCs for a given credential and region
+// ListVPCs: 주어진 자격증명과 리전에 대한 VPC 목록을 조회합니다
 func (s *Service) ListVPCs(ctx context.Context, credential *domain.Credential, req ListVPCsRequest) (*ListVPCsResponse, error) {
 	// 캐시 키 생성
 	credentialID := credential.ID.String()
@@ -105,7 +108,7 @@ func (s *Service) ListVPCs(ctx context.Context, credential *domain.Credential, r
 	return response, nil
 }
 
-// listAWSVPCs lists AWS VPCs
+// listAWSVPCs: AWS VPC 목록을 조회합니다
 func (s *Service) listAWSVPCs(ctx context.Context, credential *domain.Credential, req ListVPCsRequest) (*ListVPCsResponse, error) {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
@@ -140,7 +143,7 @@ func (s *Service) listAWSVPCs(ctx context.Context, credential *domain.Credential
 	return &ListVPCsResponse{VPCs: vpcs}, nil
 }
 
-// GetVPC gets a specific VPC
+// GetVPC: ID로 특정 VPC를 조회합니다
 func (s *Service) GetVPC(ctx context.Context, credential *domain.Credential, req GetVPCRequest) (*VPCInfo, error) {
 	// 캐시 키 생성
 	credentialID := credential.ID.String()
@@ -198,7 +201,7 @@ func (s *Service) GetVPC(ctx context.Context, credential *domain.Credential, req
 	return vpc, nil
 }
 
-// getAWSVPC gets a specific AWS VPC
+// getAWSVPC: 특정 AWS VPC를 조회합니다
 func (s *Service) getAWSVPC(ctx context.Context, credential *domain.Credential, req GetVPCRequest) (*VPCInfo, error) {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
@@ -233,7 +236,7 @@ func (s *Service) getAWSVPC(ctx context.Context, credential *domain.Credential, 
 	return vpcInfo, nil
 }
 
-// CreateVPC creates a new VPC
+// CreateVPC: 새로운 VPC를 생성합니다
 func (s *Service) CreateVPC(ctx context.Context, credential *domain.Credential, req CreateVPCRequest) (*VPCInfo, error) {
 	// Route to provider-specific implementation
 	var vpc *VPCInfo
@@ -285,10 +288,22 @@ func (s *Service) CreateVPC(ctx context.Context, credential *domain.Credential, 
 			zap.Error(err))
 	}
 
+	// 감사로그 기록
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionVPCCreate,
+		fmt.Sprintf("POST /api/v1/%s/networks/vpcs", credential.Provider),
+		map[string]interface{}{
+			"vpc_id":        vpc.ID,
+			"name":          vpc.Name,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        vpc.Region,
+		},
+	)
+
 	return vpc, nil
 }
 
-// createGCPVPC creates a GCP VPC
+// createGCPVPC: GCP VPC를 생성합니다
 func (s *Service) createGCPVPC(ctx context.Context, credential *domain.Credential, req CreateVPCRequest) (*VPCInfo, error) {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
@@ -347,7 +362,7 @@ func (s *Service) createGCPVPC(ctx context.Context, credential *domain.Credentia
 	return s.createGCPVPCWithAdvanced(ctx, credential, gcpReq, computeService)
 }
 
-// createGCPVPCWithAdvanced creates a GCP VPC with advanced features
+// createGCPVPCWithAdvanced: 고급 설정으로 GCP VPC를 생성합니다
 func (s *Service) createGCPVPCWithAdvanced(ctx context.Context, credential *domain.Credential, req CreateGCPVPCRequest, computeService *compute.Service) (*VPCInfo, error) {
 	network := s.buildGCPNetworkObject(req)
 
@@ -363,7 +378,7 @@ func (s *Service) createGCPVPCWithAdvanced(ctx context.Context, credential *doma
 	return s.buildVPCInfoFromRequest(req), nil
 }
 
-// buildGCPNetworkObject creates a GCP network object from request
+// buildGCPNetworkObject: GCP 네트워크 객체를 생성합니다
 func (s *Service) buildGCPNetworkObject(req CreateGCPVPCRequest) *compute.Network {
 	return &compute.Network{
 		Name:                  req.Name,
@@ -377,7 +392,7 @@ func (s *Service) buildGCPNetworkObject(req CreateGCPVPCRequest) *compute.Networ
 	}
 }
 
-// logNetworkConfiguration logs the network configuration for debugging
+// logNetworkConfiguration: 네트워크 구성을 로깅합니다
 func (s *Service) logNetworkConfiguration(network *compute.Network) {
 	routingMode := "REGIONAL"
 	if network.RoutingConfig != nil {
@@ -391,7 +406,7 @@ func (s *Service) logNetworkConfiguration(network *compute.Network) {
 		zap.Int64("mtu", network.Mtu))
 }
 
-// createGCPNetworkOperation creates the network using GCP API
+// createGCPNetworkOperation: GCP 네트워크 생성 작업을 시작합니다
 func (s *Service) createGCPNetworkOperation(ctx context.Context, computeService *compute.Service, projectID string, network *compute.Network) (*compute.Operation, error) {
 	operation, err := computeService.Networks.Insert(projectID, network).Context(ctx).Do()
 	if err != nil {
@@ -404,7 +419,7 @@ func (s *Service) createGCPNetworkOperation(ctx context.Context, computeService 
 	return operation, nil
 }
 
-// logOperationInitiated logs when VPC creation is initiated
+// logOperationInitiated: 작업 시작을 로깅합니다
 func (s *Service) logOperationInitiated(req CreateGCPVPCRequest, operation *compute.Operation) {
 	s.logger.Info("GCP VPC creation initiated",
 		zap.String("vpc_name", req.Name),
@@ -412,7 +427,7 @@ func (s *Service) logOperationInitiated(req CreateGCPVPCRequest, operation *comp
 		zap.String("operation_id", operation.Name))
 }
 
-// buildVPCInfoFromRequest builds VPCInfo from request data
+// buildVPCInfoFromRequest: 요청으로부터 VPC 정보를 생성합니다
 func (s *Service) buildVPCInfoFromRequest(req CreateGCPVPCRequest) *VPCInfo {
 	return &VPCInfo{
 		ID:          fmt.Sprintf(ResourcePrefixVPC, req.ProjectID, req.Name),
@@ -427,7 +442,7 @@ func (s *Service) buildVPCInfoFromRequest(req CreateGCPVPCRequest) *VPCInfo {
 	}
 }
 
-// listGCPVPCs lists all GCP VPCs
+// listGCPVPCs: GCP VPC 목록을 조회합니다
 func (s *Service) listGCPVPCs(ctx context.Context, credential *domain.Credential, req ListVPCsRequest) (*ListVPCsResponse, error) {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
@@ -530,7 +545,7 @@ func (s *Service) listGCPVPCs(ctx context.Context, credential *domain.Credential
 	return &ListVPCsResponse{VPCs: vpcs}, nil
 }
 
-// getGCPVPC gets a specific GCP VPC
+// getGCPVPC: 특정 GCP VPC를 조회합니다
 func (s *Service) getGCPVPC(ctx context.Context, credential *domain.Credential, req GetVPCRequest) (*VPCInfo, error) {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
@@ -634,7 +649,7 @@ func (s *Service) getGCPVPC(ctx context.Context, credential *domain.Credential, 
 	return vpcInfo, nil
 }
 
-// extractNetworkNameFromVPCID extracts network name from VPC ID
+// extractNetworkNameFromVPCID: VPC ID에서 네트워크 이름을 추출합니다
 func (s *Service) extractNetworkNameFromVPCID(vpcID string) string {
 	// Support two formats:
 	// 1. Full format: projects/{project}/global/networks/{network_name}
@@ -650,7 +665,7 @@ func (s *Service) extractNetworkNameFromVPCID(vpcID string) string {
 	return vpcID
 }
 
-// deleteGCPVPC deletes a GCP VPC
+// deleteGCPVPC: GCP VPC를 삭제합니다
 func (s *Service) deleteGCPVPC(ctx context.Context, credential *domain.Credential, req DeleteVPCRequest) error {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
@@ -731,7 +746,7 @@ func (s *Service) deleteGCPVPC(ctx context.Context, credential *domain.Credentia
 	return nil
 }
 
-// cleanupVPCResources cleans up resources that depend on the VPC
+// cleanupVPCResources: VPC 리소스를 정리합니다
 func (s *Service) cleanupVPCResources(ctx context.Context, computeService *compute.Service, projectID, networkName string) error {
 	s.logger.Info("Starting VPC resource cleanup",
 		zap.String("vpc_name", networkName),
@@ -768,7 +783,7 @@ func (s *Service) cleanupVPCResources(ctx context.Context, computeService *compu
 	return nil
 }
 
-// deleteNetworkFirewallRules deletes all firewall rules for a network
+// deleteNetworkFirewallRules: 네트워크 방화벽 규칙을 삭제합니다
 func (s *Service) deleteNetworkFirewallRules(ctx context.Context, computeService *compute.Service, projectID, networkName string) error {
 	s.logger.Info("Listing firewall rules for cleanup",
 		zap.String("network", networkName),
@@ -810,7 +825,7 @@ func (s *Service) deleteNetworkFirewallRules(ctx context.Context, computeService
 	return nil
 }
 
-// deleteNetworkSubnets deletes all subnets in a network
+// deleteNetworkSubnets: 네트워크 서브넷을 삭제합니다
 func (s *Service) deleteNetworkSubnets(ctx context.Context, computeService *compute.Service, projectID, networkName string) error {
 	s.logger.Info("Listing subnets for cleanup",
 		zap.String("network", networkName),
@@ -857,7 +872,7 @@ func (s *Service) deleteNetworkSubnets(ctx context.Context, computeService *comp
 	return nil
 }
 
-// checkNetworkInstances checks if any instances are using the network
+// checkNetworkInstances: 네트워크에 연결된 인스턴스를 확인합니다
 func (s *Service) checkNetworkInstances(ctx context.Context, computeService *compute.Service, projectID, networkName string) error {
 	// List all instances
 	instances, err := computeService.Instances.AggregatedList(projectID).Context(ctx).Do()
@@ -883,73 +898,73 @@ func (s *Service) checkNetworkInstances(ctx context.Context, computeService *com
 // checkVPCDeletionDependencies checks if VPC can be safely deleted
 // Stub implementations for Azure, NCP, and GCP update functions
 
-// listAzureVPCs lists Azure VPCs (stub)
+// listAzureVPCs: Azure VPC 목록을 조회합니다
 func (s *Service) listAzureVPCs(ctx context.Context, credential *domain.Credential, req ListVPCsRequest) (*ListVPCsResponse, error) {
 	s.logger.Info("Azure VPC listing not yet implemented")
 	return &ListVPCsResponse{VPCs: []VPCInfo{}}, nil
 }
 
-// listNCPVPCs lists NCP VPCs (stub)
+// listNCPVPCs: NCP VPC 목록을 조회합니다
 func (s *Service) listNCPVPCs(ctx context.Context, credential *domain.Credential, req ListVPCsRequest) (*ListVPCsResponse, error) {
 	s.logger.Info("NCP VPC listing not yet implemented")
 	return &ListVPCsResponse{VPCs: []VPCInfo{}}, nil
 }
 
-// getAzureVPC gets Azure VPC (stub)
+// getAzureVPC: 특정 Azure VPC를 조회합니다
 func (s *Service) getAzureVPC(ctx context.Context, credential *domain.Credential, req GetVPCRequest) (*VPCInfo, error) {
 	s.logger.Info("Azure VPC retrieval not yet implemented")
 	return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "Azure VPC retrieval not yet implemented", 501)
 }
 
-// getNCPVPC gets NCP VPC (stub)
+// getNCPVPC: 특정 NCP VPC를 조회합니다
 func (s *Service) getNCPVPC(ctx context.Context, credential *domain.Credential, req GetVPCRequest) (*VPCInfo, error) {
 	s.logger.Info("NCP VPC retrieval not yet implemented")
 	return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP VPC retrieval not yet implemented", 501)
 }
 
-// createAzureVPC creates Azure VPC (stub)
+// createAzureVPC: Azure VPC를 생성합니다
 func (s *Service) createAzureVPC(ctx context.Context, credential *domain.Credential, req CreateVPCRequest) (*VPCInfo, error) {
 	s.logger.Info("Azure VPC creation not yet implemented")
 	return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "Azure VPC creation not yet implemented", 501)
 }
 
-// createNCPVPC creates NCP VPC (stub)
+// createNCPVPC: NCP VPC를 생성합니다
 func (s *Service) createNCPVPC(ctx context.Context, credential *domain.Credential, req CreateVPCRequest) (*VPCInfo, error) {
 	s.logger.Info("NCP VPC creation not yet implemented")
 	return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP VPC creation not yet implemented", 501)
 }
 
-// updateGCPVPC updates GCP VPC (stub)
+// updateGCPVPC: GCP VPC를 업데이트합니다
 func (s *Service) updateGCPVPC(ctx context.Context, credential *domain.Credential, req UpdateVPCRequest, vpcID, region string) (*VPCInfo, error) {
 	s.logger.Info("GCP VPC update not yet implemented")
 	return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "GCP VPC update not yet implemented", 501)
 }
 
-// updateAzureVPC updates Azure VPC (stub)
+// updateAzureVPC: Azure VPC를 업데이트합니다
 func (s *Service) updateAzureVPC(ctx context.Context, credential *domain.Credential, req UpdateVPCRequest, vpcID, region string) (*VPCInfo, error) {
 	s.logger.Info("Azure VPC update not yet implemented")
 	return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "Azure VPC update not yet implemented", 501)
 }
 
-// updateNCPVPC updates NCP VPC (stub)
+// updateNCPVPC: NCP VPC를 업데이트합니다
 func (s *Service) updateNCPVPC(ctx context.Context, credential *domain.Credential, req UpdateVPCRequest, vpcID, region string) (*VPCInfo, error) {
 	s.logger.Info("NCP VPC update not yet implemented")
 	return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP VPC update not yet implemented", 501)
 }
 
-// deleteAzureVPC deletes Azure VPC (stub)
+// deleteAzureVPC: Azure VPC를 삭제합니다
 func (s *Service) deleteAzureVPC(ctx context.Context, credential *domain.Credential, req DeleteVPCRequest) error {
 	s.logger.Info("Azure VPC deletion not yet implemented")
 	return domain.NewDomainError(domain.ErrCodeNotImplemented, "Azure VPC deletion not yet implemented", 501)
 }
 
-// deleteNCPVPC deletes NCP VPC (stub)
+// deleteNCPVPC: NCP VPC를 삭제합니다
 func (s *Service) deleteNCPVPC(ctx context.Context, credential *domain.Credential, req DeleteVPCRequest) error {
 	s.logger.Info("NCP VPC deletion not yet implemented")
 	return domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP VPC deletion not yet implemented", 501)
 }
 
-// createAWSVPC creates a new AWS VPC
+// createAWSVPC: AWS VPC를 생성합니다
 func (s *Service) createAWSVPC(ctx context.Context, credential *domain.Credential, req CreateVPCRequest) (*VPCInfo, error) {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
@@ -1016,7 +1031,7 @@ func (s *Service) UpdateVPC(ctx context.Context, credential *domain.Credential, 
 	}
 }
 
-// updateAWSVPC updates an AWS VPC
+// updateAWSVPC: AWS VPC를 업데이트합니다
 func (s *Service) updateAWSVPC(ctx context.Context, credential *domain.Credential, req UpdateVPCRequest, vpcID, region string) (*VPCInfo, error) {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, region)
@@ -1094,10 +1109,22 @@ func (s *Service) updateAWSVPC(ctx context.Context, credential *domain.Credentia
 			zap.Error(err))
 	}
 
+	// 감사로그 기록
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionVPCUpdate,
+		fmt.Sprintf("PUT /api/v1/%s/networks/vpcs/%s", credential.Provider, vpcID),
+		map[string]interface{}{
+			"vpc_id":        vpc.ID,
+			"name":          vpc.Name,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        region,
+		},
+	)
+
 	return vpc, nil
 }
 
-// DeleteVPC deletes a VPC
+// DeleteVPC: VPC를 삭제합니다
 func (s *Service) DeleteVPC(ctx context.Context, credential *domain.Credential, req DeleteVPCRequest) error {
 	// Route to provider-specific implementation
 	var err error
@@ -1153,10 +1180,21 @@ func (s *Service) DeleteVPC(ctx context.Context, credential *domain.Credential, 
 			zap.Error(err))
 	}
 
+	// 감사로그 기록
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionVPCDelete,
+		fmt.Sprintf("DELETE /api/v1/%s/networks/vpcs/%s", credential.Provider, req.VPCID),
+		map[string]interface{}{
+			"vpc_id":        req.VPCID,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        req.Region,
+		},
+	)
+
 	return nil
 }
 
-// deleteAWSVPC deletes an AWS VPC
+// deleteAWSVPC: AWS VPC를 삭제합니다
 func (s *Service) deleteAWSVPC(ctx context.Context, credential *domain.Credential, req DeleteVPCRequest) error {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
@@ -1175,7 +1213,7 @@ func (s *Service) deleteAWSVPC(ctx context.Context, credential *domain.Credentia
 	return nil
 }
 
-// ListSubnets lists subnets for a given credential and region
+// ListSubnets: 서브넷 목록을 조회합니다
 func (s *Service) ListSubnets(ctx context.Context, credential *domain.Credential, req ListSubnetsRequest) (*ListSubnetsResponse, error) {
 	s.logger.Info("ListSubnets called",
 		zap.String("provider", credential.Provider),
@@ -1199,7 +1237,7 @@ func (s *Service) ListSubnets(ctx context.Context, credential *domain.Credential
 	}
 }
 
-// GetSubnet gets a specific subnet
+// GetSubnet: 특정 서브넷을 조회합니다
 func (s *Service) GetSubnet(ctx context.Context, credential *domain.Credential, req GetSubnetRequest) (*SubnetInfo, error) {
 	switch credential.Provider {
 	case "aws":
@@ -1219,7 +1257,7 @@ func (s *Service) GetSubnet(ctx context.Context, credential *domain.Credential, 
 	}
 }
 
-// CreateSubnet creates a new subnet
+// CreateSubnet: 새로운 서브넷을 생성합니다
 func (s *Service) CreateSubnet(ctx context.Context, credential *domain.Credential, req CreateSubnetRequest) (*SubnetInfo, error) {
 	switch credential.Provider {
 	case "aws":
@@ -1239,7 +1277,7 @@ func (s *Service) CreateSubnet(ctx context.Context, credential *domain.Credentia
 	}
 }
 
-// UpdateSubnet updates a subnet
+// UpdateSubnet: 서브넷을 업데이트합니다
 func (s *Service) UpdateSubnet(ctx context.Context, credential *domain.Credential, req UpdateSubnetRequest, subnetID, region string) (*SubnetInfo, error) {
 	switch credential.Provider {
 	case "aws":
@@ -1259,7 +1297,7 @@ func (s *Service) UpdateSubnet(ctx context.Context, credential *domain.Credentia
 	}
 }
 
-// DeleteSubnet deletes a subnet
+// DeleteSubnet: 서브넷을 삭제합니다
 func (s *Service) DeleteSubnet(ctx context.Context, credential *domain.Credential, req DeleteSubnetRequest) error {
 	switch credential.Provider {
 	case "aws":
@@ -1279,7 +1317,7 @@ func (s *Service) DeleteSubnet(ctx context.Context, credential *domain.Credentia
 	}
 }
 
-// ListSecurityGroups lists security groups for a given credential and region
+// ListSecurityGroups: 보안 그룹 목록을 조회합니다
 func (s *Service) ListSecurityGroups(ctx context.Context, credential *domain.Credential, req ListSecurityGroupsRequest) (*ListSecurityGroupsResponse, error) {
 	switch credential.Provider {
 	case "aws":
@@ -1307,7 +1345,7 @@ func (s *Service) ListSecurityGroups(ctx context.Context, credential *domain.Cre
 	}
 }
 
-// listAWSSecurityGroups lists AWS security groups
+// listAWSSecurityGroups: AWS 보안 그룹 목록을 조회합니다
 func (s *Service) listAWSSecurityGroups(ctx context.Context, credential *domain.Credential, req ListSecurityGroupsRequest) (*ListSecurityGroupsResponse, error) {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
@@ -1349,7 +1387,7 @@ func (s *Service) listAWSSecurityGroups(ctx context.Context, credential *domain.
 	return &ListSecurityGroupsResponse{SecurityGroups: securityGroups}, nil
 }
 
-// listGCPSecurityGroups lists GCP firewall rules (security groups)
+// listGCPSecurityGroups: GCP 보안 그룹 목록을 조회합니다
 func (s *Service) listGCPSecurityGroups(ctx context.Context, credential *domain.Credential, req ListSecurityGroupsRequest) (*ListSecurityGroupsResponse, error) {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
@@ -1435,7 +1473,7 @@ func (s *Service) listGCPSecurityGroups(ctx context.Context, credential *domain.
 	return &ListSecurityGroupsResponse{SecurityGroups: securityGroups}, nil
 }
 
-// convertGCPFirewallRules converts GCP firewall rules to SecurityGroupRuleInfo format
+// convertGCPFirewallRules: GCP 방화벽 규칙을 보안 그룹 규칙 정보로 변환합니다
 func (s *Service) convertGCPFirewallRules(firewall *compute.Firewall) []SecurityGroupRuleInfo {
 	var rules []SecurityGroupRuleInfo
 
@@ -1472,7 +1510,7 @@ func (s *Service) convertGCPFirewallRules(firewall *compute.Firewall) []Security
 	return rules
 }
 
-// parsePort parses port range string to int
+// parsePort: 포트 범위 문자열에서 포트 번호를 파싱합니다
 func (s *Service) parsePort(portRange string) int {
 	if portRange == "" {
 		return 0
@@ -1491,7 +1529,7 @@ func (s *Service) parsePort(portRange string) int {
 	return 0
 }
 
-// GetSecurityGroup gets a specific security group
+// GetSecurityGroup: 특정 보안 그룹을 조회합니다
 func (s *Service) GetSecurityGroup(ctx context.Context, credential *domain.Credential, req GetSecurityGroupRequest) (*SecurityGroupInfo, error) {
 	switch credential.Provider {
 	case "aws":
@@ -1519,7 +1557,7 @@ func (s *Service) GetSecurityGroup(ctx context.Context, credential *domain.Crede
 	}
 }
 
-// getAWSSecurityGroup gets an AWS security group
+// getAWSSecurityGroup: 특정 AWS 보안 그룹을 조회합니다
 func (s *Service) getAWSSecurityGroup(ctx context.Context, credential *domain.Credential, req GetSecurityGroupRequest) (*SecurityGroupInfo, error) {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
@@ -1555,7 +1593,7 @@ func (s *Service) getAWSSecurityGroup(ctx context.Context, credential *domain.Cr
 	return sgInfo, nil
 }
 
-// getGCPSecurityGroup gets a GCP firewall rule (security group)
+// getGCPSecurityGroup: 특정 GCP 보안 그룹을 조회합니다
 func (s *Service) getGCPSecurityGroup(ctx context.Context, credential *domain.Credential, req GetSecurityGroupRequest) (*SecurityGroupInfo, error) {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
@@ -1613,7 +1651,7 @@ func (s *Service) getGCPSecurityGroup(ctx context.Context, credential *domain.Cr
 	return sgInfo, nil
 }
 
-// CreateSecurityGroup creates a new security group
+// CreateSecurityGroup: 새로운 보안 그룹을 생성합니다
 func (s *Service) CreateSecurityGroup(ctx context.Context, credential *domain.Credential, req CreateSecurityGroupRequest) (*SecurityGroupInfo, error) {
 	switch credential.Provider {
 	case "aws":
@@ -1641,7 +1679,7 @@ func (s *Service) CreateSecurityGroup(ctx context.Context, credential *domain.Cr
 	}
 }
 
-// createAWSSecurityGroup creates an AWS security group
+// createAWSSecurityGroup: AWS 보안 그룹을 생성합니다
 func (s *Service) createAWSSecurityGroup(ctx context.Context, credential *domain.Credential, req CreateSecurityGroupRequest) (*SecurityGroupInfo, error) {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
@@ -1687,10 +1725,37 @@ func (s *Service) createAWSSecurityGroup(ctx context.Context, credential *domain
 		Tags:        req.Tags,
 	}
 
+	// 감사로그 기록
+	credentialID := credential.ID.String()
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionSecurityGroupCreate,
+		fmt.Sprintf("POST /api/v1/%s/networks/vpcs/%s/security-groups", credential.Provider, req.VPCID),
+		map[string]interface{}{
+			"security_group_id": sgInfo.ID,
+			"name":              req.Name,
+			"vpc_id":            req.VPCID,
+			"provider":          credential.Provider,
+			"credential_id":     credentialID,
+			"region":            req.Region,
+		},
+	)
+
+	// NATS 이벤트 발행
+	if s.eventPublisher != nil {
+		sgData := map[string]interface{}{
+			"security_group_id": sgInfo.ID,
+			"name":              req.Name,
+			"vpc_id":            req.VPCID,
+			"provider":          credential.Provider,
+			"credential_id":     credentialID,
+			"region":            req.Region,
+		}
+		_ = s.eventPublisher.PublishSecurityGroupEvent(ctx, credential.Provider, credentialID, req.Region, "created", sgData)
+	}
+
 	return sgInfo, nil
 }
 
-// createGCPSecurityGroup creates a GCP firewall rule (security group)
+// createGCPSecurityGroup: GCP 보안 그룹을 생성합니다
 func (s *Service) createGCPSecurityGroup(ctx context.Context, credential *domain.Credential, req CreateSecurityGroupRequest) (*SecurityGroupInfo, error) {
 	computeService, projectID, err := s.setupGCPComputeService(ctx, credential)
 	if err != nil {
@@ -1714,10 +1779,37 @@ func (s *Service) createGCPSecurityGroup(ctx context.Context, credential *domain
 		zap.String("firewall_name", req.Name),
 		zap.String("project_id", projectID))
 
+	// 감사로그 기록
+	credentialID := credential.ID.String()
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionSecurityGroupCreate,
+		fmt.Sprintf("POST /api/v1/%s/networks/vpcs/%s/security-groups", credential.Provider, req.VPCID),
+		map[string]interface{}{
+			"security_group_id": sgInfo.ID,
+			"name":              req.Name,
+			"vpc_id":            req.VPCID,
+			"provider":          credential.Provider,
+			"credential_id":     credentialID,
+			"region":            req.Region,
+		},
+	)
+
+	// NATS 이벤트 발행
+	if s.eventPublisher != nil {
+		sgData := map[string]interface{}{
+			"security_group_id": sgInfo.ID,
+			"name":              req.Name,
+			"vpc_id":            req.VPCID,
+			"provider":          credential.Provider,
+			"credential_id":     credentialID,
+			"region":            req.Region,
+		}
+		_ = s.eventPublisher.PublishSecurityGroupEvent(ctx, credential.Provider, credentialID, req.Region, "created", sgData)
+	}
+
 	return sgInfo, nil
 }
 
-// convertGCPFirewallRulesFromRequest converts request parameters to SecurityGroupRuleInfo
+// convertGCPFirewallRulesFromRequest: 요청으로부터 GCP 방화벽 규칙을 보안 그룹 규칙 정보로 변환합니다
 func (s *Service) convertGCPFirewallRulesFromRequest(req CreateSecurityGroupRequest) []SecurityGroupRuleInfo {
 	var rules []SecurityGroupRuleInfo
 
@@ -1736,7 +1828,7 @@ func (s *Service) convertGCPFirewallRulesFromRequest(req CreateSecurityGroupRequ
 	return rules
 }
 
-// UpdateSecurityGroup updates a security group
+// UpdateSecurityGroup: 보안 그룹을 업데이트합니다
 func (s *Service) UpdateSecurityGroup(ctx context.Context, credential *domain.Credential, req UpdateSecurityGroupRequest, securityGroupID, region string) (*SecurityGroupInfo, error) {
 	switch credential.Provider {
 	case "aws":
@@ -1764,7 +1856,7 @@ func (s *Service) UpdateSecurityGroup(ctx context.Context, credential *domain.Cr
 	}
 }
 
-// updateAWSSecurityGroup updates an AWS security group
+// updateAWSSecurityGroup: AWS 보안 그룹을 업데이트합니다
 func (s *Service) updateAWSSecurityGroup(ctx context.Context, credential *domain.Credential, req UpdateSecurityGroupRequest, securityGroupID, region string) (*SecurityGroupInfo, error) {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, region)
@@ -1800,15 +1892,46 @@ func (s *Service) updateAWSSecurityGroup(ctx context.Context, credential *domain
 	}
 
 	// Get updated security group info
-	getReq := GetSecurityGroupRequest{
+	sgInfo, err := s.GetSecurityGroup(ctx, credential, GetSecurityGroupRequest{
 		CredentialID:    credential.ID.String(),
 		SecurityGroupID: securityGroupID,
 		Region:          region,
+	})
+	if err != nil {
+		return nil, err
 	}
-	return s.GetSecurityGroup(ctx, credential, getReq)
+
+	// 감사로그 기록
+	credentialID := credential.ID.String()
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionSecurityGroupUpdate,
+		fmt.Sprintf("PUT /api/v1/%s/networks/security-groups/%s", credential.Provider, securityGroupID),
+		map[string]interface{}{
+			"security_group_id": securityGroupID,
+			"name":              sgInfo.Name,
+			"vpc_id":            sgInfo.VPCID,
+			"provider":          credential.Provider,
+			"credential_id":     credentialID,
+			"region":            region,
+		},
+	)
+
+	// NATS 이벤트 발행
+	if s.eventPublisher != nil {
+		sgData := map[string]interface{}{
+			"security_group_id": securityGroupID,
+			"name":              sgInfo.Name,
+			"vpc_id":            sgInfo.VPCID,
+			"provider":          credential.Provider,
+			"credential_id":     credentialID,
+			"region":            region,
+		}
+		_ = s.eventPublisher.PublishSecurityGroupEvent(ctx, credential.Provider, credentialID, region, "updated", sgData)
+	}
+
+	return sgInfo, nil
 }
 
-// updateGCPSecurityGroup updates a GCP firewall rule (security group)
+// updateGCPSecurityGroup: GCP 보안 그룹을 업데이트합니다
 func (s *Service) updateGCPSecurityGroup(ctx context.Context, credential *domain.Credential, req UpdateSecurityGroupRequest, firewallName, region string) (*SecurityGroupInfo, error) {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
@@ -1874,15 +1997,46 @@ func (s *Service) updateGCPSecurityGroup(ctx context.Context, credential *domain
 	}
 
 	// Get updated firewall rule info
-	getReq := GetSecurityGroupRequest{
+	sgInfo, err := s.GetSecurityGroup(ctx, credential, GetSecurityGroupRequest{
 		CredentialID:    credential.ID.String(),
 		SecurityGroupID: firewallName,
 		Region:          region,
+	})
+	if err != nil {
+		return nil, err
 	}
-	return s.GetSecurityGroup(ctx, credential, getReq)
+
+	// 감사로그 기록
+	credentialID := credential.ID.String()
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionSecurityGroupUpdate,
+		fmt.Sprintf("PUT /api/v1/%s/networks/security-groups/%s", credential.Provider, firewallName),
+		map[string]interface{}{
+			"security_group_id": firewallName,
+			"name":              sgInfo.Name,
+			"vpc_id":            sgInfo.VPCID,
+			"provider":          credential.Provider,
+			"credential_id":     credentialID,
+			"region":            region,
+		},
+	)
+
+	// NATS 이벤트 발행
+	if s.eventPublisher != nil {
+		sgData := map[string]interface{}{
+			"security_group_id": firewallName,
+			"name":              sgInfo.Name,
+			"vpc_id":            sgInfo.VPCID,
+			"provider":          credential.Provider,
+			"credential_id":     credentialID,
+			"region":            region,
+		}
+		_ = s.eventPublisher.PublishSecurityGroupEvent(ctx, credential.Provider, credentialID, region, "updated", sgData)
+	}
+
+	return sgInfo, nil
 }
 
-// DeleteSecurityGroup deletes a security group
+// DeleteSecurityGroup: 보안 그룹을 삭제합니다
 func (s *Service) DeleteSecurityGroup(ctx context.Context, credential *domain.Credential, req DeleteSecurityGroupRequest) error {
 	switch credential.Provider {
 	case "aws":
@@ -1910,7 +2064,7 @@ func (s *Service) DeleteSecurityGroup(ctx context.Context, credential *domain.Cr
 	}
 }
 
-// deleteAWSSecurityGroup deletes an AWS security group
+// deleteAWSSecurityGroup: AWS 보안 그룹을 삭제합니다
 func (s *Service) deleteAWSSecurityGroup(ctx context.Context, credential *domain.Credential, req DeleteSecurityGroupRequest) error {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
@@ -1926,10 +2080,33 @@ func (s *Service) deleteAWSSecurityGroup(ctx context.Context, credential *domain
 		return domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to delete security group: %v", err), 502)
 	}
 
+	// 감사로그 기록
+	credentialID := credential.ID.String()
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionSecurityGroupDelete,
+		fmt.Sprintf("DELETE /api/v1/%s/networks/security-groups/%s", credential.Provider, req.SecurityGroupID),
+		map[string]interface{}{
+			"security_group_id": req.SecurityGroupID,
+			"provider":          credential.Provider,
+			"credential_id":     credentialID,
+			"region":            req.Region,
+		},
+	)
+
+	// NATS 이벤트 발행
+	if s.eventPublisher != nil {
+		sgData := map[string]interface{}{
+			"security_group_id": req.SecurityGroupID,
+			"provider":          credential.Provider,
+			"credential_id":     credentialID,
+			"region":            req.Region,
+		}
+		_ = s.eventPublisher.PublishSecurityGroupEvent(ctx, credential.Provider, credentialID, req.Region, "deleted", sgData)
+	}
+
 	return nil
 }
 
-// deleteGCPSecurityGroup deletes a GCP firewall rule (security group)
+// deleteGCPSecurityGroup: GCP 보안 그룹을 삭제합니다
 func (s *Service) deleteGCPSecurityGroup(ctx context.Context, credential *domain.Credential, req DeleteSecurityGroupRequest) error {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
@@ -1974,6 +2151,29 @@ func (s *Service) deleteGCPSecurityGroup(ctx context.Context, credential *domain
 		zap.String("firewall_name", req.SecurityGroupID),
 		zap.String("project_id", projectID))
 
+	// 감사로그 기록
+	credentialID := credential.ID.String()
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionSecurityGroupDelete,
+		fmt.Sprintf("DELETE /api/v1/%s/networks/security-groups/%s", credential.Provider, req.SecurityGroupID),
+		map[string]interface{}{
+			"security_group_id": req.SecurityGroupID,
+			"provider":          credential.Provider,
+			"credential_id":     credentialID,
+			"region":            req.Region,
+		},
+	)
+
+	// NATS 이벤트 발행
+	if s.eventPublisher != nil {
+		sgData := map[string]interface{}{
+			"security_group_id": req.SecurityGroupID,
+			"provider":          credential.Provider,
+			"credential_id":     credentialID,
+			"region":            req.Region,
+		}
+		_ = s.eventPublisher.PublishSecurityGroupEvent(ctx, credential.Provider, credentialID, req.Region, "deleted", sgData)
+	}
+
 	return nil
 }
 
@@ -2005,7 +2205,7 @@ func (s *Service) RemoveFirewallRule(ctx context.Context, credential *domain.Cre
 	}
 }
 
-// removeGCPFirewallRule removes a specific rule from a GCP firewall
+// removeGCPFirewallRule: GCP 방화벽 규칙을 제거합니다
 func (s *Service) removeGCPFirewallRule(ctx context.Context, credential *domain.Credential, req RemoveFirewallRuleRequest) (*SecurityGroupInfo, error) {
 	computeService, projectID, err := s.setupGCPComputeService(ctx, credential)
 	if err != nil {
@@ -2066,7 +2266,7 @@ func (s *Service) AddFirewallRule(ctx context.Context, credential *domain.Creden
 	}
 }
 
-// addGCPFirewallRule adds a specific rule to a GCP firewall
+// addGCPFirewallRule: GCP 방화벽 규칙을 추가합니다
 func (s *Service) addGCPFirewallRule(ctx context.Context, credential *domain.Credential, req AddFirewallRuleRequest) (*SecurityGroupInfo, error) {
 	computeService, projectID, err := s.setupGCPComputeService(ctx, credential)
 	if err != nil {
@@ -2101,7 +2301,7 @@ func (s *Service) addGCPFirewallRule(ctx context.Context, credential *domain.Cre
 
 // Helper methods
 
-// setupGCPComputeService creates a GCP Compute service and extracts project ID
+// setupGCPComputeService: GCP Compute 서비스를 설정합니다
 func (s *Service) setupGCPComputeService(ctx context.Context, credential *domain.Credential) (*compute.Service, string, error) {
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
 	if err != nil {
@@ -2130,7 +2330,7 @@ func (s *Service) setupGCPComputeService(ctx context.Context, credential *domain
 	return computeService, projectID, nil
 }
 
-// buildGCPFirewall builds a GCP Firewall object from request
+// buildGCPFirewall: 요청으로부터 GCP 방화벽 객체를 생성합니다
 func (s *Service) buildGCPFirewall(req CreateSecurityGroupRequest) *compute.Firewall {
 	firewall := &compute.Firewall{
 		Name:        req.Name,
@@ -2155,7 +2355,7 @@ func (s *Service) buildGCPFirewall(req CreateSecurityGroupRequest) *compute.Fire
 	return firewall
 }
 
-// buildAllowedRules builds allowed rules for GCP firewall
+// buildAllowedRules: 허용 규칙을 생성합니다
 func (s *Service) buildAllowedRules(req CreateSecurityGroupRequest) []*compute.FirewallAllowed {
 	if len(req.Allowed) > 0 {
 		var allowedRules []*compute.FirewallAllowed
@@ -2187,7 +2387,7 @@ func (s *Service) buildAllowedRules(req CreateSecurityGroupRequest) []*compute.F
 	return nil
 }
 
-// buildDeniedRules builds denied rules for GCP firewall
+// buildDeniedRules: 거부 규칙을 생성합니다
 func (s *Service) buildDeniedRules(req CreateSecurityGroupRequest) []*compute.FirewallDenied {
 	if len(req.Denied) > 0 {
 		var deniedRules []*compute.FirewallDenied
@@ -2219,7 +2419,7 @@ func (s *Service) buildDeniedRules(req CreateSecurityGroupRequest) []*compute.Fi
 	return nil
 }
 
-// buildSecurityGroupInfo builds SecurityGroupInfo from request
+// buildSecurityGroupInfo: 요청으로부터 보안 그룹 정보를 생성합니다
 func (s *Service) buildSecurityGroupInfo(req CreateSecurityGroupRequest, projectID string) *SecurityGroupInfo {
 	sgInfo := &SecurityGroupInfo{
 		ID:          req.Name,
@@ -2242,7 +2442,7 @@ func (s *Service) buildSecurityGroupInfo(req CreateSecurityGroupRequest, project
 	return sgInfo
 }
 
-// cloneFirewall creates a copy of a firewall for updates
+// cloneFirewall: 방화벽 객체를 복제합니다
 func (s *Service) cloneFirewall(firewall *compute.Firewall) *compute.Firewall {
 	return &compute.Firewall{
 		Name:         firewall.Name,
@@ -2255,7 +2455,7 @@ func (s *Service) cloneFirewall(firewall *compute.Firewall) *compute.Firewall {
 	}
 }
 
-// removePortsFromAllowed removes specified ports from allowed rules
+// removePortsFromAllowed: 허용 규칙에서 포트를 제거합니다
 func (s *Service) removePortsFromAllowed(allowed []*compute.FirewallAllowed, protocol string, portsToRemove []string) []*compute.FirewallAllowed {
 	if len(allowed) == 0 {
 		return allowed
@@ -2278,7 +2478,7 @@ func (s *Service) removePortsFromAllowed(allowed []*compute.FirewallAllowed, pro
 	return updatedAllowed
 }
 
-// removePortsFromDenied removes specified ports from denied rules
+// removePortsFromDenied: 거부 규칙에서 포트를 제거합니다
 func (s *Service) removePortsFromDenied(denied []*compute.FirewallDenied, protocol string, portsToRemove []string) []*compute.FirewallDenied {
 	if len(denied) == 0 {
 		return denied
@@ -2301,7 +2501,7 @@ func (s *Service) removePortsFromDenied(denied []*compute.FirewallDenied, protoc
 	return updatedDenied
 }
 
-// addPortsToAllowed adds specified ports to allowed rules
+// addPortsToAllowed: 허용 규칙에 포트를 추가합니다
 func (s *Service) addPortsToAllowed(allowed []*compute.FirewallAllowed, protocol string, portsToAdd []string, action string) []*compute.FirewallAllowed {
 	if action == ActionDeny {
 		return allowed
@@ -2342,7 +2542,7 @@ func (s *Service) addPortsToAllowed(allowed []*compute.FirewallAllowed, protocol
 	return updatedAllowed
 }
 
-// addPortsToDenied adds specified ports to denied rules
+// addPortsToDenied: 거부 규칙에 포트를 추가합니다
 func (s *Service) addPortsToDenied(denied []*compute.FirewallDenied, protocol string, portsToAdd []string, action string) []*compute.FirewallDenied {
 	if action != ActionDeny {
 		return denied
@@ -2383,7 +2583,7 @@ func (s *Service) addPortsToDenied(denied []*compute.FirewallDenied, protocol st
 	return updatedDenied
 }
 
-// filterPorts removes specified ports from a port list
+// filterPorts: 포트 목록에서 특정 포트를 필터링합니다
 func (s *Service) filterPorts(ports []string, portsToRemove []string) []string {
 	removeSet := make(map[string]bool)
 	for _, port := range portsToRemove {
@@ -2399,7 +2599,7 @@ func (s *Service) filterPorts(ports []string, portsToRemove []string) []string {
 	return remaining
 }
 
-// mergePorts merges two port lists, avoiding duplicates
+// mergePorts: 기존 포트와 새 포트를 병합합니다
 func (s *Service) mergePorts(existingPorts, newPorts []string) []string {
 	portSet := make(map[string]bool)
 	for _, port := range existingPorts {
@@ -2417,7 +2617,7 @@ func (s *Service) mergePorts(existingPorts, newPorts []string) []string {
 	return merged
 }
 
-// waitForGCPOperation waits for a GCP operation to complete
+// waitForGCPOperation: GCP 작업이 완료될 때까지 대기합니다
 func (s *Service) waitForGCPOperation(ctx context.Context, computeService *compute.Service, projectID, operationName, operationType string) error {
 	if operationName == "" {
 		return nil
@@ -2462,7 +2662,7 @@ func (s *Service) waitForGCPOperation(ctx context.Context, computeService *compu
 	}
 }
 
-// createGCPComputeClient creates a GCP Compute client
+// createGCPComputeClient: GCP Compute 클라이언트를 생성합니다
 func (s *Service) createGCPComputeClient(ctx context.Context, credential *domain.Credential) (*compute.Service, error) {
 	// Decrypt credential
 	decryptedData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
@@ -2506,7 +2706,7 @@ func (s *Service) createGCPComputeClient(ctx context.Context, credential *domain
 	return computeService, nil
 }
 
-// createEC2Client creates an AWS EC2 client
+// createEC2Client: AWS EC2 클라이언트를 생성합니다
 func (s *Service) createEC2Client(ctx context.Context, credential *domain.Credential, region string) (*ec2.Client, error) {
 	// Decrypt credential
 	decryptedData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
@@ -2546,7 +2746,7 @@ func (s *Service) createEC2Client(ctx context.Context, credential *domain.Creden
 	return ec2.NewFromConfig(cfg), nil
 }
 
-// getTagValue extracts a tag value by key
+// getTagValue: 태그 목록에서 특정 키의 값을 조회합니다
 func (s *Service) getTagValue(tags []ec2Types.Tag, key string) string {
 	for _, tag := range tags {
 		if aws.ToString(tag.Key) == key {
@@ -2556,7 +2756,7 @@ func (s *Service) getTagValue(tags []ec2Types.Tag, key string) string {
 	return ""
 }
 
-// convertTags converts AWS tags to map
+// convertTags: 태그 목록을 맵으로 변환합니다
 func (s *Service) convertTags(tags []ec2Types.Tag) map[string]string {
 	result := make(map[string]string)
 	for _, tag := range tags {
@@ -2565,7 +2765,7 @@ func (s *Service) convertTags(tags []ec2Types.Tag) map[string]string {
 	return result
 }
 
-// isSubnetPublic determines if a subnet is public by checking its route table
+// isSubnetPublic: 서브넷이 공개 서브넷인지 확인합니다
 func (s *Service) isSubnetPublic(ctx context.Context, ec2Client *ec2.Client, subnetID string) bool {
 	// Get route tables for the subnet
 	input := &ec2.DescribeRouteTablesInput{
@@ -2599,7 +2799,7 @@ func (s *Service) isSubnetPublic(ctx context.Context, ec2Client *ec2.Client, sub
 	return false
 }
 
-// convertSecurityGroupRules converts AWS security group rules to DTOs
+// convertSecurityGroupRules: AWS IP 권한을 보안 그룹 규칙 정보로 변환합니다
 func (s *Service) convertSecurityGroupRules(ingress, egress []ec2Types.IpPermission) []SecurityGroupRuleInfo {
 	rules := make([]SecurityGroupRuleInfo, 0)
 
@@ -2859,7 +3059,7 @@ func (s *Service) UpdateSecurityGroupRules(ctx context.Context, credential *doma
 
 // GCP Subnet Functions
 
-// listGCPSubnets lists GCP subnets
+// listGCPSubnets: GCP 서브넷 목록을 조회합니다
 func (s *Service) listGCPSubnets(ctx context.Context, credential *domain.Credential, req ListSubnetsRequest) (*ListSubnetsResponse, error) {
 	// Create GCP Compute client
 	computeService, err := s.createGCPComputeClient(ctx, credential)
@@ -2929,7 +3129,7 @@ func (s *Service) listGCPSubnets(ctx context.Context, credential *domain.Credent
 	return &ListSubnetsResponse{Subnets: subnetInfos}, nil
 }
 
-// getGCPSubnet gets a specific GCP subnet
+// getGCPSubnet: 특정 GCP 서브넷을 조회합니다
 func (s *Service) getGCPSubnet(ctx context.Context, credential *domain.Credential, req GetSubnetRequest) (*SubnetInfo, error) {
 	// Create GCP Compute client
 	computeService, err := s.createGCPComputeClient(ctx, credential)
@@ -3000,7 +3200,7 @@ func (s *Service) getGCPSubnet(ctx context.Context, credential *domain.Credentia
 	return subnetInfo, nil
 }
 
-// createGCPSubnet creates a new GCP subnet
+// createGCPSubnet: 새로운 GCP 서브넷을 생성합니다
 func (s *Service) createGCPSubnet(ctx context.Context, credential *domain.Credential, req CreateSubnetRequest) (*SubnetInfo, error) {
 	// Create GCP Compute client
 	computeService, err := s.createGCPComputeClient(ctx, credential)
@@ -3067,10 +3267,38 @@ func (s *Service) createGCPSubnet(ctx context.Context, credential *domain.Creden
 		Tags:             req.Tags,
 	}
 
+	// 감사로그 기록
+	credentialID := credential.ID.String()
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionSubnetCreate,
+		fmt.Sprintf("POST /api/v1/%s/networks/vpcs/%s/subnets", credential.Provider, req.VPCID),
+		map[string]interface{}{
+			"subnet_id":     subnetInfo.ID,
+			"name":          req.Name,
+			"vpc_id":        req.VPCID,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        req.Region,
+		},
+	)
+
+	// NATS 이벤트 발행
+	if s.eventPublisher != nil {
+		subnetData := map[string]interface{}{
+			"subnet_id":     subnetInfo.ID,
+			"name":          req.Name,
+			"vpc_id":        req.VPCID,
+			"cidr_block":    subnetInfo.CIDRBlock,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        req.Region,
+		}
+		_ = s.eventPublisher.PublishSubnetEvent(ctx, credential.Provider, credentialID, req.VPCID, "created", subnetData)
+	}
+
 	return subnetInfo, nil
 }
 
-// updateGCPSubnet updates a GCP subnet
+// updateGCPSubnet: GCP 서브넷을 업데이트합니다
 func (s *Service) updateGCPSubnet(ctx context.Context, credential *domain.Credential, req UpdateSubnetRequest, subnetID, region string) (*SubnetInfo, error) {
 	// Create GCP Compute client
 	computeService, err := s.createGCPComputeClient(ctx, credential)
@@ -3143,15 +3371,46 @@ func (s *Service) updateGCPSubnet(ctx context.Context, credential *domain.Creden
 		zap.String("operation_id", operation.Name))
 
 	// Get updated subnet info
-	getReq := GetSubnetRequest{
+	subnetInfo, err := s.getGCPSubnet(ctx, credential, GetSubnetRequest{
 		CredentialID: credential.ID.String(),
 		SubnetID:     subnetID,
 		Region:       region,
+	})
+	if err != nil {
+		return nil, err
 	}
-	return s.getGCPSubnet(ctx, credential, getReq)
+
+	// 감사로그 기록
+	credentialID := credential.ID.String()
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionSubnetUpdate,
+		fmt.Sprintf("PUT /api/v1/%s/networks/vpcs/%s/subnets/%s", credential.Provider, subnetInfo.VPCID, subnetID),
+		map[string]interface{}{
+			"subnet_id":     subnetID,
+			"name":          subnetInfo.Name,
+			"vpc_id":        subnetInfo.VPCID,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        region,
+		},
+	)
+
+	// NATS 이벤트 발행
+	if s.eventPublisher != nil {
+		subnetData := map[string]interface{}{
+			"subnet_id":     subnetID,
+			"name":          subnetInfo.Name,
+			"vpc_id":        subnetInfo.VPCID,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        region,
+		}
+		_ = s.eventPublisher.PublishSubnetEvent(ctx, credential.Provider, credentialID, subnetInfo.VPCID, "updated", subnetData)
+	}
+
+	return subnetInfo, nil
 }
 
-// deleteGCPSubnet deletes a GCP subnet
+// deleteGCPSubnet: GCP 서브넷을 삭제합니다
 func (s *Service) deleteGCPSubnet(ctx context.Context, credential *domain.Credential, req DeleteSubnetRequest) error {
 	// Create GCP Compute client
 	computeService, err := s.createGCPComputeClient(ctx, credential)
@@ -3193,10 +3452,22 @@ func (s *Service) deleteGCPSubnet(ctx context.Context, credential *domain.Creden
 		zap.String("region", req.Region),
 		zap.String("operation_id", operation.Name))
 
+	// 감사로그 기록
+	credentialID := credential.ID.String()
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionSubnetDelete,
+		fmt.Sprintf("DELETE /api/v1/%s/networks/subnets/%s", credential.Provider, req.SubnetID),
+		map[string]interface{}{
+			"subnet_id":     req.SubnetID,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        req.Region,
+		},
+	)
+
 	return nil
 }
 
-// extractSubnetNameFromSubnetID extracts subnet name from full GCP subnet ID
+// extractSubnetNameFromSubnetID: GCP 서브넷 ID에서 서브넷 이름을 추출합니다
 func (s *Service) extractSubnetNameFromSubnetID(subnetID string) string {
 	// Handle full GCP subnet path: projects/{project}/regions/{region}/subnetworks/{subnet_name}
 	if strings.Contains(subnetID, "/subnetworks/") {
@@ -3210,7 +3481,7 @@ func (s *Service) extractSubnetNameFromSubnetID(subnetID string) string {
 	return subnetID
 }
 
-// extractCleanSubnetID extracts clean subnet ID from full GCP URL
+// extractCleanSubnetID: GCP URL에서 서브넷 ID를 추출합니다
 func (s *Service) extractCleanSubnetID(selfLink string) string {
 	// From: https://www.googleapis.com/compute/v1/projects/leafy-environs-445206-d2/regions/asia-northeast3/subnetworks/default
 	// To:   projects/leafy-environs-445206-d2/regions/asia-northeast3/subnetworks/default
@@ -3223,7 +3494,7 @@ func (s *Service) extractCleanSubnetID(selfLink string) string {
 	return selfLink
 }
 
-// extractCleanVPCID extracts clean VPC ID from full GCP URL
+// extractCleanVPCID: GCP URL에서 VPC ID를 추출합니다
 func (s *Service) extractCleanVPCID(networkURL string) string {
 	// From: https://www.googleapis.com/compute/v1/projects/leafy-environs-445206-d2/global/networks/default
 	// To:   projects/leafy-environs-445206-d2/global/networks/default
@@ -3236,7 +3507,7 @@ func (s *Service) extractCleanVPCID(networkURL string) string {
 	return networkURL
 }
 
-// extractCleanRegionID extracts clean region ID from full GCP URL
+// extractCleanRegionID: GCP URL에서 리전 ID를 추출합니다
 func (s *Service) extractCleanRegionID(regionURL string) string {
 	// From: https://www.googleapis.com/compute/v1/projects/leafy-environs-445206-d2/regions/asia-northeast3
 	// To:   projects/leafy-environs-445206-d2/regions/asia-northeast3
@@ -3251,7 +3522,7 @@ func (s *Service) extractCleanRegionID(regionURL string) string {
 
 // extractProjectID extracts project ID from GCP URL
 
-// extractRegionName extracts region name from GCP URL
+// extractRegionName: GCP URL에서 리전 이름을 추출합니다
 func (s *Service) extractRegionName(regionURL string) string {
 	// From: https://www.googleapis.com/compute/v1/projects/leafy-environs-445206-d2/regions/asia-northeast3
 	// To:   asia-northeast3
@@ -3264,7 +3535,7 @@ func (s *Service) extractRegionName(regionURL string) string {
 	return ""
 }
 
-// getFirewallRulesCount gets the count of firewall rules for a specific network
+// getFirewallRulesCount: 특정 네트워크의 방화벽 규칙 개수를 조회합니다
 func (s *Service) getFirewallRulesCount(ctx context.Context, computeService *compute.Service, projectID, networkName string) (int, error) {
 	// List firewall rules for the specific network
 	firewalls, err := computeService.Firewalls.List(projectID).Context(ctx).Do()
@@ -3293,7 +3564,7 @@ func (s *Service) getFirewallRulesCount(ctx context.Context, computeService *com
 	return count, nil
 }
 
-// getGatewayInfo gets gateway information for a specific network
+// getGatewayInfo: 특정 네트워크의 게이트웨이 정보를 조회합니다
 func (s *Service) getGatewayInfo(ctx context.Context, computeService *compute.Service, projectID, networkName string) (*GatewayInfo, error) {
 	routers, err := s.listRouters(ctx, computeService, projectID)
 	if err != nil {
@@ -3303,7 +3574,7 @@ func (s *Service) getGatewayInfo(ctx context.Context, computeService *compute.Se
 	return s.findGatewayForNetwork(routers, networkName), nil
 }
 
-// listRouters lists routers aggregated across all regions
+// listRouters: 모든 리전의 라우터 목록을 조회합니다
 func (s *Service) listRouters(ctx context.Context, computeService *compute.Service, projectID string) (*compute.RouterAggregatedList, error) {
 	routers, err := computeService.Routers.AggregatedList(projectID).Context(ctx).Do()
 	if err != nil {
@@ -3312,7 +3583,7 @@ func (s *Service) listRouters(ctx context.Context, computeService *compute.Servi
 	return routers, nil
 }
 
-// findGatewayForNetwork finds gateway information for a specific network
+// findGatewayForNetwork: 특정 네트워크의 게이트웨이 정보를 찾습니다
 func (s *Service) findGatewayForNetwork(routers *compute.RouterAggregatedList, networkName string) *GatewayInfo {
 	for _, routerList := range routers.Items {
 		for _, router := range routerList.Routers {
@@ -3328,7 +3599,7 @@ func (s *Service) findGatewayForNetwork(routers *compute.RouterAggregatedList, n
 	return nil
 }
 
-// isRouterConnectedToNetwork checks if router is connected to the specified network
+// isRouterConnectedToNetwork: 라우터가 특정 네트워크에 연결되어 있는지 확인합니다
 func (s *Service) isRouterConnectedToNetwork(router *compute.Router, networkName string) bool {
 	if router.Network == "" {
 		return false
@@ -3347,7 +3618,7 @@ func (s *Service) isRouterConnectedToNetwork(router *compute.Router, networkName
 	return parts[1] == networkName
 }
 
-// checkRouterForGateway checks if router has NAT or Internet Gateway
+// checkRouterForGateway: 라우터에 NAT 또는 인터넷 게이트웨이가 있는지 확인합니다
 func (s *Service) checkRouterForGateway(router *compute.Router) *GatewayInfo {
 	// Check for NAT gateway
 	if natGateway := s.checkForNATGateway(router); natGateway != nil {
@@ -3362,7 +3633,7 @@ func (s *Service) checkRouterForGateway(router *compute.Router) *GatewayInfo {
 	return nil
 }
 
-// checkForNATGateway checks if router has NAT gateway
+// checkForNATGateway: 라우터에 NAT 게이트웨이가 있는지 확인합니다
 func (s *Service) checkForNATGateway(router *compute.Router) *GatewayInfo {
 	if len(router.Nats) == 0 {
 		return nil
@@ -3379,7 +3650,7 @@ func (s *Service) checkForNATGateway(router *compute.Router) *GatewayInfo {
 	return nil
 }
 
-// checkForInternetGateway checks if router has Internet Gateway
+// checkForInternetGateway: 라우터에 인터넷 게이트웨이가 있는지 확인합니다
 func (s *Service) checkForInternetGateway(router *compute.Router) *GatewayInfo {
 	if router.Bgp == nil || router.Bgp.Asn <= 0 {
 		return nil
@@ -3393,7 +3664,7 @@ func (s *Service) checkForInternetGateway(router *compute.Router) *GatewayInfo {
 
 // AWS Subnet Functions (existing implementations)
 
-// listAWSSubnets lists AWS subnets
+// listAWSSubnets: AWS 서브넷 목록을 조회합니다
 func (s *Service) listAWSSubnets(ctx context.Context, credential *domain.Credential, req ListSubnetsRequest) (*ListSubnetsResponse, error) {
 	// Create AWS EC2 client
 	ec2Client, err := s.createEC2Client(ctx, credential, req.Region)
@@ -3523,6 +3794,34 @@ func (s *Service) createAWSSubnet(ctx context.Context, credential *domain.Creden
 		Tags:             req.Tags,
 	}
 
+	// 감사로그 기록
+	credentialID := credential.ID.String()
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionSubnetCreate,
+		fmt.Sprintf("POST /api/v1/%s/networks/vpcs/%s/subnets", credential.Provider, req.VPCID),
+		map[string]interface{}{
+			"subnet_id":     subnetInfo.ID,
+			"name":          req.Name,
+			"vpc_id":        req.VPCID,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        req.Region,
+		},
+	)
+
+	// NATS 이벤트 발행
+	if s.eventPublisher != nil {
+		subnetData := map[string]interface{}{
+			"subnet_id":     subnetInfo.ID,
+			"name":          req.Name,
+			"vpc_id":        req.VPCID,
+			"cidr_block":    subnetInfo.CIDRBlock,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        req.Region,
+		}
+		_ = s.eventPublisher.PublishSubnetEvent(ctx, credential.Provider, credentialID, req.VPCID, "created", subnetData)
+	}
+
 	return subnetInfo, nil
 }
 
@@ -3562,12 +3861,43 @@ func (s *Service) updateAWSSubnet(ctx context.Context, credential *domain.Creden
 	}
 
 	// Get updated subnet info
-	getReq := GetSubnetRequest{
+	subnetInfo, err := s.getAWSSubnet(ctx, credential, GetSubnetRequest{
 		CredentialID: credential.ID.String(),
 		SubnetID:     subnetID,
 		Region:       region,
+	})
+	if err != nil {
+		return nil, err
 	}
-	return s.getAWSSubnet(ctx, credential, getReq)
+
+	// 감사로그 기록
+	credentialID := credential.ID.String()
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionSubnetUpdate,
+		fmt.Sprintf("PUT /api/v1/%s/networks/vpcs/%s/subnets/%s", credential.Provider, subnetInfo.VPCID, subnetID),
+		map[string]interface{}{
+			"subnet_id":     subnetID,
+			"name":          subnetInfo.Name,
+			"vpc_id":        subnetInfo.VPCID,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        region,
+		},
+	)
+
+	// NATS 이벤트 발행
+	if s.eventPublisher != nil {
+		subnetData := map[string]interface{}{
+			"subnet_id":     subnetID,
+			"name":          subnetInfo.Name,
+			"vpc_id":        subnetInfo.VPCID,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        region,
+		}
+		_ = s.eventPublisher.PublishSubnetEvent(ctx, credential.Provider, credentialID, subnetInfo.VPCID, "updated", subnetData)
+	}
+
+	return subnetInfo, nil
 }
 
 // deleteAWSSubnet deletes an AWS subnet
@@ -3584,6 +3914,29 @@ func (s *Service) deleteAWSSubnet(ctx context.Context, credential *domain.Creden
 	})
 	if err != nil {
 		return domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to delete subnet: %v", err), 502)
+	}
+
+	// 감사로그 기록
+	credentialID := credential.ID.String()
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionSubnetDelete,
+		fmt.Sprintf("DELETE /api/v1/%s/networks/subnets/%s", credential.Provider, req.SubnetID),
+		map[string]interface{}{
+			"subnet_id":     req.SubnetID,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        req.Region,
+		},
+	)
+
+	// NATS 이벤트 발행 (VPCID는 req에 없으므로 빈 문자열로 처리)
+	if s.eventPublisher != nil {
+		subnetData := map[string]interface{}{
+			"subnet_id":     req.SubnetID,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        req.Region,
+		}
+		_ = s.eventPublisher.PublishSubnetEvent(ctx, credential.Provider, credentialID, "", "deleted", subnetData)
 	}
 
 	return nil

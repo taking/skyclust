@@ -1,3 +1,25 @@
+/**
+ * Header 컴포넌트
+ * 
+ * 애플리케이션 상단 헤더를 담당하는 컴포넌트입니다.
+ * 
+ * @example
+ * ```tsx
+ * // Layout에서 자동으로 사용됨
+ * <Layout>
+ *   <Header />  // 자동으로 렌더링됨
+ *   <main>...</main>
+ * </Layout>
+ * ```
+ * 
+ * 기능:
+ * - 사용자 인증 상태 표시
+ * - Workspace 선택
+ * - 언어 선택
+ * - 테마 토글
+ * - URL과 자격 증명/리전 상태 동기화
+ * - Breadcrumb 네비게이션
+ */
 'use client';
 
 import * as React from 'react';
@@ -24,8 +46,8 @@ import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { ScreenReaderOnly } from '@/components/accessibility/screen-reader-only';
 import { getActionAriaLabel } from '@/lib/accessibility';
 import { Breadcrumb } from '@/components/common/breadcrumb';
-import { getRegionsForProvider, supportsRegionSelection } from '@/lib/regions';
-import type { CloudProvider } from '@/lib/types';
+import { getRegionsForProvider, supportsRegionSelection, getDefaultRegionForProvider } from '@/lib/regions';
+import type { CloudProvider } from '@/lib/types/kubernetes';
 import { useTranslation } from '@/hooks/use-translation';
 import { locales, localeNames, type Locale } from '@/i18n/config';
 
@@ -38,139 +60,223 @@ function HeaderComponent() {
   const { selectedCredentialId, selectedRegion, setSelectedCredential, setSelectedRegion } = useCredentialContextStore();
   const { t, locale, setLocale } = useTranslation();
 
-  // Check if we should show credential/region selectors
+  // 자격 증명/리전 선택기를 표시할 경로인지 확인 (URL 동기화용)
   const shouldShowSelectors = React.useMemo(() => {
     return pathname.startsWith('/compute') || 
            pathname.startsWith('/kubernetes') || 
-           pathname.startsWith('/networks');
+           pathname.startsWith('/networks') ||
+           pathname.startsWith('/dashboard');
   }, [pathname]);
 
-  // Fetch credentials for current workspace using unified hook
-  const { credentials, selectedCredential: selectedCredentialFromHook } = useCredentials({
+  // 현재 워크스페이스의 자격 증명 조회 (URL 동기화용)
+  const { credentials, isLoading: isLoadingCredentials } = useCredentials({
     workspaceId: currentWorkspace?.id,
     selectedCredentialId: selectedCredentialId || undefined,
     enabled: !!currentWorkspace && shouldShowSelectors,
   });
 
-  // Clear credential selection when workspace changes or selected credential is not in current workspace
+  // 이전 워크스페이스 ID 추적 (변경 감지용)
+  const prevWorkspaceIdRef = React.useRef<string | undefined>(currentWorkspace?.id);
+  const prevCredentialIdRef = React.useRef<string | null>(selectedCredentialId);
+  
+  // 워크스페이스 변경 시 자격 증명 선택 초기화
   React.useEffect(() => {
-    if (!shouldShowSelectors || !currentWorkspace) return;
+    // 1. 초기 조건 확인: 선택기 표시 여부, 워크스페이스 존재, 자격 증명 로딩 상태
+    if (!shouldShowSelectors || !currentWorkspace || isLoadingCredentials) {
+      prevWorkspaceIdRef.current = currentWorkspace?.id;
+      return;
+    }
 
-    // Check if selected credential belongs to current workspace
-    if (selectedCredentialId) {
-      const credentialExists = credentials.some(c => c.id === selectedCredentialId);
-      if (!credentialExists) {
-        // Clear selection if credential doesn't exist in current workspace
+    // 2. 변경 사항 감지: 워크스페이스 ID와 자격 증명 ID 비교
+    const workspaceChanged = prevWorkspaceIdRef.current !== currentWorkspace.id;
+    const credentialChanged = prevCredentialIdRef.current !== selectedCredentialId;
+    
+    // 3. 워크스페이스가 변경된 경우 자격 증명 및 리전 초기화
+    if (workspaceChanged) {
+      prevWorkspaceIdRef.current = currentWorkspace.id;
+      if (selectedCredentialId) {
+        // 전역 상태 초기화
         setSelectedCredential(null);
         setSelectedRegion(null);
-        // Update URL
+        // URL에서도 제거
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete('credentialId');
+        params.delete('region');
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      }
+      return;
+    }
+
+    // 4. 선택된 자격 증명이 현재 워크스페이스에 속하는지 검증
+    if (selectedCredentialId && credentials.length > 0 && !credentialChanged) {
+      const credentialExists = credentials.some(c => c.id === selectedCredentialId);
+      if (!credentialExists) {
+        // 자격 증명이 현재 워크스페이스에 없으면 초기화
+        setSelectedCredential(null);
+        setSelectedRegion(null);
+        const urlCredentialId = searchParams.get('credentialId');
+        if (urlCredentialId) {
+          // URL에도 반영
+          const params = new URLSearchParams(searchParams.toString());
+          params.delete('credentialId');
+          params.delete('region');
+          router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+        }
+      }
+    } else if (selectedCredentialId && credentials.length === 0 && !isLoadingCredentials && !credentialChanged) {
+      // 5. 자격 증명 목록이 비어있는데 선택된 자격 증명이 있는 경우 초기화
+      setSelectedCredential(null);
+      setSelectedRegion(null);
+      const urlCredentialId = searchParams.get('credentialId');
+      if (urlCredentialId) {
         const params = new URLSearchParams(searchParams.toString());
         params.delete('credentialId');
         params.delete('region');
         router.replace(`${pathname}?${params.toString()}`, { scroll: false });
       }
     }
-  }, [currentWorkspace?.id, credentials, selectedCredentialId, shouldShowSelectors, pathname, router, searchParams, setSelectedCredential, setSelectedRegion]);
+    
+    // 6. 현재 자격 증명 ID를 이전 값으로 저장 (다음 렌더링에서 변경 감지용)
+    prevCredentialIdRef.current = selectedCredentialId;
+  }, [currentWorkspace, isLoadingCredentials, credentials, selectedCredentialId, shouldShowSelectors, pathname, router, searchParams, setSelectedCredential, setSelectedRegion]);
 
-  // Get selected credential and provider (from hook)
-  const selectedCredential = selectedCredentialFromHook;
-  const selectedProvider = selectedCredential?.provider as CloudProvider | undefined;
-
-  // Get regions for selected provider
-  const regions = React.useMemo(() => getRegionsForProvider(selectedProvider), [selectedProvider]);
-  const showRegionSelector = supportsRegionSelection(selectedProvider) && shouldShowSelectors;
-
-  // Sync with URL query parameters (bidirectional)
+  // 이전 URL 파라미터 추적 (불필요한 업데이트 방지)
+  const prevUrlCredentialIdRef = React.useRef<string | null>(null);
+  const prevUrlRegionRef = React.useRef<string | null>(null);
+  
+  // URL 쿼리 파라미터와 양방향 동기화
   // URL이 있으면 URL을 우선하고, URL이 없으면 Store의 값을 URL에 반영
   React.useEffect(() => {
-    if (!shouldShowSelectors || !currentWorkspace) return;
+    // 1. 초기 조건 확인
+    if (!shouldShowSelectors || !currentWorkspace || isLoadingCredentials) return;
 
+    // 2. URL에서 자격 증명 ID와 리전 가져오기
     const urlCredentialId = searchParams.get('credentialId');
     const urlRegion = searchParams.get('region');
 
-    // Priority 1: URL → Store (URL이 있으면 Store 업데이트)
-    if (urlCredentialId && urlCredentialId !== selectedCredentialId) {
-      // URL의 credential이 현재 workspace에 속하는지 확인
-      const credentialExists = credentials.some(c => c.id === urlCredentialId);
-      if (credentialExists) {
-        setSelectedCredential(urlCredentialId);
-      }
-    }
-    if (urlRegion !== null && urlRegion !== selectedRegion) {
-      setSelectedRegion(urlRegion || null);
+    // 3. URL이 변경되지 않았으면 스킵 (무한 루프 방지)
+    if (urlCredentialId === prevUrlCredentialIdRef.current && urlRegion === prevUrlRegionRef.current) {
+      return;
     }
 
-    // Priority 2: Store → URL (URL이 없고 Store에 값이 있으면 URL에 반영)
-    // 단, credential이 현재 workspace에 속하는 경우에만 반영
-    if (!urlCredentialId && selectedCredentialId) {
+    // ===== 우선순위 1: URL → Store (URL이 있으면 Store 업데이트) =====
+    if (urlCredentialId && urlCredentialId !== selectedCredentialId) {
+      if (credentials.length > 0) {
+        // 4. URL의 자격 증명이 현재 워크스페이스에 속하는지 확인
+        const credentialExists = credentials.some(c => c.id === urlCredentialId);
+        if (credentialExists) {
+          // 5. 유효한 자격 증명이면 Store 업데이트
+          setSelectedCredential(urlCredentialId);
+          prevUrlCredentialIdRef.current = urlCredentialId;
+          
+          // 6. 자격 증명 변경 시 리전 처리
+          const newCredential = credentials.find(c => c.id === urlCredentialId);
+          if (newCredential) {
+            if (supportsRegionSelection(newCredential.provider as CloudProvider)) {
+              // 6-1. 프로바이더가 리전을 지원하고 URL에 리전이 없으면 기본 리전 설정
+              if (!urlRegion) {
+                const defaultRegion = getDefaultRegionForProvider(newCredential.provider);
+                if (defaultRegion) {
+                  setSelectedRegion(defaultRegion);
+                  prevUrlRegionRef.current = defaultRegion;
+                  const params = new URLSearchParams(searchParams.toString());
+                  params.set('region', defaultRegion);
+                  router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+                }
+              }
+            } else {
+              // 6-2. 프로바이더가 리전을 지원하지 않으면 리전 제거
+              setSelectedRegion(null);
+              prevUrlRegionRef.current = null;
+              const params = new URLSearchParams(searchParams.toString());
+              params.delete('region');
+              router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+            }
+          }
+        } else {
+          // 7. URL의 자격 증명이 현재 워크스페이스에 없으면 URL에서 제거
+          const params = new URLSearchParams(searchParams.toString());
+          params.delete('credentialId');
+          params.delete('region');
+          prevUrlCredentialIdRef.current = null;
+          prevUrlRegionRef.current = null;
+          router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+        }
+      } else {
+        // 8. 자격 증명 목록이 아직 로드 중이면 URL 값만 저장 (나중에 처리)
+        prevUrlCredentialIdRef.current = urlCredentialId;
+      }
+    } else if (!urlCredentialId) {
+      prevUrlCredentialIdRef.current = null;
+    }
+    
+    // 9. URL의 리전을 Store에 동기화
+    if (urlRegion !== null && urlRegion !== selectedRegion) {
+      setSelectedRegion(urlRegion || null);
+      prevUrlRegionRef.current = urlRegion;
+    } else if (urlRegion === null) {
+      prevUrlRegionRef.current = null;
+    }
+
+    // ===== 우선순위 2: Store → URL (URL이 없고 Store에 값이 있으면 URL에 반영) =====
+    if (!urlCredentialId && selectedCredentialId && credentials.length > 0) {
+      // 10. Store에 자격 증명이 있고 URL에 없으면 URL에 추가
       const credentialExists = credentials.some(c => c.id === selectedCredentialId);
       if (credentialExists) {
         const params = new URLSearchParams(searchParams.toString());
         params.set('credentialId', selectedCredentialId);
         
-        // Region도 함께 업데이트 (provider가 region을 지원하는 경우)
+        const credential = credentials.find(c => c.id === selectedCredentialId);
+        
+        // 11. 리전 처리: Store에 리전이 있으면 추가, 없으면 기본 리전 설정
         if (selectedRegion) {
-          const credential = credentials.find(c => c.id === selectedCredentialId);
           if (credential && supportsRegionSelection(credential.provider as CloudProvider)) {
             params.set('region', selectedRegion);
           }
+        } else if (credential && supportsRegionSelection(credential.provider as CloudProvider)) {
+          // Store에 리전이 없으면 기본 리전으로 설정
+          const defaultRegion = getDefaultRegionForProvider(credential.provider);
+          if (defaultRegion) {
+            setSelectedRegion(defaultRegion);
+            params.set('region', defaultRegion);
+            prevUrlRegionRef.current = defaultRegion;
+          }
         }
         
+        prevUrlCredentialIdRef.current = selectedCredentialId;
+        if (selectedRegion || (credential && getDefaultRegionForProvider(credential.provider))) {
+          prevUrlRegionRef.current = selectedRegion || (credential ? getDefaultRegionForProvider(credential.provider) : null);
+        }
         router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      } else {
+        // 12. Store의 자격 증명이 현재 워크스페이스에 없으면 Store 초기화
+        setSelectedCredential(null);
+        setSelectedRegion(null);
       }
-    } else if (urlCredentialId && !urlRegion && selectedRegion) {
-      // Credential은 있지만 Region이 없고 Store에 Region이 있는 경우
-      // provider가 region을 지원하는지 확인
+    } else if (urlCredentialId && !urlRegion && credentials.length > 0) {
+      // 13. URL에 자격 증명은 있지만 리전이 없는 경우 기본 리전 설정
+      const credential = credentials.find(c => c.id === urlCredentialId);
+      if (credential && supportsRegionSelection(credential.provider as CloudProvider)) {
+        const defaultRegion = getDefaultRegionForProvider(credential.provider);
+        if (defaultRegion) {
+          setSelectedRegion(defaultRegion);
+          const params = new URLSearchParams(searchParams.toString());
+          params.set('region', defaultRegion);
+          prevUrlRegionRef.current = defaultRegion;
+          router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+        }
+      }
+    } else if (urlCredentialId && !urlRegion && selectedRegion && credentials.length > 0) {
+      // 14. URL에 자격 증명은 있지만 리전이 없고 Store에 리전이 있는 경우 URL에 추가
       const credential = credentials.find(c => c.id === urlCredentialId);
       if (credential && supportsRegionSelection(credential.provider as CloudProvider)) {
         const params = new URLSearchParams(searchParams.toString());
         params.set('region', selectedRegion);
+        prevUrlRegionRef.current = selectedRegion;
         router.replace(`${pathname}?${params.toString()}`, { scroll: false });
       }
     }
-  }, [searchParams, shouldShowSelectors, selectedCredentialId, selectedRegion, setSelectedCredential, setSelectedRegion, pathname, router, credentials, currentWorkspace]);
-
-  // Update URL when selection changes
-  const handleCredentialChange = React.useCallback((credentialId: string) => {
-    setSelectedCredential(credentialId);
-    
-    // Update URL
-    const params = new URLSearchParams(searchParams.toString());
-    if (credentialId) {
-      params.set('credentialId', credentialId);
-    } else {
-      params.delete('credentialId');
-    }
-    // Clear region when credential changes (provider might change)
-    if (credentialId) {
-      const newCredential = credentials.find(c => c.id === credentialId);
-      const newProvider = newCredential?.provider;
-      if (!supportsRegionSelection(newProvider)) {
-        params.delete('region');
-        setSelectedRegion(null);
-      }
-    } else {
-      params.delete('region');
-      setSelectedRegion(null);
-    }
-    
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  }, [credentials, pathname, router, searchParams, setSelectedCredential, setSelectedRegion]);
-
-  const handleRegionChange = React.useCallback((region: string) => {
-    const regionValue = region === 'all' ? '' : region;
-    setSelectedRegion(regionValue || null);
-    
-    // Update URL
-    const params = new URLSearchParams(searchParams.toString());
-    if (regionValue) {
-      params.set('region', regionValue);
-    } else {
-      params.delete('region');
-    }
-    
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  }, [pathname, router, searchParams, setSelectedRegion]);
+  }, [searchParams, shouldShowSelectors, isLoadingCredentials, selectedCredentialId, selectedRegion, setSelectedCredential, setSelectedRegion, pathname, router, credentials, currentWorkspace]);
 
   const handleLogout = () => {
     logout();
@@ -178,72 +284,18 @@ function HeaderComponent() {
   };
 
   return (
-    <header className="border-b bg-background" role="banner">
+    <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60" role="banner">
       <div className="flex flex-col">
         {/* Main Header Row */}
         <div className="flex h-16 items-center justify-between px-4 sm:px-6">
-          <div className="flex items-center space-x-4 flex-1 min-w-0">
+          <div className="flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0 overflow-hidden">
             <MobileNav />
-            <div className="flex-1 min-w-0">
-              <Breadcrumb className="text-sm" />
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <Breadcrumb className="text-sm truncate" />
             </div>
           </div>
 
-          <div className="flex items-center space-x-4 flex-shrink-0">
-            {/* Credential and Region Selectors */}
-            {shouldShowSelectors && (
-              <>
-                <Select
-                  value={selectedCredentialId || ''}
-                  onValueChange={handleCredentialChange}
-                >
-                  <SelectTrigger className="w-[200px] h-8 text-xs">
-                    <SelectValue placeholder={typeof t === 'function' ? t('credential.select') : 'Select Credential'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {credentials.map((credential) => (
-                      <SelectItem key={credential.id} value={credential.id} className="text-xs">
-                        {credential.name || `${credential.provider.toUpperCase()} (${credential.id.slice(0, 8)})`}
-                      </SelectItem>
-                    ))}
-                    <div className="h-px bg-border my-1" />
-                    <div className="px-2 py-1.5 border-t border-border">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="w-full justify-start"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          router.push('/credentials');
-                        }}
-                        aria-label="Create a new credential"
-                      >
-                        <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-                        {typeof t === 'function' ? t('credential.create') : 'Create Credential'}
-                      </Button>
-                    </div>
-                  </SelectContent>
-                </Select>
-                {showRegionSelector && (
-                  <Select
-                    value={selectedRegion || 'all'}
-                    onValueChange={handleRegionChange}
-                  >
-                    <SelectTrigger className="w-[180px] h-8 text-xs">
-                      <SelectValue placeholder={typeof t === 'function' ? t('region.select') : 'Select Region'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{typeof t === 'function' ? t('region.select') : 'All Regions'}</SelectItem>
-                      {regions.map((region) => (
-                        <SelectItem key={region.value} value={region.value} className="text-xs">
-                          {region.value} - {region.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </>
-            )}
+          <div className="flex items-center space-x-1 sm:space-x-2 md:space-x-4 flex-shrink-0">
 
             {/* Language Selector */}
             <Select

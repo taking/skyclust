@@ -6,22 +6,11 @@
 'use client';
 
 import * as React from 'react';
-import dynamic from 'next/dynamic';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogTrigger } from '@/components/ui/dialog';
 import { Plus } from 'lucide-react';
 import { useTranslation } from '@/hooks/use-translation';
-import type { Credential, CloudProvider, CreateClusterForm } from '@/lib/types';
-
-// Dynamic import for CreateClusterDialog
-const CreateClusterDialog = dynamic(
-  () => import('./create-cluster-dialog').then(mod => ({ default: mod.CreateClusterDialog })),
-  { 
-    ssr: false,
-    loading: () => null, // Dialog is hidden by default, so no loading state needed
-  }
-);
+import type { Credential, CloudProvider } from '@/lib/types';
 
 interface ClusterPageHeaderProps {
   workspaceName?: string;
@@ -31,10 +20,6 @@ interface ClusterPageHeaderProps {
   selectedRegion?: string;
   onRegionChange: (region: string) => void;
   selectedProvider?: CloudProvider;
-  onCreateCluster: (data: CreateClusterForm) => void;
-  isCreatePending?: boolean;
-  isCreateDialogOpen: boolean;
-  onCreateDialogChange: (open: boolean) => void;
 }
 
 // GCP regions list
@@ -129,19 +114,16 @@ function ClusterPageHeaderComponent({
   workspaceName,
   credentials,
   selectedCredentialId,
-  onCredentialChange,
-  selectedRegion = '',
-  onRegionChange,
+  onCredentialChange: _onCredentialChange,
+  selectedRegion: _selectedRegion = '',
+  onRegionChange: _onRegionChange,
   selectedProvider,
-  onCreateCluster,
-  isCreatePending = false,
-  isCreateDialogOpen,
-  onCreateDialogChange,
 }: ClusterPageHeaderProps) {
   const { t } = useTranslation();
+  const router = useRouter();
   
   // Show region selector for GCP, AWS, and Azure
-  const showRegionSelector = selectedProvider === 'gcp' || selectedProvider === 'aws' || selectedProvider === 'azure';
+  const _showRegionSelector = selectedProvider === 'gcp' || selectedProvider === 'aws' || selectedProvider === 'azure';
 
   // Get regions based on provider
   const getRegions = () => {
@@ -157,7 +139,11 @@ function ClusterPageHeaderComponent({
     }
   };
 
-  const regions = getRegions();
+  const _regions = getRegions();
+
+  const handleCreateClick = () => {
+    router.push('/kubernetes/clusters/create');
+  };
 
   return (
     <div className="flex items-center justify-between">
@@ -171,27 +157,13 @@ function ClusterPageHeaderComponent({
         </p>
       </div>
       <div className="flex items-center space-x-2">
-        {/* Credential and Region selection is now handled in Header */}
-        <Dialog open={isCreateDialogOpen} onOpenChange={onCreateDialogChange}>
-          <DialogTrigger asChild>
-            <Button
-              disabled={!selectedCredentialId || credentials.length === 0}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              {t('kubernetes.createCluster')}
-            </Button>
-          </DialogTrigger>
-          <CreateClusterDialog
-            open={isCreateDialogOpen}
-            onOpenChange={onCreateDialogChange}
-            onSubmit={onCreateCluster}
-            credentials={credentials}
-            selectedCredentialId={selectedCredentialId}
-            onCredentialChange={onCredentialChange}
-            selectedProvider={selectedProvider}
-            isPending={isCreatePending}
-          />
-        </Dialog>
+        <Button
+          onClick={handleCreateClick}
+          disabled={!selectedCredentialId || credentials.length === 0}
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          {t('kubernetes.createCluster')}
+        </Button>
       </div>
     </div>
   );

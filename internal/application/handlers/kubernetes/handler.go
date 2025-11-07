@@ -67,7 +67,8 @@ func (h *Handler) createClusterHandler(req kubernetesservice.CreateClusterReques
 			return
 		}
 
-		cluster, err := h.k8sService.CreateEKSCluster(c.Request.Context(), credential, req)
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		cluster, err := h.k8sService.CreateEKSCluster(ctx, credential, req)
 		if err != nil {
 			h.HandleError(c, err, "create_cluster")
 			return
@@ -197,7 +198,8 @@ func (h *Handler) deleteClusterHandler() handlers.HandlerFunc {
 
 		h.logClusterDeletionAttempt(c, userID, clusterName, credential.ID, region)
 
-		if err := h.k8sService.DeleteEKSCluster(c.Request.Context(), credential, clusterName, region); err != nil {
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		if err := h.k8sService.DeleteEKSCluster(ctx, credential, clusterName, region); err != nil {
 			h.HandleError(c, err, "delete_cluster")
 			return
 		}
@@ -299,7 +301,8 @@ func (h *Handler) createNodePoolHandler(req kubernetesservice.CreateNodePoolRequ
 			return
 		}
 
-		nodePool, err := h.k8sService.CreateEKSNodePool(c.Request.Context(), credential, req)
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		nodePool, err := h.k8sService.CreateEKSNodePool(ctx, credential, req)
 		if err != nil {
 			h.HandleError(c, err, "create_node_pool")
 			return

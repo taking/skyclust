@@ -13,72 +13,36 @@ import { Form } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuthStore } from '@/store/auth';
+import { useAuthHydration } from '@/hooks/use-auth-hydration';
 import { authService } from '@/services/auth';
 import { LoginForm } from '@/lib/types';
 import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
 import { getUserFriendlyErrorMessage } from '@/lib/error-handler';
 import Link from 'next/link';
-import * as z from 'zod';
 import { useTranslation } from '@/hooks/use-translation';
-
-const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
-});
+import { createValidationSchemas } from '@/lib/validations';
 
 export default function LoginPage() {
-  const { login, initialize, isAuthenticated, token } = useAuthStore();
+  const { login } = useAuthStore();
   const router = useRouter();
   const { t } = useTranslation();
+  const { isHydrated, isAuthenticated, isLoading: isAuthLoading } = useAuthHydration({
+    hydrationDelay: 300,
+    checkLegacyToken: true,
+  });
+  
+  const { loginSchema } = createValidationSchemas(t);
 
   // Check if already authenticated - only redirect if definitely authenticated
   useEffect(() => {
-    initialize();
-    
-    let hasRedirected = false;
-    
-    const checkAuth = () => {
-      if (hasRedirected) return;
-      
-      // Wait for Zustand to rehydrate
-      // Check auth-storage first (primary source), then legacy token
-      let storedToken: string | null = null;
-      let parsedAuth: { state?: { isAuthenticated?: boolean; token?: string } } = {};
-      
-      if (typeof window !== 'undefined') {
-        try {
-          const authStorage = localStorage.getItem('auth-storage');
-          if (authStorage) {
-            parsedAuth = JSON.parse(authStorage);
-            storedToken = parsedAuth?.state?.token || null;
-          }
-          // Fallback to legacy token for backward compatibility
-          if (!storedToken) {
-            storedToken = localStorage.getItem('token');
-          }
-        } catch {
-          // If parse fails, try legacy token
-          storedToken = localStorage.getItem('token');
-        }
-      }
-      
-      // Check both Zustand state and localStorage
-      const isAuthFromStorage = parsedAuth?.state?.isAuthenticated && parsedAuth?.state?.token;
-      const isAuthFromStore = isAuthenticated && token;
-      
-      // Only redirect if we're definitely authenticated
-      // Don't redirect if we're already on a page (avoid redirect loops)
-      if (!hasRedirected && ((storedToken && (isAuthFromStorage || isAuthFromStore)) || isAuthFromStore)) {
-        hasRedirected = true;
-        // Use replace to avoid adding to history
-        router.replace('/dashboard');
-      }
-    };
+    if (!isHydrated || isAuthLoading) {
+      return;
+    }
 
-    // Wait a bit longer for Zustand to fully rehydrate
-    const timer = setTimeout(checkAuth, 300);
-    return () => clearTimeout(timer);
-  }, [router, initialize, isAuthenticated, token]);
+    if (isAuthenticated) {
+      router.replace('/dashboard');
+    }
+  }, [router, isHydrated, isAuthenticated, isAuthLoading]);
 
   const {
     form,
@@ -98,7 +62,7 @@ export default function LoginPage() {
       login(response);
       router.push('/dashboard');
     },
-    onError: (error) => {
+        onError: (_error) => {
       // Error is handled by the hook's error state
     },
     getErrorMessage: getUserFriendlyErrorMessage,

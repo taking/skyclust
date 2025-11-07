@@ -12,13 +12,13 @@ import (
 	"go.uber.org/zap"
 )
 
-// Handler handles audit log management operations
+// Handler: 감사 로그 관리 작업을 처리하는 핸들러
 type Handler struct {
 	*handlers.BaseHandler
 	auditLogService domain.AuditLogService
 }
 
-// NewHandler creates a new audit handler
+// NewHandler: 새로운 감사 로그 핸들러를 생성합니다
 func NewHandler(auditLogService domain.AuditLogService) *Handler {
 	return &Handler{
 		BaseHandler:     handlers.NewBaseHandler("audit"),
@@ -26,8 +26,8 @@ func NewHandler(auditLogService domain.AuditLogService) *Handler {
 	}
 }
 
-// GetAuditLogs retrieves audit logs with filtering
-// Supports query parameters: aggregate (stats), format (summary), and filtering params
+// GetAuditLogs: 필터링을 포함한 감사 로그를 조회합니다
+// 쿼리 파라미터 지원: aggregate (stats), format (summary), 필터링 파라미터
 func (h *Handler) GetAuditLogs(c *gin.Context) {
 	// Start performance tracking
 	defer h.TrackRequest(c, "get_audit_logs", 200)
@@ -202,8 +202,8 @@ func (h *Handler) GetAuditLog(c *gin.Context) {
 	h.OK(c, log, "Audit log retrieved successfully")
 }
 
-// GetAuditStats retrieves audit log statistics
-// Called via GET /audit-logs?aggregate=stats
+// GetAuditStats: 감사 로그 통계를 조회합니다
+// GET /audit-logs?aggregate=stats로 호출
 func (h *Handler) GetAuditStats(c *gin.Context) {
 	// Start performance tracking
 	defer h.TrackRequest(c, "get_audit_stats", 200)
@@ -230,8 +230,8 @@ func (h *Handler) GetAuditStats(c *gin.Context) {
 	h.OK(c, stats, "Audit statistics retrieved successfully")
 }
 
-// GetAuditLogSummary retrieves audit log summary
-// Called via GET /audit-logs?format=summary
+// GetAuditLogSummary: 감사 로그 요약을 조회합니다
+// GET /audit-logs?format=summary로 호출
 func (h *Handler) GetAuditLogSummary(c *gin.Context) {
 	// Start performance tracking
 	defer h.TrackRequest(c, "get_audit_summary", 200)
@@ -299,7 +299,7 @@ func (h *Handler) GetAuditLogSummary(c *gin.Context) {
 	h.OK(c, summary, "Audit log summary retrieved successfully")
 }
 
-// ExportAuditLogs exports audit logs
+// ExportAuditLogs: 감사 로그를 내보냅니다
 func (h *Handler) ExportAuditLogs(c *gin.Context) {
 	// Start performance tracking
 	defer h.TrackRequest(c, "export_audit_logs", 200)
@@ -415,7 +415,7 @@ func (h *Handler) getContentType(format string) string {
 	}
 }
 
-// CleanupAuditLogs cleans up old audit logs
+// CleanupAuditLogs: 오래된 감사 로그를 정리합니다
 func (h *Handler) CleanupAuditLogs(c *gin.Context) {
 	// Start performance tracking
 	defer h.TrackRequest(c, "cleanup_audit_logs", 200)
@@ -434,7 +434,7 @@ func (h *Handler) CleanupAuditLogs(c *gin.Context) {
 
 	// Log business event
 	h.LogBusinessEvent(c, "audit_logs_cleanup_requested", "", "", map[string]interface{}{
-		"operation":     "cleanup_audit_logs",
+		"operation":      "cleanup_audit_logs",
 		"retention_days": retentionDays,
 	})
 

@@ -91,4 +91,3 @@ func (b *BatchBuffer) Close() {
 	b.timer.Stop()
 	b.Flush()
 }
-

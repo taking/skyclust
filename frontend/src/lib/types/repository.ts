@@ -3,6 +3,8 @@
  * 데이터 접근 계층 추상화
  */
 
+import type { WorkspaceMember } from './workspace';
+
 /**
  * Base Repository Interface
  * 모든 Repository가 구현해야 하는 기본 인터페이스
@@ -37,11 +39,14 @@ export interface IRepository<T, TCreate = T, TUpdate = Partial<TCreate>> {
 /**
  * VPC Repository Interface
  */
-export interface IVPCRepository extends IRepository<import('@/lib/types').VPC, import('@/lib/types').CreateVPCForm> {
+export interface IVPCRepository extends Omit<IRepository<import('@/lib/types').VPC, import('@/lib/types').CreateVPCForm>, 'create' | 'update' | 'delete' | 'findAll' | 'findById'> {
   list(provider: string, credentialId: string, region?: string): Promise<import('@/lib/types').VPC[]>;
   getById(provider: string, vpcId: string, credentialId: string, region: string): Promise<import('@/lib/types').VPC>;
   create(provider: string, data: import('@/lib/types').CreateVPCForm): Promise<import('@/lib/types').VPC>;
+  update(provider: string, vpcId: string, data: Partial<import('@/lib/types').CreateVPCForm>, credentialId: string, region: string): Promise<import('@/lib/types').VPC>;
   delete(provider: string, vpcId: string, credentialId: string, region: string): Promise<void>;
+  findAll(): Promise<import('@/lib/types').VPC[]>;
+  findById(id: string): Promise<import('@/lib/types').VPC | null>;
 }
 
 /**
@@ -65,7 +70,8 @@ export interface IWorkspaceRepository extends IRepository<import('@/lib/types').
   create(data: import('@/lib/types').CreateWorkspaceForm): Promise<import('@/lib/types').Workspace>;
   update(id: string, data: Partial<import('@/lib/types').CreateWorkspaceForm>): Promise<import('@/lib/types').Workspace>;
   delete(id: string): Promise<void>;
-  addMember(workspaceId: string, userId: string, role?: string): Promise<void>;
+  addMember(workspaceId: string, email: string, role?: string): Promise<void>;
+  getMembers(workspaceId: string): Promise<WorkspaceMember[]>;
   removeMember(workspaceId: string, userId: string): Promise<void>;
 }
 

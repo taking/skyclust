@@ -23,7 +23,7 @@ type AWSCredentials struct {
 	Region    string
 }
 
-// extractAWSCredentials extracts AWS credentials from decrypted credential data
+// extractAWSCredentials: 복호화된 자격 증명 데이터에서 AWS 자격 증명을 추출합니다
 func (s *Service) extractAWSCredentials(ctx context.Context, credential *domain.Credential, defaultRegion string) (*AWSCredentials, error) {
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
 	if err != nil {
@@ -55,7 +55,7 @@ func (s *Service) extractAWSCredentials(ctx context.Context, credential *domain.
 	}, nil
 }
 
-// createAWSConfig creates AWS config from credentials
+// createAWSConfig: 자격 증명으로부터 AWS 설정을 생성합니다
 func (s *Service) createAWSConfig(ctx context.Context, creds *AWSCredentials) (aws.Config, error) {
 	cfg, err := awsconfig.LoadDefaultConfig(ctx,
 		awsconfig.WithRegion(creds.Region),

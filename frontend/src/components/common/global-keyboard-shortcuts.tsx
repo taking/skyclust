@@ -10,29 +10,29 @@ export function GlobalKeyboardShortcuts() {
   const pathname = usePathname();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
-  // Helper to open help dialog
+  // 도움말 다이얼로그 열기 헬퍼
   const openHelpDialog = () => {
-    // Dispatch custom event to open help dialog
+    // 도움말 다이얼로그를 열기 위한 커스텀 이벤트 발생
     const event = new CustomEvent(EVENTS.UI.SHOW_KEYBOARD_SHORTCUTS);
     window.dispatchEvent(event);
   };
 
-  // Helper to toggle sidebar (mobile menu)
+  // 사이드바 토글 헬퍼 (모바일 메뉴)
   const toggleSidebar = () => {
-    // For mobile: toggle Sheet (mobile nav)
+    // 모바일: Sheet 토글 (모바일 네비게이션)
     const mobileMenuButton = document.querySelector('button[aria-label*="menu"], button[aria-label*="Menu"]') as HTMLElement;
     if (mobileMenuButton) {
       mobileMenuButton.click();
       return;
     }
     
-    // For desktop: dispatch custom event (currently desktop sidebar is always visible)
-    // This can be extended later to toggle desktop sidebar if needed
+    // 데스크톱: 커스텀 이벤트 발생 (현재 데스크톱 사이드바는 항상 표시됨)
+    // 필요시 나중에 데스크톱 사이드바 토글 기능 확장 가능
     const event = new CustomEvent(EVENTS.UI.TOGGLE_SIDEBAR);
     window.dispatchEvent(event);
   };
 
-  // Helper to open create dialog based on current page
+  // 현재 페이지에 따라 생성 다이얼로그 열기 헬퍼
   const openCreateDialog = () => {
     if (pathname.startsWith('/compute/vms')) {
       const event = new CustomEvent(EVENTS.CREATE_DIALOG.VM);
@@ -55,9 +55,9 @@ export function GlobalKeyboardShortcuts() {
     }
   };
 
-  // Build keyboard shortcuts
+  // 키보드 단축키 구성
   const shortcuts: KeyboardShortcut[] = [
-    // Navigation (Shift combinations)
+    // 네비게이션 (Shift 조합)
     {
       key: KEYBOARD_SHORTCUTS.ACTIONS.MENU_LIST.key,
       shiftKey: KEYBOARD_SHORTCUTS.ACTIONS.MENU_LIST.shiftKey,
@@ -70,8 +70,15 @@ export function GlobalKeyboardShortcuts() {
       handler: openHelpDialog,
       description: 'Show keyboard shortcuts',
     },
+    // 단일 ? 키로 도움말 열기 (입력 필드가 아닐 때)
+    // 참고: useKeyboardShortcuts 훅에서 이미 입력 필드를 확인함
+    {
+      key: '?',
+      handler: openHelpDialog,
+      description: 'Show keyboard shortcuts (press ?)',
+    },
     
-    // Action (Shift combinations)
+    // 액션 (Shift 조합)
     {
       key: KEYBOARD_SHORTCUTS.ACTIONS.CREATE_NEW.key,
       shiftKey: KEYBOARD_SHORTCUTS.ACTIONS.CREATE_NEW.shiftKey,
@@ -79,7 +86,7 @@ export function GlobalKeyboardShortcuts() {
       description: 'Create New Resource',
     },
     
-    // General Navigation (single keys)
+    // 일반 네비게이션 (단일 키)
     {
       key: KEYBOARD_SHORTCUTS.NAVIGATION.DASHBOARD,
       handler: () => router.push('/dashboard'),
@@ -106,10 +113,10 @@ export function GlobalKeyboardShortcuts() {
       description: 'Go to Credentials',
     },
     
-    // Global search (Ctrl/Cmd + K) - Keep existing
+    // 전역 검색 (Ctrl/Cmd + K) - 기존 유지
     commonShortcuts.search(() => {
       setIsSearchOpen(true);
-      // Focus search input if it exists
+      // 검색 입력 필드가 있으면 포커스
       const searchInput = document.querySelector('input[type="search"], input[placeholder*="Search"]') as HTMLInputElement;
       if (searchInput) {
         setTimeout(() => searchInput.focus(), 100);
@@ -119,7 +126,7 @@ export function GlobalKeyboardShortcuts() {
 
   useKeyboardShortcuts(shortcuts);
 
-  // Store shortcuts globally for help dialog
+  // 도움말 다이얼로그를 위해 단축키를 전역으로 저장
   if (typeof window !== 'undefined') {
     // Window 타입 확장
     interface WindowWithShortcuts extends Window {

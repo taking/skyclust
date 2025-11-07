@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertTriangle, RefreshCw, Home, Bug, Mail } from 'lucide-react';
 import { getUserFriendlyErrorMessage, NetworkError, ServerError, ErrorHandler } from '@/lib/error-handler';
+import { logger } from '@/lib/logger';
 import { useState } from 'react';
 
 export interface ErrorFallbackProps {
@@ -206,10 +207,11 @@ export function AppErrorBoundary({
   resetKeys,
 }: AppErrorBoundaryProps) {
   const handleError = (error: Error, errorInfo: React.ErrorInfo) => {
-    // Development 환경에서만 콘솔 로깅
-    if (process.env.NODE_ENV === 'development') {
-      console.error('Error caught by boundary:', error, errorInfo);
-    }
+    // Logger를 통해 에러 로깅
+    logger.error('Error caught by boundary', error, {
+      componentStack: errorInfo.componentStack,
+      errorBoundary: true,
+    });
     
     // 에러 타입 판단
     const errorType = error instanceof NetworkError 

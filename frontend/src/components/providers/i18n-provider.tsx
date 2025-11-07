@@ -29,22 +29,25 @@ export function I18nProvider({ children }: I18nProviderProps) {
     }, 0);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [locale]);
 
   // locale이 변경되면 업데이트
   useEffect(() => {
     if (isHydrated) {
       setCurrentLocale(locale);
     }
-  }, [locale, isHydrated]);
+  }, [locale, isHydrated, setCurrentLocale]);
 
   // 항상 현재 locale의 messages를 가져옴 (기본값으로 fallback)
   const messages = getMessages(currentLocale);
 
+  // Locale에 따른 timeZone 설정
+  const timeZone = currentLocale === 'ko' ? 'Asia/Seoul' : 'UTC';
+
   // NextIntlClientProvider를 항상 렌더링하여 useTranslations hook이 항상 컨텍스트를 사용할 수 있도록 함
   // isHydrated가 false여도 기본 locale과 messages로 렌더링하여 에러 방지
   return (
-    <NextIntlClientProvider locale={currentLocale} messages={messages}>
+    <NextIntlClientProvider locale={currentLocale} messages={messages} timeZone={timeZone}>
       {children}
     </NextIntlClientProvider>
   );

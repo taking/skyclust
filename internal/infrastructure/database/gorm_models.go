@@ -70,7 +70,7 @@ func (g *GormCredentials) ToCredentials() *domain.Credential {
 		Provider:      g.Provider,
 		Name:          g.Metadata["name"], // Extract name from metadata
 		EncryptedData: g.Encrypted,
-		IsActive:      true, // Default value
+		IsActive:      true,     // Default value
 		CreatedBy:     uuid.Nil, // CreatedBy is not stored in GormCredentials, use Nil as default
 		CreatedAt:     g.CreatedAt,
 		UpdatedAt:     g.UpdatedAt,

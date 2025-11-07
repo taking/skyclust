@@ -13,23 +13,28 @@ import (
 	"github.com/nats-io/nats.go"
 	"go.uber.org/zap"
 	"skyclust/internal/domain"
+	"skyclust/internal/infrastructure/messaging"
 	"skyclust/internal/shared/handlers"
+	"skyclust/pkg/realtime"
 )
 
-// Error definitions
+// 오류 정의
 var (
 	ErrClientNotFound = errors.New("client not found")
 )
 
+// SSEHandler: Server-Sent Events 핸들러
 type SSEHandler struct {
 	*handlers.BaseHandler
 	logger      *zap.Logger
 	natsConn    *nats.Conn
+	realtimeSvc realtime.Service
 	clients     map[string]*SSEClient
 	clientsMux  sync.RWMutex
 	batchBuffer *BatchBuffer
 }
 
+// SSEClient: SSE 클라이언트를 나타내는 구조체
 type SSEClient struct {
 	ID       string
 	UserID   string
@@ -47,7 +52,7 @@ type SSEClient struct {
 	Filters SSEClientFilters
 }
 
-// SSEClientFilters defines filters for SSE client subscriptions
+// SSEClientFilters: SSE 클라이언트 구독을 위한 필터를 정의하는 구조체
 type SSEClientFilters struct {
 	Providers     map[string]bool // 구독 중인 provider 목록
 	CredentialIDs map[string]bool // 구독 중인 credential_id 목록
@@ -55,11 +60,24 @@ type SSEClientFilters struct {
 	ResourceTypes map[string]bool // 구독 중인 resource type 목록
 }
 
-func NewSSEHandler(logger *zap.Logger, natsConn *nats.Conn) *SSEHandler {
+// NewSSEHandler: 새로운 SSE 핸들러를 생성합니다
+func NewSSEHandler(logger *zap.Logger, natsConn *nats.Conn, eventBus interface{}) *SSEHandler {
+	// realtime.Service 생성 (eventBus를 messaging.Bus로 변환)
+	var messagingBus messaging.Bus
+	if bus, ok := eventBus.(messaging.Bus); ok {
+		messagingBus = bus
+	} else {
+		// Fallback: LocalBus 생성
+		messagingBus = messaging.NewLocalBus()
+	}
+
+	realtimeSvc := realtime.NewService(messagingBus, logger)
+
 	handler := &SSEHandler{
 		BaseHandler: handlers.NewBaseHandler("sse"),
 		logger:      logger,
 		natsConn:    natsConn,
+		realtimeSvc: realtimeSvc,
 		clients:     make(map[string]*SSEClient),
 	}
 
@@ -69,13 +87,14 @@ func NewSSEHandler(logger *zap.Logger, natsConn *nats.Conn) *SSEHandler {
 	// NATS 구독 설정
 	handler.setupNATSSubscriptions()
 
-	// 클라이언트 정리 고루틴
-	go handler.cleanupClients()
+	// realtime.Service의 cleanup 루틴 시작
+	ctx := context.Background()
+	go realtimeSvc.StartCleanupRoutine(ctx)
 
 	return handler
 }
 
-// flushBatch flushes batched events to all subscribed clients
+// flushBatch: 배치된 이벤트를 모든 구독 클라이언트에게 전송합니다
 func (h *SSEHandler) flushBatch(events []BatchEvent) {
 	if len(events) == 0 {
 		return
@@ -213,6 +232,7 @@ func (h *SSEHandler) setupNATSSubscriptions() {
 	})
 }
 
+// HandleSSE: Server-Sent Events 연결을 처리합니다
 func (h *SSEHandler) HandleSSE(c *gin.Context) {
 	handler := h.Compose(
 		h.handleSSECore(),
@@ -222,6 +242,7 @@ func (h *SSEHandler) HandleSSE(c *gin.Context) {
 	handler(c)
 }
 
+// handleSSECore: SSE 연결의 핵심 비즈니스 로직을 처리합니다
 func (h *SSEHandler) handleSSECore() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		// 사용자 ID 추출 (JWT에서)
@@ -231,6 +252,12 @@ func (h *SSEHandler) handleSSECore() handlers.HandlerFunc {
 			return
 		}
 
+		// Workspace ID 추출 (선택적)
+		workspaceID := ""
+		if wsID, exists := c.Get("workspace_id"); exists {
+			workspaceID = wsID.(string)
+		}
+
 		// SSE 헤더 설정
 		c.Header("Content-Type", "text/event-stream")
 		c.Header("Cache-Control", "no-cache")
@@ -238,29 +265,23 @@ func (h *SSEHandler) handleSSECore() handlers.HandlerFunc {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Headers", "Cache-Control")
 
-		// 클라이언트 ID 생성
-		clientID := fmt.Sprintf("%s-%d", userID, time.Now().UnixNano())
-
-		// Flusher 확인
-		flusher, ok := c.Writer.(http.Flusher)
-		if !ok {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "SSE not supported", 500), "handle_sse")
+		// realtime.Service를 사용하여 SSE 연결 생성
+		conn, err := h.realtimeSvc.CreateSSEConnection(c.Writer, c.Request, userID.(string), workspaceID)
+		if err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("Failed to create SSE connection: %v", err), 500), "handle_sse")
 			return
 		}
 
-		// 컨텍스트 생성
-		ctx, cancel := context.WithCancel(c.Request.Context())
-
-		// 클라이언트 등록
+		// 클라이언트 등록 (필터링 및 구독 관리를 위해)
 		client := &SSEClient{
-			ID:                  clientID,
-			UserID:              userID.(string),
-			Writer:              c.Writer,
-			Flusher:             flusher,
-			Context:             ctx,
-			Cancel:              cancel,
-			LastSeen:            time.Now(),
-			SubscribedEvents:    make(map[string]bool),
+			ID:                  conn.ID,
+			UserID:              conn.UserID,
+			Writer:              conn.Writer,
+			Flusher:             conn.Flusher,
+			Context:             conn.Context,
+			Cancel:              conn.Cancel,
+			LastSeen:            conn.LastSeen,
+			SubscribedEvents:    conn.SubscribedEvents,
 			SubscribedVMs:       make(map[string]bool),
 			SubscribedProviders: make(map[string]bool),
 			Filters: SSEClientFilters{
@@ -272,32 +293,25 @@ func (h *SSEHandler) handleSSECore() handlers.HandlerFunc {
 		}
 
 		h.clientsMux.Lock()
-		h.clients[clientID] = client
+		h.clients[conn.ID] = client
 		h.clientsMux.Unlock()
 
-		h.LogInfo(c, "SSE client connected", zap.String("client_id", clientID), zap.String("user_id", userID.(string)))
+		h.LogInfo(c, "SSE client connected", zap.String("client_id", conn.ID), zap.String("user_id", userID.(string)))
 
-		// 연결 확인 메시지 전송
-		h.sendToClient(client, "connected", map[string]interface{}{
-			"client_id": clientID,
-			"timestamp": time.Now().Unix(),
-		})
-
-		// Heartbeat 고루틴 시작
-		go h.startHeartbeat(client)
-
-		// 클라이언트가 연결을 유지하는 동안 대기
-		<-ctx.Done()
+		// realtime.Service를 사용하여 SSE 연결 처리
+		// 이는 연결 확인 메시지 전송 및 heartbeat 관리를 포함
+		h.realtimeSvc.HandleSSE(conn)
 
 		// 클라이언트 정리
 		h.clientsMux.Lock()
-		delete(h.clients, clientID)
+		delete(h.clients, conn.ID)
 		h.clientsMux.Unlock()
 
-		h.LogInfo(c, "SSE client disconnected", zap.String("client_id", clientID))
+		h.LogInfo(c, "SSE client disconnected", zap.String("client_id", conn.ID))
 	}
 }
 
+// sendToClient: 특정 클라이언트에게 SSE 이벤트를 전송합니다
 func (h *SSEHandler) sendToClient(client *SSEClient, eventType string, data interface{}) {
 	message := SSEMessage{
 		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
@@ -336,6 +350,7 @@ func (h *SSEHandler) sendToClient(client *SSEClient, eventType string, data inte
 	client.LastSeen = time.Now()
 }
 
+// broadcastToClients: 모든 구독 클라이언트에게 이벤트를 브로드캐스트합니다
 func (h *SSEHandler) broadcastToClients(eventType string, data []byte) {
 	var messageData interface{}
 	if err := json.Unmarshal(data, &messageData); err != nil {
@@ -343,6 +358,8 @@ func (h *SSEHandler) broadcastToClients(eventType string, data []byte) {
 		return
 	}
 
+	// realtime.Service를 사용하여 모든 연결에 브로드캐스팅
+	// 필터링은 각 클라이언트별로 처리
 	h.clientsMux.RLock()
 	clients := make([]*SSEClient, 0, len(h.clients))
 	for _, client := range h.clients {
@@ -357,7 +374,7 @@ func (h *SSEHandler) broadcastToClients(eventType string, data []byte) {
 			continue
 		default:
 			// 이벤트 타입 구독 확인
-			if !client.SubscribedEvents[eventType] {
+			if len(client.SubscribedEvents) > 0 && !client.SubscribedEvents[eventType] {
 				continue
 			}
 
@@ -366,12 +383,18 @@ func (h *SSEHandler) broadcastToClients(eventType string, data []byte) {
 				continue
 			}
 
-			h.sendToClient(client, eventType, messageData)
+			// realtime.Service를 통해 이벤트 전송
+			if err := h.realtimeSvc.BroadcastToConnection(client.ID, eventType, messageData); err != nil {
+				h.logger.Warn("Failed to broadcast to connection",
+					zap.String("connection_id", client.ID),
+					zap.String("event_type", eventType),
+					zap.Error(err))
+			}
 		}
 	}
 }
 
-// 클라이언트에게 메시지를 보낼지 결정하는 스마트 필터링
+// shouldSendToClient: 클라이언트에게 메시지를 보낼지 결정하는 스마트 필터링을 수행합니다
 func (h *SSEHandler) shouldSendToClient(client *SSEClient, eventType string, data interface{}) bool {
 	// 시스템 이벤트는 항상 전송
 	if h.isSystemEvent(eventType) {
@@ -401,7 +424,7 @@ func (h *SSEHandler) shouldSendToClient(client *SSEClient, eventType string, dat
 	return true
 }
 
-// isKubernetesEvent checks if the event type is a Kubernetes-related event
+// isKubernetesEvent: 이벤트 타입이 Kubernetes 관련 이벤트인지 확인합니다
 func (h *SSEHandler) isKubernetesEvent(eventType string) bool {
 	return eventType == EventTypeKubernetesClusterCreated ||
 		eventType == EventTypeKubernetesClusterUpdated ||
@@ -415,7 +438,7 @@ func (h *SSEHandler) isKubernetesEvent(eventType string) bool {
 		eventType == EventTypeKubernetesNodeDeleted
 }
 
-// isNetworkEvent checks if the event type is a Network-related event
+// isNetworkEvent: 이벤트 타입이 Network 관련 이벤트인지 확인합니다
 func (h *SSEHandler) isNetworkEvent(eventType string) bool {
 	return eventType == EventTypeNetworkVPCCreated ||
 		eventType == EventTypeNetworkVPCUpdated ||
@@ -431,7 +454,7 @@ func (h *SSEHandler) isNetworkEvent(eventType string) bool {
 		eventType == EventTypeNetworkSecurityGroupList
 }
 
-// shouldSendResourceEvent determines if resource event should be sent to client based on filters
+// shouldSendResourceEvent: 필터를 기반으로 리소스 이벤트를 클라이언트에게 전송할지 결정합니다
 func (h *SSEHandler) shouldSendResourceEvent(client *SSEClient, eventType string, data interface{}) bool {
 	dataMap, ok := data.(map[string]interface{})
 	if !ok {
@@ -477,22 +500,22 @@ func (h *SSEHandler) shouldSendResourceEvent(client *SSEClient, eventType string
 	return true
 }
 
-// isSystemEvent checks if the event type is a system event
+// isSystemEvent: 이벤트 타입이 시스템 이벤트인지 확인합니다
 func (h *SSEHandler) isSystemEvent(eventType string) bool {
 	return eventType == EventTypeSystemNotification || eventType == EventTypeSystemAlert
 }
 
-// isVMEvent checks if the event type is a VM-related event
+// isVMEvent: 이벤트 타입이 VM 관련 이벤트인지 확인합니다
 func (h *SSEHandler) isVMEvent(eventType string) bool {
 	return eventType == EventTypeVMStatus || eventType == EventTypeVMResource || eventType == EventTypeVMError
 }
 
-// isProviderEvent checks if the event type is a provider-related event
+// isProviderEvent: 이벤트 타입이 Provider 관련 이벤트인지 확인합니다
 func (h *SSEHandler) isProviderEvent(eventType string) bool {
 	return eventType == EventTypeProviderStatus || eventType == EventTypeProviderInstance
 }
 
-// shouldSendVMEvent determines if VM event should be sent to client
+// shouldSendVMEvent: VM 이벤트를 클라이언트에게 전송할지 결정합니다
 func (h *SSEHandler) shouldSendVMEvent(client *SSEClient, data interface{}) bool {
 	vmData, ok := data.(map[string]interface{})
 	if !ok {
@@ -507,7 +530,7 @@ func (h *SSEHandler) shouldSendVMEvent(client *SSEClient, data interface{}) bool
 	return client.SubscribedVMs[vmID.(string)]
 }
 
-// shouldSendProviderEvent determines if provider event should be sent to client
+// shouldSendProviderEvent: Provider 이벤트를 클라이언트에게 전송할지 결정합니다
 func (h *SSEHandler) shouldSendProviderEvent(client *SSEClient, data interface{}) bool {
 	providerData, ok := data.(map[string]interface{})
 	if !ok {
@@ -522,31 +545,17 @@ func (h *SSEHandler) shouldSendProviderEvent(client *SSEClient, data interface{}
 	return client.SubscribedProviders[provider.(string)]
 }
 
-func (h *SSEHandler) cleanupClients() {
-	ticker := time.NewTicker(CleanupInterval)
-	defer ticker.Stop()
+// cleanupClients는 realtime.Service의 CleanupInactiveConnections로 대체됨
+// cleanupClients is replaced by realtime.Service's CleanupInactiveConnections
 
-	for range ticker.C {
-		h.clientsMux.Lock()
-		now := time.Now()
-		for clientID, client := range h.clients {
-			if now.Sub(client.LastSeen) > ClientTimeout {
-				client.Cancel()
-				delete(h.clients, clientID)
-				h.logger.Info("Cleaned up inactive SSE client", zap.String("client_id", clientID))
-			}
-		}
-		h.clientsMux.Unlock()
-	}
-}
-
+// GetClientCount: 현재 연결된 SSE 클라이언트 수를 반환합니다
 func (h *SSEHandler) GetClientCount() int {
 	h.clientsMux.RLock()
 	defer h.clientsMux.RUnlock()
 	return len(h.clients)
 }
 
-// 구독 관리 메서드들
+// SubscribeToEvent: 클라이언트를 특정 이벤트 타입에 구독시킵니다
 func (h *SSEHandler) SubscribeToEvent(clientID, eventType string) error {
 	h.clientsMux.Lock()
 	defer h.clientsMux.Unlock()
@@ -560,6 +569,7 @@ func (h *SSEHandler) SubscribeToEvent(clientID, eventType string) error {
 	return nil
 }
 
+// UnsubscribeFromEvent: 클라이언트의 특정 이벤트 타입 구독을 해제합니다
 func (h *SSEHandler) UnsubscribeFromEvent(clientID, eventType string) error {
 	h.clientsMux.Lock()
 	defer h.clientsMux.Unlock()
@@ -573,6 +583,7 @@ func (h *SSEHandler) UnsubscribeFromEvent(clientID, eventType string) error {
 	return nil
 }
 
+// SubscribeToVM: 클라이언트를 특정 VM에 구독시킵니다
 func (h *SSEHandler) SubscribeToVM(clientID, vmID string) error {
 	h.clientsMux.Lock()
 	defer h.clientsMux.Unlock()
@@ -586,6 +597,7 @@ func (h *SSEHandler) SubscribeToVM(clientID, vmID string) error {
 	return nil
 }
 
+// UnsubscribeFromVM: 클라이언트의 특정 VM 구독을 해제합니다
 func (h *SSEHandler) UnsubscribeFromVM(clientID, vmID string) error {
 	h.clientsMux.Lock()
 	defer h.clientsMux.Unlock()
@@ -599,6 +611,7 @@ func (h *SSEHandler) UnsubscribeFromVM(clientID, vmID string) error {
 	return nil
 }
 
+// SubscribeToProvider: 클라이언트를 특정 Provider에 구독시킵니다
 func (h *SSEHandler) SubscribeToProvider(clientID, provider string) error {
 	h.clientsMux.Lock()
 	defer h.clientsMux.Unlock()
@@ -612,6 +625,7 @@ func (h *SSEHandler) SubscribeToProvider(clientID, provider string) error {
 	return nil
 }
 
+// UnsubscribeFromProvider: 클라이언트의 특정 Provider 구독을 해제합니다
 func (h *SSEHandler) UnsubscribeFromProvider(clientID, provider string) error {
 	h.clientsMux.Lock()
 	defer h.clientsMux.Unlock()
@@ -625,20 +639,5 @@ func (h *SSEHandler) UnsubscribeFromProvider(clientID, provider string) error {
 	return nil
 }
 
-// startHeartbeat sends periodic heartbeat messages to keep the connection alive
-func (h *SSEHandler) startHeartbeat(client *SSEClient) {
-	ticker := time.NewTicker(HeartbeatInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-client.Context.Done():
-			return
-		case <-ticker.C:
-			// Send heartbeat
-			fmt.Fprintf(client.Writer, ": heartbeat\n\n")
-			client.Flusher.Flush()
-			client.LastSeen = time.Now()
-		}
-	}
-}
+// startHeartbeat는 realtime.Service의 HandleSSE 내부에서 처리됨
+// startHeartbeat is handled internally by realtime.Service's HandleSSE

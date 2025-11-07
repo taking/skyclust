@@ -3,15 +3,15 @@
  * Credential과 Region 선택 상태를 URL과 동기화하는 hook
  */
 
-import { useEffect } from 'react';
-import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { useEffect, useRef } from 'react';
+import { useSearchParams, usePathname } from 'next/navigation';
 import { useCredentialContextStore } from '@/store/credential-context';
 
 /**
  * URL 쿼리 파라미터와 Credential/Region 상태를 동기화하는 hook
  */
 export function useCredentialContext() {
-  const router = useRouter();
+  // const router = useRouter(); // Not used in current implementation
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { 
@@ -24,7 +24,12 @@ export function useCredentialContext() {
   // Check if we should sync for this path
   const shouldSync = pathname.startsWith('/compute') || 
                      pathname.startsWith('/kubernetes') || 
-                     pathname.startsWith('/networks');
+                     pathname.startsWith('/networks') ||
+                     pathname.startsWith('/dashboard');
+
+  // useRef를 사용하여 이전 값 추적하여 무한 루프 방지
+  const prevUrlCredentialIdRef = useRef<string | null>(null);
+  const prevUrlRegionRef = useRef<string | null>(null);
 
   // Sync from URL to store on mount and when URL changes (read-only)
   // URL 업데이트는 Header 컴포넌트에서만 처리합니다
@@ -35,15 +40,26 @@ export function useCredentialContext() {
     const urlCredentialId = searchParams.get('credentialId');
     const urlRegion = searchParams.get('region');
 
+    // URL이 변경되지 않았으면 스킵 (무한 루프 방지)
+    if (urlCredentialId === prevUrlCredentialIdRef.current && urlRegion === prevUrlRegionRef.current) {
+      return;
+    }
+
     // Sync credential from URL to store only
     if (urlCredentialId && urlCredentialId !== selectedCredentialId) {
       setSelectedCredential(urlCredentialId);
+      prevUrlCredentialIdRef.current = urlCredentialId;
+    } else if (!urlCredentialId) {
+      prevUrlCredentialIdRef.current = null;
     }
     // URL이 없을 때 store를 초기화하지 않음 (Header에서 Store → URL 동기화 처리)
 
     // Sync region from URL to store only
     if (urlRegion !== null && urlRegion !== selectedRegion) {
       setSelectedRegion(urlRegion || null);
+      prevUrlRegionRef.current = urlRegion;
+    } else if (urlRegion === null) {
+      prevUrlRegionRef.current = null;
     }
     // URL이 없을 때 store를 초기화하지 않음 (Header에서 Store → URL 동기화 처리)
   }, [searchParams, shouldSync, selectedCredentialId, selectedRegion, setSelectedCredential, setSelectedRegion]);

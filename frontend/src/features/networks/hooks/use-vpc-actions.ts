@@ -86,9 +86,15 @@ export function useVPCActions({
 
   const handleDeleteVPC = (vpcId: string, region?: string) => {
     if (!selectedCredentialId || !region) return;
-    if (confirm(`Are you sure you want to delete this VPC? This action cannot be undone.`)) {
-      deleteVPCMutation.mutate({ vpcId, credentialId: selectedCredentialId, region });
-    }
+    // 모달은 컴포넌트에서 관리하므로 여기서는 바로 삭제 실행
+    // 컴포넌트에서 모달 확인 후 이 함수를 호출하도록 수정 필요
+    deleteVPCMutation.mutate({ vpcId, credentialId: selectedCredentialId, region });
+  };
+
+  // 모달 없이 직접 삭제 실행하는 함수 (컴포넌트에서 모달 확인 후 호출)
+  const executeDeleteVPC = (vpcId: string, region: string) => {
+    if (!selectedCredentialId) return;
+    deleteVPCMutation.mutate({ vpcId, credentialId: selectedCredentialId, region });
   };
 
   return {
@@ -96,6 +102,7 @@ export function useVPCActions({
     deleteVPCMutation,
     handleBulkDeleteVPCs,
     handleDeleteVPC,
+    executeDeleteVPC,
   };
 }
 

@@ -1,0 +1,60 @@
+meta {
+  name: 사용자 역할 조회
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/admin/rbac/users/{{userId}}/roles
+  body: none
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains roles", function() {
+    expect(res.getBody()).to.have.property('data');
+    expect(res.getBody().data).to.have.property('roles');
+    expect(res.getBody().data.roles).to.be.an('array');
+  });
+}
+
+docs {
+  # 사용자 역할 조회
+  
+  사용자에게 할당된 모든 역할을 조회합니다.
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "user_id": "123e4567-e89b-12d3-a456-426614174000",
+      "roles": ["admin", "user"]
+    },
+    "message": "User roles retrieved successfully"
+  }
+  ```
+  
+  ## Path Parameters
+  
+  - `userId`: 역할을 조회할 사용자 ID
+  
+  ## Response 필드
+  
+  - `user_id`: 사용자 ID
+  - `roles`: 사용자에게 할당된 역할 배열
+}
+

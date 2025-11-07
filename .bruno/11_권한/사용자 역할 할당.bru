@@ -1,0 +1,95 @@
+meta {
+  name: 사용자 역할 할당
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/admin/rbac/users/{{userId}}/roles
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "role": "admin"
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains success message", function() {
+    expect(res.getBody()).to.have.property('success');
+    expect(res.getBody().success).to.equal(true);
+  });
+}
+
+docs {
+  # 사용자 역할 할당
+  
+  사용자에게 역할을 할당합니다.
+  
+  ## Request Body
+  
+  ```json
+  {
+    "role": "admin"
+  }
+  ```
+  
+  ## Request 필드
+  
+  - `role` (required): 할당할 역할 (`admin`, `user`, `viewer`)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "message": "Role assigned successfully"
+    },
+    "message": "Role assigned successfully"
+  }
+  ```
+  
+  ## Path Parameters
+  
+  - `userId`: 역할을 할당할 사용자 ID
+  
+  ## 에러 응답
+  
+  ### 이미 역할이 있는 경우 (409)
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "ALREADY_EXISTS",
+      "message": "user already has role admin"
+    }
+  }
+  ```
+  
+  ### 잘못된 역할 (400)
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "BAD_REQUEST",
+      "message": "invalid role"
+    }
+  }
+  ```
+}
+

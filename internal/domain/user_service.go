@@ -20,6 +20,7 @@ type UserService interface {
 	UpdateUserDirect(user *User) (*User, error)
 	DeleteUserByID(id uuid.UUID) error
 	GetUserStats() (*UserStats, error)
+	GetUserCount() (int64, error)
 	Authenticate(ctx context.Context, email, password string) (*User, error)
 	ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error
 	HashPassword(password string) (string, error)
@@ -74,4 +75,3 @@ type CacheService interface {
 	GetStats(ctx context.Context) (map[string]interface{}, error)
 	Health(ctx context.Context) error
 }
-

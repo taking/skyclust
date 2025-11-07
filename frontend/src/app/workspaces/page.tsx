@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { workspaceService, useWorkspaces, useWorkspaceActions } from '@/features/workspaces';
+import { useWorkspaces, useWorkspaceActions } from '@/features/workspaces';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useCredentialContextStore } from '@/store/credential-context';
 import { useRouter } from 'next/navigation';
@@ -24,21 +24,29 @@ import { useRequireAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
 import { ErrorHandler } from '@/lib/error-handler';
-import * as z from 'zod';
 import { queryKeys } from '@/lib/query-keys';
-
-const createWorkspaceSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),
-  description: z.string().min(1, 'Description is required').max(500, 'Description must be less than 500 characters'),
-});
+import { createValidationSchemas } from '@/lib/validations';
+import { useTranslation } from '@/hooks/use-translation';
+import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
 
 export default function WorkspacesPage() {
+  const { t } = useTranslation();
+  const { createWorkspaceSchema } = createValidationSchemas(t);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [deleteDialogState, setDeleteDialogState] = useState<{
+    open: boolean;
+    workspaceId: string | null;
+    workspaceName?: string;
+  }>({
+    open: false,
+    workspaceId: null,
+    workspaceName: undefined,
+  });
   const { currentWorkspace, setCurrentWorkspace } = useWorkspaceStore();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { isLoading: authLoading } = useRequireAuth();
-  const { success, error: showError } = useToast();
+  const { success } = useToast();
 
   const {
     form,
@@ -120,8 +128,25 @@ export default function WorkspacesPage() {
   };
 
   const handleDeleteWorkspace = (workspaceId: string) => {
-    if (confirm('Are you sure you want to delete this workspace?')) {
-      deleteWorkspaceMutation.mutate(workspaceId);
+    const workspace = workspaces.find(w => w.id === workspaceId);
+    setDeleteDialogState({ open: true, workspaceId, workspaceName: workspace?.name });
+  };
+
+  const handleConfirmDelete = () => {
+    if (deleteDialogState.workspaceId) {
+      const deletedWorkspaceId = deleteDialogState.workspaceId;
+      deleteWorkspaceMutation.mutate(deletedWorkspaceId, {
+        onSuccess: () => {
+          // Store에서 워크스페이스 제거 (자동으로 다른 워크스페이스로 전환됨)
+          const { removeWorkspace } = useWorkspaceStore.getState();
+          removeWorkspace(deletedWorkspaceId);
+          
+          // 쿼리 무효화로 최신 워크스페이스 목록 가져오기
+          queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.all });
+          
+          setDeleteDialogState({ open: false, workspaceId: null, workspaceName: undefined });
+        },
+      });
     }
   };
 
@@ -131,7 +156,7 @@ export default function WorkspacesPage() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
           <p className="mt-2 text-gray-600">
-            {authLoading ? 'Checking authentication...' : 'Loading workspaces...'}
+            {authLoading ? t('workspace.checkingAuthentication') : t('workspace.loadingWorkspaces')}
           </p>
         </div>
       </div>
@@ -145,63 +170,75 @@ export default function WorkspacesPage() {
           <div className="mx-auto h-12 w-12 text-red-400">
             <Users className="h-12 w-12" />
           </div>
-          <h3 className="mt-2 text-sm font-medium text-gray-900">Error loading workspaces</h3>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">{t('workspace.errorLoadingWorkspaces')}</h3>
           <p className="mt-1 text-sm text-gray-500">
-            {error instanceof Error ? error.message : 'Something went wrong'}
+            {error instanceof Error ? error.message : t('errors.generic')}
           </p>
           <div className="mt-6">
             <Button onClick={() => window.location.reload()}>
-              Try Again
+              {t('workspace.tryAgain')}
             </Button>
-          </div>
         </div>
       </div>
-    );
-  }
+
+      {/* Delete Workspace Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        open={deleteDialogState.open}
+        onOpenChange={(open) => setDeleteDialogState({ ...deleteDialogState, open })}
+        onConfirm={handleConfirmDelete}
+        title={t('workspace.deleteWorkspace')}
+        description={t('workspace.confirmDeleteWorkspaceMessage')}
+        isLoading={deleteWorkspaceMutation.isPending}
+        resourceName={deleteDialogState.workspaceName}
+        resourceNameLabel={t('workspace.workspaceNameLabelForDelete')}
+      />
+    </div>
+  );
+}
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Workspaces</h1>
-            <p className="text-gray-600">Manage your workspaces and collaborate with your team</p>
+            <h1 className="text-3xl font-bold text-gray-900">{t('workspace.workspacesPageTitle')}</h1>
+            <p className="text-gray-600">{t('workspace.workspacesPageDescription')}</p>
           </div>
           <div className="flex items-center space-x-2">
             <Button variant="outline" onClick={() => router.push('/dashboard')}>
               <Home className="mr-2 h-4 w-4" />
-              Home
+              {t('workspace.home')}
             </Button>
             <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
               <DialogTrigger asChild>
                 <Button>
                   <Plus className="mr-2 h-4 w-4" />
-                  Create Workspace
+                  {t('workspace.createWorkspace')}
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Create New Workspace</DialogTitle>
+                  <DialogTitle>{t('workspace.createNewWorkspace')}</DialogTitle>
                   <DialogDescription>
-                    Create a new workspace to organize your resources and collaborate with your team.
+                    {t('workspace.createNewWorkspaceDescription')}
                   </DialogDescription>
                 </DialogHeader>
                 <Form {...form}>
                   <form onSubmit={handleSubmit} className="space-y-4">
                     <EnhancedField
                       name="name"
-                      label="Workspace Name"
+                      label={t('workspace.workspaceNameLabel')}
                       type="text"
-                      placeholder="Enter workspace name"
+                      placeholder={t('workspace.workspaceNamePlaceholder')}
                       required
                       getFieldError={getFieldError}
                       getFieldValidationState={getFieldValidationState}
                     />
                     <EnhancedField
                       name="description"
-                      label="Description"
+                      label={t('workspace.descriptionLabel')}
                       type="textarea"
-                      placeholder="Enter workspace description"
+                      placeholder={t('workspace.descriptionPlaceholder')}
                       required
                       getFieldError={getFieldError}
                       getFieldValidationState={getFieldValidationState}
@@ -222,10 +259,10 @@ export default function WorkspacesPage() {
                           setIsCreateDialogOpen(false);
                         }}
                       >
-                        Cancel
+                        {t('workspace.cancel')}
                       </Button>
                       <Button type="submit" disabled={isFormLoading}>
-                        {isFormLoading ? 'Creating...' : 'Create Workspace'}
+                        {isFormLoading ? t('workspace.creating') : t('workspace.createWorkspace')}
                       </Button>
                     </div>
                   </form>
@@ -241,9 +278,9 @@ export default function WorkspacesPage() {
             <CardContent className="pt-6">
               <div className="text-center py-12">
                 <Users className="mx-auto h-12 w-12 text-gray-400" />
-                <h3 className="mt-2 text-sm font-medium text-gray-900">No workspaces</h3>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">{t('workspace.noWorkspaces')}</h3>
                 <p className="mt-1 text-sm text-gray-500">
-                  Get started by creating a new workspace.
+                  {t('workspace.noWorkspacesDescription')}
                 </p>
               </div>
             </CardContent>
@@ -260,11 +297,11 @@ export default function WorkspacesPage() {
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-lg">{workspace.name}</CardTitle>
                     <Badge variant={workspace.is_active ? 'default' : 'secondary'}>
-                      {workspace.is_active ? 'Active' : 'Inactive'}
+                      {workspace.is_active ? t('workspace.active') : t('workspace.inactive')}
                     </Badge>
                   </div>
                   <CardDescription className="mt-2">
-                    {workspace.description || 'No description'}
+                    {workspace.description || t('workspace.noDescription')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -293,6 +330,18 @@ export default function WorkspacesPage() {
           </div>
         )}
       </div>
+
+      {/* Delete Workspace Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        open={deleteDialogState.open}
+        onOpenChange={(open) => setDeleteDialogState({ ...deleteDialogState, open })}
+        onConfirm={handleConfirmDelete}
+        title={t('workspace.deleteWorkspace')}
+        description="이 워크스페이스를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다."
+        isLoading={deleteWorkspaceMutation.isPending}
+        resourceName={deleteDialogState.workspaceName}
+        resourceNameLabel="워크스페이스 이름"
+      />
     </div>
   );
 }

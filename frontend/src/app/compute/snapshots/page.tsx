@@ -5,13 +5,13 @@
 
 'use client';
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { HardDrive } from 'lucide-react';
 import { useRequireAuth } from '@/hooks/use-auth';
 import { useWorkspaceStore } from '@/store/workspace';
 import { WorkspaceRequired } from '@/components/common/workspace-required';
 import { Layout } from '@/components/layout/layout';
-import { useCredentialContext } from '@/hooks/use-credential-context';
+// import { useCredentialContext } from '@/hooks/use-credential-context'; // Not used yet
 import { useTranslation } from '@/hooks/use-translation';
 
 export default function SnapshotsPage() {
@@ -20,7 +20,7 @@ export default function SnapshotsPage() {
   const { t } = useTranslation();
   
   // Get credential context from global store (header에서 관리)
-  const { selectedCredentialId } = useCredentialContext();
+  // const { selectedCredentialId } = useCredentialContext(); // Not used yet
 
   if (authLoading) {
     return (

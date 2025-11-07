@@ -11,17 +11,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { workspaceService, useWorkspaceActions } from '@/features/workspaces';
+import { workspaceService } from '@/features/workspaces';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { ArrowLeft, UserPlus, Trash2, Crown, Shield, User, Users } from 'lucide-react';
 import { queryKeys } from '@/lib/query-keys';
-
-const addMemberSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  role: z.enum(['admin', 'member']),
-});
+import { createValidationSchemas } from '@/lib/validations';
+import { useTranslation } from '@/hooks/use-translation';
+import { useToast } from '@/hooks/use-toast';
+import { useErrorHandler } from '@/hooks/use-error-handler';
+import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
 
 interface WorkspaceMember {
   user_id: string;
@@ -36,11 +36,22 @@ interface WorkspaceMember {
 }
 
 export default function WorkspaceMembersPage() {
+  const { t } = useTranslation();
+  const { addMemberSchema } = createValidationSchemas(t);
   const params = useParams();
   const router = useRouter();
   const workspaceId = params.id as string;
   const [isAddMemberDialogOpen, setIsAddMemberDialogOpen] = useState(false);
+  const [deleteMemberDialogState, setDeleteMemberDialogState] = useState<{
+    open: boolean;
+    userId: string | null;
+  }>({
+    open: false,
+    userId: null,
+  });
   const queryClient = useQueryClient();
+  const { success, error } = useToast();
+  const { handleError } = useErrorHandler();
 
   const {
     register,
@@ -61,48 +72,43 @@ export default function WorkspaceMembersPage() {
     queryFn: () => workspaceService.getWorkspace(workspaceId),
   });
 
-  // Fetch workspace members (mock data for now)
-  const { data: members = [], isLoading } = useQuery({
+  // Fetch workspace members
+  const { data: members = [], isLoading, error: membersError } = useQuery({
     queryKey: queryKeys.workspaces.members(workspaceId),
-    queryFn: async () => {
-      // Mock data - in real implementation, this would fetch from API
-      return [
-        {
-          user_id: '1',
-          workspace_id: workspaceId,
-          role: 'owner' as const,
-          joined_at: new Date().toISOString(),
-          user: {
-            id: '1',
-            username: 'johndoe',
-            email: 'john@example.com',
-          },
-        },
-      ];
-    },
+    queryFn: () => workspaceService.getMembers(workspaceId),
+    enabled: !!workspaceId,
+    retry: 1,
   });
 
   // Add member mutation
   const addMemberMutation = useMutation({
     mutationFn: async (data: { email: string; role: string }) => {
-      // Mock implementation - in real app, this would call API
-      return Promise.resolve();
+      await workspaceService.addMember(workspaceId, data.email, data.role);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.members(workspaceId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.detail(workspaceId) });
       setIsAddMemberDialogOpen(false);
       reset();
+      success('Member added successfully');
+    },
+    onError: (err) => {
+      handleError(err, { operation: 'addMember', workspaceId });
     },
   });
 
   // Remove member mutation
   const removeMemberMutation = useMutation({
     mutationFn: async (userId: string) => {
-      // Mock implementation - in real app, this would call API
-      return Promise.resolve();
+      await workspaceService.removeMember(workspaceId, userId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.members(workspaceId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.detail(workspaceId) });
+      success('Member removed successfully');
+    },
+    onError: (err) => {
+      handleError(err, { operation: 'removeMember', workspaceId });
     },
   });
 
@@ -111,8 +117,13 @@ export default function WorkspaceMembersPage() {
   };
 
   const handleRemoveMember = (userId: string) => {
-    if (confirm('Are you sure you want to remove this member?')) {
-      removeMemberMutation.mutate(userId);
+    setDeleteMemberDialogState({ open: true, userId });
+  };
+
+  const handleConfirmRemoveMember = () => {
+    if (deleteMemberDialogState.userId) {
+      removeMemberMutation.mutate(deleteMemberDialogState.userId);
+      setDeleteMemberDialogState({ open: false, userId: null });
     }
   };
 
@@ -144,6 +155,24 @@ export default function WorkspaceMembersPage() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
           <p className="mt-2 text-gray-600">Loading members...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (membersError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-600 text-lg font-medium">Failed to load members</p>
+          <p className="text-gray-500 mt-2">Please try again later</p>
+          <Button
+            variant="outline"
+            onClick={() => queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.members(workspaceId) })}
+            className="mt-4"
+          >
+            Retry
+          </Button>
         </div>
       </div>
     );
@@ -213,11 +242,24 @@ export default function WorkspaceMembersPage() {
                     <p className="text-sm text-red-600">{errors.role.message}</p>
                   )}
                 </div>
+                {addMemberMutation.isError && (
+                  <div className="bg-red-50 border border-red-200 rounded-md p-3">
+                    <p className="text-sm text-red-800">
+                      {addMemberMutation.error instanceof Error
+                        ? addMemberMutation.error.message
+                        : 'Failed to add member. Please try again.'}
+                    </p>
+                  </div>
+                )}
                 <div className="flex justify-end space-x-2">
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setIsAddMemberDialogOpen(false)}
+                    onClick={() => {
+                      setIsAddMemberDialogOpen(false);
+                      reset();
+                    }}
+                    disabled={addMemberMutation.isPending}
                   >
                     Cancel
                   </Button>
@@ -285,6 +327,16 @@ export default function WorkspaceMembersPage() {
           </div>
         )}
       </div>
+
+      {/* Delete Member Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        open={deleteMemberDialogState.open}
+        onOpenChange={(open) => setDeleteMemberDialogState({ ...deleteMemberDialogState, open })}
+        onConfirm={handleConfirmRemoveMember}
+        title={t('workspace.removeMember')}
+        description="이 멤버를 워크스페이스에서 제거하시겠습니까?"
+        isLoading={removeMemberMutation.isPending}
+      />
     </div>
   );
 }

@@ -38,7 +38,8 @@ func (h *GCPHandler) CreateCluster(c *gin.Context) {
 		return
 	}
 
-	cluster, err := h.k8sService.CreateGCPGKECluster(c.Request.Context(), credential, req)
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	cluster, err := h.k8sService.CreateGCPGKECluster(ctx, credential, req)
 	if err != nil {
 		h.HandleError(c, err, "create_cluster")
 		return
@@ -118,7 +119,8 @@ func (h *GCPHandler) DeleteCluster(c *gin.Context) {
 		return
 	}
 
-	if err := h.k8sService.DeleteEKSCluster(c.Request.Context(), credential, clusterName, region); err != nil {
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	if err := h.k8sService.DeleteEKSCluster(ctx, credential, clusterName, region); err != nil {
 		h.HandleError(c, err, "delete_cluster")
 		return
 	}
@@ -172,7 +174,8 @@ func (h *GCPHandler) CreateNodePool(c *gin.Context) {
 		return
 	}
 
-	nodePool, err := h.k8sService.CreateEKSNodePool(c.Request.Context(), credential, req)
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	nodePool, err := h.k8sService.CreateEKSNodePool(ctx, credential, req)
 	if err != nil {
 		h.HandleError(c, err, "create_node_pool")
 		return
@@ -275,7 +278,8 @@ func (h *GCPHandler) DeleteNodePool(c *gin.Context) {
 		Region:        req.Region,
 	}
 
-	if err := h.k8sService.DeleteNodeGroup(c.Request.Context(), credential, deleteReq); err != nil {
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	if err := h.k8sService.DeleteNodeGroup(ctx, credential, deleteReq); err != nil {
 		h.HandleError(c, err, "delete_node_pool")
 		return
 	}
@@ -389,4 +393,19 @@ func (h *GCPHandler) GetNodeSSHConfig(c *gin.Context) {
 // ExecuteNodeCommand handles executing commands on GKE node
 func (h *GCPHandler) ExecuteNodeCommand(c *gin.Context) {
 	h.NotImplemented(c, "execute_node_command")
+}
+
+// GetEKSVersions handles EKS versions listing (AWS only)
+func (h *GCPHandler) GetEKSVersions(c *gin.Context) {
+	h.NotImplemented(c, "get_eks_versions")
+}
+
+// GetAWSRegions handles AWS regions listing (AWS only)
+func (h *GCPHandler) GetAWSRegions(c *gin.Context) {
+	h.NotImplemented(c, "get_aws_regions")
+}
+
+// GetAvailabilityZones handles availability zones listing (AWS only)
+func (h *GCPHandler) GetAvailabilityZones(c *gin.Context) {
+	h.NotImplemented(c, "get_availability_zones")
 }
