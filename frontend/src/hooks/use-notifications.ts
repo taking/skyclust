@@ -5,7 +5,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notificationService } from '@/services/notification';
-import type { Notification, NotificationPreferences, NotificationStats } from '@/lib/types/notification';
+import type { NotificationPreferences } from '@/lib/types/notification';
 import { toast } from 'react-hot-toast';
 import { queryKeys } from '@/lib/query-keys';
 import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';

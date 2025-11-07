@@ -8,10 +8,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// JSONBMap is a custom type for handling JSONB fields in PostgreSQL
+// JSONBMap: PostgreSQL의 JSONB 필드를 처리하기 위한 커스텀 타입
 type JSONBMap map[string]interface{}
 
-// Value implements the driver.Valuer interface for JSONBMap
+// Value: driver.Valuer 인터페이스를 구현합니다
 func (j JSONBMap) Value() (driver.Value, error) {
 	if j == nil {
 		return nil, nil
@@ -19,7 +19,7 @@ func (j JSONBMap) Value() (driver.Value, error) {
 	return json.Marshal(j)
 }
 
-// Scan implements the sql.Scanner interface for JSONBMap
+// Scan: sql.Scanner 인터페이스를 구현합니다
 func (j *JSONBMap) Scan(value interface{}) error {
 	if value == nil {
 		*j = nil
@@ -44,7 +44,7 @@ func (j *JSONBMap) Scan(value interface{}) error {
 	return json.Unmarshal(bytes, j)
 }
 
-// AuditLog represents an audit log entry
+// AuditLog: 감사 로그 항목을 나타내는 도메인 엔티티
 type AuditLog struct {
 	ID        uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
 	UserID    uuid.UUID `json:"user_id" gorm:"type:uuid;not null;index"`
@@ -59,7 +59,7 @@ type AuditLog struct {
 	User *User `json:"user,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 }
 
-// AuditLogFilters represents filters for audit log queries
+// AuditLogFilters: 감사 로그 쿼리를 위한 필터
 type AuditLogFilters struct {
 	UserID    *uuid.UUID
 	Action    string
@@ -70,13 +70,13 @@ type AuditLogFilters struct {
 	Limit     int
 }
 
-// AuditStatsFilters represents filters for audit statistics
+// AuditStatsFilters: 감사 통계를 위한 필터
 type AuditStatsFilters struct {
 	StartTime *time.Time
 	EndTime   *time.Time
 }
 
-// AuditStats represents audit log statistics
+// AuditStats: 감사 로그 통계를 나타내는 타입
 type AuditStats struct {
 	TotalEvents  int64                    `json:"total_events"`
 	UniqueUsers  int64                    `json:"unique_users"`
@@ -85,7 +85,7 @@ type AuditStats struct {
 	EventsByDay  []map[string]interface{} `json:"events_by_day"`
 }
 
-// AuditLogSummary represents a summary of audit log activities
+// AuditLogSummary: 감사 로그 활동 요약을 나타내는 타입
 type AuditLogSummary struct {
 	TotalEvents    int64                    `json:"total_events"`
 	UniqueUsers    int64                    `json:"unique_users"`
@@ -95,26 +95,70 @@ type AuditLogSummary struct {
 	ErrorEvents    int64                    `json:"error_events"`
 }
 
-// AuditAction constants for different actions
+// AuditAction: 다양한 액션을 나타내는 상수
 const (
-	ActionUserRegister     = "user_register"
-	ActionUserLogin        = "user_login"
-	ActionUserLogout       = "user_logout"
-	ActionOIDCLogin        = "oidc_login"
-	ActionOIDCLogout       = "oidc_logout"
-	ActionUserUpdate       = "user_update"
-	ActionUserDelete       = "user_delete"
+	// 사용자 관련 액션
+	ActionUserRegister   = "user_register"
+	ActionUserLogin      = "user_login"
+	ActionUserLogout     = "user_logout"
+	ActionOIDCLogin      = "oidc_login"
+	ActionOIDCLogout     = "oidc_logout"
+	ActionUserUpdate     = "user_update"
+	ActionUserDelete     = "user_delete"
+	ActionPasswordChange = "password_change"
+
+	// 자격증명 관련 액션
 	ActionCredentialCreate = "credential_create"
 	ActionCredentialUpdate = "credential_update"
 	ActionCredentialDelete = "credential_delete"
-	ActionProviderList     = "provider_list"
-	ActionInstanceList     = "instance_list"
-	ActionInstanceCreate   = "instance_create"
-	ActionInstanceDelete   = "instance_delete"
-	ActionPasswordChange   = "password_change"
+
+	// 워크스페이스 관련 액션
+	ActionWorkspaceCreate          = "workspace_create"
+	ActionWorkspaceUpdate          = "workspace_update"
+	ActionWorkspaceDelete          = "workspace_delete"
+	ActionWorkspaceUserAdded       = "workspace_user_added"
+	ActionWorkspaceUserRemoved     = "workspace_user_removed"
+	ActionWorkspaceUserRoleUpdated = "workspace_user_role_updated"
+
+	// VM 관련 액션
+	ActionVMCreate  = "vm_create"
+	ActionVMUpdate  = "vm_update"
+	ActionVMDelete  = "vm_delete"
+	ActionVMStart   = "vm_start"
+	ActionVMStop    = "vm_stop"
+	ActionVMRestart = "vm_restart"
+
+	// Kubernetes 관련 액션
+	ActionKubernetesClusterCreate   = "kubernetes_cluster_create"
+	ActionKubernetesClusterUpdate   = "kubernetes_cluster_update"
+	ActionKubernetesClusterDelete   = "kubernetes_cluster_delete"
+	ActionKubernetesClusterUpgrade  = "kubernetes_cluster_upgrade"
+	ActionKubernetesNodePoolCreate  = "kubernetes_node_pool_create"
+	ActionKubernetesNodePoolDelete  = "kubernetes_node_pool_delete"
+	ActionKubernetesNodeGroupCreate = "kubernetes_node_group_create"
+	ActionKubernetesNodeGroupDelete = "kubernetes_node_group_delete"
+
+	// 네트워크 관련 액션
+	ActionVPCCreate               = "vpc_create"
+	ActionVPCUpdate               = "vpc_update"
+	ActionVPCDelete               = "vpc_delete"
+	ActionSubnetCreate            = "subnet_create"
+	ActionSubnetUpdate            = "subnet_update"
+	ActionSubnetDelete            = "subnet_delete"
+	ActionSecurityGroupCreate     = "security_group_create"
+	ActionSecurityGroupUpdate     = "security_group_update"
+	ActionSecurityGroupDelete     = "security_group_delete"
+	ActionSecurityGroupRuleAdd    = "security_group_rule_add"
+	ActionSecurityGroupRuleRemove = "security_group_rule_remove"
+
+	// 제공자 관련 액션 (레거시)
+	ActionProviderList   = "provider_list"
+	ActionInstanceList   = "instance_list"
+	ActionInstanceCreate = "instance_create"
+	ActionInstanceDelete = "instance_delete"
 )
 
-// AuditLogRequest represents the request to create an audit log
+// AuditLogRequest: 감사 로그 생성을 위한 요청 DTO
 type AuditLogRequest struct {
 	UserID   uuid.UUID              `json:"user_id"`
 	Action   string                 `json:"action"`

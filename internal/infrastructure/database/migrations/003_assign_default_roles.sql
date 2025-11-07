@@ -6,8 +6,6 @@ SELECT u.id, 'user'
 FROM users u
 WHERE u.id NOT IN (
     SELECT DISTINCT user_id 
-    FROM user_roles 
-    WHERE deleted_at IS NULL
+    FROM user_roles
 )
-AND u.deleted_at IS NULL
 ON CONFLICT (user_id, role) DO NOTHING;

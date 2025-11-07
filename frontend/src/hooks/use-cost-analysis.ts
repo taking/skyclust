@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { costAnalysisService } from '@/services/cost-analysis';
-import type { CostSummary, CostPrediction, BudgetAlert, CostBreakdown, CostComparison } from '@/lib/types/cost-analysis';
+// Cost analysis types are inferred from service responses
 import { useToast } from '@/hooks/use-toast';
 import { queryKeys } from '@/lib/query-keys';
 import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
@@ -72,7 +72,7 @@ export function useRefreshCostAnalysis() {
   const { success } = useToast();
 
   return useMutation({
-    mutationFn: async (workspaceId: string) => {
+    mutationFn: async (_workspaceId: string) => {
       // 모든 비용 분석 관련 쿼리 무효화
       await queryClient.invalidateQueries({
         queryKey: queryKeys.costAnalysis.all,

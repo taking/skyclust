@@ -5,82 +5,80 @@ import (
 	"time"
 )
 
-// Role represents user roles in the system
+// Role: 시스템의 사용자 역할을 나타내는 타입
 type Role string
 
 const (
-	AdminRoleType  Role = "admin"
-	UserRoleType   Role = "user"
-	ViewerRoleType Role = "viewer"
+	AdminRoleType  Role = "admin"  // 관리자 역할
+	UserRoleType   Role = "user"   // 일반 사용자 역할
+	ViewerRoleType Role = "viewer" // 조회자 역할
 )
 
-// Permission represents system permissions
+// Permission: 시스템 권한을 나타내는 타입
 type Permission string
 
 const (
-	// User management permissions
+	// 사용자 관리 권한
 	UserCreate Permission = "user:create"
 	UserRead   Permission = "user:read"
 	UserUpdate Permission = "user:update"
 	UserDelete Permission = "user:delete"
 	UserManage Permission = "user:manage"
 
-	// System management permissions
+	// 시스템 관리 권한
 	SystemRead   Permission = "system:read"
 	SystemUpdate Permission = "system:update"
 	SystemManage Permission = "system:manage"
 
-	// Audit permissions
+	// 감사 로그 권한
 	AuditRead   Permission = "audit:read"
 	AuditExport Permission = "audit:export"
 	AuditManage Permission = "audit:manage"
 
-	// Workspace permissions
+	// 워크스페이스 권한
 	WorkspaceCreate Permission = "workspace:create"
 	WorkspaceRead   Permission = "workspace:read"
 	WorkspaceUpdate Permission = "workspace:update"
 	WorkspaceDelete Permission = "workspace:delete"
 	WorkspaceManage Permission = "workspace:manage"
 
-	// Provider permissions
+	// 제공자 권한
 	ProviderRead   Permission = "provider:read"
 	ProviderManage Permission = "provider:manage"
 )
 
-// UserRole represents the relationship between users and roles
+// UserRole: 사용자와 역할 간의 관계를 나타내는 엔티티
 type UserRole struct {
 	ID        uuid.UUID  `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
 	UserID    uuid.UUID  `json:"user_id" gorm:"type:uuid;not null;index"`
-	Role      Role       `json:"role" gorm:"not null;size:20;index"`
-	CreatedAt time.Time  `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
-	DeletedAt *time.Time `json:"-" gorm:"index"`
+	Role      Role      `json:"role" gorm:"not null;size:20;index"`
+	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 
 	// Relationships
 	User *User `json:"user,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 }
 
-// TableName specifies the table name for UserRole
+// TableName: UserRole의 테이블 이름을 반환합니다
 func (UserRole) TableName() string {
 	return "user_roles"
 }
 
-// RolePermission represents the relationship between roles and permissions
+// RolePermission: 역할과 권한 간의 관계를 나타내는 엔티티
 type RolePermission struct {
 	ID         uuid.UUID  `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
 	Role       Role       `json:"role" gorm:"not null;size:20;index"`
 	Permission Permission `json:"permission" gorm:"not null;size:50;index"`
 	CreatedAt  time.Time  `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt  time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
-	DeletedAt  *time.Time `json:"-" gorm:"index"`
 }
 
-// TableName specifies the table name for RolePermission
+// TableName: RolePermission의 테이블 이름을 반환합니다
 func (RolePermission) TableName() string {
 	return "role_permissions"
 }
 
-// DefaultRolePermissions defines the default permissions for each role
+// DefaultRolePermissions: 각 역할에 대한 기본 권한을 정의합니다
 var DefaultRolePermissions = map[Role][]Permission{
 	AdminRoleType: {
 		UserCreate, UserRead, UserUpdate, UserDelete, UserManage,
@@ -99,7 +97,7 @@ var DefaultRolePermissions = map[Role][]Permission{
 	},
 }
 
-// RoleHierarchy defines the role inheritance hierarchy
+// RoleHierarchy: 역할 상속 계층 구조를 정의합니다
 var RoleHierarchy = map[Role][]Role{
 	AdminRoleType:  {UserRoleType, ViewerRoleType},
 	UserRoleType:   {ViewerRoleType},

@@ -11,8 +11,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ResourceEmptyState } from '@/components/common/resource-empty-state';
-import { Server, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
+import { Server, RefreshCw, Trash2 } from 'lucide-react';
 import type { NodePool } from '@/lib/types';
+import { useTranslation } from '@/hooks/use-translation';
 
 interface ClusterNodePoolsTabProps {
   nodePools: NodePool[];
@@ -31,6 +33,15 @@ export function ClusterNodePoolsTab({
   onDeleteClick,
   isDeleting,
 }: ClusterNodePoolsTabProps) {
+  const { t } = useTranslation();
+  const [deleteDialogState, setDeleteDialogState] = useState<{
+    open: boolean;
+    nodePoolName: string | null;
+  }>({
+    open: false,
+    nodePoolName: null,
+  });
+
   if (isLoading) {
     return (
       <Card>
@@ -44,7 +55,7 @@ export function ClusterNodePoolsTab({
   if (nodePools.length === 0) {
     return (
       <ResourceEmptyState
-        resourceName="Node Pools"
+        resourceName={t('kubernetes.nodePools')}
         icon={Server}
         onCreateClick={onCreateClick}
         withCard={true}
@@ -55,19 +66,19 @@ export function ClusterNodePoolsTab({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Node Pools</CardTitle>
-        <CardDescription>{nodePools.length} node pool{nodePools.length !== 1 ? 's' : ''}</CardDescription>
+        <CardTitle>{t('kubernetes.nodePools')}</CardTitle>
+        <CardDescription>{t('kubernetes.nodePoolCount', { count: nodePools.length })}</CardDescription>
       </CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Instance Type</TableHead>
-              <TableHead>Nodes</TableHead>
-              <TableHead>Min/Max</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Actions</TableHead>
+              <TableHead>{t('common.name')}</TableHead>
+              <TableHead>{t('common.instanceType')}</TableHead>
+              <TableHead>{t('common.nodes')}</TableHead>
+              <TableHead>{t('common.minMax')}</TableHead>
+              <TableHead>{t('common.status')}</TableHead>
+              <TableHead>{t('common.actions')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -96,9 +107,7 @@ export function ClusterNodePoolsTab({
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        if (confirm(`Delete node pool ${np.name}?`)) {
-                          onDeleteClick(np.name);
-                        }
+                        setDeleteDialogState({ open: true, nodePoolName: np.name });
                       }}
                       disabled={isDeleting}
                     >
@@ -111,6 +120,23 @@ export function ClusterNodePoolsTab({
           </TableBody>
         </Table>
       </CardContent>
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        open={deleteDialogState.open}
+        onOpenChange={(open) => setDeleteDialogState({ ...deleteDialogState, open })}
+        onConfirm={() => {
+          if (deleteDialogState.nodePoolName) {
+            onDeleteClick(deleteDialogState.nodePoolName);
+            setDeleteDialogState({ open: false, nodePoolName: null });
+          }
+        }}
+        title={t('kubernetes.deleteNodePool')}
+        description={deleteDialogState.nodePoolName ? t('kubernetes.confirmDeleteNodePool', { nodePoolName: deleteDialogState.nodePoolName }) : ''}
+        isLoading={isDeleting}
+        resourceName={deleteDialogState.nodePoolName || undefined}
+        resourceNameLabel="노드 풀 이름"
+      />
     </Card>
   );
 }

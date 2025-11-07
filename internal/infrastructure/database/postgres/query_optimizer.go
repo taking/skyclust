@@ -35,7 +35,7 @@ func (q *OptimizedUserQueries) GetUsersWithPagination(limit, offset int, filters
 	var total int64
 
 	// Build base query
-	query := q.db.Model(&domain.User{}).Where("deleted_at IS NULL")
+	query := q.db.Model(&domain.User{})
 
 	// Apply filters
 	query = q.applyUserFilters(query, filters)
@@ -91,7 +91,7 @@ func (q *OptimizedUserQueries) GetUserByEmailOptimized(email string) (*domain.Us
 	var user domain.User
 	if err := q.db.
 		Select("id, username, email, is_active, created_at, updated_at").
-		Where("email = ? AND deleted_at IS NULL", email).
+		Where("email = ?", email).
 		First(&user).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
@@ -106,7 +106,7 @@ func (q *OptimizedUserQueries) GetUserByUsernameOptimized(username string) (*dom
 	var user domain.User
 	if err := q.db.
 		Select("id, username, email, is_active, created_at, updated_at").
-		Where("username = ? AND deleted_at IS NULL", username).
+		Where("username = ?", username).
 		First(&user).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
@@ -131,7 +131,7 @@ func (q *OptimizedCredentialQueries) GetCredentialsByUserIDOptimized(userID stri
 	var credentials []*domain.Credential
 	if err := q.db.
 		Select("id, user_id, provider, name, is_active, created_at, updated_at").
-		Where("user_id = ? AND deleted_at IS NULL", userID).
+		Where("user_id = ?", userID).
 		Order("created_at DESC").
 		Find(&credentials).Error; err != nil {
 		return nil, fmt.Errorf("failed to get credentials by user ID: %w", err)
@@ -144,7 +144,7 @@ func (q *OptimizedCredentialQueries) GetActiveCredentialsByProvider(provider str
 	var credentials []*domain.Credential
 	if err := q.db.
 		Select("id, user_id, provider, name, is_active, created_at, updated_at").
-		Where("provider = ? AND is_active = true AND deleted_at IS NULL", provider).
+		Where("provider = ? AND is_active = true", provider).
 		Order("created_at DESC").
 		Find(&credentials).Error; err != nil {
 		return nil, fmt.Errorf("failed to get active credentials by provider: %w", err)

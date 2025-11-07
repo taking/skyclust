@@ -8,6 +8,7 @@ export interface VPC {
   state: string;
   is_default: boolean;
   region?: string;
+  cidr_block?: string;
   network_mode?: string;
   routing_mode?: string;
   mtu?: number;

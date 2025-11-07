@@ -4,6 +4,20 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080',
   },
+  // Browser profiling을 위한 Document-Policy 헤더 설정
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'Document-Policy',
+            value: 'js-profiling',
+          },
+        ],
+      },
+    ];
+  },
 }
 
 module.exports = nextConfig

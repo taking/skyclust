@@ -58,7 +58,8 @@ func (h *AWSHandler) createClusterHandler() handlers.HandlerFunc {
 			return
 		}
 
-		cluster, err := h.k8sService.CreateEKSCluster(c.Request.Context(), credential, req)
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		cluster, err := h.k8sService.CreateEKSCluster(ctx, credential, req)
 		if err != nil {
 			h.HandleError(c, err, "create_cluster")
 			return
@@ -185,7 +186,8 @@ func (h *AWSHandler) deleteClusterHandler() handlers.HandlerFunc {
 
 		h.logClusterDeletionAttempt(c, userID, clusterName, credential.ID, region)
 
-		if err := h.k8sService.DeleteEKSCluster(c.Request.Context(), credential, clusterName, region); err != nil {
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		if err := h.k8sService.DeleteEKSCluster(ctx, credential, clusterName, region); err != nil {
 			h.HandleError(c, err, "delete_cluster")
 			return
 		}
@@ -281,7 +283,8 @@ func (h *AWSHandler) createNodePoolHandler() handlers.HandlerFunc {
 			return
 		}
 
-		nodePool, err := h.k8sService.CreateEKSNodePool(c.Request.Context(), credential, req)
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		nodePool, err := h.k8sService.CreateEKSNodePool(ctx, credential, req)
 		if err != nil {
 			h.HandleError(c, err, "create_node_pool")
 			return
@@ -351,7 +354,8 @@ func (h *AWSHandler) createNodeGroupHandler() handlers.HandlerFunc {
 			return
 		}
 
-		nodeGroup, err := h.k8sService.CreateEKSNodeGroup(c.Request.Context(), credential, req)
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		nodeGroup, err := h.k8sService.CreateEKSNodeGroup(ctx, credential, req)
 		if err != nil {
 			h.HandleError(c, err, "create_node_group")
 			return
@@ -483,7 +487,8 @@ func (h *AWSHandler) DeleteNodeGroup(c *gin.Context) {
 		Region:        req.Region,
 	}
 
-	if err := h.k8sService.DeleteNodeGroup(c.Request.Context(), credential, deleteReq); err != nil {
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	if err := h.k8sService.DeleteNodeGroup(ctx, credential, deleteReq); err != nil {
 		h.HandleError(c, err, "delete_node_group")
 		return
 	}
@@ -663,6 +668,182 @@ func (h *AWSHandler) logNodeGroupsListAttempt(c *gin.Context, userID uuid.UUID, 
 func (h *AWSHandler) logNodeGroupsListSuccess(c *gin.Context, userID uuid.UUID, clusterName string, count int) {
 	h.LogBusinessEvent(c, "node_groups_listed", userID.String(), clusterName, map[string]interface{}{
 		"operation": "list_node_groups",
+		"provider":  domain.ProviderAWS,
+		"count":     count,
+	})
+}
+
+// GetEKSVersions handles EKS versions listing using decorator pattern
+func (h *AWSHandler) GetEKSVersions(c *gin.Context) {
+	handler := h.Compose(
+		h.getEKSVersionsHandler(),
+		h.StandardCRUDDecorators("get_eks_versions")...,
+	)
+	handler(c)
+}
+
+func (h *AWSHandler) getEKSVersionsHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+		if err != nil {
+			h.HandleError(c, err, "get_eks_versions")
+			return
+		}
+
+		region := c.Query("region")
+		if region == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region is required", 400), "get_eks_versions")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_eks_versions")
+			return
+		}
+
+		h.logEKSVersionsGetAttempt(c, userID, credential.ID, region)
+
+		versions, err := h.k8sService.GetEKSVersions(c.Request.Context(), credential, region)
+		if err != nil {
+			h.HandleError(c, err, "get_eks_versions")
+			return
+		}
+
+		h.logEKSVersionsGetSuccess(c, userID, len(versions))
+		h.OK(c, gin.H{
+			"versions": versions,
+		}, "EKS versions retrieved successfully")
+	}
+}
+
+// GetAWSRegions handles AWS regions listing using decorator pattern
+func (h *AWSHandler) GetAWSRegions(c *gin.Context) {
+	handler := h.Compose(
+		h.getAWSRegionsHandler(),
+		h.StandardCRUDDecorators("get_aws_regions")...,
+	)
+	handler(c)
+}
+
+func (h *AWSHandler) getAWSRegionsHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+		if err != nil {
+			h.HandleError(c, err, "get_aws_regions")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_aws_regions")
+			return
+		}
+
+		h.logAWSRegionsGetAttempt(c, userID, credential.ID)
+
+		regions, err := h.k8sService.GetAWSRegions(c.Request.Context(), credential)
+		if err != nil {
+			h.HandleError(c, err, "get_aws_regions")
+			return
+		}
+
+		h.logAWSRegionsGetSuccess(c, userID, len(regions))
+		h.OK(c, gin.H{
+			"regions": regions,
+		}, "AWS regions retrieved successfully")
+	}
+}
+
+// GetAvailabilityZones handles availability zones listing using decorator pattern
+func (h *AWSHandler) GetAvailabilityZones(c *gin.Context) {
+	handler := h.Compose(
+		h.getAvailabilityZonesHandler(),
+		h.StandardCRUDDecorators("get_availability_zones")...,
+	)
+	handler(c)
+}
+
+func (h *AWSHandler) getAvailabilityZonesHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+		if err != nil {
+			h.HandleError(c, err, "get_availability_zones")
+			return
+		}
+
+		region := c.Query("region")
+		if region == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region is required", 400), "get_availability_zones")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_availability_zones")
+			return
+		}
+
+		h.logAvailabilityZonesGetAttempt(c, userID, credential.ID, region)
+
+		zones, err := h.k8sService.GetAvailabilityZones(c.Request.Context(), credential, region)
+		if err != nil {
+			h.HandleError(c, err, "get_availability_zones")
+			return
+		}
+
+		h.logAvailabilityZonesGetSuccess(c, userID, len(zones))
+		h.OK(c, gin.H{
+			"zones": zones,
+		}, "Availability zones retrieved successfully")
+	}
+}
+
+func (h *AWSHandler) logEKSVersionsGetAttempt(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID, region string) {
+	h.LogBusinessEvent(c, "eks_versions_get_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "get_eks_versions",
+		"provider":      domain.ProviderAWS,
+		"credential_id": credentialID.String(),
+		"region":        region,
+	})
+}
+
+func (h *AWSHandler) logEKSVersionsGetSuccess(c *gin.Context, userID uuid.UUID, count int) {
+	h.LogBusinessEvent(c, "eks_versions_retrieved", userID.String(), "", map[string]interface{}{
+		"operation": "get_eks_versions",
+		"provider":  domain.ProviderAWS,
+		"count":     count,
+	})
+}
+
+func (h *AWSHandler) logAWSRegionsGetAttempt(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID) {
+	h.LogBusinessEvent(c, "aws_regions_get_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "get_aws_regions",
+		"provider":      domain.ProviderAWS,
+		"credential_id": credentialID.String(),
+	})
+}
+
+func (h *AWSHandler) logAWSRegionsGetSuccess(c *gin.Context, userID uuid.UUID, count int) {
+	h.LogBusinessEvent(c, "aws_regions_retrieved", userID.String(), "", map[string]interface{}{
+		"operation": "get_aws_regions",
+		"provider":  domain.ProviderAWS,
+		"count":     count,
+	})
+}
+
+func (h *AWSHandler) logAvailabilityZonesGetAttempt(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID, region string) {
+	h.LogBusinessEvent(c, "availability_zones_get_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "get_availability_zones",
+		"provider":      domain.ProviderAWS,
+		"credential_id": credentialID.String(),
+		"region":        region,
+	})
+}
+
+func (h *AWSHandler) logAvailabilityZonesGetSuccess(c *gin.Context, userID uuid.UUID, count int) {
+	h.LogBusinessEvent(c, "availability_zones_retrieved", userID.String(), "", map[string]interface{}{
+		"operation": "get_availability_zones",
 		"provider":  domain.ProviderAWS,
 		"count":     count,
 	})

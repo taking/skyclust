@@ -7,6 +7,7 @@
  */
 
 import pako from 'pako';
+import { logger } from './logger';
 
 /**
  * SSE 압축 메시지를 압축 해제합니다.
@@ -31,6 +32,7 @@ export function decompressSSEMessage(compressedData: string): string {
     
     return decompressed;
   } catch (error) {
+    logger.error('Failed to decompress SSE message', error, { compressedDataLength: compressedData.length });
     throw new Error(`Failed to decompress SSE message: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
@@ -42,7 +44,7 @@ export function decompressSSEMessage(compressedData: string): string {
  * @param event - SSE EventSource 이벤트
  * @returns 압축 여부
  */
-export function isCompressedMessage(event: MessageEvent): boolean {
+export function isCompressedMessage(_event: MessageEvent): boolean {
   // EventSource의 기본 파싱은 "compressed: true" 플래그를 직접 처리하지 않으므로
   // 커스텀 파서를 사용하거나 메시지 데이터를 분석해야 함
   // 실제로는 SSE 메시지 파싱 시 플래그를 확인해야 함
@@ -74,6 +76,7 @@ export function parseSSEMessage(rawData: string, isCompressed: boolean = false):
     // JSON 파싱
     return JSON.parse(jsonString);
   } catch (error) {
+    logger.error('Failed to parse SSE message', error, { isCompressed, rawDataLength: rawData.length });
     throw new Error(`Failed to parse SSE message: ${error instanceof Error ? error.message : String(error)}`);
   }
 }

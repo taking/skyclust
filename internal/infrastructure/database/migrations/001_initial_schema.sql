@@ -14,8 +14,7 @@ CREATE TABLE users (
     oidc_subject VARCHAR(100),
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    deleted_at TIMESTAMP
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Credentials table
@@ -27,8 +26,7 @@ CREATE TABLE credentials (
     encrypted_data BYTEA NOT NULL,
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    deleted_at TIMESTAMP
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Audit logs table
@@ -47,12 +45,10 @@ CREATE TABLE audit_logs (
 CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_oidc ON users(oidc_provider, oidc_subject);
-CREATE INDEX idx_users_deleted_at ON users(deleted_at);
 
 CREATE INDEX idx_credentials_user_id ON credentials(user_id);
 CREATE INDEX idx_credentials_provider ON credentials(provider);
 CREATE INDEX idx_credentials_user_provider ON credentials(user_id, provider);
-CREATE INDEX idx_credentials_deleted_at ON credentials(deleted_at);
 
 CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id);
 CREATE INDEX idx_audit_logs_action ON audit_logs(action);

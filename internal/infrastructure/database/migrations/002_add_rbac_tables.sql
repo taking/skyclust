@@ -7,8 +7,7 @@ CREATE TABLE IF NOT EXISTS user_roles (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     role VARCHAR(20) NOT NULL,
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    deleted_at TIMESTAMP
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Role permissions table
@@ -17,20 +16,17 @@ CREATE TABLE IF NOT EXISTS role_permissions (
     role VARCHAR(20) NOT NULL,
     permission VARCHAR(50) NOT NULL,
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    deleted_at TIMESTAMP
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Create indexes for better performance
 CREATE INDEX idx_user_roles_user_id ON user_roles(user_id);
 CREATE INDEX idx_user_roles_role ON user_roles(role);
 CREATE INDEX idx_user_roles_user_role ON user_roles(user_id, role);
-CREATE INDEX idx_user_roles_deleted_at ON user_roles(deleted_at);
 
 CREATE INDEX idx_role_permissions_role ON role_permissions(role);
 CREATE INDEX idx_role_permissions_permission ON role_permissions(permission);
 CREATE INDEX idx_role_permissions_role_permission ON role_permissions(role, permission);
-CREATE INDEX idx_role_permissions_deleted_at ON role_permissions(deleted_at);
 
 -- Insert default role permissions
 INSERT INTO role_permissions (role, permission) VALUES

@@ -1,44 +1,80 @@
 /**
  * Workspace Repository Implementation
- * Workspace Service를 Repository 패턴으로 래핑
+ * Clean Architecture: Infrastructure 계층 - API 직접 호출
  */
 
-import { workspaceService } from '@/features/workspaces';
+import { BaseRepository } from './base-repository';
+import { API_ENDPOINTS } from '@/lib/api-endpoints';
 import type { IWorkspaceRepository } from '@/lib/types/repository';
-import type { Workspace, CreateWorkspaceForm } from '@/lib/types';
+import type { Workspace, CreateWorkspaceForm, WorkspaceMember } from '@/lib/types';
 
-export class WorkspaceRepository implements IWorkspaceRepository {
+export class WorkspaceRepository extends BaseRepository implements IWorkspaceRepository {
   async findAll(): Promise<Workspace[]> {
     return this.list();
   }
 
   async findById(id: string): Promise<Workspace | null> {
-    const workspace = await workspaceService.getWorkspace(id);
-    return workspace || null;
+    try {
+      const workspace = await this.getById(id);
+      return workspace;
+    } catch {
+      return null;
+    }
+  }
+
+  async getById(id: string): Promise<Workspace> {
+    const workspace = await this.get<Workspace>(API_ENDPOINTS.workspaces.detail(id));
+    if (!workspace) {
+      throw new Error(`Workspace with id ${id} not found`);
+    }
+    return workspace;
   }
 
   async list(): Promise<Workspace[]> {
-    return workspaceService.getWorkspaces();
+    const data = await this.get<{ workspaces: Workspace[] }>(API_ENDPOINTS.workspaces.list());
+    return data.workspaces || [];
   }
 
   async create(data: CreateWorkspaceForm): Promise<Workspace> {
-    return workspaceService.createWorkspace(data);
+    const workspace = await this.post<Workspace>(API_ENDPOINTS.workspaces.create(), data);
+    if (!workspace) {
+      throw new Error('Failed to create workspace');
+    }
+    return workspace;
   }
 
   async update(id: string, data: Partial<CreateWorkspaceForm>): Promise<Workspace> {
-    return workspaceService.updateWorkspace(id, data);
+    const workspace = await this.put<Workspace>(API_ENDPOINTS.workspaces.update(id), data);
+    if (!workspace) {
+      throw new Error('Failed to update workspace');
+    }
+    return workspace;
   }
 
+  // IWorkspaceRepository 인터페이스의 delete 메서드 구현
+  // BaseService의 protected delete와 이름이 같아 TypeScript 타입 충돌 발생
+  // @ts-expect-error - BaseService의 protected delete와 이름이 같지만 인터페이스 구현을 위해 필요
   async delete(id: string): Promise<void> {
-    return workspaceService.deleteWorkspace(id);
+    const url = this.buildApiUrl(API_ENDPOINTS.workspaces.delete(id));
+    await this.request<void>('delete', url, undefined);
   }
 
-  async addMember(workspaceId: string, userId: string, role: string = 'member'): Promise<void> {
-    return workspaceService.addMember(workspaceId, userId, role);
+  async getMembers(workspaceId: string): Promise<WorkspaceMember[]> {
+    return this.get<{ members: WorkspaceMember[] }>(API_ENDPOINTS.workspaces.members.list(workspaceId)).then(
+      (response) => response.members || []
+    );
+  }
+
+  async addMember(workspaceId: string, email: string, role: string = 'member'): Promise<void> {
+    return this.post<void>(API_ENDPOINTS.workspaces.members.add(workspaceId), {
+      email,
+      role,
+    });
   }
 
   async removeMember(workspaceId: string, userId: string): Promise<void> {
-    return workspaceService.removeMember(workspaceId, userId);
+    const url = this.buildApiUrl(API_ENDPOINTS.workspaces.members.remove(workspaceId, userId));
+    await this.request<void>('delete', url, undefined);
   }
 }
 

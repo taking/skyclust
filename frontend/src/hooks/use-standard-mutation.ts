@@ -58,7 +58,10 @@ export interface UseStandardMutationOptions<TData, TVariables, TContext = unknow
   /**
    * React Query mutation 옵션 (추가 설정)
    */
-  mutationOptions?: Omit<UseMutationOptions<TData, unknown, TVariables, TContext>, 'mutationFn' | 'onSuccess' | 'onError'>;
+  mutationOptions?: Omit<UseMutationOptions<TData, unknown, TVariables, TContext>, 'mutationFn' | 'onSuccess' | 'onError'> & {
+    onSuccess?: (data: TData, variables: TVariables, context: TContext) => void;
+    onError?: (error: unknown, variables: TVariables, context: TContext) => void;
+  };
 }
 
 /**
@@ -98,7 +101,9 @@ export function useStandardMutation<TData, TVariables, TContext = unknown>({
       onSuccess?.(data, variables);
 
       // Call original onSuccess if provided in mutationOptions
-      mutationOptions?.onSuccess?.(data, variables, context);
+      if (mutationOptions && 'onSuccess' in mutationOptions && mutationOptions.onSuccess) {
+        mutationOptions.onSuccess(data, variables, context as TContext);
+      }
     },
     onError: (error, variables, context) => {
       // Standard error handling
@@ -108,7 +113,9 @@ export function useStandardMutation<TData, TVariables, TContext = unknown>({
       onError?.(error, variables);
 
       // Call original onError if provided in mutationOptions
-      mutationOptions?.onError?.(error, variables, context);
+      if (mutationOptions && 'onError' in mutationOptions && mutationOptions.onError) {
+        mutationOptions.onError(error, variables, context as TContext);
+      }
     },
   });
 }

@@ -14,13 +14,12 @@ CREATE TABLE IF NOT EXISTS oidc_providers (
     enabled BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP,
     
     CONSTRAINT fk_oidc_provider_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    CONSTRAINT idx_oidc_providers_user_name UNIQUE (user_id, name) WHERE deleted_at IS NULL
+    CONSTRAINT idx_oidc_providers_user_name UNIQUE (user_id, name)
 );
 
 -- Create index for faster queries
 CREATE INDEX IF NOT EXISTS idx_oidc_providers_user_id ON oidc_providers(user_id);
-CREATE INDEX IF NOT EXISTS idx_oidc_providers_enabled ON oidc_providers(enabled) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_oidc_providers_enabled ON oidc_providers(enabled);
 

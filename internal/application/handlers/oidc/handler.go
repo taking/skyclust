@@ -10,13 +10,13 @@ import (
 	"go.uber.org/zap"
 )
 
-// Handler handles OIDC authentication requests
+// Handler: OIDC 인증 요청을 처리하는 핸들러
 type Handler struct {
 	*handlers.BaseHandler
 	oidcService domain.OIDCService
 }
 
-// NewHandler creates a new OIDC handler
+// NewHandler: 새로운 OIDC 핸들러를 생성합니다
 func NewHandler(oidcService domain.OIDCService) *Handler {
 	return &Handler{
 		BaseHandler: handlers.NewBaseHandler("oidc"),
@@ -24,7 +24,7 @@ func NewHandler(oidcService domain.OIDCService) *Handler {
 	}
 }
 
-// GetAuthURL returns the OAuth authorization URL
+// GetAuthURL: OAuth 인증 URL을 반환합니다
 func (h *Handler) GetAuthURL(c *gin.Context) {
 	// Start performance tracking
 	defer h.TrackRequest(c, "get_auth_url", 200)
@@ -78,7 +78,7 @@ func (h *Handler) GetAuthURL(c *gin.Context) {
 	}, "Auth URL generated successfully")
 }
 
-// Callback handles OAuth callback
+// Callback: OAuth 콜백을 처리합니다
 func (h *Handler) Callback(c *gin.Context) {
 	// Start performance tracking
 	defer h.TrackRequest(c, "oidc_callback", 200)
@@ -110,7 +110,8 @@ func (h *Handler) Callback(c *gin.Context) {
 		"state":    state,
 	})
 
-	user, token, err := h.oidcService.ExchangeCode(c.Request.Context(), provider, code, state)
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	user, token, err := h.oidcService.ExchangeCode(ctx, provider, code, state)
 	if err != nil {
 		h.LogError(c, err, "Failed to process OIDC callback")
 		h.HandleError(c, err, "oidc_callback")
@@ -133,8 +134,8 @@ func (h *Handler) Callback(c *gin.Context) {
 	}, "Authentication successful")
 }
 
-// CreateSession handles OIDC session creation (POST /auth/oidc/sessions)
-// RESTful: Create a new OIDC session
+// CreateSession: OIDC 세션 생성을 처리합니다 (POST /auth/oidc/sessions)
+// RESTful: 새로운 OIDC 세션 생성
 func (h *Handler) CreateSession(c *gin.Context) {
 	// Start performance tracking
 	defer h.TrackRequest(c, "oidc_create_session", 201)
@@ -160,7 +161,8 @@ func (h *Handler) CreateSession(c *gin.Context) {
 		"state":    req.State,
 	})
 
-	user, token, err := h.oidcService.ExchangeCode(c.Request.Context(), req.Provider, req.Code, req.State)
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	user, token, err := h.oidcService.ExchangeCode(ctx, req.Provider, req.Code, req.State)
 	if err != nil {
 		h.LogError(c, err, "Failed to create OIDC session")
 		h.HandleError(c, err, "oidc_create_session")
@@ -183,8 +185,8 @@ func (h *Handler) CreateSession(c *gin.Context) {
 	}, "Session created successfully")
 }
 
-// DeleteSession handles OIDC session deletion (DELETE /auth/oidc/sessions/me)
-// RESTful: Delete current OIDC session
+// DeleteSession: OIDC 세션 삭제를 처리합니다 (DELETE /auth/oidc/sessions/me)
+// RESTful: 현재 OIDC 세션 삭제
 func (h *Handler) DeleteSession(c *gin.Context) {
 	// Start performance tracking
 	defer h.TrackRequest(c, "oidc_delete_session", 200)
@@ -216,7 +218,8 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 		"provider": req.Provider,
 	})
 
-	err = h.oidcService.EndSession(c.Request.Context(), userID, req.Provider, req.IDToken, req.PostLogoutRedirectURI)
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	err = h.oidcService.EndSession(ctx, userID, req.Provider, req.IDToken, req.PostLogoutRedirectURI)
 	if err != nil {
 		h.LogError(c, err, "Failed to delete OIDC session")
 		h.HandleError(c, err, "oidc_delete_session")

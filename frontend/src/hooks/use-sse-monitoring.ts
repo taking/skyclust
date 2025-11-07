@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useAuthStore } from '@/store/auth';
-import { sseService, SSECallbacks } from '@/services/sse';
+import { sseService } from '@/services/sse';
+import type { SSECallbacks, SSEErrorInfo } from '@/lib/types/sse';
 import { useToast } from '@/hooks/use-toast';
 
 interface VMStatusUpdate {
@@ -118,7 +119,7 @@ export function useSSEMonitoring() {
   }, []);
 
   // 에러 콜백 등록
-  const onError = useCallback((callback: (error: Event) => void) => {
+  const onError = useCallback((callback: (error: Event | SSEErrorInfo) => void) => {
     callbacksRef.current.onError = callback;
   }, []);
 
@@ -161,11 +162,11 @@ export function useSSEMonitoring() {
 
   // Provider 구독 관리
   const subscribeToProvider = useCallback((provider: string) => {
-    sseService.subscribeToProvider(provider);
+    sseService.subscribeToEvent(`provider-${provider}`);
   }, []);
 
   const unsubscribeFromProvider = useCallback((provider: string) => {
-    sseService.unsubscribeFromProvider(provider);
+    sseService.unsubscribeFromEvent(`provider-${provider}`);
   }, []);
 
   // 이벤트 구독 관리

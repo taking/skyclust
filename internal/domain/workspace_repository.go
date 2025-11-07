@@ -18,6 +18,7 @@ type WorkspaceRepository interface {
 	// Optimized methods for N+1 query prevention
 	GetWorkspacesWithUsers(ctx context.Context, userID string) ([]*Workspace, error)
 	GetWorkspaceWithMembers(ctx context.Context, workspaceID string) (*Workspace, []*User, error)
+	GetWorkspaceMembersWithRoles(ctx context.Context, workspaceID string) ([]*WorkspaceUser, error)
 	GetUserWorkspacesOptimized(ctx context.Context, userID string) ([]*Workspace, error)
 }
 

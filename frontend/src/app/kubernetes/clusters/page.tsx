@@ -7,8 +7,10 @@
 
 'use client';
 
+import { Suspense } from 'react';
 import { useState, useMemo } from 'react';
 import * as React from 'react';
+import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { ResourceListPage } from '@/components/common/resource-list-page';
 import { BulkActionsToolbar } from '@/components/common/bulk-actions-toolbar';
@@ -17,26 +19,29 @@ import { BulkOperationProgress } from '@/components/common/bulk-operation-progre
 import { usePagination } from '@/hooks/use-pagination';
 import { useToast } from '@/hooks/use-toast';
 import { useErrorHandler } from '@/hooks/use-error-handler';
-import { EVENTS, UI } from '@/lib/constants';
+import { UI } from '@/lib/constants';
 import { useWorkspaceStore } from '@/store/workspace';
 import { Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { FilterPanel, FilterConfig, FilterValue } from '@/components/ui/filter-panel';
+import { FilterConfig, FilterValue } from '@/components/ui/filter-panel';
 import { CredentialRequiredState } from '@/components/common/credential-required-state';
 import { ResourceEmptyState } from '@/components/common/resource-empty-state';
 import { useCredentialContext } from '@/hooks/use-credential-context';
-import { useCreateDialog } from '@/hooks/use-create-dialog';
+import { useCredentialAutoSelect } from '@/hooks/use-credential-auto-select';
 import { useTranslation } from '@/hooks/use-translation';
 import {
   ClusterPageHeader,
   useKubernetesClusters,
   useClusterFilters,
   useClusterBulkActions,
+  useClusterTagDialog,
 } from '@/features/kubernetes';
 import { downloadKubeconfig } from '@/utils/kubeconfig';
 import { TableSkeleton } from '@/components/ui/table-skeleton';
-import type { CreateClusterForm, CloudProvider } from '@/lib/types';
+import { Breadcrumb } from '@/components/common/breadcrumb';
+import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
+import type { CreateClusterForm, CloudProvider } from '@/lib/types/kubernetes';
 
 // Dynamic imports for heavy components
 const BulkTagDialog = dynamic(
@@ -55,7 +60,7 @@ const ClusterTable = dynamic(
   }
 );
 
-export default function KubernetesClustersPage() {
+function KubernetesClustersPageContent() {
   const { success } = useToast();
   const { handleError } = useErrorHandler();
   const { t } = useTranslation();
@@ -65,17 +70,42 @@ export default function KubernetesClustersPage() {
 
   // Get credential context from global store
   const { selectedCredentialId, selectedRegion } = useCredentialContext();
+  
+  // Auto-select credential if not selected
+  useCredentialAutoSelect({
+    enabled: !!currentWorkspace,
+    resourceType: 'kubernetes',
+    updateUrl: true,
+  });
 
   // Local state
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useCreateDialog(EVENTS.CREATE_DIALOG.CLUSTER);
+  const router = useRouter();
   const [filters, setFilters] = useState<FilterValue>({});
   const [showFilters, setShowFilters] = useState(false);
   const [selectedClusterIds, setSelectedClusterIds] = useState<string[]>([]);
-  const [isTagDialogOpen, setIsTagDialogOpen] = useState(false);
-  const [bulkTagKey, setBulkTagKey] = useState('');
-  const [bulkTagValue, setBulkTagValue] = useState('');
   const [tagFilters, setTagFilters] = useState<Record<string, string[]>>({});
   const [pageSize, setPageSize] = useState(UI.PAGINATION.DEFAULT_PAGE_SIZE);
+  const [deleteDialogState, setDeleteDialogState] = useState<{
+    open: boolean;
+    clusterName: string | null;
+    region: string | null;
+  }>({
+    open: false,
+    clusterName: null,
+    region: null,
+  });
+
+  // Tag dialog hook
+  const {
+    isOpen: isTagDialogOpen,
+    tagKey: bulkTagKey,
+    tagValue: bulkTagValue,
+    openDialog: openTagDialog,
+    closeDialog: closeTagDialog,
+    setTagKey: setBulkTagKey,
+    setTagValue: setBulkTagValue,
+    reset: resetTagDialog,
+  } = useClusterTagDialog();
 
   // Kubernetes clusters hook
   const {
@@ -121,7 +151,6 @@ export default function KubernetesClustersPage() {
   // Pagination
   const {
     page,
-    totalPages,
     paginatedItems: paginatedClusters,
     setPage,
     setPageSize: setPaginationPageSize,
@@ -160,45 +189,32 @@ export default function KubernetesClustersPage() {
   ], [clusters, t]);
 
   // Event handlers
-  const handleCreateCluster = (data: CreateClusterForm) => {
-    if (!selectedProvider) {
-      handleError(new Error('Provider not selected'), { operation: 'createCluster', resource: 'Cluster' });
-      return;
-    }
-    createClusterMutation.mutate(
-      { provider: selectedProvider, data },
-      {
-        onSuccess: () => {
-          success(t('kubernetes.clusterCreationInitiated'));
-          setIsCreateDialogOpen(false);
-        },
-        onError: (error: unknown) => {
-          handleError(error, { operation: 'createCluster', resource: 'Cluster' });
-        },
-      }
-    );
-  };
 
   const handleDeleteCluster = (clusterName: string, region: string) => {
     if (!selectedCredentialId || !selectedProvider) return;
-    if (confirm(t('kubernetes.confirmDeleteCluster', { clusterName }))) {
-      deleteClusterMutation.mutate(
-        {
-          provider: selectedProvider,
-          clusterName,
-          credentialId: selectedCredentialId,
-          region,
+    setDeleteDialogState({ open: true, clusterName, region });
+  };
+
+  const handleConfirmDelete = () => {
+    if (!deleteDialogState.clusterName || !deleteDialogState.region || !selectedCredentialId || !selectedProvider) return;
+    
+    deleteClusterMutation.mutate(
+      {
+        provider: selectedProvider,
+        clusterName: deleteDialogState.clusterName,
+        credentialId: selectedCredentialId,
+        region: deleteDialogState.region,
+      },
+      {
+        onSuccess: () => {
+          success(t('kubernetes.clusterDeletionInitiated'));
+          setDeleteDialogState({ open: false, clusterName: null, region: null });
         },
-        {
-          onSuccess: () => {
-            success(t('kubernetes.clusterDeletionInitiated'));
-          },
-          onError: (error: unknown) => {
-            handleError(error, { operation: 'deleteCluster', resource: 'Cluster' });
-          },
-        }
-      );
-    }
+        onError: (error: unknown) => {
+          handleError(error, { operation: 'deleteCluster', resource: 'Cluster' });
+        },
+      }
+    );
   };
 
   const handleDownloadKubeconfig = (clusterName: string, region: string) => {
@@ -238,9 +254,7 @@ export default function KubernetesClustersPage() {
       success,
       (error: unknown) => handleError(error, { operation: 'bulkTagClusters', resource: 'Cluster' })
     );
-    setIsTagDialogOpen(false);
-    setBulkTagKey('');
-    setBulkTagValue('');
+    resetTagDialog();
     setSelectedClusterIds([]);
   };
 
@@ -273,31 +287,33 @@ export default function KubernetesClustersPage() {
       resourceName={t('kubernetes.clusters')}
       title={t('kubernetes.noClustersFound')}
       description={t('kubernetes.createFirst')}
-      onCreateClick={() => setIsCreateDialogOpen(true)}
+      onCreateClick={() => router.push('/kubernetes/clusters/create')}
+      isSearching={isSearching}
+      searchQuery={searchQuery}
+      hasFilters={Object.keys(filters).length > 0}
+      onClearFilters={() => setFilters({})}
+      onClearSearch={clearSearch}
       withCard={true}
     />
   ) : null;
 
   return (
+    <>
     <ResourceListPage
-      title={t('kubernetes.clusters')}
-      resourceName={t('kubernetes.clusters')}
-      storageKey="kubernetes-clusters-page"
-      header={
-        <ClusterPageHeader
-          workspaceName={currentWorkspace?.name}
-          credentials={credentials}
-          selectedCredentialId={selectedCredentialId || ''}
-          onCredentialChange={() => {}} // Handled by Header
-          selectedRegion={selectedRegion || ''}
-          onRegionChange={() => {}} // Handled by Header
-          selectedProvider={selectedProvider}
-          onCreateCluster={handleCreateCluster}
-          isCreatePending={createClusterMutation.isPending}
-          isCreateDialogOpen={isCreateDialogOpen}
-          onCreateDialogChange={setIsCreateDialogOpen}
-        />
-      }
+        title={t('kubernetes.clusters')}
+        resourceName={t('kubernetes.clusters')}
+        storageKey="kubernetes-clusters-page"
+        header={
+          <ClusterPageHeader
+            workspaceName={currentWorkspace?.name}
+            credentials={credentials}
+            selectedCredentialId={selectedCredentialId || ''}
+            onCredentialChange={() => {}} // Handled by Header
+            selectedRegion={selectedRegion || ''}
+            onRegionChange={() => {}} // Handled by Header
+            selectedProvider={selectedProvider}
+          />
+        }
       items={filteredClusters}
       isLoading={isLoading}
       isEmpty={isEmpty}
@@ -329,7 +345,7 @@ export default function KubernetesClustersPage() {
               selectedIds={selectedClusterIds}
               onSelectionChange={setSelectedClusterIds}
               onBulkDelete={handleBulkDeleteSubmit}
-              onBulkTag={() => setIsTagDialogOpen(true)}
+              onBulkTag={openTagDialog}
               getItemDisplayName={(cluster) => cluster.name}
             />
           )}
@@ -392,7 +408,7 @@ export default function KubernetesClustersPage() {
             {/* Bulk Tag Dialog */}
             <BulkTagDialog
               open={isTagDialogOpen}
-              onOpenChange={setIsTagDialogOpen}
+              onOpenChange={(open) => open ? openTagDialog() : closeTagDialog()}
               onSubmit={handleBulkTagSubmit}
               tagKey={bulkTagKey}
               tagValue={bulkTagValue}
@@ -411,7 +427,35 @@ export default function KubernetesClustersPage() {
       skeletonShowCheckbox={true}
       showFilterButton={false}
       showSearchResultsInfo={false}
-    />
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        open={deleteDialogState.open}
+        onOpenChange={(open) => setDeleteDialogState({ ...deleteDialogState, open })}
+        onConfirm={handleConfirmDelete}
+        title={t('kubernetes.deleteCluster')}
+        description={deleteDialogState.clusterName ? t('kubernetes.confirmDeleteCluster', { clusterName: deleteDialogState.clusterName }) : ''}
+        isLoading={deleteClusterMutation.isPending}
+        resourceName={deleteDialogState.clusterName || undefined}
+        resourceNameLabel="클러스터 이름"
+      />
+    </>
+  );
+}
+
+export default function KubernetesClustersPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-2 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <KubernetesClustersPageContent />
+    </Suspense>
   );
 }
 

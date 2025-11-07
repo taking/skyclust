@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/logging"
 	"skyclust/internal/shared/responses"
@@ -93,14 +94,24 @@ func (h *BaseHandler) GetCredentialFromRequest(c *gin.Context, credentialService
 		return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "invalid credential ID format", 400)
 	}
 
-	// 4. Get credential by ID (workspace validation will be done by the service)
-	// Note: This method uses credential ID only - workspace_id should be added in future
-	credential, err := credentialService.GetCredentialByIDAndUser(c.Request.Context(), userID, credentialUUID)
+	// 4. Get credential by ID (without workspace validation first)
+	credential, err := credentialService.GetCredentialByIDDirect(c.Request.Context(), credentialUUID)
 	if err != nil {
 		return nil, err
 	}
 
-	// 5. Verify credential matches expected provider
+	// 5. Validate user has access to this credential (created by user)
+	if credential.CreatedBy != userID {
+		return nil, domain.NewDomainError(domain.ErrCodeForbidden, "access denied", 403)
+	}
+
+	// 6. Validate workspace access using workspaceID from credential
+	credential, err = credentialService.GetCredentialByID(c.Request.Context(), credential.WorkspaceID, credentialUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 7. Verify credential matches expected provider
 	if expectedProvider != "" && credential.Provider != expectedProvider {
 		return nil, domain.NewDomainError(
 			domain.ErrCodeBadRequest,
@@ -152,14 +163,24 @@ func (h *BaseHandler) GetCredentialFromBody(c *gin.Context, credentialService do
 		return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "invalid credential ID format", 400)
 	}
 
-	// 4. Get credential by ID (workspace validation will be done by the service)
-	// Note: This method uses credential ID only - workspace_id should be added in future
-	credential, err := credentialService.GetCredentialByIDAndUser(c.Request.Context(), userID, credentialUUID)
+	// 4. Get credential by ID (without workspace validation first)
+	credential, err := credentialService.GetCredentialByIDDirect(c.Request.Context(), credentialUUID)
 	if err != nil {
 		return nil, err
 	}
 
-	// 5. Verify credential matches expected provider
+	// 5. Validate user has access to this credential (created by user)
+	if credential.CreatedBy != userID {
+		return nil, domain.NewDomainError(domain.ErrCodeForbidden, "access denied", 403)
+	}
+
+	// 6. Validate workspace access using workspaceID from credential
+	credential, err = credentialService.GetCredentialByID(c.Request.Context(), credential.WorkspaceID, credentialUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 7. Verify credential matches expected provider
 	if expectedProvider != "" && credential.Provider != expectedProvider {
 		return nil, domain.NewDomainError(
 			domain.ErrCodeBadRequest,
@@ -489,6 +510,17 @@ func (h *BaseHandler) ExtractUserIDFromContext(c *gin.Context) (uuid.UUID, error
 	default:
 		return uuid.Nil, domain.NewDomainError(domain.ErrCodeUnauthorized, "Invalid user ID type", 401)
 	}
+}
+
+// EnrichContextWithRequestMetadata enriches context with client IP and user agent for audit logging
+// This should be called in handlers before passing context to services
+func (h *BaseHandler) EnrichContextWithRequestMetadata(c *gin.Context) context.Context {
+	ctx := c.Request.Context()
+	clientIP := c.ClientIP()
+	userAgent := c.GetHeader("User-Agent")
+	ctx = context.WithValue(ctx, "client_ip", clientIP)
+	ctx = context.WithValue(ctx, "user_agent", userAgent)
+	return ctx
 }
 
 // ExtractValidatedRequest extracts and validates request from JSON body

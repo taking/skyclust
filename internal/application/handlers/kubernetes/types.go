@@ -20,7 +20,7 @@ type CreateClusterResponse struct {
 	Region    string            `json:"region"`
 	Status    string            `json:"status"`
 	Endpoint  string            `json:"endpoint,omitempty"`
-	Tags      map[string]string `json:"tags,omitempty"`
+	Tags      map[string]string  `json:"tags,omitempty"`
 	CreatedAt string            `json:"created_at"`
 }
 
@@ -64,4 +64,19 @@ type CreateNodePoolRequest struct {
 	DiskSize     int32             `json:"disk_size,omitempty"`
 	SubnetIDs    []string          `json:"subnet_ids" validate:"required,min=1"`
 	Tags         map[string]string `json:"tags,omitempty"`
+}
+
+// GetEKSVersionsResponse represents the response for EKS versions
+type GetEKSVersionsResponse struct {
+	Versions []string `json:"versions"`
+}
+
+// GetAWSRegionsResponse represents the response for AWS regions
+type GetAWSRegionsResponse struct {
+	Regions []string `json:"regions"`
+}
+
+// GetAvailabilityZonesResponse represents the response for availability zones
+type GetAvailabilityZonesResponse struct {
+	Zones []string `json:"zones"`
 }

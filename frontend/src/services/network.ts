@@ -4,6 +4,7 @@
  */
 
 import { BaseService } from '@/lib/service-base';
+import { API_ENDPOINTS } from '@/lib/api-endpoints';
 import type {
   VPC,
   Subnet,
@@ -16,43 +17,82 @@ import type {
 } from '@/lib/types';
 
 class NetworkService extends BaseService {
-  // VPC management
+  // ===== VPC Management =====
+  
+  /**
+   * VPC 목록 조회
+   * 
+   * @param provider - 클라우드 프로바이더 (aws, gcp, azure 등)
+   * @param credentialId - 자격 증명 ID
+   * @param region - 리전 (선택사항)
+   * @returns VPC 배열
+   * 
+   * @example
+   * ```tsx
+   * const vpcs = await networkService.listVPCs('aws', 'credential-id', 'ap-northeast-2');
+   * ```
+   */
   async listVPCs(
     provider: CloudProvider,
     credentialId: string,
     region?: string
   ): Promise<VPC[]> {
-    const params = new URLSearchParams({ credential_id: credentialId });
-    if (region) params.append('region', region);
-    
+    // 1. API 호출하여 VPC 목록 가져오기
     const data = await this.get<{ vpcs: VPC[] }>(
-      `${provider}/network/vpcs?${params.toString()}`
+      API_ENDPOINTS.network.vpcs.list(provider, credentialId, region)
     );
+    // 2. 응답 데이터에서 vpcs 배열 추출 (없으면 빈 배열)
     return data.vpcs || [];
   }
 
+  /**
+   * 특정 VPC 조회
+   * 
+   * @param provider - 클라우드 프로바이더
+   * @param vpcId - VPC ID
+   * @param credentialId - 자격 증명 ID
+   * @param region - 리전
+   * @returns VPC 정보
+   * 
+   * @example
+   * ```tsx
+   * const vpc = await networkService.getVPC('aws', 'vpc-123', 'credential-id', 'ap-northeast-2');
+   * ```
+   */
   async getVPC(
     provider: CloudProvider,
     vpcId: string,
     credentialId: string,
     region: string
   ): Promise<VPC> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.get<VPC>(
-      `${provider}/network/vpcs/${encodeURIComponent(vpcId)}?${params.toString()}`
+      API_ENDPOINTS.network.vpcs.detail(provider, vpcId, credentialId, region)
     );
   }
 
+  /**
+   * VPC 생성
+   * 
+   * @param provider - 클라우드 프로바이더
+   * @param data - VPC 생성 데이터 (name, cidr_block, region 등)
+   * @returns 생성된 VPC 정보
+   * 
+   * @example
+   * ```tsx
+   * const vpc = await networkService.createVPC('aws', {
+   *   credential_id: 'credential-id',
+   *   name: 'my-vpc',
+   *   cidr_block: '10.0.0.0/16',
+   *   region: 'ap-northeast-2',
+   * });
+   * ```
+   */
   async createVPC(
     provider: CloudProvider,
     data: CreateVPCForm
   ): Promise<VPC> {
     return this.post<VPC>(
-      `${provider}/network/vpcs`,
+      API_ENDPOINTS.network.vpcs.create(provider),
       data
     );
   }
@@ -64,13 +104,8 @@ class NetworkService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<VPC> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.put<VPC>(
-      `${provider}/network/vpcs/${encodeURIComponent(vpcId)}?${params.toString()}`,
+      API_ENDPOINTS.network.vpcs.update(provider, vpcId, credentialId, region),
       data
     );
   }
@@ -81,31 +116,20 @@ class NetworkService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<void> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.delete<void>(
-      `${provider}/network/vpcs/${encodeURIComponent(vpcId)}?${params.toString()}`
+      API_ENDPOINTS.network.vpcs.delete(provider, vpcId, credentialId, region)
     );
   }
 
-  // Subnet management
+  // Subnet 관리
   async listSubnets(
     provider: CloudProvider,
     credentialId: string,
     vpcId: string,
     region: string
   ): Promise<Subnet[]> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      vpc_id: vpcId,
-      region,
-    });
-    
     const data = await this.get<{ subnets: Subnet[] }>(
-      `${provider}/network/subnets?${params.toString()}`
+      API_ENDPOINTS.network.subnets.list(provider, credentialId, vpcId, region)
     );
     return data.subnets || [];
   }
@@ -116,13 +140,8 @@ class NetworkService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<Subnet> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.get<Subnet>(
-      `${provider}/network/subnets/${encodeURIComponent(subnetId)}?${params.toString()}`
+      API_ENDPOINTS.network.subnets.detail(provider, subnetId, credentialId, region)
     );
   }
 
@@ -131,7 +150,7 @@ class NetworkService extends BaseService {
     data: CreateSubnetForm
   ): Promise<Subnet> {
     return this.post<Subnet>(
-      `${provider}/network/subnets`,
+      API_ENDPOINTS.network.subnets.create(provider),
       data
     );
   }
@@ -143,13 +162,8 @@ class NetworkService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<Subnet> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.put<Subnet>(
-      `${provider}/network/subnets/${encodeURIComponent(subnetId)}?${params.toString()}`,
+      API_ENDPOINTS.network.subnets.update(provider, subnetId, credentialId, region),
       data
     );
   }
@@ -160,31 +174,20 @@ class NetworkService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<void> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.delete<void>(
-      `${provider}/network/subnets/${encodeURIComponent(subnetId)}?${params.toString()}`
+      API_ENDPOINTS.network.subnets.delete(provider, subnetId, credentialId, region)
     );
   }
 
-  // Security Group management
+  // Security Group 관리
   async listSecurityGroups(
     provider: CloudProvider,
     credentialId: string,
     vpcId: string,
     region: string
   ): Promise<SecurityGroup[]> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      vpc_id: vpcId,
-      region,
-    });
-    
     const data = await this.get<{ security_groups: SecurityGroup[] }>(
-      `${provider}/network/security-groups?${params.toString()}`
+      API_ENDPOINTS.network.securityGroups.list(provider, credentialId, vpcId, region)
     );
     return data.security_groups || [];
   }
@@ -195,13 +198,8 @@ class NetworkService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<SecurityGroup> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.get<SecurityGroup>(
-      `${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}?${params.toString()}`
+      API_ENDPOINTS.network.securityGroups.detail(provider, securityGroupId, credentialId, region)
     );
   }
 
@@ -210,7 +208,7 @@ class NetworkService extends BaseService {
     data: CreateSecurityGroupForm
   ): Promise<SecurityGroup> {
     return this.post<SecurityGroup>(
-      `${provider}/network/security-groups`,
+      API_ENDPOINTS.network.securityGroups.create(provider),
       data
     );
   }
@@ -222,13 +220,8 @@ class NetworkService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<SecurityGroup> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.put<SecurityGroup>(
-      `${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}?${params.toString()}`,
+      API_ENDPOINTS.network.securityGroups.update(provider, securityGroupId, credentialId, region),
       data
     );
   }
@@ -239,17 +232,12 @@ class NetworkService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<void> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.delete<void>(
-      `${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}?${params.toString()}`
+      API_ENDPOINTS.network.securityGroups.delete(provider, securityGroupId, credentialId, region)
     );
   }
 
-  // Security Group Rule management
+  // Security Group Rule 관리
   async addSecurityGroupRule(
     provider: CloudProvider,
     securityGroupId: string,
@@ -257,13 +245,8 @@ class NetworkService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<SecurityGroup> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.post<SecurityGroup>(
-      `${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}/rules?${params.toString()}`,
+      API_ENDPOINTS.network.securityGroups.rules.add(provider, securityGroupId, credentialId, region),
       rule
     );
   }
@@ -275,14 +258,8 @@ class NetworkService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<void> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-      rule_id: ruleId,
-    });
-    
     return this.delete<void>(
-      `${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}/rules?${params.toString()}`
+      API_ENDPOINTS.network.securityGroups.rules.remove(provider, securityGroupId, credentialId, region, ruleId)
     );
   }
 
@@ -293,13 +270,8 @@ class NetworkService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<SecurityGroup> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.put<SecurityGroup>(
-      `${provider}/network/security-groups/${encodeURIComponent(securityGroupId)}/rules?${params.toString()}`,
+      API_ENDPOINTS.network.securityGroups.rules.update(provider, securityGroupId, credentialId, region),
       { rules }
     );
   }

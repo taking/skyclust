@@ -5,13 +5,16 @@
 
 'use client';
 
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ResourceEmptyState } from '@/components/common/resource-empty-state';
-import { Server, Plus, Trash2 } from 'lucide-react';
+import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
+import { Server, Trash2 } from 'lucide-react';
 import type { NodeGroup } from '@/lib/types';
+import { useTranslation } from '@/hooks/use-translation';
 
 interface ClusterNodeGroupsTabProps {
   nodeGroups: NodeGroup[];
@@ -28,6 +31,15 @@ export function ClusterNodeGroupsTab({
   onDeleteClick,
   isDeleting,
 }: ClusterNodeGroupsTabProps) {
+  const { t } = useTranslation();
+  const [deleteDialogState, setDeleteDialogState] = useState<{
+    open: boolean;
+    nodeGroupName: string | null;
+  }>({
+    open: false,
+    nodeGroupName: null,
+  });
+
   if (isLoading) {
     return (
       <Card>
@@ -41,7 +53,7 @@ export function ClusterNodeGroupsTab({
   if (nodeGroups.length === 0) {
     return (
       <ResourceEmptyState
-        resourceName="Node Groups"
+        resourceName={t('kubernetes.nodeGroups')}
         icon={Server}
         onCreateClick={onCreateClick}
         withCard={true}
@@ -52,19 +64,19 @@ export function ClusterNodeGroupsTab({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Node Groups</CardTitle>
-        <CardDescription>{nodeGroups.length} node group{nodeGroups.length !== 1 ? 's' : ''}</CardDescription>
+        <CardTitle>{t('kubernetes.nodeGroups')}</CardTitle>
+        <CardDescription>{t('kubernetes.nodeGroupCount', { count: nodeGroups.length })}</CardDescription>
       </CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Instance Type</TableHead>
-              <TableHead>Nodes</TableHead>
-              <TableHead>Min/Max</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Actions</TableHead>
+              <TableHead>{t('common.name')}</TableHead>
+              <TableHead>{t('common.instanceType')}</TableHead>
+              <TableHead>{t('common.nodes')}</TableHead>
+              <TableHead>{t('common.minMax')}</TableHead>
+              <TableHead>{t('common.status')}</TableHead>
+              <TableHead>{t('common.actions')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -84,9 +96,7 @@ export function ClusterNodeGroupsTab({
                     variant="ghost"
                     size="sm"
                     onClick={() => {
-                      if (confirm(`Delete node group ${ng.name}?`)) {
-                        onDeleteClick(ng.name);
-                      }
+                      setDeleteDialogState({ open: true, nodeGroupName: ng.name });
                     }}
                     disabled={isDeleting}
                   >
@@ -98,6 +108,23 @@ export function ClusterNodeGroupsTab({
           </TableBody>
         </Table>
       </CardContent>
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        open={deleteDialogState.open}
+        onOpenChange={(open) => setDeleteDialogState({ ...deleteDialogState, open })}
+        onConfirm={() => {
+          if (deleteDialogState.nodeGroupName) {
+            onDeleteClick(deleteDialogState.nodeGroupName);
+            setDeleteDialogState({ open: false, nodeGroupName: null });
+          }
+        }}
+        title={t('kubernetes.deleteNodeGroup')}
+        description={deleteDialogState.nodeGroupName ? t('kubernetes.confirmDeleteNodeGroup', { nodeGroupName: deleteDialogState.nodeGroupName }) : ''}
+        isLoading={isDeleting}
+        resourceName={deleteDialogState.nodeGroupName || undefined}
+        resourceNameLabel="노드 그룹 이름"
+      />
     </Card>
   );
 }

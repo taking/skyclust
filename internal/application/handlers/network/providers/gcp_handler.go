@@ -68,7 +68,8 @@ func (h *GCPHandler) CreateVPC(c *gin.Context) {
 
 	req.CredentialID = credential.ID.String()
 
-	vpc, err := h.networkService.CreateVPC(c.Request.Context(), credential, req)
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	vpc, err := h.networkService.CreateVPC(ctx, credential, req)
 	if err != nil {
 		h.HandleError(c, err, "create_vpc")
 		return
@@ -130,7 +131,8 @@ func (h *GCPHandler) UpdateVPC(c *gin.Context) {
 
 	region := c.Query("region")
 
-	vpc, err := h.networkService.UpdateVPC(c.Request.Context(), credential, req, vpcName, region)
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	vpc, err := h.networkService.UpdateVPC(ctx, credential, req, vpcName, region)
 	if err != nil {
 		h.HandleError(c, err, "update_vpc")
 		return
@@ -161,7 +163,8 @@ func (h *GCPHandler) DeleteVPC(c *gin.Context) {
 		Region:       region,
 	}
 
-	err = h.networkService.DeleteVPC(c.Request.Context(), credential, serviceReq)
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	err = h.networkService.DeleteVPC(ctx, credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "delete_vpc")
 		return
@@ -217,7 +220,8 @@ func (h *GCPHandler) CreateSubnet(c *gin.Context) {
 
 	req.CredentialID = credential.ID.String()
 
-	subnet, err := h.networkService.CreateSubnet(c.Request.Context(), credential, req)
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	subnet, err := h.networkService.CreateSubnet(ctx, credential, req)
 	if err != nil {
 		h.HandleError(c, err, "create_subnet")
 		return
@@ -279,7 +283,8 @@ func (h *GCPHandler) UpdateSubnet(c *gin.Context) {
 
 	region := c.Query("region")
 
-	subnet, err := h.networkService.UpdateSubnet(c.Request.Context(), credential, req, subnetID, region)
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	subnet, err := h.networkService.UpdateSubnet(ctx, credential, req, subnetID, region)
 	if err != nil {
 		h.HandleError(c, err, "update_subnet")
 		return
@@ -310,7 +315,8 @@ func (h *GCPHandler) DeleteSubnet(c *gin.Context) {
 		Region:       region,
 	}
 
-	err = h.networkService.DeleteSubnet(c.Request.Context(), credential, serviceReq)
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	err = h.networkService.DeleteSubnet(ctx, credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "delete_subnet")
 		return
@@ -366,7 +372,8 @@ func (h *GCPHandler) CreateSecurityGroup(c *gin.Context) {
 
 	req.CredentialID = credential.ID.String()
 
-	securityGroup, err := h.networkService.CreateSecurityGroup(c.Request.Context(), credential, req)
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	securityGroup, err := h.networkService.CreateSecurityGroup(ctx, credential, req)
 	if err != nil {
 		h.HandleError(c, err, "create_security_group")
 		return
@@ -428,7 +435,8 @@ func (h *GCPHandler) UpdateSecurityGroup(c *gin.Context) {
 
 	region := c.Query("region")
 
-	securityGroup, err := h.networkService.UpdateSecurityGroup(c.Request.Context(), credential, req, securityGroupID, region)
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	securityGroup, err := h.networkService.UpdateSecurityGroup(ctx, credential, req, securityGroupID, region)
 	if err != nil {
 		h.HandleError(c, err, "update_security_group")
 		return
@@ -459,7 +467,8 @@ func (h *GCPHandler) DeleteSecurityGroup(c *gin.Context) {
 		Region:          region,
 	}
 
-	err = h.networkService.DeleteSecurityGroup(c.Request.Context(), credential, serviceReq)
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	err = h.networkService.DeleteSecurityGroup(ctx, credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "delete_security_group")
 		return

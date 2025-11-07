@@ -3,7 +3,7 @@ import { UseFormReturn, Path, PathValue } from 'react-hook-form';
 
 type ValidationState = 'idle' | 'validating' | 'valid' | 'invalid';
 
-interface UseFormValidationOptions {
+export interface UseFormValidationOptions {
   debounceMs?: number;
   validateOnBlur?: boolean;
   validateOnChange?: boolean;
@@ -125,8 +125,8 @@ export function useFormValidation<T extends Record<string, unknown>>(
   };
 }
 
-// Simple debounce utility
-function debounce<T extends (...args: unknown[]) => unknown>(
+// Simple debounce utility (currently unused, kept for future use)
+function _debounce<T extends (...args: unknown[]) => unknown>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {

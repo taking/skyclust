@@ -16,26 +16,22 @@ import { authService } from '@/services/auth';
 import { RegisterForm } from '@/lib/types';
 import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
 import Link from 'next/link';
-import * as z from 'zod';
 import { useTranslation } from '@/hooks/use-translation';
-
-const registerSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters'),
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
-});
+import { createValidationSchemas } from '@/lib/validations';
+import { TIME } from '@/lib/constants';
 
 export default function RegisterPage() {
   const [success, setSuccess] = useState(false);
   const router = useRouter();
   const { t } = useTranslation();
+  
+  const { registerSchema } = createValidationSchemas(t);
 
   const {
     form,
     handleSubmit,
     isLoading,
     error,
-    reset,
     getFieldError,
     getFieldValidationState,
   } = useFormWithValidation<RegisterForm>({
@@ -50,9 +46,9 @@ export default function RegisterPage() {
       setSuccess(true);
       setTimeout(() => {
         router.push('/login');
-      }, 2000);
+      }, TIME.DELAY.REGISTER_REDIRECT);
     },
-    onError: (error) => {
+        onError: (_error) => {
       // Error is handled by the hook's error state
     },
     getErrorMessage: (err) => {

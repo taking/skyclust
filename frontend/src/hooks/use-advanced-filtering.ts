@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { logger } from '@/lib/logger';
 
 export interface FilterPreset {
   id: string;
@@ -12,7 +13,7 @@ export interface SortConfig {
   direction: 'asc' | 'desc';
 }
 
-export interface UseAdvancedFilteringOptions<T> {
+export interface UseAdvancedFilteringOptions<_T = unknown> {
   storageKey: string;
   defaultFilters?: Record<string, unknown>;
   defaultSort?: SortConfig[];
@@ -46,9 +47,7 @@ export function useAdvancedFiltering<T>(
         setPresets(JSON.parse(savedPresets));
       }
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to load filter presets:', error);
-      }
+      logger.error('Failed to load filter presets', error, { storageKey });
     }
   }, [storageKey]);
 
@@ -70,9 +69,7 @@ export function useAdvancedFiltering<T>(
         onSortChange?.(parsed);
       }
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to load saved filters/sort:', error);
-      }
+      logger.error('Failed to load saved filters/sort', error, { storageKey });
     }
   }, [storageKey, onFiltersChange, onSortChange]);
 
@@ -82,9 +79,7 @@ export function useAdvancedFiltering<T>(
       localStorage.setItem(`${storageKey}-filters`, JSON.stringify(filters));
       onFiltersChange?.(filters);
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to save filters:', error);
-      }
+      logger.error('Failed to save filters', error, { storageKey });
     }
   }, [filters, storageKey, onFiltersChange]);
 
@@ -94,9 +89,7 @@ export function useAdvancedFiltering<T>(
       localStorage.setItem(`${storageKey}-sort`, JSON.stringify(sortConfig));
       onSortChange?.(sortConfig);
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to save sort:', error);
-      }
+      logger.error('Failed to save sort', error, { storageKey });
     }
   }, [sortConfig, storageKey, onSortChange]);
 
@@ -134,9 +127,7 @@ export function useAdvancedFiltering<T>(
     try {
       localStorage.setItem(`${storageKey}-presets`, JSON.stringify(newPresets));
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to save preset:', error);
-      }
+      logger.error('Failed to save preset', error, { storageKey, preset });
     }
   }, [filters, presets, storageKey]);
 
@@ -154,9 +145,7 @@ export function useAdvancedFiltering<T>(
     try {
       localStorage.setItem(`${storageKey}-presets`, JSON.stringify(newPresets));
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to delete preset:', error);
-      }
+      logger.error('Failed to delete preset', error, { storageKey, presetId });
     }
   }, [presets, storageKey]);
 

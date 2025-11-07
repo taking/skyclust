@@ -13,8 +13,9 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
 import { useToast } from '@/hooks/use-toast';
-import { createVMSchema } from '@/lib/validations';
-import type { CreateVMForm, Credential } from '@/lib/types';
+import { createValidationSchemas } from '@/lib/validations';
+import type { CreateVMForm, Credential, CloudProvider } from '@/lib/types';
+import { useTranslation } from '@/hooks/use-translation';
 
 interface CreateVMDialogProps {
   open: boolean;
@@ -27,7 +28,7 @@ interface CreateVMDialogProps {
 }
 
 export function CreateVMDialog({
-  open,
+  open: _open,
   onOpenChange,
   onSubmit,
   credentials,
@@ -35,7 +36,9 @@ export function CreateVMDialog({
   onCredentialChange,
   isPending = false,
 }: CreateVMDialogProps) {
+  const { t } = useTranslation();
   const { success: showSuccess, error: showError } = useToast();
+  const schemas = createValidationSchemas(t);
 
   const {
     form,
@@ -47,13 +50,13 @@ export function CreateVMDialog({
     getFieldValidationState,
     setValue,
   } = useFormWithValidation<CreateVMForm>({
-    schema: createVMSchema,
+    schema: schemas.createVMSchema,
     defaultValues: {
       name: '',
-      provider: '',
+      provider: undefined,
       instance_type: '',
       region: '',
-      image_id: '',
+      image_id: undefined,
     },
     onSubmit: async (data) => {
       onSubmit(data);
@@ -78,7 +81,7 @@ export function CreateVMDialog({
     onCredentialChange(value);
     const credential = credentials.find(c => c.id === value);
     if (credential) {
-      setValue('provider', credential.provider);
+      setValue('provider', credential.provider as CloudProvider);
     }
   };
 

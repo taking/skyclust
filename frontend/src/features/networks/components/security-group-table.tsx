@@ -5,10 +5,11 @@
 
 'use client';
 
+import { useMemo, useCallback } from 'react';
+import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Pagination } from '@/components/ui/pagination';
 import { SearchBar } from '@/components/ui/search-bar';
@@ -33,7 +34,7 @@ interface SecurityGroupTableProps {
   isDeleting?: boolean;
 }
 
-export function SecurityGroupTable({
+function SecurityGroupTableComponent({
   securityGroups,
   filteredSecurityGroups,
   paginatedSecurityGroups,
@@ -49,21 +50,26 @@ export function SecurityGroupTable({
   onPageSizeChange,
   isDeleting = false,
 }: SecurityGroupTableProps) {
-  const handleSelectAll = (checked: boolean) => {
+  const allSelected = useMemo(
+    () => selectedSecurityGroupIds.length === filteredSecurityGroups.length && filteredSecurityGroups.length > 0,
+    [selectedSecurityGroupIds.length, filteredSecurityGroups.length]
+  );
+
+  const handleSelectAll = useCallback((checked: boolean) => {
     if (checked) {
       onSelectionChange(filteredSecurityGroups.map(sg => sg.id));
     } else {
       onSelectionChange([]);
     }
-  };
+  }, [filteredSecurityGroups, onSelectionChange]);
 
-  const handleSelectOne = (securityGroupId: string, checked: boolean) => {
+  const handleSelectOne = useCallback((securityGroupId: string, checked: boolean) => {
     if (checked) {
       onSelectionChange([...selectedSecurityGroupIds, securityGroupId]);
     } else {
       onSelectionChange(selectedSecurityGroupIds.filter(id => id !== securityGroupId));
     }
-  };
+  }, [selectedSecurityGroupIds, onSelectionChange]);
 
   return (
     <Card>
@@ -87,7 +93,7 @@ export function SecurityGroupTable({
             <TableRow>
               <TableHead className="w-12">
                 <Checkbox
-                  checked={selectedSecurityGroupIds.length === filteredSecurityGroups.length && filteredSecurityGroups.length > 0}
+                  checked={allSelected}
                   onCheckedChange={handleSelectAll}
                 />
               </TableHead>
@@ -150,4 +156,6 @@ export function SecurityGroupTable({
     </Card>
   );
 }
+
+export const SecurityGroupTable = React.memo(SecurityGroupTableComponent);
 

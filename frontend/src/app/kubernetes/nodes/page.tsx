@@ -5,54 +5,56 @@
 
 'use client';
 
-import { useState, useMemo } from 'react';
+import { Suspense } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
+import { ResourceListPage } from '@/components/common/resource-list-page';
+import { usePagination } from '@/hooks/use-pagination';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { FilterConfig, FilterValue } from '@/components/ui/filter-panel';
+import { Filter } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { kubernetesService } from '@/features/kubernetes';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useCredentials } from '@/hooks/use-credentials';
-import { Building2, Search } from 'lucide-react';
-import { CloudProvider, Node } from '@/lib/types';
-import { useRequireAuth } from '@/hooks/use-auth';
+import { Building2 } from 'lucide-react';
+import { Node } from '@/lib/types';
 import { DataProcessor } from '@/lib/data-processor';
-import { SearchBar } from '@/components/ui/search-bar';
-import { useSSEMonitoring } from '@/hooks/use-sse-monitoring';
-import { Pagination } from '@/components/ui/pagination';
-import { usePagination } from '@/hooks/use-pagination';
-import { TableSkeleton } from '@/components/ui/table-skeleton';
-import { WorkspaceRequired } from '@/components/common/workspace-required';
-import { Layout } from '@/components/layout/layout';
 import { CredentialRequiredState } from '@/components/common/credential-required-state';
 import { ResourceEmptyState } from '@/components/common/resource-empty-state';
 import { useCredentialContext } from '@/hooks/use-credential-context';
+import { useCredentialAutoSelect } from '@/hooks/use-credential-auto-select';
 import { queryKeys } from '@/lib/query-keys';
 import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
 import { useTranslation } from '@/hooks/use-translation';
 import { UI } from '@/lib/constants';
 
-export default function NodesPage() {
+function NodesPageContent() {
   const { t } = useTranslation();
   const { currentWorkspace } = useWorkspaceStore();
-  const router = useRouter();
-  const { isLoading: authLoading } = useRequireAuth();
 
   // Get credential context from global store
   const { selectedCredentialId, selectedRegion } = useCredentialContext();
+  
+  // Auto-select credential if not selected
+  useCredentialAutoSelect({
+    enabled: !!currentWorkspace,
+    resourceType: 'kubernetes',
+    updateUrl: true,
+  });
 
   const [selectedClusterName, setSelectedClusterName] = useState<string>('');
+  const [filters, setFilters] = useState<FilterValue>({});
+  const [showFilters, setShowFilters] = useState(false);
   const [pageSize, setPageSize] = useState(UI.PAGINATION.DEFAULT_PAGE_SIZE);
 
-  useSSEMonitoring();
-
   // Fetch credentials using unified hook
-  const { credentials, selectedCredential, selectedProvider } = useCredentials({
+  const { credentials, selectedProvider } = useCredentials({
     workspaceId: currentWorkspace?.id,
     selectedCredentialId: selectedCredentialId || undefined,
   });
@@ -82,23 +84,33 @@ export default function NodesPage() {
 
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Custom filter function for node filtering (memoized)
+  const filterFn = useCallback((node: Node, filters: FilterValue): boolean => {
+    if (filters.status && node.status !== filters.status) return false;
+    return true;
+  }, []);
+
   // Filtered nodes using DataProcessor (memoized for consistency)
   const filteredNodes = useMemo(() => {
-    return DataProcessor.search(nodes, searchQuery, {
+    let result = DataProcessor.search(nodes, searchQuery, {
       keys: ['name', 'cluster_name', 'status', 'private_ip', 'public_ip'],
       threshold: 0.3,
     });
-  }, [nodes, searchQuery]);
 
-  const clearSearch = () => {
+    result = DataProcessor.filter(result, filters, filterFn);
+    
+    return result;
+  }, [nodes, searchQuery, filters, filterFn]);
+
+  const isSearching = searchQuery.length > 0;
+
+  const clearSearch = useCallback(() => {
     setSearchQuery('');
-  };
+  }, []);
 
   // Pagination
   const {
-    page,
     paginatedItems: paginatedNodes,
-    setPage,
     setPageSize: setPaginationPageSize,
   } = usePagination(filteredNodes, {
     totalItems: filteredNodes.length,
@@ -106,31 +118,86 @@ export default function NodesPage() {
     initialPageSize: pageSize,
   });
 
-  const handlePageSizeChange = (newSize: number) => {
+  const handlePageSizeChange = useCallback((newSize: number) => {
     setPageSize(newSize);
     setPaginationPageSize(newSize);
-  };
+  }, [setPaginationPageSize]);
+
+  // Filter configurations
+  const filterConfigs: FilterConfig[] = useMemo(() => [
+    {
+      id: 'status',
+      label: t('filters.status'),
+      type: 'select',
+      options: [
+        { id: 'Ready', value: 'Ready', label: t('filters.active') },
+        { id: 'NotReady', value: 'NotReady', label: t('filters.inactive') },
+        { id: 'Unknown', value: 'Unknown', label: t('filters.unknown') },
+      ],
+    },
+  ], [t]);
 
   // Header component
   const header = (
-    <div className="flex items-center justify-between">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">{t('kubernetes.nodes')}</h1>
-        <p className="text-gray-600 mt-1">
-          {currentWorkspace 
-            ? t('kubernetes.manageNodesWithWorkspace', { workspaceName: currentWorkspace.name }) 
-            : t('kubernetes.manageNodes')
-          }
-        </p>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">{t('kubernetes.nodes')}</h1>
+          <p className="text-gray-600 mt-1">
+            {currentWorkspace 
+              ? t('kubernetes.manageNodesWithWorkspace', { workspaceName: currentWorkspace.name }) 
+              : t('kubernetes.manageNodes')
+            }
+          </p>
+        </div>
+        <div className="flex items-center space-x-2">
+          {/* Credential selection is now handled in Header */}
+        </div>
       </div>
-      <div className="flex items-center space-x-2">
-        {/* Credential selection is now handled in Header */}
-      </div>
+      
+      {/* Configuration Card - Cluster Selection */}
+      {selectedProvider && selectedCredentialId && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('common.configuration')}</CardTitle>
+            <CardDescription>{t('kubernetes.selectClusterToViewNodes')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <Label>{t('kubernetes.cluster')} *</Label>
+              <Select
+                value={selectedClusterName}
+                onValueChange={setSelectedClusterName}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={t('kubernetes.selectCluster')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {clusters.length === 0 ? (
+                    <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                      {t('kubernetes.noClustersFound')}
+                    </div>
+                  ) : (
+                    clusters.map((cluster) => (
+                      <SelectItem key={cluster.name} value={cluster.name}>
+                        {cluster.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 
-  // Empty state
-  const emptyState = credentials.length === 0 ? (
+  // Determine empty state
+  const isEmpty = !selectedProvider || !selectedCredentialId || !selectedClusterName || !selectedRegion || filteredNodes.length === 0;
+
+  // Empty state component
+  const emptyStateComponent = credentials.length === 0 ? (
     <CredentialRequiredState serviceName={t('kubernetes.title')} />
   ) : !selectedProvider || !selectedCredentialId ? (
     <CredentialRequiredState
@@ -159,150 +226,117 @@ export default function NodesPage() {
     />
   ) : null;
 
-  // Content component
-  const content = selectedProvider && selectedCredentialId && selectedClusterName && selectedRegion && filteredNodes.length > 0 ? (
-    <>
-      <Card>
-        <CardHeader>
-          <CardTitle>Nodes</CardTitle>
-          <CardDescription>
-            {filteredNodes.length} of {nodes.length} node{nodes.length !== 1 ? 's' : ''} found
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-4">
-            <SearchBar
-              value={searchQuery}
-              onChange={setSearchQuery}
-              onClear={clearSearch}
-              placeholder="Search nodes by name, cluster, status, or IP..."
-            />
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Cluster</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Instance Type</TableHead>
-                <TableHead>Zone</TableHead>
-                <TableHead>Private IP</TableHead>
-                <TableHead>Public IP</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedNodes.map((node) => (
-                <TableRow key={node.id}>
-                  <TableCell className="font-medium">{node.name}</TableCell>
-                  <TableCell>{node.cluster_name}</TableCell>
-                  <TableCell>
-                    <Badge variant={node.status === 'Ready' ? 'default' : 'secondary'}>
-                      {node.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{node.instance_type}</TableCell>
-                  <TableCell>{node.zone || '-'}</TableCell>
-                  <TableCell>{node.private_ip || '-'}</TableCell>
-                  <TableCell>{node.public_ip || '-'}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          
-          {filteredNodes.length > 0 && (
-            <div className="border-t mt-4">
-              <Pagination
-                total={filteredNodes.length}
-                page={page}
-                pageSize={pageSize}
-                onPageChange={setPage}
-                onPageSizeChange={handlePageSizeChange}
-                pageSizeOptions={UI.PAGINATION.PAGE_SIZE_OPTIONS}
-                showPageSizeSelector={true}
-              />
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </>
-  ) : emptyState;
-
-  if (authLoading) {
-    return (
-      <WorkspaceRequired>
-        <Layout>
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-              <p className="mt-2 text-gray-600">{t('common.loading')}</p>
-            </div>
-          </div>
-        </Layout>
-      </WorkspaceRequired>
-    );
-  }
-
   return (
-    <WorkspaceRequired>
-      <Layout>
-        <div className="space-y-6">
-          {header}
-          
-          {/* Configuration */}
-          {selectedProvider && selectedCredentialId && (
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('common.configuration')}</CardTitle>
-                <CardDescription>{t('kubernetes.selectClusterRegionCredentialToViewNodes')}</CardDescription>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>{t('kubernetes.cluster')} *</Label>
-                  <Select
-                    value={selectedClusterName}
-                    onValueChange={setSelectedClusterName}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={t('kubernetes.selectCluster')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clusters.map((cluster) => (
-                        <SelectItem key={cluster.name} value={cluster.name}>
-                          {cluster.name}
-                        </SelectItem>
+    <ResourceListPage
+        title={t('kubernetes.nodes')}
+        resourceName={t('kubernetes.nodes')}
+        storageKey="kubernetes-nodes-page"
+        header={header}
+        items={filteredNodes}
+        isLoading={isLoadingNodes}
+        isEmpty={isEmpty}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        onSearchClear={clearSearch}
+        isSearching={isSearching}
+        searchPlaceholder="Search nodes by name, cluster, status, or IP..."
+        filterConfigs={selectedCredentialId && selectedClusterName && nodes.length > 0 ? filterConfigs : []}
+        filters={filters}
+        onFiltersChange={setFilters}
+        onFiltersClear={() => setFilters({})}
+        showFilters={showFilters}
+        onToggleFilters={() => setShowFilters(!showFilters)}
+        filterCount={Object.keys(filters).length}
+        additionalControls={
+          selectedCredentialId && selectedClusterName && nodes.length > 0 ? (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center"
+              >
+                <Filter className="mr-2 h-4 w-4" />
+                Filters
+                {Object.keys(filters).length > 0 && (
+                  <span className="ml-2 px-2 py-1 bg-gray-100 rounded text-sm">
+                    {Object.keys(filters).length}
+                  </span>
+                )}
+              </Button>
+            </>
+          ) : null
+        }
+        emptyState={emptyStateComponent}
+        content={
+          selectedProvider && selectedCredentialId && selectedClusterName && selectedRegion && filteredNodes.length > 0 ? (
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Nodes</CardTitle>
+                  <CardDescription>
+                    {filteredNodes.length} of {nodes.length} node{nodes.length !== 1 ? 's' : ''} 
+                    {isSearching && ` (${searchQuery})`}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Cluster</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Instance Type</TableHead>
+                        <TableHead>Zone</TableHead>
+                        <TableHead>Private IP</TableHead>
+                        <TableHead>Public IP</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedNodes.map((node) => (
+                        <TableRow key={node.id}>
+                          <TableCell className="font-medium">{node.name}</TableCell>
+                          <TableCell>{node.cluster_name}</TableCell>
+                          <TableCell>
+                            <Badge variant={node.status === 'Ready' ? 'default' : 'secondary'}>
+                              {node.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{node.instance_type}</TableCell>
+                          <TableCell>{node.zone || '-'}</TableCell>
+                          <TableCell>{node.private_ip || '-'}</TableCell>
+                          <TableCell>{node.public_ip || '-'}</TableCell>
+                        </TableRow>
                       ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>{t('region.select')} *</Label>
-                  <Input
-                    placeholder={t('region.placeholder')}
-                    value={selectedRegion || ''}
-                    readOnly
-                    className="bg-muted"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {t('network.regionSelectionHandledInHeader')}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </>
+          ) : emptyStateComponent
+        }
+        pageSize={pageSize}
+        onPageSizeChange={handlePageSizeChange}
+        searchResultsCount={filteredNodes.length}
+        skeletonColumns={7}
+        skeletonRows={5}
+      showFilterButton={false}
+      showSearchResultsInfo={false}
+      />
+  );
+}
 
-          {/* Content */}
-          {isLoadingNodes ? (
-            <Card>
-              <CardContent className="pt-6">
-                <TableSkeleton columns={7} rows={5} />
-              </CardContent>
-            </Card>
-          ) : (
-            content
-          )}
+export default function NodesPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-2 text-gray-600">Loading...</p>
         </div>
-      </Layout>
-    </WorkspaceRequired>
+      </div>
+    }>
+      <NodesPageContent />
+    </Suspense>
   );
 }
 

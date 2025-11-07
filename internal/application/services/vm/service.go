@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	computeservice "skyclust/internal/application/services/compute"
+	"skyclust/internal/application/services/common"
 	"skyclust/internal/domain"
 	"skyclust/internal/infrastructure/messaging"
 	"skyclust/pkg/cache"
@@ -14,7 +15,7 @@ import (
 	"skyclust/pkg/logger"
 )
 
-// Service implements the VMService interface
+// Service: domain.VMService 인터페이스 구현체
 type Service struct {
 	vmRepo        domain.VMRepository
 	workspaceRepo domain.WorkspaceRepository
@@ -28,7 +29,7 @@ type Service struct {
 	logger        *zap.Logger
 }
 
-// NewService creates a new VMService
+// NewService: 새로운 VMService를 생성합니다
 func NewService(
 	vmRepo domain.VMRepository,
 	workspaceRepo domain.WorkspaceRepository,
@@ -55,7 +56,7 @@ func NewService(
 	}
 }
 
-// CreateVM creates a new virtual machine
+// CreateVM: 새로운 가상 머신을 생성합니다
 func (s *Service) CreateVM(ctx context.Context, req domain.CreateVMRequest) (*domain.VM, error) {
 	// Validate request
 	if err := req.Validate(); err != nil {
@@ -161,6 +162,19 @@ func (s *Service) CreateVM(ctx context.Context, req domain.CreateVMRequest) (*do
 		_ = s.eventPublisher.PublishVMEvent(ctx, vm.Provider, vm.WorkspaceID, vm.ID, "created", vmData)
 	}
 
+	// 감사로그 기록
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionVMCreate,
+		fmt.Sprintf("POST /api/v1/vms"),
+		map[string]interface{}{
+			"vm_id":        vm.ID,
+			"workspace_id": vm.WorkspaceID,
+			"provider":     vm.Provider,
+			"name":         vm.Name,
+			"region":       vm.Region,
+			"type":         vm.Type,
+		},
+	)
+
 	logger.Info(fmt.Sprintf("VM created successfully: %s (%s) - %s", vm.ID, vm.Name, vm.Provider))
 	return vm, nil
 }
@@ -206,7 +220,7 @@ func (s *Service) GetVM(ctx context.Context, id string) (*domain.VM, error) {
 	return vm, nil
 }
 
-// UpdateVM updates a VM
+// UpdateVM: VM 정보를 업데이트합니다
 func (s *Service) UpdateVM(ctx context.Context, id string, req domain.UpdateVMRequest) (*domain.VM, error) {
 	// Validate request
 	if err := req.Validate(); err != nil {
@@ -272,11 +286,22 @@ func (s *Service) UpdateVM(ctx context.Context, id string, req domain.UpdateVMRe
 		_ = s.eventPublisher.PublishVMEvent(ctx, vm.Provider, vm.WorkspaceID, vm.ID, "updated", vmData)
 	}
 
+	// 감사로그 기록
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionVMUpdate,
+		fmt.Sprintf("PUT /api/v1/vms/%s", id),
+		map[string]interface{}{
+			"vm_id":        vm.ID,
+			"workspace_id": vm.WorkspaceID,
+			"provider":     vm.Provider,
+			"name":         vm.Name,
+		},
+	)
+
 	logger.Info(fmt.Sprintf("VM updated successfully: %s", vm.ID))
 	return vm, nil
 }
 
-// DeleteVM deletes a VM
+// DeleteVM: VM을 삭제합니다
 func (s *Service) DeleteVM(ctx context.Context, id string) error {
 	// Get VM
 	vm, err := s.vmRepo.GetByID(ctx, id)
@@ -343,11 +368,22 @@ func (s *Service) DeleteVM(ctx context.Context, id string) error {
 		_ = s.eventPublisher.PublishVMEvent(ctx, vm.Provider, vm.WorkspaceID, vm.ID, "deleted", vmData)
 	}
 
+	// 감사로그 기록
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionVMDelete,
+		fmt.Sprintf("DELETE /api/v1/vms/%s", id),
+		map[string]interface{}{
+			"vm_id":        vm.ID,
+			"workspace_id": vm.WorkspaceID,
+			"provider":     vm.Provider,
+			"name":         vm.Name,
+		},
+	)
+
 	logger.Info(fmt.Sprintf("VM deleted successfully: %s", vm.ID))
 	return nil
 }
 
-// GetVMs lists VMs for a workspace
+// GetVMs: 워크스페이스의 VM 목록을 조회합니다
 func (s *Service) GetVMs(ctx context.Context, workspaceID string) ([]*domain.VM, error) {
 	// 캐시 키 생성
 	cacheKey := s.keyBuilder.BuildVMListKey(workspaceID)
@@ -385,7 +421,7 @@ func (s *Service) GetVMs(ctx context.Context, workspaceID string) ([]*domain.VM,
 	return vms, nil
 }
 
-// StartVM starts a VM
+// StartVM: VM을 시작합니다
 func (s *Service) StartVM(ctx context.Context, id string) error {
 	vm, err := s.vmRepo.GetByID(ctx, id)
 	if err != nil {
@@ -440,11 +476,22 @@ func (s *Service) StartVM(ctx context.Context, id string) error {
 		_ = s.eventPublisher.PublishVMEvent(ctx, vm.Provider, vm.WorkspaceID, vm.ID, "updated", vmData)
 	}
 
+	// 감사로그 기록
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionVMStart,
+		fmt.Sprintf("POST /api/v1/vms/%s/start", id),
+		map[string]interface{}{
+			"vm_id":        vm.ID,
+			"workspace_id": vm.WorkspaceID,
+			"provider":     vm.Provider,
+			"name":         vm.Name,
+		},
+	)
+
 	logger.Info(fmt.Sprintf("VM start initiated: %s", id))
 	return nil
 }
 
-// StopVM stops a VM
+// StopVM: VM을 중지합니다
 func (s *Service) StopVM(ctx context.Context, id string) error {
 	vm, err := s.vmRepo.GetByID(ctx, id)
 	if err != nil {
@@ -499,11 +546,22 @@ func (s *Service) StopVM(ctx context.Context, id string) error {
 		_ = s.eventPublisher.PublishVMEvent(ctx, vm.Provider, vm.WorkspaceID, vm.ID, "updated", vmData)
 	}
 
+	// 감사로그 기록
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionVMStop,
+		fmt.Sprintf("POST /api/v1/vms/%s/stop", id),
+		map[string]interface{}{
+			"vm_id":        vm.ID,
+			"workspace_id": vm.WorkspaceID,
+			"provider":     vm.Provider,
+			"name":         vm.Name,
+		},
+	)
+
 	logger.Info(fmt.Sprintf("VM stop initiated: %s", id))
 	return nil
 }
 
-// RestartVM restarts a VM
+// RestartVM: VM을 재시작합니다
 func (s *Service) RestartVM(ctx context.Context, id string) error {
 	vm, err := s.vmRepo.GetByID(ctx, id)
 	if err != nil {
@@ -563,11 +621,22 @@ func (s *Service) RestartVM(ctx context.Context, id string) error {
 		_ = s.eventPublisher.PublishVMEvent(ctx, vm.Provider, vm.WorkspaceID, vm.ID, "updated", vmData)
 	}
 
+	// 감사로그 기록
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionVMRestart,
+		fmt.Sprintf("POST /api/v1/vms/%s/restart", id),
+		map[string]interface{}{
+			"vm_id":        vm.ID,
+			"workspace_id": vm.WorkspaceID,
+			"provider":     vm.Provider,
+			"name":         vm.Name,
+		},
+	)
+
 	logger.Info(fmt.Sprintf("VM restart initiated: %s", id))
 	return nil
 }
 
-// GetVMStatus gets the current status of a VM
+// GetVMStatus: VM의 현재 상태를 조회합니다
 func (s *Service) GetVMStatus(ctx context.Context, id string) (domain.VMStatus, error) {
 	vm, err := s.vmRepo.GetByID(ctx, id)
 	if err != nil {

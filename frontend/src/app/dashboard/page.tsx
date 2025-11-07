@@ -1,25 +1,28 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import dynamic from 'next/dynamic';
+import { useState, useEffect, Suspense } from 'react';
+import dynamicImport from 'next/dynamic';
 import { Layout } from '@/components/layout/layout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useWorkspaceStore } from '@/store/workspace';
-import { useRouter } from 'next/navigation';
 import { WidgetData, WidgetType, WidgetSize, WIDGET_CONFIGS } from '@/lib/widgets';
-import { Server, Key, Users, Settings, RefreshCw } from 'lucide-react';
+import { Server, Key, Users, Settings, RefreshCw, Container } from 'lucide-react';
 import { workspaceService } from '@/features/workspaces';
 import { useQuery } from '@tanstack/react-query';
 import { WorkspaceRequired } from '@/components/common/workspace-required';
 import { queryKeys } from '@/lib/query-keys';
 import { useTranslation } from '@/hooks/use-translation';
+import { API } from '@/lib/constants';
+import { useCredentialContext } from '@/hooks/use-credential-context';
+import { useCredentialAutoSelect } from '@/hooks/use-credential-auto-select';
+import { useDashboardSummary } from '@/features/dashboard/hooks/use-dashboard-summary';
 
-import { Spinner, WidgetSkeleton } from '@/components/ui/loading-states';
+import { Spinner } from '@/components/ui/loading-states';
 
 // Dynamic imports for heavy components
-const DraggableDashboard = dynamic(
+const DraggableDashboard = dynamicImport(
   () => import('@/components/dashboard/draggable-dashboard').then(mod => ({ default: mod.DraggableDashboard })),
   { 
     ssr: false,
@@ -31,7 +34,7 @@ const DraggableDashboard = dynamic(
   }
 );
 
-const WidgetAddPanel = dynamic(
+const WidgetAddPanel = dynamicImport(
   () => import('@/components/dashboard/widget-add-panel').then(mod => ({ default: mod.WidgetAddPanel })),
   { 
     ssr: false,
@@ -43,14 +46,14 @@ const WidgetAddPanel = dynamic(
   }
 );
 
-const WidgetConfigDialog = dynamic(
+const WidgetConfigDialog = dynamicImport(
   () => import('@/components/dashboard/widget-config-dialog').then(mod => ({ default: mod.WidgetConfigDialog })),
   { 
     ssr: false,
   }
 );
 
-const RealtimeNotifications = dynamic(
+const RealtimeNotifications = dynamicImport(
   () => import('@/components/monitoring/realtime-notifications').then(mod => ({ default: mod.RealtimeNotifications })),
   { 
     ssr: false,
@@ -66,20 +69,37 @@ const RealtimeNotifications = dynamic(
   }
 );
 
-export default function DashboardPage() {
-  const { currentWorkspace, setCurrentWorkspace, workspaces, setWorkspaces } = useWorkspaceStore();
-  const router = useRouter();
+function DashboardContent() {
+  const { currentWorkspace, setCurrentWorkspace, setWorkspaces } = useWorkspaceStore();
   const { t } = useTranslation();
+  const { selectedCredentialId, selectedRegion } = useCredentialContext();
   const [widgets, setWidgets] = useState<WidgetData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [configuringWidget, setConfiguringWidget] = useState<WidgetData | null>(null);
+
+  // Auto-select credential if not selected (like compute, kubernetes, networks pages)
+  useCredentialAutoSelect({
+    enabled: !!currentWorkspace,
+    resourceType: 'compute', // Dashboard shows multiple resources, but use 'compute' as default
+    updateUrl: true,
+  });
+
+  // 대시보드 요약 정보 조회
+  // 멤버 통계는 credential 선택과 무관하므로 항상 조회
+  // credentialId와 region은 VM, Cluster, Network 통계에만 사용됨
+  const { data: dashboardSummary, isLoading: isLoadingSummary } = useDashboardSummary({
+    workspaceId: currentWorkspace?.id || '',
+    credentialId: selectedCredentialId || undefined, // VM, Cluster, Network 통계용
+    region: selectedRegion || undefined, // VM, Cluster, Network 통계용
+    enabled: !!currentWorkspace?.id, // 워크스페이스만 있으면 조회 (credential 선택 불필요)
+  });
 
   // Fetch workspaces
   const { data: fetchedWorkspaces = [], isLoading: isLoadingWorkspaces } = useQuery({
     queryKey: queryKeys.workspaces.list(),
     queryFn: () => workspaceService.getWorkspaces(),
-    retry: 3,
-    retryDelay: 1000,
+    retry: API.REQUEST.MAX_RETRIES,
+    retryDelay: API.REQUEST.RETRY_DELAY,
   });
 
   // Auto-select first workspace if available and none is selected
@@ -294,9 +314,34 @@ export default function DashboardPage() {
               <Server className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">0</div>
+              <div className="text-2xl font-bold">
+                {isLoadingSummary ? (
+                  <Spinner size="sm" />
+                ) : (
+                  dashboardSummary?.vms.total ?? 0
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">
                 {t('dashboard.vmsDescription')}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">{t('dashboard.clusters')}</CardTitle>
+              <Container className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {isLoadingSummary ? (
+                  <Spinner size="sm" />
+                ) : (
+                  dashboardSummary?.clusters.total ?? 0
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t('dashboard.clustersDescription')}
               </p>
             </CardContent>
           </Card>
@@ -307,13 +352,18 @@ export default function DashboardPage() {
               <Key className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">0</div>
+              <div className="text-2xl font-bold">
+                {isLoadingSummary ? (
+                  <Spinner size="sm" />
+                ) : (
+                  dashboardSummary?.credentials.total ?? 0
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">
                 {t('dashboard.credentialsDescription')}
               </p>
             </CardContent>
           </Card>
-
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -321,7 +371,13 @@ export default function DashboardPage() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">1</div>
+              <div className="text-2xl font-bold">
+                {isLoadingSummary ? (
+                  <Spinner size="sm" />
+                ) : (
+                  dashboardSummary?.members.total ?? 0
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">
                 {t('dashboard.membersDescription')}
               </p>
@@ -388,5 +444,22 @@ export default function DashboardPage() {
       </div>
     </Layout>
     </WorkspaceRequired>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={
+      <Layout>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+            <p className="mt-2 text-gray-600">Loading...</p>
+          </div>
+        </div>
+      </Layout>
+    }>
+      <DashboardContent />
+    </Suspense>
   );
 }

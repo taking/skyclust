@@ -7,7 +7,6 @@
 
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import { DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,15 +14,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { CreateVMForm, Credential } from '@/lib/types';
-
-const createVMSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  provider: z.string().min(1, 'Provider is required'),
-  instance_type: z.string().min(1, 'Instance type is required'),
-  region: z.string().min(1, 'Region is required'),
-  image_id: z.string().min(1, 'Image ID is required'),
-});
+import { createValidationSchemas } from '@/lib/validations';
+import type { CreateVMForm, Credential, CloudProvider } from '@/lib/types';
+import { useTranslation } from '@/hooks/use-translation';
 
 interface CreateVMDialogProps {
   open: boolean;
@@ -36,7 +29,7 @@ interface CreateVMDialogProps {
 }
 
 export function CreateVMDialog({
-  open,
+  open: _open,
   onOpenChange,
   onSubmit,
   credentials,
@@ -44,6 +37,8 @@ export function CreateVMDialog({
   onCredentialChange,
   isPending = false,
 }: CreateVMDialogProps) {
+  const { t } = useTranslation();
+  const schemas = createValidationSchemas(t);
   const {
     register,
     handleSubmit,
@@ -51,7 +46,7 @@ export function CreateVMDialog({
     reset,
     setValue,
   } = useForm<CreateVMForm>({
-    resolver: zodResolver(createVMSchema),
+    resolver: zodResolver(schemas.createVMSchema),
     mode: 'onChange',
   });
 
@@ -119,7 +114,7 @@ export function CreateVMDialog({
                 onCredentialChange(value);
                 const credential = credentials.find(c => c.id === value);
                 if (credential) {
-                  setValue('provider', credential.provider);
+                  setValue('provider', credential.provider as CloudProvider);
                 }
               }}
             >

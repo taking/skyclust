@@ -27,3 +27,8 @@ export interface CreateWorkspaceForm {
   description: string;
 }
 
+export interface UpdateWorkspaceForm {
+  name?: string;
+  description?: string;
+}
+

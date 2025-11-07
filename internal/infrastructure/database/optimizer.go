@@ -49,16 +49,13 @@ func (o *DatabaseOptimizer) CreateIndexes() error {
 func (o *DatabaseOptimizer) createUserIndexes() error {
 	indexes := []string{
 		// Primary lookup indexes
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_email ON users(email) WHERE deleted_at IS NULL",
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_username ON users(username) WHERE deleted_at IS NULL",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_email ON users(email)",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_username ON users(username)",
 		// Temporarily disabled until schema is aligned: idx_users_active
 
 		// Composite indexes for common queries
 		// Temporarily disabled until schema is aligned: idx_users_active_created
 		// Temporarily disabled until schema is aligned: idx_users_email_active
-
-		// Soft delete optimization
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_deleted_at ON users(deleted_at)",
 	}
 
 	for _, indexSQL := range indexes {
@@ -74,16 +71,13 @@ func (o *DatabaseOptimizer) createUserIndexes() error {
 func (o *DatabaseOptimizer) createWorkspaceIndexes() error {
 	indexes := []string{
 		// Primary lookup indexes
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_workspaces_name ON workspaces(name) WHERE deleted_at IS NULL",
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_workspaces_owner_id ON workspaces(owner_id) WHERE deleted_at IS NULL",
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_workspaces_active ON workspaces(is_active) WHERE deleted_at IS NULL",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_workspaces_name ON workspaces(name)",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_workspaces_owner_id ON workspaces(owner_id)",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_workspaces_active ON workspaces(is_active)",
 
 		// Composite indexes for common queries
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_workspaces_owner_active ON workspaces(owner_id, is_active) WHERE deleted_at IS NULL",
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_workspaces_name_owner ON workspaces(name, owner_id) WHERE deleted_at IS NULL",
-
-		// Soft delete optimization
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_workspaces_deleted_at ON workspaces(deleted_at)",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_workspaces_owner_active ON workspaces(owner_id, is_active)",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_workspaces_name_owner ON workspaces(name, owner_id)",
 	}
 
 	for _, indexSQL := range indexes {
@@ -99,17 +93,14 @@ func (o *DatabaseOptimizer) createWorkspaceIndexes() error {
 func (o *DatabaseOptimizer) createCredentialIndexes() error {
 	indexes := []string{
 		// Primary lookup indexes
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_credentials_user_id ON credentials(user_id) WHERE deleted_at IS NULL",
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_credentials_provider ON credentials(provider) WHERE deleted_at IS NULL",
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_credentials_active ON credentials(is_active) WHERE deleted_at IS NULL",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_credentials_user_id ON credentials(user_id)",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_credentials_provider ON credentials(provider)",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_credentials_active ON credentials(is_active)",
 
 		// Composite indexes for common queries
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_credentials_user_provider ON credentials(user_id, provider) WHERE deleted_at IS NULL",
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_credentials_user_active ON credentials(user_id, is_active) WHERE deleted_at IS NULL",
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_credentials_provider_active ON credentials(provider, is_active) WHERE deleted_at IS NULL",
-
-		// Soft delete optimization
-		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_credentials_deleted_at ON credentials(deleted_at)",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_credentials_user_provider ON credentials(user_id, provider)",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_credentials_user_active ON credentials(user_id, is_active)",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_credentials_provider_active ON credentials(provider, is_active)",
 	}
 
 	for _, indexSQL := range indexes {
@@ -288,18 +279,8 @@ func (o *DatabaseOptimizer) CleanupOldData() error {
 		return fmt.Errorf("failed to cleanup old audit logs: %w", err)
 	}
 
-	// Clean up soft-deleted records (older than 30 days)
-	if err := o.db.Where("deleted_at < ?", time.Now().AddDate(0, 0, -30)).Delete(&domain.User{}).Error; err != nil {
-		return fmt.Errorf("failed to cleanup soft-deleted users: %w", err)
-	}
-
-	if err := o.db.Where("deleted_at < ?", time.Now().AddDate(0, 0, -30)).Delete(&domain.Workspace{}).Error; err != nil {
-		return fmt.Errorf("failed to cleanup soft-deleted workspaces: %w", err)
-	}
-
-	if err := o.db.Where("deleted_at < ?", time.Now().AddDate(0, 0, -30)).Delete(&domain.Credential{}).Error; err != nil {
-		return fmt.Errorf("failed to cleanup soft-deleted credentials: %w", err)
-	}
+	// Note: Soft delete has been removed, so no cleanup of soft-deleted records is needed
+	// Records are now permanently deleted when Delete() is called
 
 	return nil
 }

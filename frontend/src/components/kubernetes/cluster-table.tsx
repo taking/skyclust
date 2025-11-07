@@ -81,7 +81,7 @@ export function ClusterTable({
               <TableHead>Actions</TableHead>
             </TableRow>
           )}
-          renderRow={(item, index) => {
+          renderRow={(item) => {
             const cluster = item as KubernetesCluster;
             const clusterId = cluster.id || cluster.name;
             const isSelected = selectedIds.includes(clusterId);

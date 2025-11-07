@@ -3,7 +3,7 @@
  * 클러스터 필터링 및 검색 로직
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { DataProcessor } from '@/lib/data-processor';
 import type { KubernetesCluster } from '@/lib/types';
 import type { FilterValue } from '@/components/ui/filter-panel';
@@ -42,8 +42,8 @@ export function useClusterFilters({
     return result;
   }, [clusters]);
 
-  // Custom filter function for cluster-specific filtering including tags
-  const filterFn = (cluster: KubernetesCluster, filters: FilterValue): boolean => {
+  // Custom filter function for cluster-specific filtering including tags (memoized)
+  const filterFn = useCallback((cluster: KubernetesCluster, filters: FilterValue): boolean => {
     if (filters.status && cluster.status !== filters.status) return false;
     if (filters.region && cluster.region !== filters.region) return false;
     
@@ -60,9 +60,9 @@ export function useClusterFilters({
     }
     
     return true;
-  };
+  }, [tagFilters]);
 
-  // Apply search and filter using DataProcessor
+  // Apply search and filter using DataProcessor (memoized)
   const filteredClusters = useMemo(() => {
     let result = DataProcessor.search(clusters, searchQuery, {
       keys: ['name', 'version', 'status', 'region'],
@@ -73,13 +73,13 @@ export function useClusterFilters({
     result = DataProcessor.filter(result, filters, filterFn);
     
     return result;
-  }, [clusters, searchQuery, filters, tagFilters]);
+  }, [clusters, searchQuery, filters, filterFn]);
 
   const isSearching = searchQuery.length > 0;
 
-  const clearSearch = () => {
+  const clearSearch = useCallback(() => {
     setSearchQuery('');
-  };
+  }, [setSearchQuery]);
 
   return {
     searchQuery,

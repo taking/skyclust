@@ -114,5 +114,50 @@ export const TIME = {
     INPUT: 500,
     RESIZE: 250,
   },
+  // Delays
+  DELAY: {
+    AUTH_HYDRATION: 300, // Auth hydration delay
+    REGISTER_REDIRECT: 2000, // Register success redirect delay
+    MIN_RECONNECT: 1000, // Minimum reconnection delay
+    MAX_RECONNECT: 30000, // Maximum reconnection delay
+  },
+  // Retry
+  RETRY: {
+    DEFAULT_INTERVAL: 5000, // Default retry interval
+    ERROR_HANDLER_DELAY: 1000, // Error handler retry delay
+    DEFAULT_COUNT: 3, // Default retry count
+  },
+} as const;
+
+/**
+ * Connection Constants
+ * 연결 관련 상수
+ */
+export const CONNECTION = {
+  // SSE (Server-Sent Events)
+  SSE: {
+    MAX_RECONNECT_ATTEMPTS: 10,
+    BASE_RECONNECT_DELAY: TIME.DELAY.MIN_RECONNECT,
+    MAX_RECONNECT_DELAY: TIME.DELAY.MAX_RECONNECT,
+  },
+  // Offline Queue
+  OFFLINE_QUEUE: {
+    MAX_RETRIES: TIME.RETRY.DEFAULT_COUNT,
+    RETRY_INTERVAL: TIME.RETRY.DEFAULT_INTERVAL,
+    MAX_QUEUE_SIZE: 100,
+  },
+} as const;
+
+/**
+ * API Constants
+ * API 관련 상수
+ */
+export const API = {
+  // Request/Response
+  REQUEST: {
+    DEFAULT_TIMEOUT: 30000, // 30 seconds
+    MAX_RETRIES: TIME.RETRY.DEFAULT_COUNT,
+    RETRY_DELAY: TIME.RETRY.ERROR_HANDLER_DELAY,
+  },
 } as const;
 

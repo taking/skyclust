@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { UseVirtualizerOptions } from '@tanstack/react-virtual';
 
 interface UseVirtualListOptions<T> {
   items: T[];

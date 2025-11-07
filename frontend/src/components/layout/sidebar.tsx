@@ -37,13 +37,14 @@ import * as z from 'zod';
 import { queryKeys } from '@/lib/query-keys';
 import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
 import { useTranslation } from '@/hooks/use-translation';
+import { CredentialSelector } from './credential-selector';
 
 const createWorkspaceSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),
   description: z.string().min(1, 'Description is required').max(500, 'Description must be less than 500 characters'),
 });
 
-// Navigation structure with hierarchical menu
+// 계층적 메뉴 구조의 네비게이션
 interface NavigationItem {
   name: string;
   href?: string;
@@ -51,7 +52,7 @@ interface NavigationItem {
   children?: NavigationItem[];
 }
 
-// Navigation will be generated dynamically with translations
+// 네비게이션은 번역을 사용하여 동적으로 생성됨
 function getNavigation(t: (key: string) => string): NavigationItem[] {
   return [
     { name: t('nav.dashboard'), href: '/dashboard', icon: Home },
@@ -86,6 +87,20 @@ function getNavigation(t: (key: string) => string): NavigationItem[] {
   ];
 }
 
+/**
+ * Sidebar 컴포넌트
+ * 
+ * 메인 사이드바 네비게이션을 제공합니다.
+ * Workspace 선택, Credential 선택, 네비게이션 메뉴를 포함합니다.
+ * 
+ * @example
+ * ```tsx
+ * // Layout에서 자동으로 사용됨
+ * <Layout>
+ *   <Sidebar />  // 자동으로 렌더링됨
+ * </Layout>
+ * ```
+ */
 function SidebarComponent() {
   const { currentWorkspace, setCurrentWorkspace, workspaces, setWorkspaces } = useWorkspaceStore();
   const router = useRouter();
@@ -96,12 +111,13 @@ function SidebarComponent() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const { t } = useTranslation();
   
-  // navigation을 안전하게 생성 (t가 함수인지 확인)
+  // 1. 네비게이션 메뉴 생성: 번역 함수를 사용하여 다국어 지원
+  // t가 함수인지 확인하여 안전하게 처리
   const navigation = React.useMemo(() => {
     if (typeof t === 'function') {
       return getNavigation(t);
     }
-    // Fallback: 기본 영어 메뉴
+    // Fallback: 기본 영어 메뉴 (번역 함수가 없을 경우)
     return [
       { name: 'Dashboard', href: '/dashboard', icon: Home },
       {
@@ -135,7 +151,7 @@ function SidebarComponent() {
     ];
   }, [t]);
 
-  // Fetch workspaces
+  // 2. 워크스페이스 목록 조회 (React Query 사용)
   const { data: fetchedWorkspaces = [] } = useQuery({
     queryKey: queryKeys.workspaces.list(),
     queryFn: () => workspaceService.getWorkspaces(),
@@ -145,26 +161,66 @@ function SidebarComponent() {
     retryDelay: 1000,
   });
 
-  // Update store when workspaces are fetched
+  // 3. 워크스페이스 목록이 조회되면 스토어에 업데이트
+  // 이전 워크스페이스 목록을 추적하여 변경 시에만 업데이트
+  const prevWorkspacesRef = React.useRef<string>('');
+  const prevCurrentWorkspaceIdRef = React.useRef<string | undefined>(currentWorkspace?.id);
+  
   React.useEffect(() => {
-    if (fetchedWorkspaces.length > 0 && workspaces.length === 0) {
-      setWorkspaces(fetchedWorkspaces);
+    // 워크스페이스 목록의 ID 문자열을 생성하여 변경 감지
+    const currentWorkspacesIds = fetchedWorkspaces.map(w => w.id).sort().join(',');
+    
+    // 목록이 변경된 경우에만 스토어 업데이트
+    if (prevWorkspacesRef.current !== currentWorkspacesIds) {
+      prevWorkspacesRef.current = currentWorkspacesIds;
+      
+      if (fetchedWorkspaces.length > 0) {
+        setWorkspaces(fetchedWorkspaces);
+        
+        // 현재 워크스페이스가 없거나 삭제된 경우에만 첫 번째 워크스페이스로 자동 선택
+        // removeWorkspace가 이미 자동 전환을 처리하므로, 여기서는 유효성 검사만 수행
+        const currentWorkspaceId = currentWorkspace?.id;
+        const isCurrentWorkspaceValid = currentWorkspaceId && fetchedWorkspaces.find(w => w.id === currentWorkspaceId);
+        
+        // 이전 값과 비교하여 실제로 변경이 필요한 경우에만 업데이트
+        if ((!currentWorkspaceId || !isCurrentWorkspaceValid) && prevCurrentWorkspaceIdRef.current !== fetchedWorkspaces[0]?.id) {
+          setCurrentWorkspace(fetchedWorkspaces[0]);
+          prevCurrentWorkspaceIdRef.current = fetchedWorkspaces[0]?.id;
+        } else if (currentWorkspaceId) {
+          prevCurrentWorkspaceIdRef.current = currentWorkspaceId;
+        }
+      } else {
+        // 워크스페이스가 없으면 스토어 초기화
+        setWorkspaces([]);
+        if (currentWorkspace !== null && prevCurrentWorkspaceIdRef.current !== undefined) {
+          setCurrentWorkspace(null);
+          prevCurrentWorkspaceIdRef.current = undefined;
+        }
+      }
     }
-  }, [fetchedWorkspaces, workspaces.length, setWorkspaces]);
+    // fetchedWorkspaces만 의존성으로 사용하여 무한 루프 방지
+    // currentWorkspace는 useRef로 추적하므로 의존성에 포함하지 않음
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchedWorkspaces]);
+  
+  // currentWorkspace 변경 시 ref 업데이트 (렌더링 트리거 없이)
+  React.useEffect(() => {
+    prevCurrentWorkspaceIdRef.current = currentWorkspace?.id;
+  }, [currentWorkspace?.id]);
 
-  // Sync currentWorkspace from URL parameter for Settings/Members pages
+  // 4. Settings/Members 페이지에서 URL 파라미터로부터 현재 워크스페이스 동기화
   React.useEffect(() => {
     if (fetchedWorkspaces.length === 0) return;
     
-    // Check if we're on Settings or Members page
+    // 4-1. Settings 또는 Members 페이지인지 확인
     if (pathname.startsWith('/workspaces/') && (pathname.includes('/settings') || pathname.includes('/members'))) {
-      // Extract workspace ID from URL path
+      // 4-2. URL 경로에서 워크스페이스 ID 추출
       const match = pathname.match(/\/workspaces\/([^/]+)\/(settings|members)/);
       if (match && match[1]) {
         const urlWorkspaceId = match[1];
         const workspaceFromUrl = fetchedWorkspaces.find(w => w.id === urlWorkspaceId);
         
-        // If workspace exists and current workspace doesn't match, update it
+        // 4-3. 워크스페이스가 존재하고 현재 워크스페이스와 다르면 업데이트
         if (workspaceFromUrl && currentWorkspace?.id !== urlWorkspaceId) {
           setCurrentWorkspace(workspaceFromUrl);
         }
@@ -172,7 +228,7 @@ function SidebarComponent() {
     }
   }, [pathname, fetchedWorkspaces, currentWorkspace?.id, setCurrentWorkspace]);
 
-  // Workspace creation form
+  // 워크스페이스 생성 폼
   const {
     form,
     handleSubmit,
@@ -211,27 +267,44 @@ function SidebarComponent() {
     resetOnSuccess: true,
   });
 
+  /**
+   * 워크스페이스 변경 핸들러
+   * 
+   * 워크스페이스 변경 시:
+   * - 자격 증명 및 리전 선택 초기화
+   * - 관련 쿼리 무효화
+   * - URL 파라미터 업데이트
+   * 
+   * @param workspaceId - 선택할 워크스페이스 ID
+   */
   const handleWorkspaceChange = (workspaceId: string) => {
+    // 1. 유효하지 않은 워크스페이스 ID면 스킵
     if (workspaceId === 'all' || !workspaceId) return;
     
+    // 2. 워크스페이스 찾기
     const workspace = fetchedWorkspaces.find(w => w.id === workspaceId);
     if (!workspace) return;
     
+    // 3. 워크스페이스 변경 여부 확인
     const previousWorkspaceId = currentWorkspace?.id;
     const isWorkspaceChanged = previousWorkspaceId !== workspace.id;
     
+    // 4. 현재 워크스페이스 업데이트
     setCurrentWorkspace(workspace);
     
     if (isWorkspaceChanged) {
+      // 5. 워크스페이스가 변경된 경우
+      // 5-1. 자격 증명 및 리전 선택 초기화
       const { clearSelection } = useCredentialContextStore.getState();
-      
       clearSelection();
       
+      // 5-2. URL 파라미터 업데이트 (workspaceId는 유지, credentialId와 region은 제거)
       const params = new URLSearchParams(window.location.search);
       params.set('workspaceId', workspace.id);
       params.delete('credentialId');
       params.delete('region');
       
+      // 5-3. 관련 쿼리 무효화 (이전 워크스페이스의 데이터는 더 이상 유효하지 않음)
       queryClient.invalidateQueries({
         predicate: (query) => {
           const key = query.queryKey;
@@ -239,6 +312,7 @@ function SidebarComponent() {
           
           const keyString = key.join('-').toLowerCase();
           
+          // 무효화할 쿼리 키 패턴 확인
           const shouldInvalidate = 
             (previousWorkspaceId && key.includes(previousWorkspaceId)) ||
             keyString.includes('vms') ||
@@ -256,15 +330,18 @@ function SidebarComponent() {
         },
       });
       
+      // 5-4. Settings/Members 페이지인 경우 해당 페이지로 리다이렉트
       if (pathname.startsWith('/workspaces/') && (pathname.includes('/settings') || pathname.includes('/members'))) {
         const pageType = pathname.includes('/settings') ? 'settings' : 'members';
         router.push(`/workspaces/${workspaceId}/${pageType}`);
         return;
       }
       
+      // 5-5. 현재 경로에 업데이트된 파라미터 적용
       const currentPath = pathname;
       router.replace(`${currentPath}?${params.toString()}`, { scroll: false });
     } else {
+      // 6. 같은 워크스페이스인 경우 URL에 workspaceId만 업데이트
       const currentPath = pathname;
       const params = new URLSearchParams(window.location.search);
       params.set('workspaceId', workspace.id);
@@ -274,17 +351,18 @@ function SidebarComponent() {
 
   const displayWorkspaces = fetchedWorkspaces.length > 0 ? fetchedWorkspaces : workspaces;
 
-  // Determine which accordion items should be open based on current path
+  // 7. 현재 경로에 따라 열려야 할 Accordion 항목 결정
   // useState로 관리하여 pathname 변경 시 자동 업데이트
   const [openItems, setOpenItems] = React.useState<string[]>(() => {
     const items: string[] = [];
+    // 현재 경로에 따라 해당 섹션을 열림 상태로 설정
     if (pathname.startsWith('/compute')) items.push('compute');
     if (pathname.startsWith('/kubernetes')) items.push('kubernetes');
     if (pathname.startsWith('/networks')) items.push('networks');
     return items;
   });
 
-  // pathname이 변경될 때마다 openItems 업데이트
+  // 8. pathname이 변경될 때마다 openItems 업데이트 (현재 페이지에 맞는 섹션 자동 열기)
   React.useEffect(() => {
     const items: string[] = [];
     if (pathname.startsWith('/compute')) items.push('compute');
@@ -293,18 +371,30 @@ function SidebarComponent() {
     setOpenItems(items);
   }, [pathname]);
 
-  // Check if a navigation item is active
+  /**
+   * 네비게이션 항목이 활성화되어 있는지 확인
+   * 
+   * @param item - 확인할 네비게이션 항목
+   * @returns 활성화 여부
+   */
   const isItemActive = (item: NavigationItem): boolean => {
+    // 1. href가 있으면 현재 경로와 비교
     if (item.href) {
       return pathname === item.href || pathname.startsWith(item.href + '/');
     }
+    // 2. 자식 항목이 있으면 자식 중 하나라도 활성화되어 있는지 확인
     if (item.children) {
       return item.children.some(child => isItemActive(child));
     }
     return false;
   };
 
-  // Check if a child item is active
+  /**
+   * 자식 네비게이션 항목이 활성화되어 있는지 확인
+   * 
+   * @param item - 확인할 네비게이션 항목
+   * @returns 활성화 여부
+   */
   const isChildActive = (item: NavigationItem): boolean => {
     if (item.href) {
       return pathname === item.href || pathname.startsWith(item.href + '/');
@@ -442,6 +532,9 @@ function SidebarComponent() {
             </Select>
           </div>
 
+          {/* Credential Selector */}
+          <CredentialSelector />
+
           {/* Navigation Menu */}
           <div className="mt-4 flex-1" role="list">
             <Accordion 
@@ -450,13 +543,13 @@ function SidebarComponent() {
               onValueChange={setOpenItems}
               className="w-full"
             >
-              {navigation.map((item, index) => {
+              {navigation.map((item) => {
                 if (item.children) {
-                  // Parent item with children (accordion)
+                  // 자식이 있는 부모 항목 (accordion)
                   const isActive = isItemActive(item);
                   
-                  // Determine accordion value based on pathname (not translated name)
-                  // This ensures consistent matching with openItems state
+                  // pathname 기반으로 accordion 값 결정
+                  // openItems 상태와 일관된 매칭 보장
                   let accordionValue = '';
                   if (item.children.some(child => child.href?.startsWith('/compute'))) {
                     accordionValue = 'compute';
@@ -482,19 +575,25 @@ function SidebarComponent() {
                       <AccordionContent className="pb-1 pt-0">
                         <div className="ml-4 space-y-1">
                           {item.children.map((child) => {
+                            // 9. 자식 항목의 활성화 상태 확인
                             const isChildItemActive = isChildActive(child);
+                            
+                            /**
+                             * 네비게이션 핸들러
+                             * URL 파라미터를 유지하면서 페이지 이동
+                             */
                             const handleNavigation = () => {
                               if (!child.href) return;
                               
-                              // 현재 URL의 파라미터 유지 (workspaceId, credentialId, region)
+                              // 9-1. 현재 URL의 파라미터 유지 (workspaceId, credentialId, region)
                               const params = new URLSearchParams(searchParams.toString());
                               
-                              // workspaceId는 항상 유지
+                              // 9-2. workspaceId는 항상 유지
                               if (currentWorkspace?.id) {
                                 params.set('workspaceId', currentWorkspace.id);
                               }
                               
-                              // credentialId와 region은 compute/kubernetes/networks 경로에서만 유지
+                              // 9-3. credentialId와 region은 compute/kubernetes/networks 경로에서만 유지
                               const shouldKeepParams = child.href.startsWith('/compute') || 
                                                       child.href.startsWith('/kubernetes') || 
                                                       child.href.startsWith('/networks');
@@ -504,6 +603,7 @@ function SidebarComponent() {
                                 params.delete('region');
                               }
                               
+                              // 9-4. 쿼리 스트링이 있으면 URL에 추가
                               const queryString = params.toString();
                               const url = queryString ? `${child.href}?${queryString}` : child.href;
                               router.push(url);
@@ -533,20 +633,25 @@ function SidebarComponent() {
                     </AccordionItem>
                   );
                 } else {
-                  // Single item without children
+                  // 10. 자식이 없는 단일 항목
                   const isActive = pathname === item.href;
+                  
+                  /**
+                   * 네비게이션 핸들러
+                   * URL 파라미터를 유지하면서 페이지 이동
+                   */
                   const handleNavigation = () => {
                     if (!item.href) return;
                     
-                    // 현재 URL의 파라미터 유지 (workspaceId, credentialId, region)
+                    // 10-1. 현재 URL의 파라미터 유지 (workspaceId, credentialId, region)
                     const params = new URLSearchParams(searchParams.toString());
                     
-                    // workspaceId는 항상 유지
+                    // 10-2. workspaceId는 항상 유지
                     if (currentWorkspace?.id) {
                       params.set('workspaceId', currentWorkspace.id);
                     }
                     
-                    // credentialId와 region은 compute/kubernetes/networks 경로에서만 유지
+                    // 10-3. credentialId와 region은 compute/kubernetes/networks 경로에서만 유지
                     const shouldKeepParams = item.href.startsWith('/compute') || 
                                             item.href.startsWith('/kubernetes') || 
                                             item.href.startsWith('/networks');
@@ -556,6 +661,7 @@ function SidebarComponent() {
                       params.delete('region');
                     }
                     
+                    // 10-4. 쿼리 스트링이 있으면 URL에 추가
                     const queryString = params.toString();
                     const url = queryString ? `${item.href}?${queryString}` : item.href;
                     router.push(url);

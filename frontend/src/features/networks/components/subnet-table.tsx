@@ -5,6 +5,8 @@
 
 'use client';
 
+import { useMemo, useCallback } from 'react';
+import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -33,7 +35,7 @@ interface SubnetTableProps {
   isDeleting?: boolean;
 }
 
-export function SubnetTable({
+function SubnetTableComponent({
   subnets,
   filteredSubnets,
   paginatedSubnets,
@@ -49,21 +51,26 @@ export function SubnetTable({
   onPageSizeChange,
   isDeleting = false,
 }: SubnetTableProps) {
-  const handleSelectAll = (checked: boolean) => {
+  const allSelected = useMemo(
+    () => selectedSubnetIds.length === filteredSubnets.length && filteredSubnets.length > 0,
+    [selectedSubnetIds.length, filteredSubnets.length]
+  );
+
+  const handleSelectAll = useCallback((checked: boolean) => {
     if (checked) {
       onSelectionChange(filteredSubnets.map(s => s.id));
     } else {
       onSelectionChange([]);
     }
-  };
+  }, [filteredSubnets, onSelectionChange]);
 
-  const handleSelectOne = (subnetId: string, checked: boolean) => {
+  const handleSelectOne = useCallback((subnetId: string, checked: boolean) => {
     if (checked) {
       onSelectionChange([...selectedSubnetIds, subnetId]);
     } else {
       onSelectionChange(selectedSubnetIds.filter(id => id !== subnetId));
     }
-  };
+  }, [selectedSubnetIds, onSelectionChange]);
 
   return (
     <Card>
@@ -87,7 +94,7 @@ export function SubnetTable({
             <TableRow>
               <TableHead className="w-12">
                 <Checkbox
-                  checked={selectedSubnetIds.length === filteredSubnets.length && filteredSubnets.length > 0}
+                  checked={allSelected}
                   onCheckedChange={handleSelectAll}
                 />
               </TableHead>
@@ -164,4 +171,6 @@ export function SubnetTable({
     </Card>
   );
 }
+
+export const SubnetTable = React.memo(SubnetTableComponent);
 

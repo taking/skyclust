@@ -5,6 +5,9 @@
  * IndexedDB 또는 localStorage를 사용하여 영구 저장
  */
 
+import { CONNECTION, STORAGE_KEYS } from './constants';
+import { logger } from './logger';
+
 export interface QueuedRequest {
   id: string;
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
@@ -37,13 +40,13 @@ class OfflineQueueManager {
   private queue: QueuedRequest[] = [];
   private isProcessing = false;
   private options: Required<OfflineQueueOptions>;
-  private storageKey = 'skyclust-offline-queue';
+  private storageKey = STORAGE_KEYS.OFFLINE_QUEUE;
 
   constructor(options: OfflineQueueOptions = {}) {
     this.options = {
-      maxRetries: options.maxRetries ?? 3,
-      retryInterval: options.retryInterval ?? 5000,
-      maxQueueSize: options.maxQueueSize ?? 100,
+      maxRetries: options.maxRetries ?? CONNECTION.OFFLINE_QUEUE.MAX_RETRIES,
+      retryInterval: options.retryInterval ?? CONNECTION.OFFLINE_QUEUE.RETRY_INTERVAL,
+      maxQueueSize: options.maxQueueSize ?? CONNECTION.OFFLINE_QUEUE.MAX_QUEUE_SIZE,
     };
 
     // localStorage에서 큐 복원
@@ -62,9 +65,7 @@ class OfflineQueueManager {
         this.queue = JSON.parse(stored);
       }
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('Failed to load offline queue from localStorage:', error);
-      }
+      logger.warn('Failed to load offline queue from localStorage', error);
       this.queue = [];
     }
   }
@@ -78,9 +79,7 @@ class OfflineQueueManager {
     try {
       localStorage.setItem(this.storageKey, JSON.stringify(this.queue));
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('Failed to save offline queue to localStorage:', error);
-      }
+      logger.warn('Failed to save offline queue to localStorage', error);
     }
   }
 
@@ -166,9 +165,11 @@ class OfflineQueueManager {
 
         if (request.retries >= (request.maxRetries ?? this.options.maxRetries)) {
           // 최대 재시도 횟수 초과 - 큐에서 제거
-          if (process.env.NODE_ENV === 'development') {
-            console.warn(`Request ${request.id} exceeded max retries, removing from queue`);
-          }
+          logger.warn(`Request ${request.id} exceeded max retries, removing from queue`, undefined, {
+            requestId: request.id,
+            retries: request.retries,
+            maxRetries: request.maxRetries ?? this.options.maxRetries,
+          });
           this.removeRequest(request.id);
         } else {
           // 재시도 가능한 요청은 유지

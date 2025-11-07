@@ -7,28 +7,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Layout } from '@/components/layout/layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { vmService } from '@/features/vms';
+import { vmService, VMOverviewTab, VMMonitoringTab, VMNetworkingTab, VMStorageTab, VMDetailHeader, VMActionsCard } from '@/features/vms';
 import { useToast } from '@/hooks/use-toast';
 import { useRequireAuth } from '@/hooks/use-auth';
 import { queryKeys } from '@/lib/query-keys';
-import { 
-  ArrowLeft, 
-  Play, 
-  Pause, 
-  RotateCcw, 
-  Trash2, 
-  Monitor, 
-  Network,
-  Calendar,
-  MapPin,
-  Server
-} from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { Spinner } from '@/components/ui/spinner';
+import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
 
-// Dynamic import for RealtimeVMMonitor
+// Dynamic imports for heavy components
 const RealtimeVMMonitor = dynamic(
   () => import('@/components/monitoring/realtime-vm-monitor').then(mod => ({ default: mod.RealtimeVMMonitor })),
   { 
@@ -152,10 +139,15 @@ export default function VMDetailPage() {
     stopVMMutation.mutate();
   };
 
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
+
   const handleDelete = () => {
-    if (confirm('Are you sure you want to delete this VM? This action cannot be undone.')) {
-      deleteVMMutation.mutate();
-    }
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    deleteVMMutation.mutate();
+    setIsDeleteDialogOpen(false);
   };
 
   if (authLoading || isLoading) {
@@ -202,96 +194,28 @@ export default function VMDetailPage() {
     );
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'running':
-        return 'bg-green-100 text-green-800';
-      case 'stopped':
-        return 'bg-red-100 text-red-800';
-      case 'starting':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'stopping':
-        return 'bg-orange-100 text-orange-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
   return (
     <Layout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.push('/vms')}
-            >
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">{vm.name}</h1>
-              <p className="text-gray-600">VM Details and Management</p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Badge className={getStatusColor(vm.status)}>
-              {vm.status}
-            </Badge>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleDelete}
-              disabled={deleteVMMutation.isPending}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
-            </Button>
-          </div>
-        </div>
+        <VMDetailHeader
+          vm={vm}
+          onBack={() => router.push('/vms')}
+          onDelete={handleDelete}
+          isDeleting={deleteVMMutation.isPending}
+        />
 
         {/* Action Buttons */}
-        <Card>
-          <CardHeader>
-            <CardTitle>VM Actions</CardTitle>
-            <CardDescription>Control your virtual machine</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex space-x-2">
-              <Button
-                onClick={handleStart}
-                disabled={vm.status === 'running' || startVMMutation.isPending}
-                className="flex-1"
-              >
-                <Play className="mr-2 h-4 w-4" />
-                {startVMMutation.isPending ? 'Starting...' : 'Start'}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleStop}
-                disabled={vm.status === 'stopped' || stopVMMutation.isPending}
-                className="flex-1"
-              >
-                <Pause className="mr-2 h-4 w-4" />
-                {stopVMMutation.isPending ? 'Stopping...' : 'Stop'}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  // Restart logic would go here
-                  success('Restart functionality coming soon');
-                }}
-                disabled={vm.status === 'stopped'}
-                className="flex-1"
-              >
-                <RotateCcw className="mr-2 h-4 w-4" />
-                Restart
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <VMActionsCard
+          vm={vm}
+          onStart={handleStart}
+          onStop={handleStop}
+          onRestart={() => {
+            success('Restart functionality coming soon');
+          }}
+          isStarting={startVMMutation.isPending}
+          isStopping={stopVMMutation.isPending}
+        />
 
         {/* Main Content Tabs */}
         <Tabs defaultValue="overview" className="space-y-4">
@@ -305,137 +229,16 @@ export default function VMDetailPage() {
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Instance Type</CardTitle>
-                  <Server className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{vm.instance_type}</div>
-                  <p className="text-xs text-muted-foreground">AWS EC2 Instance</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Public IP</CardTitle>
-                  <Network className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{vm.public_ip || 'N/A'}</div>
-                  <p className="text-xs text-muted-foreground">External access</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Private IP</CardTitle>
-                  <Network className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{vm.private_ip || 'N/A'}</div>
-                  <p className="text-xs text-muted-foreground">Internal network</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Region</CardTitle>
-                  <MapPin className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{vm.region || 'N/A'}</div>
-                  <p className="text-xs text-muted-foreground">Deployment region</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Created</CardTitle>
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    {new Date(vm.created_at).toLocaleDateString()}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {new Date(vm.created_at).toLocaleTimeString()}
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Provider</CardTitle>
-                  <Monitor className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{vm.provider}</div>
-                  <p className="text-xs text-muted-foreground">Cloud provider</p>
-                </CardContent>
-              </Card>
-            </div>
+            <VMOverviewTab vm={vm} />
           </TabsContent>
 
           {/* Monitoring Tab */}
           <TabsContent value="monitoring" className="space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>CPU Usage</CardTitle>
-                  <CardDescription>CPU utilization over time</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={cpuData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="time" />
-                      <YAxis />
-                      <Tooltip />
-                      <Line type="monotone" dataKey="cpu" stroke="#8884d8" strokeWidth={2} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Memory Usage</CardTitle>
-                  <CardDescription>Memory utilization over time</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <AreaChart data={memoryData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="time" />
-                      <YAxis />
-                      <Tooltip />
-                      <Area type="monotone" dataKey="memory" stroke="#82ca9d" fill="#82ca9d" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-
-              <Card className="lg:col-span-2">
-                <CardHeader>
-                  <CardTitle>Network Traffic</CardTitle>
-                  <CardDescription>Network inbound and outbound traffic</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <AreaChart data={networkData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="time" />
-                      <YAxis />
-                      <Tooltip />
-                      <Area type="monotone" dataKey="in" stackId="1" stroke="#8884d8" fill="#8884d8" />
-                      <Area type="monotone" dataKey="out" stackId="1" stroke="#82ca9d" fill="#82ca9d" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            </div>
+            <VMMonitoringTab
+              cpuData={cpuData}
+              memoryData={memoryData}
+              networkData={networkData}
+            />
           </TabsContent>
 
           {/* Real-time Tab */}
@@ -449,64 +252,26 @@ export default function VMDetailPage() {
 
           {/* Networking Tab */}
           <TabsContent value="networking" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Network Configuration</CardTitle>
-                <CardDescription>Network settings and security groups</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Public IP Address</label>
-                      <p className="text-lg font-mono">{vm.public_ip || 'Not assigned'}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Private IP Address</label>
-                      <p className="text-lg font-mono">{vm.private_ip || 'Not assigned'}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Subnet ID</label>
-                      <p className="text-lg font-mono">subnet-12345678</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">VPC ID</label>
-                      <p className="text-lg font-mono">vpc-12345678</p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <VMNetworkingTab vm={vm} />
           </TabsContent>
 
           {/* Storage Tab */}
           <TabsContent value="storage" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Storage Configuration</CardTitle>
-                <CardDescription>Attached storage and volumes</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Root Volume</label>
-                      <p className="text-lg font-mono">30 GB (gp3)</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Additional Storage</label>
-                      <p className="text-lg font-mono">100 GB (gp3)</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Total Storage</label>
-                      <p className="text-lg font-mono">130 GB</p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <VMStorageTab />
           </TabsContent>
         </Tabs>
+
+        {/* Delete Confirmation Dialog */}
+        <DeleteConfirmationDialog
+          open={isDeleteDialogOpen}
+          onOpenChange={setIsDeleteDialogOpen}
+          onConfirm={handleConfirmDelete}
+          title="VM 삭제 확인"
+          description="이 VM을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다."
+          isLoading={deleteVMMutation.isPending}
+          resourceName={vm?.name}
+          resourceNameLabel="VM 이름"
+        />
       </div>
     </Layout>
   );

@@ -16,7 +16,7 @@ interface VirtualizedTableProps<T> {
   className?: string;
 }
 
-export function VirtualizedTable<T extends { id?: string; [key: string]: unknown }>({
+function VirtualizedTableComponent<T extends { id?: string; [key: string]: unknown }>({
   data,
   renderHeader,
   renderRow,
@@ -110,4 +110,7 @@ export function VirtualizedTable<T extends { id?: string; [key: string]: unknown
     </div>
   );
 }
+
+// React.memo로 최적화: 데이터가 변경되지 않으면 리렌더링 방지
+export const VirtualizedTable = React.memo(VirtualizedTableComponent) as typeof VirtualizedTableComponent;
 

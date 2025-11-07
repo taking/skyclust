@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Handler handles authentication-related HTTP requests using improved patterns
+// Handler: 인증 관련 HTTP 요청을 처리하는 핸들러
 type Handler struct {
 	*handlers.BaseHandler
 	authService       domain.AuthService
@@ -19,7 +19,18 @@ type Handler struct {
 	readabilityHelper *readability.ReadabilityHelper
 }
 
-// NewHandler creates a new authentication handler
+// NewHandlerWithUserService: 초기화 확인을 위한 사용자 서비스를 포함한 인증 핸들러를 생성합니다
+func NewHandlerWithUserService(authService domain.AuthService, userService domain.UserService, rbacService domain.RBACService) *Handler {
+	return &Handler{
+		BaseHandler:       handlers.NewBaseHandler("auth"),
+		authService:       authService,
+		userService:       userService,
+		rbacService:       rbacService,
+		readabilityHelper: readability.NewReadabilityHelper(),
+	}
+}
+
+// NewHandler: 새로운 인증 핸들러를 생성합니다
 func NewHandler(authService domain.AuthService, userService domain.UserService, rbacService domain.RBACService) *Handler {
 	return &Handler{
 		BaseHandler:       handlers.NewBaseHandler("auth"),
@@ -30,7 +41,7 @@ func NewHandler(authService domain.AuthService, userService domain.UserService, 
 	}
 }
 
-// NewHandlerWithLogout creates a new authentication handler with logout service
+// NewHandlerWithLogout: 로그아웃 서비스를 포함한 인증 핸들러를 생성합니다
 func NewHandlerWithLogout(authService domain.AuthService, userService domain.UserService, logoutService domain.LogoutService, rbacService domain.RBACService) *Handler {
 	return &Handler{
 		BaseHandler:       handlers.NewBaseHandler("auth"),
@@ -42,7 +53,7 @@ func NewHandlerWithLogout(authService domain.AuthService, userService domain.Use
 	}
 }
 
-// Register handles user registration using decorator pattern
+// Register: 사용자 등록 요청을 처리합니다 (데코레이터 패턴 사용)
 func (h *Handler) Register(c *gin.Context) {
 	handler := h.Compose(
 		h.registerHandler(domain.CreateUserRequest{}),
@@ -52,7 +63,7 @@ func (h *Handler) Register(c *gin.Context) {
 	handler(c)
 }
 
-// registerHandler is the core business logic for user registration
+// registerHandler: 사용자 등록의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) registerHandler(req domain.CreateUserRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := h.ExtractValidatedRequest(c, &req); err != nil {
@@ -66,6 +77,25 @@ func (h *Handler) registerHandler(req domain.CreateUserRequest) handlers.Handler
 			h.HandleError(c, domain.NewDomainError(domain.ErrCodeServiceUnavailable, "Authentication service is not available", 503), "register")
 			return
 		}
+
+		// 시스템이 이미 초기화되었는지 확인 (보안 강화)
+		// initialized가 true면 Register를 막아야 함
+		if h.userService != nil {
+			userCount, err := h.userService.GetUserCount()
+			if err != nil {
+				h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "failed to check system initialization status", 500), "register")
+				return
+			}
+			if userCount > 0 {
+				// 이미 초기화된 경우 Register 거부
+				h.HandleError(c, domain.NewDomainError(domain.ErrCodeForbidden, "registration is only allowed during initial setup. system is already initialized", 403), "register")
+				return
+			}
+		}
+
+		// Register는 context를 받지 않지만, 감사로그를 위해 context를 enrich
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		_ = ctx // Register는 context를 받지 않으므로 사용하지 않음 (향후 개선 시 사용)
 
 		user, token, err := h.authService.Register(req)
 		if err != nil {
@@ -81,7 +111,7 @@ func (h *Handler) registerHandler(req domain.CreateUserRequest) handlers.Handler
 	}
 }
 
-// Login handles user login requests using decorator pattern
+// Login: 사용자 로그인 요청을 처리합니다 (데코레이터 패턴 사용)
 func (h *Handler) Login(c *gin.Context) {
 	handler := h.Compose(
 		h.loginHandler(struct {
@@ -94,7 +124,7 @@ func (h *Handler) Login(c *gin.Context) {
 	handler(c)
 }
 
-// loginHandler is the core business logic for user login
+// loginHandler: 사용자 로그인의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) loginHandler(req struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required"`
@@ -133,8 +163,8 @@ func (h *Handler) loginHandler(req struct {
 	}
 }
 
-// Logout handles user logout requests (DELETE /auth/sessions/me)
-// RESTful: Delete current session
+// Logout: 사용자 로그아웃 요청을 처리합니다 (DELETE /auth/sessions/me)
+// RESTful: 현재 세션 삭제
 func (h *Handler) Logout(c *gin.Context) {
 	handler := h.Compose(
 		h.logoutHandler(),
@@ -144,8 +174,8 @@ func (h *Handler) Logout(c *gin.Context) {
 	handler(c)
 }
 
-// GetSession handles getting current session info (GET /auth/sessions/me)
-// RESTful: Get current session
+// GetSession: 현재 세션 정보를 조회합니다 (GET /auth/sessions/me)
+// RESTful: 현재 세션 조회
 func (h *Handler) GetSession(c *gin.Context) {
 	handler := h.Compose(
 		h.getSessionHandler(),
@@ -155,7 +185,7 @@ func (h *Handler) GetSession(c *gin.Context) {
 	handler(c)
 }
 
-// logoutHandler is the core business logic for user logout
+// logoutHandler: 사용자 로그아웃의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) logoutHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := h.ExtractUserIDFromContext(c)
@@ -177,6 +207,10 @@ func (h *Handler) logoutHandler() handlers.HandlerFunc {
 			return
 		}
 
+		// Logout은 context를 받지 않지만, 감사로그를 위해 context를 enrich
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		_ = ctx // Logout은 context를 받지 않으므로 사용하지 않음 (향후 개선 시 사용)
+
 		err = h.authService.Logout(userID, token)
 		if err != nil {
 			h.HandleError(c, err, "delete_session")
@@ -190,7 +224,7 @@ func (h *Handler) logoutHandler() handlers.HandlerFunc {
 	}
 }
 
-// getSessionHandler is the core business logic for getting current session
+// getSessionHandler: 현재 세션 조회의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) getSessionHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := h.ExtractUserIDFromContext(c)
@@ -238,7 +272,7 @@ func (h *Handler) getSessionHandler() handlers.HandlerFunc {
 	}
 }
 
-// Me returns the current user's information using decorator pattern
+// Me: 현재 사용자 정보를 반환합니다 (데코레이터 패턴 사용)
 func (h *Handler) Me(c *gin.Context) {
 	handler := h.Compose(
 		h.meHandler(),
@@ -248,7 +282,7 @@ func (h *Handler) Me(c *gin.Context) {
 	handler(c)
 }
 
-// meHandler is the core business logic for getting current user info
+// meHandler: 현재 사용자 정보 조회의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) meHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := h.ExtractUserIDFromContext(c)
@@ -291,7 +325,7 @@ func (h *Handler) meHandler() handlers.HandlerFunc {
 	}
 }
 
-// GetUsers handles getting all users (admin only)
+// GetUsers: 모든 사용자 목록을 조회합니다 (관리자만 가능)
 func (h *Handler) GetUsers(c *gin.Context) {
 	// Get current user role from token for authorization
 	userRole, err := h.GetUserRoleFromToken(c)
@@ -354,7 +388,7 @@ func (h *Handler) GetUsers(c *gin.Context) {
 	}, "Users retrieved successfully")
 }
 
-// GetUser handles getting a specific user by ID
+// GetUser: ID로 특정 사용자를 조회합니다
 func (h *Handler) GetUser(c *gin.Context) {
 	userID, err := h.ParseUUID(c, "id")
 	if err != nil {
@@ -392,7 +426,7 @@ func (h *Handler) GetUser(c *gin.Context) {
 	h.OK(c, userResponse, "User retrieved successfully")
 }
 
-// UpdateUser handles updating a user
+// UpdateUser: 사용자 정보를 업데이트합니다
 func (h *Handler) UpdateUser(c *gin.Context) {
 	userID, err := h.ParseUUID(c, "id")
 	if err != nil {
@@ -461,7 +495,7 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 	h.OK(c, updatedUser, "User updated successfully")
 }
 
-// DeleteUser handles deleting a user
+// DeleteUser: 사용자를 삭제합니다
 func (h *Handler) DeleteUser(c *gin.Context) {
 	userID, err := h.ParseUUID(c, "id")
 	if err != nil {
@@ -510,10 +544,9 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 	h.OK(c, gin.H{"message": "User deleted successfully"}, readability.SuccessMsgUserDeleted)
 }
 
-// Helper methods for better readability
+// 로깅 헬퍼 메서드들
 
-// Logging helper methods
-
+// logUserRegistrationAttempt: 사용자 등록 시도 로그를 기록합니다
 func (h *Handler) logUserRegistrationAttempt(c *gin.Context, req domain.CreateUserRequest) {
 	h.LogBusinessEvent(c, "user_registration_attempted", "", "", map[string]interface{}{
 		"username": req.Username,
@@ -521,6 +554,7 @@ func (h *Handler) logUserRegistrationAttempt(c *gin.Context, req domain.CreateUs
 	})
 }
 
+// logUserRegistrationSuccess: 사용자 등록 성공 로그를 기록합니다
 func (h *Handler) logUserRegistrationSuccess(c *gin.Context, user *domain.User) {
 	h.LogBusinessEvent(c, "user_registered", user.ID.String(), "", map[string]interface{}{
 		"user_id":  user.ID.String(),
@@ -529,12 +563,14 @@ func (h *Handler) logUserRegistrationSuccess(c *gin.Context, user *domain.User) 
 	})
 }
 
+// logUserLoginAttempt: 사용자 로그인 시도 로그를 기록합니다
 func (h *Handler) logUserLoginAttempt(c *gin.Context, email string) {
 	h.LogBusinessEvent(c, "user_login_attempted", "", "", map[string]interface{}{
 		"email": email,
 	})
 }
 
+// logUserLoginSuccess: 사용자 로그인 성공 로그를 기록합니다
 func (h *Handler) logUserLoginSuccess(c *gin.Context, user *domain.User) {
 	h.LogBusinessEvent(c, "user_logged_in", user.ID.String(), "", map[string]interface{}{
 		"user_id":  user.ID.String(),
@@ -543,18 +579,21 @@ func (h *Handler) logUserLoginSuccess(c *gin.Context, user *domain.User) {
 	})
 }
 
+// logUserLogoutAttempt: 사용자 로그아웃 시도 로그를 기록합니다
 func (h *Handler) logUserLogoutAttempt(c *gin.Context, userID uuid.UUID) {
 	h.LogBusinessEvent(c, "user_logout_attempted", userID.String(), "", map[string]interface{}{
 		"user_id": userID.String(),
 	})
 }
 
+// logUserLogoutSuccess: 사용자 로그아웃 성공 로그를 기록합니다
 func (h *Handler) logUserLogoutSuccess(c *gin.Context, userID uuid.UUID) {
 	h.LogBusinessEvent(c, "user_logged_out", userID.String(), "", map[string]interface{}{
 		"user_id": userID.String(),
 	})
 }
 
+// logUserMeRequest: 사용자 정보 조회 요청 로그를 기록합니다
 func (h *Handler) logUserMeRequest(c *gin.Context, userID uuid.UUID) {
 	h.LogBusinessEvent(c, "user_me_requested", userID.String(), "", map[string]interface{}{
 		"user_id": userID.String(),

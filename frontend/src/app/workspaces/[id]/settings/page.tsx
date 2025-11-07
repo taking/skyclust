@@ -11,33 +11,36 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { workspaceService, useWorkspaceActions } from '@/features/workspaces';
+import { workspaceService } from '@/features/workspaces';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useToast } from '@/hooks/use-toast';
 import { ErrorHandler } from '@/lib/error-handler';
 import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
-import { CreateWorkspaceForm } from '@/lib/types';
+import { UpdateWorkspaceForm } from '@/lib/types';
 import { Layout } from '@/components/layout/layout';
 import { ArrowLeft, Settings, Users, Trash2, AlertTriangle } from 'lucide-react';
 import * as React from 'react';
-import * as z from 'zod';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+// import * as z from 'zod'; // Not used directly
 import { Form } from '@/components/ui/form';
 import { queryKeys } from '@/lib/query-keys';
-
-const updateWorkspaceSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),
-  description: z.string().min(1, 'Description is required').max(500, 'Description must be less than 500 characters'),
-});
+import { createValidationSchemas } from '@/lib/validations';
+import { useTranslation } from '@/hooks/use-translation';
+import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
 
 export default function WorkspaceSettingsPage() {
+  const { t } = useTranslation();
+  const { updateWorkspaceSchema } = createValidationSchemas(t);
   const params = useParams();
   const router = useRouter();
   const workspaceId = params.id as string;
   const { currentWorkspace, setCurrentWorkspace } = useWorkspaceStore();
   const queryClient = useQueryClient();
   const { success, error: showError } = useToast();
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleteDialogState, setDeleteDialogState] = useState<{
+    open: boolean;
+  }>({
+    open: false,
+  });
 
   // Fetch workspace details
   const { data: workspace, isLoading } = useQuery({
@@ -59,10 +62,9 @@ export default function WorkspaceSettingsPage() {
     handleSubmit,
     isLoading: isFormLoading,
     error: formError,
-    reset,
     getFieldError,
     getFieldValidationState,
-  } = useFormWithValidation<CreateWorkspaceForm>({
+  } = useFormWithValidation<UpdateWorkspaceForm>({
     schema: updateWorkspaceSchema,
     defaultValues: {
       name: workspace?.name || '',
@@ -78,16 +80,18 @@ export default function WorkspaceSettingsPage() {
       // Update current workspace if it's the same
       if (currentWorkspace?.id === workspaceId) {
         const updatedWorkspace = { ...currentWorkspace };
-        if (form.getValues('name')) updatedWorkspace.name = form.getValues('name');
-        if (form.getValues('description')) updatedWorkspace.description = form.getValues('description');
+        const name = form.getValues('name');
+        const description = form.getValues('description');
+        if (name) updatedWorkspace.name = name;
+        if (description) updatedWorkspace.description = description;
         setCurrentWorkspace(updatedWorkspace);
       }
       
-      success('Workspace updated successfully');
+      success(t('workspace.workspaceUpdatedSuccessfully'));
     },
     onError: (error) => {
       ErrorHandler.logError(error, { operation: 'updateWorkspace' });
-      showError('Failed to update workspace');
+      showError(t('workspace.failedToUpdateWorkspace'));
     },
   });
 
@@ -106,20 +110,27 @@ export default function WorkspaceSettingsPage() {
   const deleteWorkspaceMutation = useMutation({
     mutationFn: (id: string) => workspaceService.deleteWorkspace(id),
     onSuccess: () => {
+      // Store에서 워크스페이스 제거 (자동으로 다른 워크스페이스로 전환됨)
+      const { removeWorkspace } = useWorkspaceStore.getState();
+      removeWorkspace(workspaceId);
+      
       queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.all });
-      success('Workspace deleted successfully');
+      success(t('workspace.workspaceDeletedSuccessfully'));
       router.push('/workspaces');
     },
     onError: (error) => {
       ErrorHandler.logError(error, { operation: 'deleteWorkspace' });
-      showError('Failed to delete workspace');
+      showError(t('workspace.failedToDeleteWorkspace'));
     },
   });
 
   const handleDeleteWorkspace = () => {
-    if (confirm('Are you sure you want to delete this workspace? This action cannot be undone.')) {
-      deleteWorkspaceMutation.mutate(workspaceId);
-    }
+    setDeleteDialogState({ open: true });
+  };
+
+  const handleConfirmDelete = () => {
+    deleteWorkspaceMutation.mutate(workspaceId);
+    setDeleteDialogState({ open: false });
   };
 
   if (isLoading) {
@@ -128,7 +139,7 @@ export default function WorkspaceSettingsPage() {
         <div className="min-h-screen flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-            <p className="mt-2 text-gray-600">Loading workspace settings...</p>
+            <p className="mt-2 text-gray-600">{t('workspace.loadingWorkspaceSettings')}</p>
           </div>
         </div>
       </Layout>
@@ -140,10 +151,10 @@ export default function WorkspaceSettingsPage() {
       <Layout>
         <div className="min-h-screen flex items-center justify-center">
           <div className="text-center">
-            <h3 className="text-lg font-medium text-gray-900">Workspace not found</h3>
-            <p className="mt-1 text-sm text-gray-500">The workspace you&apos;re looking for doesn&apos;t exist.</p>
+            <h3 className="text-lg font-medium text-gray-900">{t('workspace.workspaceNotFound')}</h3>
+            <p className="mt-1 text-sm text-gray-500">{t('workspace.workspaceNotFoundDescription')}</p>
             <Button onClick={() => router.push('/dashboard')} className="mt-4">
-              Go to Dashboard
+              {t('workspace.goToDashboard')}
             </Button>
           </div>
         </div>
@@ -163,23 +174,23 @@ export default function WorkspaceSettingsPage() {
               className="mb-4"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back
+              {t('workspace.back')}
             </Button>
             <div className="flex items-center space-x-2 mb-2">
               <Settings className="h-6 w-6 text-gray-600" />
-              <h1 className="text-3xl font-bold text-gray-900">Workspace Settings</h1>
+              <h1 className="text-3xl font-bold text-gray-900">{t('workspace.workspaceSettings')}</h1>
             </div>
             <p className="text-gray-600">
-              Manage your workspace settings and preferences
+              {t('workspace.manageWorkspaceSettings')}
             </p>
           </div>
 
           {/* Workspace Information */}
           <Card className="mb-6">
             <CardHeader>
-              <CardTitle>Workspace Information</CardTitle>
+              <CardTitle>{t('workspace.workspaceInformation')}</CardTitle>
               <CardDescription>
-                Update your workspace name and description
+                {t('workspace.updateWorkspaceNameDescription')}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -187,18 +198,18 @@ export default function WorkspaceSettingsPage() {
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <EnhancedField
                     name="name"
-                    label="Workspace Name"
+                    label={t('workspace.workspaceName')}
                     type="text"
-                    placeholder="Enter workspace name"
+                    placeholder={t('workspace.enterWorkspaceName')}
                     required
                     getFieldError={getFieldError}
                     getFieldValidationState={getFieldValidationState}
                   />
                   <EnhancedField
                     name="description"
-                    label="Description"
+                    label={t('workspace.description')}
                     type="textarea"
-                    placeholder="Enter workspace description"
+                    placeholder={t('workspace.enterWorkspaceDescription')}
                     required
                     getFieldError={getFieldError}
                     getFieldValidationState={getFieldValidationState}
@@ -213,7 +224,7 @@ export default function WorkspaceSettingsPage() {
 
                   <div className="flex justify-end">
                     <Button type="submit" disabled={isFormLoading}>
-                      {isFormLoading ? 'Saving...' : 'Save Changes'}
+                      {isFormLoading ? t('workspace.saving') : t('workspace.saveChanges')}
                     </Button>
                   </div>
                 </form>
@@ -224,9 +235,9 @@ export default function WorkspaceSettingsPage() {
           {/* Members Management */}
           <Card className="mb-6">
             <CardHeader>
-              <CardTitle>Members</CardTitle>
+              <CardTitle>{t('workspace.members')}</CardTitle>
               <CardDescription>
-                Manage workspace members and their permissions
+                {t('workspace.manageWorkspaceMembersPermissions')}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -234,7 +245,7 @@ export default function WorkspaceSettingsPage() {
                 <div className="flex items-center space-x-2">
                   <Users className="h-5 w-5 text-gray-500" />
                   <span className="text-sm text-gray-600">
-                    Manage workspace members
+                    {t('workspace.manageWorkspaceMembers')}
                   </span>
                 </div>
                 <Button
@@ -242,7 +253,7 @@ export default function WorkspaceSettingsPage() {
                   onClick={() => router.push(`/workspaces/${workspaceId}/members`)}
                 >
                   <Users className="mr-2 h-4 w-4" />
-                  Manage Members
+                  {t('workspace.manageMembers')}
                 </Button>
               </div>
             </CardContent>
@@ -251,59 +262,44 @@ export default function WorkspaceSettingsPage() {
           {/* Danger Zone */}
           <Card className="border-red-200">
             <CardHeader>
-              <CardTitle className="text-red-600">Danger Zone</CardTitle>
+              <CardTitle className="text-red-600">{t('workspace.dangerZone')}</CardTitle>
               <CardDescription>
-                Irreversible and destructive actions
+                {t('workspace.irreversibleDestructiveActions')}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
                 <div className="flex-1">
-                  <h3 className="text-sm font-medium text-gray-900">Delete Workspace</h3>
+                  <h3 className="text-sm font-medium text-gray-900">{t('workspace.deleteWorkspace')}</h3>
                   <p className="text-sm text-gray-500 mt-1">
-                    Once you delete a workspace, there is no going back. Please be certain.
+                    {t('workspace.deleteWorkspaceDescription')}
                   </p>
                 </div>
-                <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="destructive">
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Delete Workspace
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Delete Workspace</DialogTitle>
-                      <DialogDescription>
-                        Are you sure you want to delete &quot;{workspace.name}&quot;? This action cannot be undone.
-                        All resources in this workspace will be permanently deleted.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="flex justify-end space-x-2 mt-4">
-                      <Button
-                        variant="outline"
-                        onClick={() => setIsDeleteDialogOpen(false)}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        onClick={() => {
-                          handleDeleteWorkspace();
-                          setIsDeleteDialogOpen(false);
-                        }}
-                        disabled={deleteWorkspaceMutation.isPending}
-                      >
-                        {deleteWorkspaceMutation.isPending ? 'Deleting...' : 'Delete Workspace'}
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
+                <Button 
+                  variant="destructive"
+                  onClick={handleDeleteWorkspace}
+                  disabled={deleteWorkspaceMutation.isPending}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {t('workspace.deleteWorkspace')}
+                </Button>
               </div>
             </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Delete Workspace Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        open={deleteDialogState.open}
+        onOpenChange={(open) => setDeleteDialogState({ open })}
+        onConfirm={handleConfirmDelete}
+        title={t('workspace.deleteWorkspace')}
+        description="이 워크스페이스를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다."
+        isLoading={deleteWorkspaceMutation.isPending}
+        resourceName={workspace?.name}
+        resourceNameLabel="워크스페이스 이름"
+      />
     </Layout>
   );
 }

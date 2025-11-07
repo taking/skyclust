@@ -8,6 +8,7 @@ import api from './api';
 import type { ApiResponse } from './types/api';
 import { ServiceError, type ServiceRequestOptions } from './types/service';
 import { getApiUrl, getApiVersion } from './api-config';
+import { ErrorHandler } from './error-handler';
 
 export abstract class BaseService {
   /**
@@ -78,6 +79,8 @@ export abstract class BaseService {
     } catch (error) {
       // ServiceError는 그대로 전파
       if (error instanceof ServiceError) {
+        // ServiceError는 이미 처리된 에러이므로 로깅만 수행
+        ErrorHandler.logError(error, { method, url, service: this.constructor.name });
         throw error;
       }
 
@@ -95,15 +98,21 @@ export abstract class BaseService {
           `Request failed with status ${status || 'unknown'}`;
         const code = responseData?.error?.code;
 
-        throw new ServiceError(message, code, status, responseData);
+        const serviceError = new ServiceError(message, code, status, responseData);
+        ErrorHandler.logError(serviceError, { method, url, service: this.constructor.name });
+        throw serviceError;
       }
 
       // 네트워크 에러 등 기타 에러
       if (error instanceof Error) {
-        throw new ServiceError(error.message, 'NETWORK_ERROR', undefined, error);
+        const serviceError = new ServiceError(error.message, 'NETWORK_ERROR', undefined, error);
+        ErrorHandler.logError(serviceError, { method, url, service: this.constructor.name });
+        throw serviceError;
       }
 
-      throw new ServiceError('Unknown error occurred', 'UNKNOWN_ERROR');
+      const unknownError = new ServiceError('Unknown error occurred', 'UNKNOWN_ERROR');
+      ErrorHandler.logError(unknownError, { method, url, service: this.constructor.name, originalError: error });
+      throw unknownError;
     }
   }
 
@@ -127,7 +136,7 @@ export abstract class BaseService {
    */
   protected async get<T>(endpoint: string, options?: ServiceRequestOptions & { version?: string }): Promise<T> {
     const url = this.buildApiUrl(endpoint, options?.version);
-    const { version, ...requestOptions } = options || {};
+    const { version: _version, ...requestOptions } = options || {};
     return this.request<T>('get', url, undefined, requestOptions);
   }
 
@@ -140,7 +149,7 @@ export abstract class BaseService {
     options?: ServiceRequestOptions & { version?: string }
   ): Promise<T> {
     const url = this.buildApiUrl(endpoint, options?.version);
-    const { version, ...requestOptions } = options || {};
+    const { version: _version, ...requestOptions } = options || {};
     return this.request<T>('post', url, data, requestOptions);
   }
 
@@ -153,7 +162,7 @@ export abstract class BaseService {
     options?: ServiceRequestOptions & { version?: string }
   ): Promise<T> {
     const url = this.buildApiUrl(endpoint, options?.version);
-    const { version, ...requestOptions } = options || {};
+    const { version: _version, ...requestOptions } = options || {};
     return this.request<T>('put', url, data, requestOptions);
   }
 
@@ -166,7 +175,7 @@ export abstract class BaseService {
     options?: ServiceRequestOptions & { version?: string }
   ): Promise<T> {
     const url = this.buildApiUrl(endpoint, options?.version);
-    const { version, ...requestOptions } = options || {};
+    const { version: _version, ...requestOptions } = options || {};
     return this.request<T>('patch', url, data, requestOptions);
   }
 
@@ -175,7 +184,7 @@ export abstract class BaseService {
    */
   protected async delete<T>(endpoint: string, options?: ServiceRequestOptions & { version?: string }): Promise<T> {
     const url = this.buildApiUrl(endpoint, options?.version);
-    const { version, ...requestOptions } = options || {};
+    const { version: _version, ...requestOptions } = options || {};
     return this.request<T>('delete', url, undefined, requestOptions);
   }
 }

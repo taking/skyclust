@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"skyclust/internal/application/services/common"
 	"skyclust/internal/domain"
 	"skyclust/internal/infrastructure/messaging"
 	"skyclust/pkg/cache"
@@ -23,7 +24,7 @@ import (
 	"google.golang.org/api/option"
 )
 
-// handleAWSError converts AWS SDK errors to appropriate domain errors
+// handleAWSError: AWS SDK 에러를 적절한 도메인 에러로 변환합니다
 func (s *Service) handleAWSError(err error, operation string) error {
 	if err == nil {
 		return nil
@@ -38,7 +39,19 @@ func (s *Service) handleAWSError(err error, operation string) error {
 			return domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid AWS credentials", 400)
 		case strings.Contains(err.Error(), "InvalidUserID.NotFound"):
 			return domain.NewDomainError(domain.ErrCodeBadRequest, "AWS user not found", 400)
-		case strings.Contains(err.Error(), "AccessDenied"):
+		case strings.Contains(err.Error(), "AccessDenied") || strings.Contains(err.Error(), "UnauthorizedOperation"):
+			// Extract the specific action and user from the error message for better context
+			errorMsg := err.Error()
+			if strings.Contains(errorMsg, "not authorized to perform") {
+				// Extract action name if available
+				if strings.Contains(errorMsg, "ec2:DescribeRegions") {
+					return domain.NewDomainError(domain.ErrCodeForbidden, "AWS IAM permission required: The credential does not have permission to list AWS regions. Please add 'ec2:DescribeRegions' permission to the IAM user or role.", 403)
+				}
+				if strings.Contains(errorMsg, "eks:") {
+					return domain.NewDomainError(domain.ErrCodeForbidden, "AWS IAM permission required: The credential does not have permission to access EKS. Please add the required EKS permissions to the IAM user or role.", 403)
+				}
+				return domain.NewDomainError(domain.ErrCodeForbidden, "AWS IAM permission required: The credential does not have the required permissions. Please check your IAM policy.", 403)
+			}
 			return domain.NewDomainError(domain.ErrCodeForbidden, "Access denied to AWS resources", 403)
 		case strings.Contains(err.Error(), "NoSuchEntity"):
 			return domain.NewDomainError(domain.ErrCodeNotFound, "AWS resource not found", 404)
@@ -55,17 +68,19 @@ func (s *Service) handleAWSError(err error, operation string) error {
 	return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("Failed to %s: %v", operation, err), 500)
 }
 
+// Service: Kubernetes 서비스 구현체
 type Service struct {
 	credentialService domain.CredentialService
 	cache             cache.Cache
 	keyBuilder        *cache.CacheKeyBuilder
 	invalidator       *cache.Invalidator
 	eventPublisher    *messaging.Publisher
+	auditLogRepo      domain.AuditLogRepository
 	logger            *zap.Logger
 }
 
-// NewService creates a new Kubernetes service
-func NewService(credentialService domain.CredentialService, cacheService cache.Cache, eventBus messaging.Bus, logger *zap.Logger) *Service {
+// NewService: 새로운 Kubernetes 서비스를 생성합니다
+func NewService(credentialService domain.CredentialService, cacheService cache.Cache, eventBus messaging.Bus, auditLogRepo domain.AuditLogRepository, logger *zap.Logger) *Service {
 	eventPublisher := messaging.NewPublisher(eventBus, logger)
 	return &Service{
 		credentialService: credentialService,
@@ -73,21 +88,22 @@ func NewService(credentialService domain.CredentialService, cacheService cache.C
 		keyBuilder:        cache.NewCacheKeyBuilder(),
 		invalidator:       cache.NewInvalidatorWithEvents(cacheService, eventPublisher),
 		eventPublisher:    eventPublisher,
+		auditLogRepo:      auditLogRepo,
 		logger:            logger,
 	}
 }
 
-// CreateEKSCluster creates an AWS EKS cluster (for backward compatibility)
+// CreateEKSCluster: AWS EKS 클러스터를 생성합니다 (하위 호환성을 위해)
 func (s *Service) CreateEKSCluster(ctx context.Context, credential *domain.Credential, req CreateClusterRequest) (*CreateClusterResponse, error) {
 	return s.createAWSEKSCluster(ctx, credential, req)
 }
 
-// CreateGCPGKECluster creates a GCP GKE cluster with new sectioned structure
+// CreateGCPGKECluster: 새로운 섹션 구조로 GCP GKE 클러스터를 생성합니다
 func (s *Service) CreateGCPGKECluster(ctx context.Context, credential *domain.Credential, req CreateGKEClusterRequest) (*CreateClusterResponse, error) {
 	return s.createGCPGKEClusterWithAdvanced(ctx, credential, req)
 }
 
-// createGCPGKEClusterWithAdvanced creates a GCP GKE cluster with advanced configuration
+// createGCPGKEClusterWithAdvanced: 고급 설정으로 GCP GKE 클러스터를 생성합니다
 func (s *Service) createGCPGKEClusterWithAdvanced(ctx context.Context, credential *domain.Credential, req CreateGKEClusterRequest) (*CreateClusterResponse, error) {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
@@ -252,10 +268,23 @@ func (s *Service) createGCPGKEClusterWithAdvanced(ctx context.Context, credentia
 			zap.Error(err))
 	}
 
+	// 감사로그 기록
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionKubernetesClusterCreate,
+		fmt.Sprintf("POST /api/v1/%s/kubernetes/clusters", credential.Provider),
+		map[string]interface{}{
+			"cluster_id":    response.ClusterID,
+			"cluster_name":  response.Name,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        response.Region,
+			"version":       response.Version,
+		},
+	)
+
 	return response, nil
 }
 
-// buildNodePoolConfig builds a GCP node pool configuration
+// buildNodePoolConfig: GCP 노드 풀 구성을 생성합니다
 func (s *Service) buildNodePoolConfig(nodePool *GKENodePoolConfig) *container.NodePool {
 	if nodePool == nil {
 		return nil
@@ -292,9 +321,7 @@ func (s *Service) buildNodePoolConfig(nodePool *GKENodePoolConfig) *container.No
 	return config
 }
 
-// convertToGCPTagKey converts tag keys to GCP-compatible format
-// GCP requires tag keys to start with lowercase letters and contain only
-// lowercase letters, numbers, underscores, and dashes
+// convertToGCPTagKey: 태그 키를 GCP 호환 형식으로 변환합니다
 func convertToGCPTagKey(key string) string {
 	if key == "" {
 		return key
@@ -352,12 +379,12 @@ func convertToGCPTagKey(key string) string {
 	return result
 }
 
-// isLetter checks if a character is a letter
+// isLetter: 문자가 알파벳인지 확인합니다
 func isLetter(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
-// createAWSEKSCluster creates an AWS EKS cluster
+// createAWSEKSCluster: AWS EKS 클러스터를 생성합니다
 func (s *Service) createAWSEKSCluster(ctx context.Context, credential *domain.Credential, req CreateClusterRequest) (*CreateClusterResponse, error) {
 	creds, err := s.extractAWSCredentials(ctx, credential, req.Region)
 	if err != nil {
@@ -461,7 +488,7 @@ func (s *Service) createAWSEKSCluster(ctx context.Context, credential *domain.Cr
 	return response, nil
 }
 
-// ListEKSClusters lists all Kubernetes clusters (supports multiple providers)
+// ListEKSClusters: 모든 Kubernetes 클러스터 목록을 조회합니다 (다중 프로바이더 지원)
 func (s *Service) ListEKSClusters(ctx context.Context, credential *domain.Credential, region string) (*ListClustersResponse, error) {
 	// 캐시 키 생성
 	credentialID := credential.ID.String()
@@ -518,7 +545,7 @@ func (s *Service) ListEKSClusters(ctx context.Context, credential *domain.Creden
 	return response, nil
 }
 
-// listAWSEKSClusters lists all AWS EKS clusters
+// listAWSEKSClusters: AWS EKS 클러스터 목록을 조회합니다
 func (s *Service) listAWSEKSClusters(ctx context.Context, credential *domain.Credential, region string) (*ListClustersResponse, error) {
 	creds, err := s.extractAWSCredentials(ctx, credential, region)
 	if err != nil {
@@ -589,7 +616,7 @@ func (s *Service) listAWSEKSClusters(ctx context.Context, credential *domain.Cre
 	}, nil
 }
 
-// Helper function to get map keys
+// getMapKeys: 맵의 키 목록을 반환합니다
 func getMapKeys(m map[string]interface{}) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
@@ -598,7 +625,7 @@ func getMapKeys(m map[string]interface{}) []string {
 	return keys
 }
 
-// GetEKSCluster gets details of an EKS cluster by name
+// GetEKSCluster: 이름으로 EKS 클러스터 상세 정보를 조회합니다
 func (s *Service) GetEKSCluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (*ClusterInfo, error) {
 	// 캐시 키 생성
 	credentialID := credential.ID.String()
@@ -654,7 +681,7 @@ func (s *Service) GetEKSCluster(ctx context.Context, credential *domain.Credenti
 	return cluster, nil
 }
 
-// getAWSEKSCluster gets AWS EKS cluster details
+// getAWSEKSCluster: AWS EKS 클러스터 상세 정보를 조회합니다
 func (s *Service) getAWSEKSCluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (*ClusterInfo, error) {
 	creds, err := s.extractAWSCredentials(ctx, credential, region)
 	if err != nil {
@@ -698,7 +725,7 @@ func (s *Service) getAWSEKSCluster(ctx context.Context, credential *domain.Crede
 	return &cluster, nil
 }
 
-// DeleteEKSCluster deletes a Kubernetes cluster
+// DeleteEKSCluster: Kubernetes 클러스터를 삭제합니다
 func (s *Service) DeleteEKSCluster(ctx context.Context, credential *domain.Credential, clusterName, region string) error {
 	// Route to provider-specific implementation
 	switch credential.Provider {
@@ -717,7 +744,7 @@ func (s *Service) DeleteEKSCluster(ctx context.Context, credential *domain.Crede
 	}
 }
 
-// deleteAWSEKSCluster deletes an AWS EKS cluster
+// deleteAWSEKSCluster: AWS EKS 클러스터를 삭제합니다
 func (s *Service) deleteAWSEKSCluster(ctx context.Context, credential *domain.Credential, clusterName, region string) error {
 	creds, err := s.extractAWSCredentials(ctx, credential, region)
 	if err != nil {
@@ -774,10 +801,21 @@ func (s *Service) deleteAWSEKSCluster(ctx context.Context, credential *domain.Cr
 			zap.Error(err))
 	}
 
+	// 감사로그 기록
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionKubernetesClusterDelete,
+		fmt.Sprintf("DELETE /api/v1/%s/kubernetes/clusters/%s", credential.Provider, clusterName),
+		map[string]interface{}{
+			"cluster_name":  clusterName,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        region,
+		},
+	)
+
 	return nil
 }
 
-// GetEKSKubeconfig generates kubeconfig for a Kubernetes cluster
+// GetEKSKubeconfig: Kubernetes 클러스터의 kubeconfig를 생성합니다
 func (s *Service) GetEKSKubeconfig(ctx context.Context, credential *domain.Credential, clusterName, region string) (string, error) {
 	// Route to provider-specific implementation
 	switch credential.Provider {
@@ -796,7 +834,7 @@ func (s *Service) GetEKSKubeconfig(ctx context.Context, credential *domain.Crede
 	}
 }
 
-// getAWSEKSKubeconfig generates kubeconfig for an AWS EKS cluster
+// getAWSEKSKubeconfig: AWS EKS 클러스터의 kubeconfig를 생성합니다
 func (s *Service) getAWSEKSKubeconfig(ctx context.Context, credential *domain.Credential, clusterName, region string) (string, error) {
 	creds, err := s.extractAWSCredentials(ctx, credential, region)
 	if err != nil {
@@ -869,7 +907,7 @@ users:
 	return kubeconfig, nil
 }
 
-// CreateEKSNodePool creates a node pool (node group) for an EKS cluster
+// CreateEKSNodePool: EKS 클러스터의 노드 풀을 생성합니다
 func (s *Service) CreateEKSNodePool(ctx context.Context, credential *domain.Credential, req CreateNodePoolRequest) (map[string]interface{}, error) {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
@@ -950,10 +988,35 @@ func (s *Service) CreateEKSNodePool(ctx context.Context, credential *domain.Cred
 		zap.String("nodegroup_name", req.NodePoolName),
 		zap.String("region", req.Region))
 
+	// 감사로그 기록
+	credentialID := credential.ID.String()
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionKubernetesNodePoolCreate,
+		fmt.Sprintf("POST /api/v1/%s/kubernetes/clusters/%s/node-pools", credential.Provider, req.ClusterName),
+		map[string]interface{}{
+			"nodegroup_name": req.NodePoolName,
+			"cluster_name":   req.ClusterName,
+			"provider":       credential.Provider,
+			"credential_id":  credentialID,
+			"region":         req.Region,
+		},
+	)
+
+	// NATS 이벤트 발행
+	if s.eventPublisher != nil {
+		nodePoolData := map[string]interface{}{
+			"nodegroup_name": req.NodePoolName,
+			"cluster_name":   req.ClusterName,
+			"provider":       credential.Provider,
+			"credential_id":  credentialID,
+			"region":         req.Region,
+		}
+		_ = s.eventPublisher.PublishKubernetesNodePoolEvent(ctx, credential.Provider, credentialID, req.ClusterName, "created", nodePoolData)
+	}
+
 	return result, nil
 }
 
-// CreateEKSNodeGroup creates an EKS node group
+// CreateEKSNodeGroup: EKS 노드 그룹을 생성합니다
 func (s *Service) CreateEKSNodeGroup(ctx context.Context, credential *domain.Credential, req CreateNodeGroupRequest) (*CreateNodeGroupResponse, error) {
 	creds, err := s.extractAWSCredentials(ctx, credential, req.Region)
 	if err != nil {
@@ -1031,7 +1094,7 @@ func (s *Service) CreateEKSNodeGroup(ctx context.Context, credential *domain.Cre
 	return response, nil
 }
 
-// ListNodeGroups lists all node groups for a cluster
+// ListNodeGroups: 클러스터의 노드 그룹 목록을 조회합니다
 func (s *Service) ListNodeGroups(ctx context.Context, credential *domain.Credential, req ListNodeGroupsRequest) (*ListNodeGroupsResponse, error) {
 	s.logger.Info("ListNodeGroups called",
 		zap.String("provider", credential.Provider),
@@ -1052,7 +1115,7 @@ func (s *Service) ListNodeGroups(ctx context.Context, credential *domain.Credent
 	}
 }
 
-// listAWSEKSNodeGroups lists all EKS node groups for a cluster
+// listAWSEKSNodeGroups: 클러스터의 AWS EKS 노드 그룹 목록을 조회합니다
 func (s *Service) listAWSEKSNodeGroups(ctx context.Context, credential *domain.Credential, req ListNodeGroupsRequest) (*ListNodeGroupsResponse, error) {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
@@ -1166,7 +1229,7 @@ func (s *Service) listAWSEKSNodeGroups(ctx context.Context, credential *domain.C
 	}, nil
 }
 
-// listGCPGKENodePools lists all GKE node pools for a cluster
+// listGCPGKENodePools: 클러스터의 GCP GKE 노드 풀 목록을 조회합니다
 func (s *Service) listGCPGKENodePools(ctx context.Context, credential *domain.Credential, req ListNodeGroupsRequest) (*ListNodeGroupsResponse, error) {
 	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
 	if err != nil {
@@ -1224,7 +1287,7 @@ func (s *Service) listGCPGKENodePools(ctx context.Context, credential *domain.Cr
 	}, nil
 }
 
-// GetNodeGroup gets details of a node group
+// GetNodeGroup: 노드 그룹 상세 정보를 조회합니다
 func (s *Service) GetNodeGroup(ctx context.Context, credential *domain.Credential, req GetNodeGroupRequest) (*NodeGroupInfo, error) {
 	s.logger.Info("GetNodeGroup called",
 		zap.String("provider", credential.Provider),
@@ -1246,7 +1309,7 @@ func (s *Service) GetNodeGroup(ctx context.Context, credential *domain.Credentia
 	}
 }
 
-// getAWSEKSNodeGroup gets details of an AWS EKS node group
+// getAWSEKSNodeGroup: AWS EKS 노드 그룹 상세 정보를 조회합니다
 func (s *Service) getAWSEKSNodeGroup(ctx context.Context, credential *domain.Credential, req GetNodeGroupRequest) (*NodeGroupInfo, error) {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
@@ -1346,7 +1409,7 @@ func (s *Service) getAWSEKSNodeGroup(ctx context.Context, credential *domain.Cre
 	return &nodeGroup, nil
 }
 
-// getGCPGKENodePool gets details of a GCP GKE node pool
+// getGCPGKENodePool: GCP GKE 노드 풀 상세 정보를 조회합니다
 func (s *Service) getGCPGKENodePool(ctx context.Context, credential *domain.Credential, req GetNodeGroupRequest) (*NodeGroupInfo, error) {
 	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
 	if err != nil {
@@ -1396,7 +1459,7 @@ func (s *Service) getGCPGKENodePool(ctx context.Context, credential *domain.Cred
 	return &nodeGroup, nil
 }
 
-// DeleteNodeGroup deletes a node group
+// DeleteNodeGroup: 노드 그룹을 삭제합니다
 func (s *Service) DeleteNodeGroup(ctx context.Context, credential *domain.Credential, req DeleteNodeGroupRequest) error {
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
@@ -1445,10 +1508,35 @@ func (s *Service) DeleteNodeGroup(ctx context.Context, credential *domain.Creden
 		zap.String("nodegroup_name", req.NodeGroupName),
 		zap.String("region", req.Region))
 
+	// 감사로그 기록
+	credentialID := credential.ID.String()
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionKubernetesNodeGroupDelete,
+		fmt.Sprintf("DELETE /api/v1/%s/kubernetes/clusters/%s/node-groups/%s", credential.Provider, req.ClusterName, req.NodeGroupName),
+		map[string]interface{}{
+			"nodegroup_name": req.NodeGroupName,
+			"cluster_name":   req.ClusterName,
+			"provider":       credential.Provider,
+			"credential_id":  credentialID,
+			"region":         req.Region,
+		},
+	)
+
+	// NATS 이벤트 발행
+	if s.eventPublisher != nil {
+		nodePoolData := map[string]interface{}{
+			"nodegroup_name": req.NodeGroupName,
+			"cluster_name":   req.ClusterName,
+			"provider":       credential.Provider,
+			"credential_id":  credentialID,
+			"region":         req.Region,
+		}
+		_ = s.eventPublisher.PublishKubernetesNodePoolEvent(ctx, credential.Provider, credentialID, req.ClusterName, "deleted", nodePoolData)
+	}
+
 	return nil
 }
 
-// listGCPGKEClusters lists all GCP GKE clusters
+// listGCPGKEClusters: GCP GKE 클러스터 목록을 조회합니다
 func (s *Service) listGCPGKEClusters(ctx context.Context, credential *domain.Credential, region string) (*ListClustersResponse, error) {
 	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
 	if err != nil {
@@ -1571,7 +1659,7 @@ func (s *Service) listGCPGKEClusters(ctx context.Context, credential *domain.Cre
 	return &ListClustersResponse{Clusters: allClusters}, nil
 }
 
-// getGCPGKECluster gets GCP GKE cluster details
+// getGCPGKECluster: GCP GKE 클러스터 상세 정보를 조회합니다
 func (s *Service) getGCPGKECluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (*ClusterInfo, error) {
 	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
 	if err != nil {
@@ -1651,8 +1739,7 @@ func (s *Service) getGCPGKECluster(ctx context.Context, credential *domain.Crede
 	return &clusterInfo, nil
 }
 
-// extractZoneFromLocation extracts zone from GCP cluster location
-// Location format: "projects/PROJECT_ID/locations/ZONE" or "projects/PROJECT_ID/locations/REGION"
+// extractZoneFromLocation: 위치 문자열에서 존 이름을 추출합니다
 func extractZoneFromLocation(location string) string {
 	if location == "" {
 		return ""
@@ -1677,8 +1764,7 @@ func extractZoneFromLocation(location string) string {
 	return ""
 }
 
-// getGCPLocations generates list of GCP locations (region and zones) to search
-// GCP clusters can be at region level or zone level
+// getGCPLocations: GCP 리전의 모든 위치(리전 및 존) 목록을 반환합니다
 func (s *Service) getGCPLocations(region string) []string {
 	return []string{
 		region,                      // Region level (e.g., asia-northeast3)
@@ -1688,8 +1774,7 @@ func (s *Service) getGCPLocations(region string) []string {
 	}
 }
 
-// getGCPContainerServiceAndProjectID gets GCP Container service client and project ID from credential
-// Used for create, read, update, delete operations on GCP GKE resources
+// getGCPContainerServiceAndProjectID: 자격 증명으로부터 GCP Container 서비스 클라이언트와 프로젝트 ID를 조회합니다
 func (s *Service) getGCPContainerServiceAndProjectID(ctx context.Context, credential *domain.Credential) (*container.Service, string, error) {
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
 	if err != nil {
@@ -1714,7 +1799,7 @@ func (s *Service) getGCPContainerServiceAndProjectID(ctx context.Context, creden
 	return containerService, projectID, nil
 }
 
-// convertGCPNodePoolToNodeGroupInfo converts GCP NodePool to NodeGroupInfo
+// convertGCPNodePoolToNodeGroupInfo: GCP NodePool을 NodeGroupInfo로 변환합니다
 func (s *Service) convertGCPNodePoolToNodeGroupInfo(nodePool *container.NodePool, clusterName, region string) NodeGroupInfo {
 	s.logger.Debug("Processing GCP NodePool",
 		zap.String("name", nodePool.Name),
@@ -1794,7 +1879,7 @@ func (s *Service) convertGCPNodePoolToNodeGroupInfo(nodePool *container.NodePool
 	return nodeGroup
 }
 
-// populateNodeGroupFromConfig populates NodeGroupInfo from GCP NodePool Config
+// populateNodeGroupFromConfig: GCP NodePool Config로부터 NodeGroupInfo를 채웁니다
 func (s *Service) populateNodeGroupFromConfig(nodeGroup *NodeGroupInfo, config *container.NodeConfig) {
 	if config.MachineType != "" {
 		nodeGroup.InstanceTypes = []string{config.MachineType}
@@ -1843,7 +1928,7 @@ func (s *Service) populateNodeGroupFromConfig(nodeGroup *NodeGroupInfo, config *
 	}
 }
 
-// getGCPGKEKubeconfig generates kubeconfig for a GCP GKE cluster
+// getGCPGKEKubeconfig: GCP GKE 클러스터의 kubeconfig를 생성합니다
 func (s *Service) getGCPGKEKubeconfig(ctx context.Context, credential *domain.Credential, clusterName, region string) (string, error) {
 	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
 	if err != nil {
@@ -1920,7 +2005,7 @@ users:
 	return kubeconfig, nil
 }
 
-// deleteGCPGKECluster deletes a GCP GKE cluster
+// deleteGCPGKECluster: GCP GKE 클러스터를 삭제합니다
 func (s *Service) deleteGCPGKECluster(ctx context.Context, credential *domain.Credential, clusterName, region string) error {
 	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
 	if err != nil {

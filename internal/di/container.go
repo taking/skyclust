@@ -97,6 +97,7 @@ func (c *Container) Initialize(ctx context.Context, cfg *config.Config) error {
 	c.infrastructureModule.infrastructure.Database = c.db
 	c.infrastructureModule.infrastructure.Cache = c.cache
 	c.infrastructureModule.infrastructure.Logger = c.logger
+	// TransactionManager is already set in NewInfrastructureModule
 
 	c.initialized = true
 	return nil
@@ -186,6 +187,13 @@ func (c *Container) GetOIDCProviderRepository() domain.OIDCProviderRepository {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.repositoryModule.GetContainer().OIDCProviderRepository
+}
+
+// GetOutboxRepository returns the outbox repository
+func (c *Container) GetOutboxRepository() domain.OutboxRepository {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.repositoryModule.GetContainer().OutboxRepository
 }
 
 // GetUserService returns the user service
@@ -286,6 +294,13 @@ func (c *Container) GetLogger() interface{} {
 	return c.logger
 }
 
+// GetTransactionManager returns the transaction manager
+func (c *Container) GetTransactionManager() domain.TransactionManager {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.infrastructureModule.GetContainer().TransactionManager
+}
+
 // GetAuthService returns the auth service
 func (c *Container) GetAuthService() domain.AuthService {
 	c.mu.RLock()
@@ -375,6 +390,13 @@ func (c *Container) GetComputeService() interface{} {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.serviceModule.GetContainer().ComputeService
+}
+
+// GetDashboardService returns the dashboard service
+func (c *Container) GetDashboardService() interface{} {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.serviceModule.GetContainer().DashboardService
 }
 
 // StartWorkers starts all background workers

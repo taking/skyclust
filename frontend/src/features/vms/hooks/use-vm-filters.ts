@@ -3,7 +3,7 @@
  * VM 필터링 및 검색 로직
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { DataProcessor } from '@/lib/data-processor';
 import type { SortConfig } from '@/hooks/use-advanced-filtering';
 import type { VM } from '@/lib/types';
@@ -22,8 +22,8 @@ export function useVMFilters({
 }: UseVMFiltersOptions) {
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Get value function for sorting
-  const getValue = (vm: VM, field: string): unknown => {
+  // Get value function for sorting (memoized)
+  const getValue = useCallback((vm: VM, field: string): unknown => {
     switch (field) {
       case 'name': return vm.name;
       case 'provider': return vm.provider;
@@ -33,10 +33,11 @@ export function useVMFilters({
       case 'created_at': return vm.created_at ? new Date(vm.created_at) : null;
       default: return null;
     }
-  };
+  }, []);
 
-  // Custom filter function for VM-specific filtering
-  const filterFn = (vm: VM, filters: FilterValue): boolean => {
+  // Custom filter function for VM-specific filtering (memoized)
+  // Note: Currently not used, but kept for future use
+  const _filterFn = useCallback((vm: VM, filters: FilterValue): boolean => {
     // Status filter
     if (filters.status && Array.isArray(filters.status) && filters.status.length > 0) {
       if (!filters.status.includes(vm.status)) return false;
@@ -53,9 +54,9 @@ export function useVMFilters({
     }
 
     return true;
-  };
+  }, []);
 
-  // Apply search, filter, and sort using DataProcessor
+  // Apply search, filter, and sort using DataProcessor (memoized)
   const filteredVMs = useMemo(() => {
     return DataProcessor.combine(vms, {
       searchQuery,
@@ -64,13 +65,13 @@ export function useVMFilters({
       sortConfig: sortConfig as SortConfig[],
       getValue,
     });
-  }, [vms, searchQuery, advancedFilters, sortConfig]);
+  }, [vms, searchQuery, advancedFilters, sortConfig, getValue]);
 
   const isSearching = searchQuery.length > 0;
 
-  const clearSearch = () => {
+  const clearSearch = useCallback(() => {
     setSearchQuery('');
-  };
+  }, [setSearchQuery]);
 
   return {
     searchQuery,

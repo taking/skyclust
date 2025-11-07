@@ -12,20 +12,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button';
 import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
 import { useToast } from '@/hooks/use-toast';
-import * as z from 'zod';
+import { createValidationSchemas } from '@/lib/validations';
 import type { CreateClusterForm, Credential, CloudProvider } from '@/lib/types';
-
-const createClusterSchema = z.object({
-  credential_id: z.string().uuid('Invalid credential ID'),
-  name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),
-  version: z.string().min(1, 'Version is required'),
-  region: z.string().min(1, 'Region is required'),
-  zone: z.string().optional(),
-  subnet_ids: z.array(z.string()).min(1, 'At least one subnet is required'),
-  vpc_id: z.string().optional(),
-  role_arn: z.string().optional(),
-  tags: z.record(z.string(), z.string()).optional(),
-});
+import { useTranslation } from '@/hooks/use-translation';
 
 interface CreateClusterDialogProps {
   open: boolean;
@@ -39,7 +28,7 @@ interface CreateClusterDialogProps {
 }
 
 export function CreateClusterDialog({
-  open,
+  open: _open,
   onOpenChange,
   onSubmit,
   credentials,
@@ -48,7 +37,9 @@ export function CreateClusterDialog({
   selectedProvider,
   isPending = false,
 }: CreateClusterDialogProps) {
+  const { t } = useTranslation();
   const { success: showSuccess, error: showError } = useToast();
+  const schemas = createValidationSchemas(t);
 
   const {
     form,
@@ -60,7 +51,7 @@ export function CreateClusterDialog({
     getFieldValidationState,
     setValue,
   } = useFormWithValidation<CreateClusterForm>({
-    schema: createClusterSchema,
+    schema: schemas.createClusterSchema,
     defaultValues: {
       credential_id: selectedCredentialId || '',
       name: '',
@@ -91,13 +82,13 @@ export function CreateClusterDialog({
     onOpenChange(false);
   };
 
-  const handleCredentialChange = (value: string) => {
+  const _handleCredentialChange = (value: string) => {
     onCredentialChange(value);
     setValue('credential_id', value);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={_open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create Kubernetes Cluster</DialogTitle>

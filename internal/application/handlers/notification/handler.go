@@ -12,14 +12,14 @@ import (
 	"go.uber.org/zap"
 )
 
-// Handler handles notification management operations using improved patterns
+// Handler: 알림 관리 작업을 처리하는 핸들러
 type Handler struct {
 	*handlers.BaseHandler
 	notificationService domain.NotificationService
 	readabilityHelper   *readability.ReadabilityHelper
 }
 
-// NewHandler creates a new notification handler
+// NewHandler: 새로운 알림 핸들러를 생성합니다
 func NewHandler(notificationService domain.NotificationService) *Handler {
 	return &Handler{
 		BaseHandler:         handlers.NewBaseHandler("notification"),
@@ -28,7 +28,7 @@ func NewHandler(notificationService domain.NotificationService) *Handler {
 	}
 }
 
-// GetNotifications retrieves notifications using decorator pattern
+// GetNotifications: 알림 목록을 조회합니다 (데코레이터 패턴 사용)
 func (h *Handler) GetNotifications(c *gin.Context) {
 	handler := h.Compose(
 		h.getNotificationsHandler(),
@@ -38,7 +38,7 @@ func (h *Handler) GetNotifications(c *gin.Context) {
 	handler(c)
 }
 
-// getNotificationsHandler is the core business logic for getting notifications
+// getNotificationsHandler: 알림 조회의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) getNotificationsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := h.ExtractUserIDFromContext(c)
@@ -80,7 +80,7 @@ func (h *Handler) getNotificationsHandler() handlers.HandlerFunc {
 	}
 }
 
-// GetNotification retrieves a specific notification using decorator pattern
+// GetNotification: 특정 알림을 조회합니다 (데코레이터 패턴 사용)
 func (h *Handler) GetNotification(c *gin.Context) {
 	handler := h.Compose(
 		h.getNotificationHandler(),
@@ -90,7 +90,7 @@ func (h *Handler) GetNotification(c *gin.Context) {
 	handler(c)
 }
 
-// getNotificationHandler is the core business logic for getting a notification
+// getNotificationHandler: 알림 조회의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) getNotificationHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := h.ExtractUserIDFromContext(c)
@@ -120,8 +120,8 @@ func (h *Handler) getNotificationHandler() handlers.HandlerFunc {
 	}
 }
 
-// UpdateNotification updates a notification (RESTful: PATCH /notifications/:id)
-// Supports updating read status via request body: {"read": true/false}
+// UpdateNotification: 알림을 업데이트합니다 (RESTful: PATCH /notifications/:id)
+// 요청 본문을 통해 읽음 상태 업데이트 지원: {"read": true/false}
 func (h *Handler) UpdateNotification(c *gin.Context) {
 	handler := h.Compose(
 		h.updateNotificationHandler(),
@@ -131,7 +131,7 @@ func (h *Handler) UpdateNotification(c *gin.Context) {
 	handler(c)
 }
 
-// updateNotificationHandler is the core business logic for updating a notification
+// updateNotificationHandler: 알림 업데이트의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) updateNotificationHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := h.ExtractUserIDFromContext(c)
@@ -196,8 +196,8 @@ func (h *Handler) updateNotificationHandler() handlers.HandlerFunc {
 	}
 }
 
-// UpdateNotifications updates notifications in bulk (RESTful: PATCH /notifications)
-// Supports bulk read status update via request body: {"read": true/false, "notification_ids": [...]}
+// UpdateNotifications: 알림을 일괄 업데이트합니다 (RESTful: PATCH /notifications)
+// 요청 본문을 통해 일괄 읽음 상태 업데이트 지원: {"read": true/false, "notification_ids": [...]}
 func (h *Handler) UpdateNotifications(c *gin.Context) {
 	handler := h.Compose(
 		h.updateNotificationsHandler(),
@@ -207,7 +207,7 @@ func (h *Handler) UpdateNotifications(c *gin.Context) {
 	handler(c)
 }
 
-// updateNotificationsHandler is the core business logic for updating multiple notifications
+// updateNotificationsHandler: 여러 알림 업데이트의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) updateNotificationsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := h.ExtractUserIDFromContext(c)
@@ -327,7 +327,7 @@ func (h *Handler) updateNotificationsHandler() handlers.HandlerFunc {
 	}
 }
 
-// DeleteNotification deletes a notification using decorator pattern
+// DeleteNotification: 알림을 삭제합니다 (데코레이터 패턴 사용)
 func (h *Handler) DeleteNotification(c *gin.Context) {
 	handler := h.Compose(
 		h.deleteNotificationHandler(),
@@ -337,7 +337,7 @@ func (h *Handler) DeleteNotification(c *gin.Context) {
 	handler(c)
 }
 
-// deleteNotificationHandler is the core business logic for deleting a notification
+// deleteNotificationHandler: 알림 삭제의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) deleteNotificationHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := h.ExtractUserIDFromContext(c)
@@ -370,7 +370,7 @@ func (h *Handler) deleteNotificationHandler() handlers.HandlerFunc {
 	}
 }
 
-// DeleteNotifications deletes multiple notifications using decorator pattern
+// DeleteNotifications: 여러 알림을 삭제합니다 (데코레이터 패턴 사용)
 func (h *Handler) DeleteNotifications(c *gin.Context) {
 	handler := h.Compose(
 		h.deleteNotificationsHandler(),
@@ -380,7 +380,7 @@ func (h *Handler) DeleteNotifications(c *gin.Context) {
 	handler(c)
 }
 
-// deleteNotificationsHandler is the core business logic for deleting multiple notifications
+// deleteNotificationsHandler: 여러 알림 삭제의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) deleteNotificationsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := h.ExtractUserIDFromContext(c)
@@ -418,7 +418,7 @@ func (h *Handler) deleteNotificationsHandler() handlers.HandlerFunc {
 	}
 }
 
-// GetNotificationPreferences retrieves notification preferences using decorator pattern
+// GetNotificationPreferences: 알림 설정을 조회합니다 (데코레이터 패턴 사용)
 func (h *Handler) GetNotificationPreferences(c *gin.Context) {
 	handler := h.Compose(
 		h.getNotificationPreferencesHandler(),
@@ -428,7 +428,7 @@ func (h *Handler) GetNotificationPreferences(c *gin.Context) {
 	handler(c)
 }
 
-// getNotificationPreferencesHandler is the core business logic for getting notification preferences
+// getNotificationPreferencesHandler: 알림 설정 조회의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) getNotificationPreferencesHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := h.ExtractUserIDFromContext(c)
@@ -452,7 +452,7 @@ func (h *Handler) getNotificationPreferencesHandler() handlers.HandlerFunc {
 	}
 }
 
-// UpdateNotificationPreferences updates notification preferences using decorator pattern
+// UpdateNotificationPreferences: 알림 설정을 업데이트합니다 (데코레이터 패턴 사용)
 func (h *Handler) UpdateNotificationPreferences(c *gin.Context) {
 	var req domain.UpdateNotificationPreferencesRequest
 
@@ -464,7 +464,7 @@ func (h *Handler) UpdateNotificationPreferences(c *gin.Context) {
 	handler(c)
 }
 
-// updateNotificationPreferencesHandler is the core business logic for updating notification preferences
+// updateNotificationPreferencesHandler: 알림 설정 업데이트의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) updateNotificationPreferencesHandler(req domain.UpdateNotificationPreferencesRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		var req domain.UpdateNotificationPreferencesRequest
@@ -568,7 +568,7 @@ func (h *Handler) updateNotificationPreferencesHandler(req domain.UpdateNotifica
 	}
 }
 
-// GetNotificationStats retrieves notification statistics using decorator pattern
+// GetNotificationStats: 알림 통계를 조회합니다 (데코레이터 패턴 사용)
 func (h *Handler) GetNotificationStats(c *gin.Context) {
 	handler := h.Compose(
 		h.getNotificationStatsHandler(),
@@ -578,7 +578,7 @@ func (h *Handler) GetNotificationStats(c *gin.Context) {
 	handler(c)
 }
 
-// getNotificationStatsHandler is the core business logic for getting notification statistics
+// getNotificationStatsHandler: 알림 통계 조회의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) getNotificationStatsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := h.ExtractUserIDFromContext(c)
@@ -602,7 +602,7 @@ func (h *Handler) getNotificationStatsHandler() handlers.HandlerFunc {
 	}
 }
 
-// SendTestNotification sends a test notification using decorator pattern
+// SendTestNotification: 테스트 알림을 전송합니다 (데코레이터 패턴 사용)
 func (h *Handler) SendTestNotification(c *gin.Context) {
 	handler := h.Compose(
 		h.sendTestNotificationHandler(),
@@ -612,7 +612,7 @@ func (h *Handler) SendTestNotification(c *gin.Context) {
 	handler(c)
 }
 
-// sendTestNotificationHandler is the core business logic for sending a test notification
+// sendTestNotificationHandler: 테스트 알림 전송의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) sendTestNotificationHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := h.ExtractUserIDFromContext(c)
@@ -660,8 +660,9 @@ func (h *Handler) sendTestNotificationHandler() handlers.HandlerFunc {
 	}
 }
 
-// Helper methods for better readability
+// 헬퍼 메서드들
 
+// NotificationFilters: 알림 필터링을 위한 구조체
 type NotificationFilters struct {
 	Limit      int
 	Offset     int
@@ -670,6 +671,7 @@ type NotificationFilters struct {
 	Priority   string
 }
 
+// parseNotificationFilters: 쿼리 파라미터로부터 알림 필터를 파싱합니다
 func (h *Handler) parseNotificationFilters(c *gin.Context) NotificationFilters {
 	limitStr := c.DefaultQuery("limit", "20")
 	offsetStr := c.DefaultQuery("offset", "0")
@@ -698,6 +700,7 @@ func (h *Handler) parseNotificationFilters(c *gin.Context) NotificationFilters {
 	}
 }
 
+// convertToNotificationResponses: 도메인 알림을 응답 DTO로 변환합니다
 func (h *Handler) convertToNotificationResponses(notifications []*domain.Notification) []*NotificationResponse {
 	responses := make([]*NotificationResponse, len(notifications))
 	for i, notification := range notifications {
@@ -716,8 +719,9 @@ func (h *Handler) convertToNotificationResponses(notifications []*domain.Notific
 	return responses
 }
 
-// Logging helper methods
+// 로깅 헬퍼 메서드들
 
+// logNotificationsRequest: 알림 목록 조회 요청 로그를 기록합니다
 func (h *Handler) logNotificationsRequest(c *gin.Context, userID uuid.UUID, filters NotificationFilters) {
 	h.LogBusinessEvent(c, "notifications_requested", userID.String(), "", map[string]interface{}{
 		"limit":       filters.Limit,
@@ -726,12 +730,14 @@ func (h *Handler) logNotificationsRequest(c *gin.Context, userID uuid.UUID, filt
 	})
 }
 
+// logNotificationRequest: 알림 조회 요청 로그를 기록합니다
 func (h *Handler) logNotificationRequest(c *gin.Context, userID uuid.UUID, notificationID uuid.UUID) {
 	h.LogBusinessEvent(c, "notification_requested", userID.String(), notificationID.String(), map[string]interface{}{
 		"notification_id": notificationID.String(),
 	})
 }
 
+// logNotificationUpdateSuccess: 알림 업데이트 성공 로그를 기록합니다
 func (h *Handler) logNotificationUpdateSuccess(c *gin.Context, userID uuid.UUID, notificationID uuid.UUID, readStatus bool) {
 	h.LogBusinessEvent(c, "notification_updated", userID.String(), notificationID.String(), map[string]interface{}{
 		"notification_id": notificationID.String(),
@@ -739,6 +745,7 @@ func (h *Handler) logNotificationUpdateSuccess(c *gin.Context, userID uuid.UUID,
 	})
 }
 
+// logNotificationsUpdateSuccess: 여러 알림 업데이트 성공 로그를 기록합니다
 func (h *Handler) logNotificationsUpdateSuccess(c *gin.Context, userID uuid.UUID, updatedCount int64, readStatus bool) {
 	h.LogBusinessEvent(c, "notifications_updated", userID.String(), "", map[string]interface{}{
 		"updated_count": updatedCount,
@@ -746,36 +753,42 @@ func (h *Handler) logNotificationsUpdateSuccess(c *gin.Context, userID uuid.UUID
 	})
 }
 
+// logNotificationDeletionAttempt: 알림 삭제 시도 로그를 기록합니다
 func (h *Handler) logNotificationDeletionAttempt(c *gin.Context, userID uuid.UUID, notificationID uuid.UUID) {
 	h.LogBusinessEvent(c, "notification_deletion_attempted", userID.String(), notificationID.String(), map[string]interface{}{
 		"notification_id": notificationID.String(),
 	})
 }
 
+// logNotificationDeletionSuccess: 알림 삭제 성공 로그를 기록합니다
 func (h *Handler) logNotificationDeletionSuccess(c *gin.Context, userID uuid.UUID, notificationID uuid.UUID) {
 	h.LogBusinessEvent(c, "notification_deleted", userID.String(), notificationID.String(), map[string]interface{}{
 		"notification_id": notificationID.String(),
 	})
 }
 
+// logBulkDeletionAttempt: 일괄 삭제 시도 로그를 기록합니다
 func (h *Handler) logBulkDeletionAttempt(c *gin.Context, userID uuid.UUID) {
 	h.LogBusinessEvent(c, "bulk_deletion_attempted", userID.String(), "", map[string]interface{}{
 		"operation": "bulk_delete_notifications",
 	})
 }
 
+// logBulkDeletionSuccess: 일괄 삭제 성공 로그를 기록합니다
 func (h *Handler) logBulkDeletionSuccess(c *gin.Context, userID uuid.UUID) {
 	h.LogBusinessEvent(c, "notifications_bulk_deleted", userID.String(), "", map[string]interface{}{
 		"operation": "bulk_delete_notifications",
 	})
 }
 
+// logPreferencesRequest: 알림 설정 조회 요청 로그를 기록합니다
 func (h *Handler) logPreferencesRequest(c *gin.Context, userID uuid.UUID) {
 	h.LogBusinessEvent(c, "preferences_requested", userID.String(), "", map[string]interface{}{
 		"operation": "get_notification_preferences",
 	})
 }
 
+// logPreferencesUpdateAttempt: 알림 설정 업데이트 시도 로그를 기록합니다
 func (h *Handler) logPreferencesUpdateAttempt(c *gin.Context, userID uuid.UUID, req domain.UpdateNotificationPreferencesRequest) {
 	h.LogBusinessEvent(c, "preferences_update_attempted", userID.String(), "", map[string]interface{}{
 		"operation":   "update_notification_preferences",
@@ -783,6 +796,7 @@ func (h *Handler) logPreferencesUpdateAttempt(c *gin.Context, userID uuid.UUID, 
 	})
 }
 
+// logPreferencesUpdateSuccess: 알림 설정 업데이트 성공 로그를 기록합니다
 func (h *Handler) logPreferencesUpdateSuccess(c *gin.Context, userID uuid.UUID, req domain.UpdateNotificationPreferencesRequest) {
 	h.LogBusinessEvent(c, "preferences_updated", userID.String(), "", map[string]interface{}{
 		"operation":   "update_notification_preferences",
@@ -790,18 +804,21 @@ func (h *Handler) logPreferencesUpdateSuccess(c *gin.Context, userID uuid.UUID, 
 	})
 }
 
+// logStatsRequest: 알림 통계 조회 요청 로그를 기록합니다
 func (h *Handler) logStatsRequest(c *gin.Context, userID uuid.UUID) {
 	h.LogBusinessEvent(c, "stats_requested", userID.String(), "", map[string]interface{}{
 		"operation": "get_notification_stats",
 	})
 }
 
+// logTestNotificationAttempt: 테스트 알림 전송 시도 로그를 기록합니다
 func (h *Handler) logTestNotificationAttempt(c *gin.Context, userID uuid.UUID) {
 	h.LogBusinessEvent(c, "test_notification_attempted", userID.String(), "", map[string]interface{}{
 		"operation": "send_test_notification",
 	})
 }
 
+// logTestNotificationSuccess: 테스트 알림 전송 성공 로그를 기록합니다
 func (h *Handler) logTestNotificationSuccess(c *gin.Context, userID uuid.UUID, notification gin.H) {
 	h.LogBusinessEvent(c, "test_notification_sent", userID.String(), "", map[string]interface{}{
 		"operation":    "send_test_notification",

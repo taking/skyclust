@@ -1,6 +1,5 @@
 /**
- * Cloud Provider Regions
- * 각 클라우드 프로바이더별 리전 목록
+ * 클라우드 프로바이더별 리전 목록 및 유틸리티 함수
  */
 
 export interface RegionOption {
@@ -8,7 +7,7 @@ export interface RegionOption {
   label: string;
 }
 
-// GCP regions list
+/** GCP 리전 목록 */
 export const GCP_REGIONS: RegionOption[] = [
   { value: 'asia-east1', label: 'Asia East (Taiwan)' },
   { value: 'asia-northeast1', label: 'Asia Northeast (Tokyo)' },
@@ -31,7 +30,7 @@ export const GCP_REGIONS: RegionOption[] = [
   { value: 'us-west4', label: 'US West 4 (Las Vegas)' },
 ];
 
-// AWS regions list
+/** AWS 리전 목록 */
 export const AWS_REGIONS: RegionOption[] = [
   { value: 'us-east-1', label: 'US East (N. Virginia)' },
   { value: 'us-east-2', label: 'US East (Ohio)' },
@@ -62,7 +61,7 @@ export const AWS_REGIONS: RegionOption[] = [
   { value: 'sa-east-1', label: 'South America (São Paulo)' },
 ];
 
-// Azure regions list
+/** Azure 리전 목록 */
 export const AZURE_REGIONS: RegionOption[] = [
   { value: 'eastus', label: 'East US' },
   { value: 'eastus2', label: 'East US 2' },
@@ -97,10 +96,15 @@ export const AZURE_REGIONS: RegionOption[] = [
 ];
 
 /**
- * Get regions for a specific provider
+ * 특정 프로바이더의 리전 목록 반환
+ * @param provider 프로바이더 이름 (gcp, aws, azure)
+ * @returns 리전 목록 배열
  */
 export function getRegionsForProvider(provider?: string): RegionOption[] {
-  switch (provider?.toLowerCase()) {
+  // 프로바이더 이름을 소문자로 변환하여 대소문자 구분 없이 비교
+  const normalizedProvider = provider?.toLowerCase();
+  
+  switch (normalizedProvider) {
     case 'gcp':
       return GCP_REGIONS;
     case 'aws':
@@ -108,15 +112,50 @@ export function getRegionsForProvider(provider?: string): RegionOption[] {
     case 'azure':
       return AZURE_REGIONS;
     default:
+      // 지원하지 않는 프로바이더이거나 provider가 undefined인 경우 빈 배열 반환
       return [];
   }
 }
 
 /**
- * Check if provider supports region selection
+ * 프로바이더가 리전 선택을 지원하는지 확인
+ * @param provider 프로바이더 이름
+ * @returns 리전 선택 지원 여부
  */
 export function supportsRegionSelection(provider?: string): boolean {
+  // 리전 선택을 지원하는 프로바이더 목록
   const supportedProviders = ['gcp', 'aws', 'azure'];
-  return supportedProviders.includes(provider?.toLowerCase() || '');
+  
+  // 프로바이더 이름을 소문자로 변환하여 지원 목록에 포함되어 있는지 확인
+  const normalizedProvider = provider?.toLowerCase() || '';
+  return supportedProviders.includes(normalizedProvider);
+}
+
+/**
+ * 프로바이더의 기본 리전 반환
+ * - GCP: asia-northeast3 (서울)
+ * - AWS: ap-northeast-3 (오사카)
+ * - Azure: null (기본 리전 없음)
+ * @param provider 프로바이더 이름
+ * @returns 기본 리전 또는 null
+ */
+export function getDefaultRegionForProvider(provider?: string): string | null {
+  // 프로바이더 이름을 소문자로 변환하여 대소문자 구분 없이 비교
+  const normalizedProvider = provider?.toLowerCase();
+  
+  switch (normalizedProvider) {
+    case 'gcp':
+      // GCP 기본 리전: 서울 (asia-northeast3)
+      return 'asia-northeast3';
+    case 'aws':
+      // AWS 기본 리전: 오사카 (ap-northeast-3)
+      return 'ap-northeast-3';
+    case 'azure':
+      // Azure는 기본 리전이 없으므로 null 반환
+      return null;
+    default:
+      // 지원하지 않는 프로바이더이거나 provider가 undefined인 경우 null 반환
+      return null;
+  }
 }
 

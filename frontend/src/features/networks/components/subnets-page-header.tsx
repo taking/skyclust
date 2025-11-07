@@ -7,26 +7,74 @@
 
 import { useWorkspaceStore } from '@/store/workspace';
 import { useTranslation } from '@/hooks/use-translation';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-export function SubnetsPageHeader() {
+interface SubnetsPageHeaderProps {
+  selectedProvider?: string;
+  selectedCredentialId?: string;
+  selectedVPCId?: string;
+  vpcs: Array<{ id: string; name?: string }>;
+  onVPCChange: (vpcId: string) => void;
+}
+
+export function SubnetsPageHeader({
+  selectedProvider,
+  selectedCredentialId,
+  selectedVPCId,
+  vpcs,
+  onVPCChange,
+}: SubnetsPageHeaderProps) {
   const { currentWorkspace } = useWorkspaceStore();
   const { t } = useTranslation();
 
   return (
-    <div className="flex items-center justify-between">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">{t('network.subnets')}</h1>
-        <p className="text-gray-600 mt-1">
-          {currentWorkspace 
-            ? t('network.manageSubnetsWithWorkspace', { workspaceName: currentWorkspace.name }) 
-            : t('network.manageSubnets')
-          }
-        </p>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">{t('network.subnets')}</h1>
+          <p className="text-gray-600 mt-1">
+            {currentWorkspace 
+              ? t('network.manageSubnetsWithWorkspace', { workspaceName: currentWorkspace.name }) 
+              : t('network.manageSubnets')
+            }
+          </p>
+        </div>
+        <div className="flex items-center space-x-2">
+          {/* Credential selection is now handled in Header */}
+        </div>
       </div>
-      <div className="flex items-center space-x-2">
-        {/* Credential selection is now handled in Header */}
-      </div>
+      
+      {/* Configuration Card - VPC Selection */}
+      {selectedProvider && selectedCredentialId && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('common.configuration')}</CardTitle>
+            <CardDescription>{t('network.selectVPCToViewSubnets')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <Label>VPC *</Label>
+              <Select
+                value={selectedVPCId}
+                onValueChange={onVPCChange}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={t('network.selectVPC')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {vpcs.map((vpc) => (
+                    <SelectItem key={vpc.id} value={vpc.id}>
+                      {vpc.name || vpc.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
-

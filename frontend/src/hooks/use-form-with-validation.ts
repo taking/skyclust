@@ -147,7 +147,6 @@ export function useFormWithValidation<T extends FieldValues>({
   onSuccess,
   onError,
   formOptions,
-  validationOptions,
   resetOnSuccess = false,
   getErrorMessage,
 }: UseFormWithValidationOptions<T>): UseFormWithValidationReturn<T> {
@@ -161,7 +160,8 @@ export function useFormWithValidation<T extends FieldValues>({
   const form = useForm<T>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(schema as any),
-    defaultValues: defaultValues as T,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    defaultValues: defaultValues as any,
     mode: formOptions?.mode || 'onChange',
     ...formOptions,
   });
@@ -170,7 +170,8 @@ export function useFormWithValidation<T extends FieldValues>({
   const getValidationState = useCallback(
     (fieldName: Path<T>): ValidationState => {
       const fieldError = form.formState.errors[fieldName];
-      const isTouched = form.formState.touchedFields[fieldName];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const isTouched = (form.formState.touchedFields as any)[fieldName];
       const fieldValue = form.watch(fieldName);
 
       if (fieldError) {
@@ -183,7 +184,7 @@ export function useFormWithValidation<T extends FieldValues>({
 
       return 'idle';
     },
-    [form.formState.errors, form.formState.touchedFields, form.watch]
+    [form]
   );
 
   // Get field error message
@@ -293,7 +294,8 @@ export function useFormWithValidation<T extends FieldValues>({
   // Reset form
   const reset = useCallback(
     (values?: Partial<T>) => {
-      form.reset(values || (defaultValues as T));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      form.reset((values || defaultValues) as any);
       setError(null);
       setSuccess(false);
     },

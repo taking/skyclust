@@ -5,35 +5,36 @@
 
 'use client';
 
-import { useState, useMemo } from 'react';
+import { Suspense } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import * as React from 'react';
 import dynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useSearch } from '@/hooks/use-search';
+import { ResourceListPage } from '@/components/common/resource-list-page';
+import { BulkActionsToolbar } from '@/components/common/bulk-actions-toolbar';
 import { usePagination } from '@/hooks/use-pagination';
 import { useCreateDialog } from '@/hooks/use-create-dialog';
 import { EVENTS, UI } from '@/lib/constants';
-import { Layers, Plus } from 'lucide-react';
-import { useRequireAuth } from '@/hooks/use-auth';
-import { useSSEMonitoring } from '@/hooks/use-sse-monitoring';
+import { Layers, Filter } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { FilterConfig, FilterValue } from '@/components/ui/filter-panel';
 import { TableSkeleton } from '@/components/ui/table-skeleton';
-import { WorkspaceRequired } from '@/components/common/workspace-required';
-import { Layout } from '@/components/layout/layout';
 import { CredentialRequiredState } from '@/components/common/credential-required-state';
 import { ResourceEmptyState } from '@/components/common/resource-empty-state';
-import { BulkActionsToolbar } from '@/components/common/bulk-actions-toolbar';
+import { useCredentialAutoSelect } from '@/hooks/use-credential-auto-select';
+import { useWorkspaceStore } from '@/store/workspace';
 import { useTranslation } from '@/hooks/use-translation';
+import { DataProcessor } from '@/lib/data-processor';
+import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
 import {
   useSubnets,
   useSubnetActions,
   SubnetsPageHeader,
 } from '@/features/networks';
-import type { CreateSubnetForm } from '@/lib/types';
+import type { CreateSubnetForm, Subnet } from '@/lib/types';
 
 // Dynamic imports for heavy components
 const CreateSubnetDialog = dynamic(
@@ -52,10 +53,9 @@ const SubnetTable = dynamic(
   }
 );
 
-export default function SubnetsPage() {
+function SubnetsPageContent() {
   const { t } = useTranslation();
-  const router = useRouter();
-  const { isLoading: authLoading } = useRequireAuth();
+  const { currentWorkspace } = useWorkspaceStore();
 
   const {
     subnets,
@@ -68,18 +68,25 @@ export default function SubnetsPage() {
     selectedCredentialId,
     selectedRegion,
   } = useSubnets();
+  
+  // Auto-select credential if not selected
+  useCredentialAutoSelect({
+    enabled: !!currentWorkspace,
+    resourceType: 'network',
+    updateUrl: true,
+  });
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useCreateDialog(EVENTS.CREATE_DIALOG.SUBNET);
+  const [filters, setFilters] = useState<FilterValue>({});
+  const [showFilters, setShowFilters] = useState(false);
   const [selectedSubnetIds, setSelectedSubnetIds] = useState<string[]>([]);
   const [pageSize, setPageSize] = useState<number>(UI.PAGINATION.DEFAULT_PAGE_SIZE);
-
-  useSSEMonitoring();
 
   const {
     createSubnetMutation,
     deleteSubnetMutation,
     handleBulkDeleteSubnets: handleBulkDelete,
-    handleDeleteSubnet,
+    executeDeleteSubnet,
   } = useSubnetActions({
     selectedProvider,
     selectedCredentialId,
@@ -88,21 +95,56 @@ export default function SubnetsPage() {
     },
   });
 
-  // Search functionality
-  const {
-    query: searchQuery,
-    setQuery: setSearchQuery,
-    results: searchResults,
-    clearSearch: clearSearch,
-  } = useSearch(subnets, {
-    keys: ['name', 'id', 'cidr_block', 'state'],
-    threshold: 0.3,
+  const [deleteDialogState, setDeleteDialogState] = useState<{
+    open: boolean;
+    subnetId: string | null;
+    region: string | null;
+    subnetName?: string;
+  }>({
+    open: false,
+    subnetId: null,
+    region: null,
+    subnetName: undefined,
   });
+
+  const handleDeleteSubnet = (subnetId: string, region: string) => {
+    const subnet = subnets.find(s => s.id === subnetId);
+    setDeleteDialogState({ open: true, subnetId, region, subnetName: subnet?.name || subnet?.id });
+  };
+
+  const handleConfirmDelete = () => {
+    if (deleteDialogState.subnetId && deleteDialogState.region) {
+      executeDeleteSubnet(deleteDialogState.subnetId, deleteDialogState.region);
+      setDeleteDialogState({ open: false, subnetId: null, region: null, subnetName: undefined });
+    }
+  };
+
+  // Search functionality
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Custom filter function for subnet filtering (memoized)
+  const filterFn = useCallback((subnet: Subnet, filters: FilterValue): boolean => {
+    if (filters.state && subnet.state !== filters.state) return false;
+    return true;
+  }, []);
 
   // Filtered subnets (memoized for consistency)
   const filteredSubnets = useMemo(() => {
-    return searchResults;
-  }, [searchResults]);
+    let result = DataProcessor.search(subnets, searchQuery, {
+      keys: ['name', 'id', 'cidr_block', 'state'],
+      threshold: 0.3,
+    });
+
+    result = DataProcessor.filter(result, filters, filterFn);
+    
+    return result;
+  }, [subnets, searchQuery, filters, filterFn]);
+
+  const isSearching = searchQuery.length > 0;
+
+  const clearSearch = useCallback(() => {
+    setSearchQuery('');
+  }, []);
 
   // Pagination
   const {
@@ -116,212 +158,211 @@ export default function SubnetsPage() {
     initialPageSize: pageSize,
   });
 
-  const handleCreateSubnet = (data: CreateSubnetForm) => {
+  const handleCreateSubnet = useCallback((data: CreateSubnetForm) => {
     createSubnetMutation.mutate(data);
-  };
+  }, [createSubnetMutation]);
 
-  const handleBulkDeleteSubnets = async (subnetIds: string[]) => {
+  const handleBulkDeleteSubnets = useCallback(async (subnetIds: string[]) => {
     try {
       await handleBulkDelete(subnetIds, filteredSubnets);
       setSelectedSubnetIds([]);
-    } catch (error) {
+    } catch {
       // Error already handled in hook
     }
-  };
+  }, [handleBulkDelete, filteredSubnets]);
 
-  const handlePageSizeChange = (newSize: number) => {
+  const handlePageSizeChange = useCallback((newSize: number) => {
     setPageSize(newSize);
     setPaginationPageSize(newSize);
-  };
+  }, [setPaginationPageSize]);
 
-  const handleVPCChange = (vpcId: string) => {
+  const handleVPCChange = useCallback((vpcId: string) => {
     setSelectedVPCId(vpcId);
-  };
+  }, []);
 
-  // Render content with Early Return pattern
-  const renderContent = () => {
-    // Early Return: No credentials
-    if (credentials.length === 0) {
-      return <CredentialRequiredState serviceName={t('network.title')} />;
-    }
+  // Filter configurations
+  const filterConfigs: FilterConfig[] = useMemo(() => [
+    {
+      id: 'state',
+      label: t('filters.status'),
+      type: 'select',
+      options: [
+        { id: 'available', value: 'available', label: t('filters.available') },
+        { id: 'pending', value: 'pending', label: t('status.pending') },
+        { id: 'deleting', value: 'deleting', label: t('status.deleting') },
+      ],
+    },
+  ], [t]);
 
-    // Early Return: No provider or credential selected
-    if (!selectedProvider || !selectedCredentialId) {
-      return (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Layers className="h-12 w-12 text-gray-400 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              {t('credential.selectCredential')}
-            </h3>
-            <p className="text-sm text-gray-500 text-center">
-              {t('credential.selectCredential')}
-            </p>
-            {!selectedProvider ? null : (
-              <Button
-                onClick={() => router.push('/credentials')}
-                variant="default"
-                className="mt-4"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                {t('components.credentialRequired.registerButton')}
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      );
-    }
+  // Determine empty state
+  const isEmpty = !selectedProvider || !selectedCredentialId || !selectedVPCId || !selectedRegion || filteredSubnets.length === 0;
 
-    // Early Return: No VPC or Region selected
-    if (!selectedVPCId || !selectedRegion) {
-      return (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Layers className="h-12 w-12 text-gray-400 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              {t('network.selectVPCAndRegion')}
-            </h3>
-            <p className="text-sm text-gray-500 text-center">
-              {t('network.selectVPCAndRegionMessage')}
-            </p>
-          </CardContent>
-        </Card>
-      );
-    }
+  // Empty state component
+  const emptyStateComponent = credentials.length === 0 ? (
+    <CredentialRequiredState serviceName={t('network.title')} />
+  ) : !selectedProvider || !selectedCredentialId ? (
+    <CredentialRequiredState
+      title={t('credential.selectCredential')}
+      description={t('credential.selectCredential')}
+      serviceName={t('network.title')}
+    />
+  ) : !selectedVPCId || !selectedRegion ? (
+    <Card>
+      <CardContent className="flex flex-col items-center justify-center py-12">
+        <Layers className="h-12 w-12 text-gray-400 mb-4" />
+        <h3 className="text-lg font-medium text-gray-900 mb-2">
+          {t('network.selectVPCAndRegion')}
+        </h3>
+        <p className="text-sm text-gray-500 text-center">
+          {t('network.selectVPCAndRegionMessage')}
+        </p>
+      </CardContent>
+    </Card>
+  ) : filteredSubnets.length === 0 ? (
+    <ResourceEmptyState
+      resourceName={t('network.subnets')}
+      icon={Layers}
+      onCreateClick={() => setIsCreateDialogOpen(true)}
+      description={t('network.noSubnetsFoundForVPC')}
+      withCard={true}
+    />
+  ) : null;
 
-    // Early Return: No subnets found
-    if (filteredSubnets.length === 0) {
-      return (
-        <ResourceEmptyState
-          resourceName={t('network.subnets')}
-          icon={Layers}
-          onCreateClick={() => setIsCreateDialogOpen(true)}
-          description={t('network.noSubnetsFoundForVPC')}
-          withCard={true}
-        />
-      );
-    }
-
-    // Main content
-    return (
-      <>
-        <BulkActionsToolbar
-          items={paginatedSubnets}
-          selectedIds={selectedSubnetIds}
-          onSelectionChange={setSelectedSubnetIds}
-          onBulkDelete={handleBulkDeleteSubnets}
-          getItemDisplayName={(subnet) => subnet.name}
-        />
-        
-        <SubnetTable
-          subnets={subnets}
-          filteredSubnets={filteredSubnets}
-          paginatedSubnets={paginatedSubnets}
-          selectedSubnetIds={selectedSubnetIds}
-          onSelectionChange={setSelectedSubnetIds}
-          onDelete={handleDeleteSubnet}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          onSearchClear={clearSearch}
-          page={page}
-          pageSize={pageSize}
-          onPageChange={setPage}
-          onPageSizeChange={handlePageSizeChange}
-          isDeleting={deleteSubnetMutation.isPending}
-        />
-
-        <CreateSubnetDialog
-          open={isCreateDialogOpen}
-          onOpenChange={setIsCreateDialogOpen}
-          onSubmit={handleCreateSubnet}
-          selectedProvider={selectedProvider}
-          selectedRegion={selectedRegion}
-          selectedVPCId={selectedVPCId}
-          vpcs={vpcs}
-          onVPCChange={handleVPCChange}
-          isPending={createSubnetMutation.isPending}
-          disabled={credentials.length === 0 || !selectedVPCId}
-        />
-      </>
-    );
-  };
-
-  if (authLoading) {
-    return (
-      <WorkspaceRequired>
-        <Layout>
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-              <p className="mt-2 text-gray-600">Loading...</p>
-            </div>
-          </div>
-        </Layout>
-      </WorkspaceRequired>
-    );
-  }
+  // Header component
+  const header = (
+    <SubnetsPageHeader
+      selectedProvider={selectedProvider}
+      selectedCredentialId={selectedCredentialId}
+      selectedVPCId={selectedVPCId}
+      vpcs={vpcs}
+      onVPCChange={handleVPCChange}
+    />
+  );
 
   return (
-    <WorkspaceRequired>
-      <Layout>
-        <div className="space-y-6">
-          <SubnetsPageHeader />
-          
-          {/* Configuration */}
-          {selectedProvider && selectedCredentialId && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Configuration</CardTitle>
-                <CardDescription>Select region and VPC to view subnets</CardDescription>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Region *</Label>
-                  <Input
-                    placeholder="e.g., ap-northeast-2"
-                    value={selectedRegion || ''}
-                    readOnly
-                    className="bg-muted"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Region selection is now handled in Header
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label>VPC *</Label>
-                  <Select
-                    value={selectedVPCId}
-                    onValueChange={handleVPCChange}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select VPC" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {vpcs.map((vpc) => (
-                        <SelectItem key={vpc.id} value={vpc.id}>
-                          {vpc.name || vpc.id}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+    <>
+    <ResourceListPage
+        title={t('network.subnets')}
+        resourceName={t('network.subnets')}
+        storageKey="subnets-page"
+        header={header}
+        items={filteredSubnets}
+        isLoading={isLoadingSubnets}
+        isEmpty={isEmpty}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        onSearchClear={clearSearch}
+        isSearching={isSearching}
+        searchPlaceholder={t('network.searchSubnetsPlaceholder')}
+        filterConfigs={selectedCredentialId && selectedVPCId && subnets.length > 0 ? filterConfigs : []}
+        filters={filters}
+        onFiltersChange={setFilters}
+        onFiltersClear={() => setFilters({})}
+        showFilters={showFilters}
+        onToggleFilters={() => setShowFilters(!showFilters)}
+        filterCount={Object.keys(filters).length}
+        toolbar={
+          selectedProvider && selectedCredentialId && selectedVPCId && selectedRegion && filteredSubnets.length > 0 ? (
+            <BulkActionsToolbar
+              items={filteredSubnets}
+              selectedIds={selectedSubnetIds}
+              onSelectionChange={setSelectedSubnetIds}
+              onBulkDelete={handleBulkDeleteSubnets}
+              getItemDisplayName={(subnet) => subnet.name}
+            />
+          ) : null
+        }
+        additionalControls={
+          selectedCredentialId && selectedVPCId && subnets.length > 0 ? (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center"
+              >
+                <Filter className="mr-2 h-4 w-4" />
+                Filters
+                {Object.keys(filters).length > 0 && (
+                  <span className="ml-2 px-2 py-1 bg-gray-100 rounded text-sm">
+                    {Object.keys(filters).length}
+                  </span>
+                )}
+              </Button>
+            </>
+          ) : null
+        }
+        emptyState={emptyStateComponent}
+        content={
+          selectedProvider && selectedCredentialId && selectedVPCId && selectedRegion && filteredSubnets.length > 0 ? (
+            <>
+              <SubnetTable
+                subnets={subnets}
+                filteredSubnets={filteredSubnets}
+                paginatedSubnets={paginatedSubnets}
+                selectedSubnetIds={selectedSubnetIds}
+                onSelectionChange={setSelectedSubnetIds}
+                onDelete={handleDeleteSubnet}
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                onSearchClear={clearSearch}
+                page={page}
+                pageSize={pageSize}
+                onPageChange={setPage}
+                onPageSizeChange={handlePageSizeChange}
+                isDeleting={deleteSubnetMutation.isPending}
+              />
+              <CreateSubnetDialog
+                open={isCreateDialogOpen}
+                onOpenChange={setIsCreateDialogOpen}
+                onSubmit={handleCreateSubnet}
+                selectedProvider={selectedProvider}
+                selectedRegion={selectedRegion}
+                selectedVPCId={selectedVPCId}
+                vpcs={vpcs}
+                onVPCChange={handleVPCChange}
+                isPending={createSubnetMutation.isPending}
+                disabled={credentials.length === 0 || !selectedVPCId}
+              />
+            </>
+          ) : emptyStateComponent
+        }
+        pageSize={pageSize}
+        onPageSizeChange={handlePageSizeChange}
+        searchResultsCount={filteredSubnets.length}
+        skeletonColumns={6}
+        skeletonRows={5}
+        skeletonShowCheckbox={true}
+      showFilterButton={false}
+      showSearchResultsInfo={false}
+      />
 
-          {/* Content */}
-          {isLoadingSubnets ? (
-            <Card>
-              <CardContent className="pt-6">
-                <TableSkeleton columns={6} rows={5} showCheckbox={true} />
-              </CardContent>
-            </Card>
-          ) : (
-            renderContent()
-          )}
+      {/* Delete Subnet Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        open={deleteDialogState.open}
+        onOpenChange={(open) => setDeleteDialogState({ ...deleteDialogState, open })}
+        onConfirm={handleConfirmDelete}
+        title={t('network.deleteSubnet')}
+        description="이 서브넷을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다."
+        isLoading={deleteSubnetMutation.isPending}
+        resourceName={deleteDialogState.subnetName}
+        resourceNameLabel="서브넷 이름"
+      />
+    </>
+  );
+}
+
+export default function SubnetsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-2 text-gray-600">Loading...</p>
         </div>
-      </Layout>
-    </WorkspaceRequired>
+      </div>
+    }>
+      <SubnetsPageContent />
+    </Suspense>
   );
 }
 

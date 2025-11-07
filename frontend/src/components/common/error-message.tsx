@@ -8,11 +8,6 @@
 
 'use client';
 
-import { useState } from 'react';
-import { AlertCircle, RefreshCw, WifiOff } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { getUserFriendlyErrorMessage, isRetryableError, isOffline, NetworkError } from '@/lib/error-handler';
 import { InlineError } from './error-components';
 
 export interface ErrorMessageProps {

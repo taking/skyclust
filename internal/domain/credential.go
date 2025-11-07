@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Credential represents a cloud provider credential
+// Credential: 클라우드 제공자 자격증명을 나타내는 도메인 엔티티
 type Credential struct {
 	ID            uuid.UUID              `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
 	WorkspaceID   uuid.UUID              `json:"workspace_id" gorm:"type:uuid;not null;index"`
@@ -18,13 +18,12 @@ type Credential struct {
 	CreatedBy     uuid.UUID              `json:"created_by" gorm:"type:uuid;not null;index"` // 생성한 사용자
 	CreatedAt     time.Time              `json:"created_at"`
 	UpdatedAt     time.Time              `json:"updated_at"`
-	DeletedAt     *time.Time             `json:"-" gorm:"index"`
 
-	// Relationships
+	// 관계
 	Workspace *Workspace `json:"workspace,omitempty" gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
 }
 
-// CreateCredentialRequest represents the request to create a credential
+// CreateCredentialRequest: 자격증명 생성 요청 DTO
 type CreateCredentialRequest struct {
 	WorkspaceID string                 `json:"workspace_id" validate:"required,uuid"`
 	Provider    string                 `json:"provider" validate:"required,oneof=aws gcp openstack azure"`
@@ -32,42 +31,41 @@ type CreateCredentialRequest struct {
 	Data        map[string]interface{} `json:"data" validate:"required"`
 }
 
-// UpdateCredentialRequest represents the request to update a credential
+// UpdateCredentialRequest: 자격증명 업데이트 요청 DTO
 type UpdateCredentialRequest struct {
 	Name *string                `json:"name,omitempty" validate:"omitempty,min=1,max=100"`
 	Data map[string]interface{} `json:"data,omitempty"`
 }
 
-// CredentialData represents the structure of credential data for different providers
+// CredentialData: 다양한 제공자별 자격증명 데이터 구조
 type CredentialData struct {
-	// AWS
+	// AWS 자격증명 필드
 	AccessKey string `json:"access_key,omitempty"`
 	SecretKey string `json:"secret_key,omitempty"`
 	Region    string `json:"region,omitempty"`
 	RoleARN   string `json:"role_arn,omitempty"`
 
-	// GCP
+	// GCP 자격증명 필드
 	ProjectID       string `json:"project_id,omitempty"`
 	CredentialsFile string `json:"credentials_file,omitempty"`
 	CredentialsJSON string `json:"credentials_json,omitempty"`
 
-	// OpenStack
+	// OpenStack 자격증명 필드
 	AuthURL            string `json:"auth_url,omitempty"`
 	Username           string `json:"username,omitempty"`
 	Password           string `json:"password,omitempty"`
 	OpenStackProjectID string `json:"openstack_project_id,omitempty"`
 
-	// Azure
+	// Azure 자격증명 필드
 	ClientID       string `json:"client_id,omitempty"`
 	ClientSecret   string `json:"client_secret,omitempty"`
 	TenantID       string `json:"tenant_id,omitempty"`
 	SubscriptionID string `json:"subscription_id,omitempty"`
 }
 
-// MaskString masks a string, showing only first and last few characters
+// MaskString: 문자열을 마스킹하여 처음과 끝의 일부 문자만 표시합니다
 func MaskString(s string, showFirst, showLast int) string {
 	if len(s) <= showFirst+showLast {
-		// Too short to mask meaningfully
 		return "***"
 	}
 
@@ -75,7 +73,7 @@ func MaskString(s string, showFirst, showLast int) string {
 	return masked
 }
 
-// MaskCredentialData masks sensitive data in credential map
+// MaskCredentialData: 자격증명 맵의 민감한 데이터를 마스킹합니다
 func MaskCredentialData(data map[string]interface{}) map[string]interface{} {
 	masked := make(map[string]interface{})
 
@@ -88,22 +86,22 @@ func MaskCredentialData(data map[string]interface{}) map[string]interface{} {
 
 		switch key {
 		case "access_key":
-			// AWS Access Key: Show first 4 and last 4 (AKIA****XXXX)
+			// AWS Access Key: 처음 4자와 마지막 4자만 표시
 			masked[key] = MaskString(strValue, 4, 4)
 		case "secret_key", "password", "client_secret":
-			// Secrets: Show first 4 and last 4
+			// 비밀 정보: 처음 4자와 마지막 4자만 표시
 			masked[key] = MaskString(strValue, 4, 4)
 		case "private_key":
-			// GCP Private Key: Show first 4 and last 4
+			// GCP Private Key: 처음 4자와 마지막 4자만 표시
 			masked[key] = MaskString(strValue, 4, 4)
 		case "private_key_id":
-			// GCP Private Key ID: Show first 4 and last 4
+			// GCP Private Key ID: 처음 4자와 마지막 4자만 표시
 			masked[key] = MaskString(strValue, 4, 4)
 		case "credentials_json":
-			// JSON: Don't show at all
+			// JSON: 전혀 표시하지 않음
 			masked[key] = "****"
 		default:
-			// Non-sensitive fields: Show as-is
+			// 민감하지 않은 필드: 그대로 표시
 			masked[key] = value
 		}
 	}

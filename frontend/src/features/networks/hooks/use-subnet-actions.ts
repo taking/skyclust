@@ -70,9 +70,14 @@ export function useSubnetActions({
 
   const handleDeleteSubnet = (subnetId: string, region: string) => {
     if (!selectedCredentialId) return;
-    if (confirm(`Are you sure you want to delete this subnet? This action cannot be undone.`)) {
-      deleteSubnetMutation.mutate({ subnetId, credentialId: selectedCredentialId, region });
-    }
+    // 모달은 컴포넌트에서 관리하므로 여기서는 바로 삭제 실행
+    deleteSubnetMutation.mutate({ subnetId, credentialId: selectedCredentialId, region });
+  };
+
+  // 모달 없이 직접 삭제 실행하는 함수 (컴포넌트에서 모달 확인 후 호출)
+  const executeDeleteSubnet = (subnetId: string, region: string) => {
+    if (!selectedCredentialId) return;
+    deleteSubnetMutation.mutate({ subnetId, credentialId: selectedCredentialId, region });
   };
 
   return {
@@ -80,6 +85,7 @@ export function useSubnetActions({
     deleteSubnetMutation,
     handleBulkDeleteSubnets,
     handleDeleteSubnet,
+    executeDeleteSubnet,
   };
 }
 

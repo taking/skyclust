@@ -1,0 +1,144 @@
+meta {
+  name: 워크스페이스 멤버 역할 업데이트
+  type: http
+  seq: 9
+}
+
+put {
+  url: {{baseUrl}}/api/{{apiVersion}}/workspaces/{{workspaceId}}/members/{{memberId}}
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "role": "admin"
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains success message", function() {
+    expect(res.getBody()).to.have.property('success');
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response contains message", function() {
+    expect(res.getBody()).to.have.property('message');
+    expect(res.getBody().message).to.include('Member role updated');
+  });
+}
+
+docs {
+  # 워크스페이스 멤버 역할 업데이트
+  
+  워크스페이스 멤버의 역할을 업데이트합니다.
+  
+  ## Request Body
+  
+  ```json
+  {
+    "role": "admin"
+  }
+  ```
+  
+  ## Request 필드
+  
+  - `role` (required): 새로운 역할 (`admin` 또는 `member`)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "message": "Member role updated successfully"
+    },
+    "message": "Member role updated successfully",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
+  }
+  ```
+  
+  ## 사용 예시
+  
+  ```bash
+  PUT /api/v1/workspaces/{workspaceId}/members/{memberId}
+  Authorization: Bearer your-jwt-token
+  Content-Type: application/json
+  
+  {
+    "role": "admin"
+  }
+  ```
+  
+  ## Path Parameters
+  
+  - `workspaceId`: 워크스페이스 ID
+  - `memberId`: 역할을 업데이트할 멤버의 사용자 ID
+  
+  ## 에러 응답
+  
+  ### 멤버가 아닌 경우 (404)
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "NOT_FOUND",
+      "message": "user is not a member of this workspace"
+    }
+  }
+  ```
+  
+  ### Owner 역할 변경 시도 (400)
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "BAD_REQUEST",
+      "message": "Cannot change workspace owner role"
+    }
+  }
+  ```
+  
+  ### 잘못된 역할 (400)
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "BAD_REQUEST",
+      "message": "invalid role. Must be 'admin' or 'member'"
+    }
+  }
+  ```
+  
+  ### 권한 부족 (403)
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "FORBIDDEN",
+      "message": "Insufficient permissions to update member roles"
+    }
+  }
+  ```
+  
+  ## 주의사항
+  
+  - Owner 또는 Admin만 멤버 역할을 업데이트할 수 있습니다
+  - Owner의 역할은 변경할 수 없습니다
+  - 역할은 `admin` 또는 `member`만 가능합니다
+  - 멤버가 아닌 사용자의 역할은 업데이트할 수 없습니다
+}
+

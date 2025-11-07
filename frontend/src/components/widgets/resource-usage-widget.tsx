@@ -45,7 +45,7 @@ function ResourceUsageWidgetComponent({ data, isLoading }: ResourceUsageWidgetPr
     storage: { used: 78, total: 100, percentage: 78 },
   };
 
-  const getProgressColor = (percentage: number) => {
+  const _getProgressColor = (percentage: number) => {
     if (percentage >= 90) return 'bg-red-500';
     if (percentage >= 70) return 'bg-yellow-500';
     return 'bg-green-500';

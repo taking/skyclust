@@ -4,35 +4,77 @@
  */
 
 import { BaseService } from '@/lib/service-base';
+import { API_ENDPOINTS } from '@/lib/api-endpoints';
 import type { Credential, CreateCredentialForm } from '@/lib/types';
 
 class CredentialService extends BaseService {
-  // Get credentials by workspace
+  /**
+   * 워크스페이스의 자격 증명 목록 조회
+   * 
+   * @param workspaceId - 워크스페이스 ID
+   * @returns 자격 증명 배열
+   * 
+   * @example
+   * ```tsx
+   * const credentials = await credentialService.getCredentials('workspace-id');
+   * ```
+   */
   async getCredentials(workspaceId: string): Promise<Credential[]> {
+    // 1. API 호출 (응답 형식이 다양할 수 있음)
     const data = await this.get<{ credentials: Credential[] } | Credential[]>(
-      `credentials?workspace_id=${workspaceId}`
+      API_ENDPOINTS.credentials.list(workspaceId)
     );
     
-    // Backend returns { credentials: [...] } inside data field
+    // 2. 응답 데이터 형식에 따라 처리
+    // 백엔드가 { credentials: [...] } 또는 직접 배열을 반환할 수 있음
     if (Array.isArray(data)) {
+      // 직접 배열인 경우
       return data;
     }
     
+    // 3. 객체 형태로 credentials 필드가 있는 경우
     if (data && typeof data === 'object' && 'credentials' in data) {
       return (data as { credentials: Credential[] }).credentials || [];
     }
     
+    // 4. 예상치 못한 형식인 경우 빈 배열 반환
     return [];
   }
 
-  // Get credential by ID
+  /**
+   * ID로 자격 증명 조회
+   * 
+   * @param id - 자격 증명 ID
+   * @returns 자격 증명 정보
+   * 
+   * @example
+   * ```tsx
+   * const credential = await credentialService.getCredential('credential-id');
+   * ```
+   */
   async getCredential(id: string): Promise<Credential> {
-    return this.get<Credential>(`credentials/${id}`);
+    return this.get<Credential>(API_ENDPOINTS.credentials.detail(id));
   }
 
-  // Create credential
+  /**
+   * 자격 증명 생성
+   * 
+   * @param data - 자격 증명 생성 데이터 (workspace_id, provider, credentials 등)
+   * @returns 생성된 자격 증명 정보
+   * 
+   * @example
+   * ```tsx
+   * const credential = await credentialService.createCredential({
+   *   workspace_id: 'workspace-id',
+   *   provider: 'aws',
+   *   credentials: { accessKey: '...', secretKey: '...' },
+   * });
+   * ```
+   */
   async createCredential(data: CreateCredentialForm & { workspace_id: string; name?: string }): Promise<Credential> {
-    return this.post<Credential>('credentials', {
+    // 1. API 요청 데이터 구성
+    // name이 없으면 기본 이름 생성 (예: "AWS Credential")
+    return this.post<Credential>(API_ENDPOINTS.credentials.create(), {
       workspace_id: data.workspace_id,
       name: data.name || `${data.provider.toUpperCase()} Credential`,
       provider: data.provider,
@@ -40,28 +82,73 @@ class CredentialService extends BaseService {
     });
   }
 
-  // Create credential from file (multipart/form-data)
-  // FormData는 BaseService의 request를 직접 사용해야 함
+  /**
+   * 파일로부터 자격 증명 생성 (multipart/form-data)
+   * 
+   * 파일 업로드를 통해 자격 증명을 생성합니다.
+   * FormData를 사용하므로 BaseService의 request 메서드를 직접 사용합니다.
+   * 
+   * @param workspaceId - 워크스페이스 ID
+   * @param name - 자격 증명 이름
+   * @param provider - 클라우드 프로바이더 (aws, gcp, azure 등)
+   * @param file - 업로드할 자격 증명 파일
+   * @returns 생성된 자격 증명 정보
+   * 
+   * @example
+   * ```tsx
+   * const file = event.target.files[0];
+   * const credential = await credentialService.createCredentialFromFile(
+   *   'workspace-id',
+   *   'My AWS Credential',
+   *   'aws',
+   *   file
+   * );
+   * ```
+   */
   async createCredentialFromFile(workspaceId: string, name: string, provider: string, file: File): Promise<Credential> {
+    // 1. FormData 생성 및 필드 추가
     const formData = new FormData();
     formData.append('workspace_id', workspaceId);
     formData.append('name', name);
     formData.append('provider', provider);
     formData.append('file', file);
     
-    // FormData는 BaseService의 request 메서드를 직접 사용
-    const url = this.buildApiUrl('credentials/upload');
+    // 2. FormData는 BaseService의 request 메서드를 직접 사용
+    // (일반 post 메서드는 JSON만 지원하므로)
+    const url = this.buildApiUrl(API_ENDPOINTS.credentials.upload());
     return this.request<Credential>('post', url, formData);
   }
 
-  // Update credential
+  /**
+   * 자격 증명 업데이트
+   * 
+   * @param id - 자격 증명 ID
+   * @param data - 업데이트할 자격 증명 데이터 (부분 업데이트 지원)
+   * @returns 업데이트된 자격 증명 정보
+   * 
+   * @example
+   * ```tsx
+   * const updated = await credentialService.updateCredential('credential-id', {
+   *   name: 'Updated Name',
+   * });
+   * ```
+   */
   async updateCredential(id: string, data: Partial<CreateCredentialForm>): Promise<Credential> {
-    return this.put<Credential>(`credentials/${id}`, data);
+    return this.put<Credential>(API_ENDPOINTS.credentials.update(id), data);
   }
 
-  // Delete credential
+  /**
+   * 자격 증명 삭제
+   * 
+   * @param id - 자격 증명 ID
+   * 
+   * @example
+   * ```tsx
+   * await credentialService.deleteCredential('credential-id');
+   * ```
+   */
   async deleteCredential(id: string): Promise<void> {
-    return this.delete<void>(`credentials/${id}`);
+    return this.delete<void>(API_ENDPOINTS.credentials.delete(id));
   }
 }
 

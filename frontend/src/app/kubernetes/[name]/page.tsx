@@ -11,6 +11,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Layout } from '@/components/layout/layout';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Breadcrumb } from '@/components/common/breadcrumb';
 import { Plus } from 'lucide-react';
 import { useRequireAuth } from '@/hooks/use-auth';
 import { useSSEMonitoring } from '@/hooks/use-sse-monitoring';

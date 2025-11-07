@@ -6,16 +6,16 @@
 'use client';
 
 import * as React from 'react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createSubnetSchema } from '@/lib/validations';
-import { Plus } from 'lucide-react';
+import { createValidationSchemas } from '@/lib/validations';
 import type { CreateSubnetForm, VPC } from '@/lib/types';
+import { useTranslation } from '@/hooks/use-translation';
 
 interface CreateSubnetDialogProps {
   open: boolean;
@@ -40,15 +40,27 @@ export function CreateSubnetDialog({
   vpcs,
   onVPCChange,
   isPending,
-  disabled = false,
+  disabled: _disabled = false,
 }: CreateSubnetDialogProps) {
+  const { t } = useTranslation();
+  const schemas = createValidationSchemas(t);
   const form = useForm<CreateSubnetForm>({
-    resolver: zodResolver(createSubnetSchema),
+    resolver: zodResolver(schemas.createSubnetSchema),
     defaultValues: {
       region: selectedRegion || '',
       vpc_id: selectedVPCId,
     },
   });
+
+  // Reset form when dialog opens/closes
+  React.useEffect(() => {
+    if (open) {
+      form.reset({
+        region: selectedRegion || '',
+        vpc_id: selectedVPCId,
+      });
+    }
+  }, [open, selectedRegion, selectedVPCId, form]);
 
   // Update form when VPC changes
   React.useEffect(() => {
@@ -64,8 +76,8 @@ export function CreateSubnetDialog({
     }
   }, [selectedRegion, form]);
 
-  const handleSubmit = form.handleSubmit((data) => {
-    onSubmit(data);
+  const handleSubmit = form.handleSubmit(async (data) => {
+    await onSubmit(data);
     form.reset({
       region: selectedRegion || '',
       vpc_id: selectedVPCId,
@@ -74,12 +86,6 @@ export function CreateSubnetDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger asChild>
-        <Button disabled={disabled}>
-          <Plus className="mr-2 h-4 w-4" />
-          Create Subnet
-        </Button>
-      </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create Subnet</DialogTitle>

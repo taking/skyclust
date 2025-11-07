@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// Service: 알림 서비스 구현체
 type Service struct {
 	logger           *zap.Logger
 	notificationRepo domain.NotificationRepository
@@ -19,6 +20,7 @@ type Service struct {
 	eventService     domain.EventService
 }
 
+// NewService: 새로운 알림 서비스를 생성합니다
 func NewService(
 	logger *zap.Logger,
 	notificationRepo domain.NotificationRepository,
@@ -39,7 +41,7 @@ func NewService(
 	}
 }
 
-// SendToWorkspace sends a notification to all users in a workspace
+// SendToWorkspace: 워크스페이스의 모든 사용자에게 알림을 전송합니다
 func (s *Service) SendToWorkspace(ctx context.Context, workspaceID string, notification *Notification) error {
 	// TODO: Implement GetWorkspaceMembers in workspace repository
 	// For now, we'll just log the notification
@@ -50,14 +52,14 @@ func (s *Service) SendToWorkspace(ctx context.Context, workspaceID string, notif
 	return nil
 }
 
-// GetUserNotifications retrieves notifications for a user
+// GetUserNotifications: 사용자의 알림을 조회합니다
 func (s *Service) GetUserNotifications(ctx context.Context, userID string, limit, offset int) ([]*Notification, error) {
 	// This would typically query a notifications table
 	// For now, we'll return mock data
 	return s.getMockNotifications(userID, limit, offset), nil
 }
 
-// CreateTemplate creates a notification template
+// CreateTemplate: 알림 템플릿을 생성합니다
 func (s *Service) CreateTemplate(ctx context.Context, template *NotificationTemplate) error {
 	// This would typically save to a templates table
 	// For now, we'll just log the action
@@ -65,7 +67,7 @@ func (s *Service) CreateTemplate(ctx context.Context, template *NotificationTemp
 	return nil
 }
 
-// SendTemplateNotification sends a notification using a template
+// SendTemplateNotification: 템플릿을 사용하여 알림을 전송합니다
 func (s *Service) SendTemplateNotification(ctx context.Context, templateID string, userID string, variables map[string]interface{}) error {
 	// This would typically load the template and substitute variables
 	// For now, we'll create a basic notification
@@ -151,7 +153,7 @@ func (s *Service) getMockNotifications(userID string, limit, offset int) []*Noti
 	return notifications[start:end]
 }
 
-// CreateNotification creates a new notification
+// CreateNotification: 새로운 알림을 생성합니다
 func (s *Service) CreateNotification(ctx context.Context, notification *domain.Notification) error {
 	if err := s.notificationRepo.Create(ctx, notification); err != nil {
 		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to create notification: %v", err), 500)
@@ -165,7 +167,7 @@ func (s *Service) CreateNotification(ctx context.Context, notification *domain.N
 	return nil
 }
 
-// GetNotification gets a notification by ID
+// GetNotification: ID로 알림을 조회합니다
 func (s *Service) GetNotification(ctx context.Context, userID, notificationID string) (*domain.Notification, error) {
 	notification, err := s.notificationRepo.GetByID(ctx, userID, notificationID)
 	if err != nil {
@@ -174,7 +176,7 @@ func (s *Service) GetNotification(ctx context.Context, userID, notificationID st
 	return notification, nil
 }
 
-// GetNotifications gets notifications for a user
+// GetNotifications: 사용자의 알림 목록을 조회합니다
 func (s *Service) GetNotifications(ctx context.Context, userID string, limit, offset int, unreadOnly bool, category, priority string) ([]*domain.Notification, int, error) {
 	notifications, total, err := s.notificationRepo.GetByUserID(ctx, userID, limit, offset, unreadOnly, category, priority)
 	if err != nil {
@@ -183,7 +185,7 @@ func (s *Service) GetNotifications(ctx context.Context, userID string, limit, of
 	return notifications, total, nil
 }
 
-// UpdateNotification updates a notification
+// UpdateNotification: 알림을 업데이트합니다
 func (s *Service) UpdateNotification(ctx context.Context, notification *domain.Notification) error {
 	if err := s.notificationRepo.Update(ctx, notification); err != nil {
 		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to update notification: %v", err), 500)
@@ -191,7 +193,7 @@ func (s *Service) UpdateNotification(ctx context.Context, notification *domain.N
 	return nil
 }
 
-// DeleteNotification deletes a notification
+// DeleteNotification: 알림을 삭제합니다
 func (s *Service) DeleteNotification(ctx context.Context, userID, notificationID string) error {
 	if err := s.notificationRepo.Delete(ctx, userID, notificationID); err != nil {
 		return domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("notification not found: %s", notificationID), 404)
@@ -199,7 +201,7 @@ func (s *Service) DeleteNotification(ctx context.Context, userID, notificationID
 	return nil
 }
 
-// DeleteNotifications deletes multiple notifications
+// DeleteNotifications: 여러 알림을 삭제합니다
 func (s *Service) DeleteNotifications(ctx context.Context, userID string, notificationIDs []string) error {
 	if err := s.notificationRepo.DeleteMultiple(ctx, userID, notificationIDs); err != nil {
 		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to delete notifications: %v", err), 500)
@@ -207,7 +209,7 @@ func (s *Service) DeleteNotifications(ctx context.Context, userID string, notifi
 	return nil
 }
 
-// MarkAsRead marks a notification as read
+// MarkAsRead: 알림을 읽음으로 표시합니다
 func (s *Service) MarkAsRead(ctx context.Context, userID, notificationID string) error {
 	if err := s.notificationRepo.MarkAsRead(ctx, userID, notificationID); err != nil {
 		return domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("notification not found: %s", notificationID), 404)
@@ -215,7 +217,7 @@ func (s *Service) MarkAsRead(ctx context.Context, userID, notificationID string)
 	return nil
 }
 
-// MarkAllAsRead marks all notifications as read for a user
+// MarkAllAsRead: 사용자의 모든 알림을 읽음으로 표시합니다
 func (s *Service) MarkAllAsRead(ctx context.Context, userID string) error {
 	if err := s.notificationRepo.MarkAllAsRead(ctx, userID); err != nil {
 		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to mark all notifications as read: %v", err), 500)
@@ -223,7 +225,7 @@ func (s *Service) MarkAllAsRead(ctx context.Context, userID string) error {
 	return nil
 }
 
-// GetNotificationPreferences gets notification preferences for a user
+// GetNotificationPreferences: 사용자의 알림 설정을 조회합니다
 func (s *Service) GetNotificationPreferences(ctx context.Context, userID string) (*domain.NotificationPreferences, error) {
 	preferences, err := s.preferencesRepo.GetByUserID(ctx, userID)
 	if err != nil {
@@ -232,7 +234,7 @@ func (s *Service) GetNotificationPreferences(ctx context.Context, userID string)
 	return preferences, nil
 }
 
-// UpdateNotificationPreferences updates notification preferences for a user
+// UpdateNotificationPreferences: 사용자의 알림 설정을 업데이트합니다
 func (s *Service) UpdateNotificationPreferences(ctx context.Context, userID string, preferences *domain.NotificationPreferences) error {
 	// Ensure userID matches
 	preferences.UserID = userID
@@ -244,7 +246,7 @@ func (s *Service) UpdateNotificationPreferences(ctx context.Context, userID stri
 	return nil
 }
 
-// GetNotificationStats gets notification statistics for a user
+// GetNotificationStats: 사용자의 알림 통계를 조회합니다
 func (s *Service) GetNotificationStats(ctx context.Context, userID string) (*domain.NotificationStats, error) {
 	stats, err := s.notificationRepo.GetStats(ctx, userID)
 	if err != nil {
@@ -253,7 +255,7 @@ func (s *Service) GetNotificationStats(ctx context.Context, userID string) (*dom
 	return stats, nil
 }
 
-// SendNotification sends a notification to a user
+// SendNotification: 사용자에게 알림을 전송합니다
 func (s *Service) SendNotification(ctx context.Context, userID string, notification *domain.Notification) error {
 	// Ensure userID matches
 	notification.UserID = userID
@@ -271,7 +273,7 @@ func (s *Service) SendNotification(ctx context.Context, userID string, notificat
 	return nil
 }
 
-// SendBulkNotification sends a notification to multiple users
+// SendBulkNotification: 여러 사용자에게 알림을 전송합니다
 func (s *Service) SendBulkNotification(ctx context.Context, userIDs []string, notification *domain.Notification) error {
 	// Create notification for each user
 	for _, userID := range userIDs {
@@ -302,7 +304,7 @@ func (s *Service) SendBulkNotification(ctx context.Context, userIDs []string, no
 	return nil
 }
 
-// CleanupOldNotifications removes old notifications
+// CleanupOldNotifications: 오래된 알림을 제거합니다
 func (s *Service) CleanupOldNotifications(ctx context.Context, olderThan time.Duration) error {
 	// Call repository cleanup method
 	if err := s.notificationRepo.CleanupOld(ctx, olderThan); err != nil {

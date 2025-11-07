@@ -7,53 +7,53 @@ import (
 	"time"
 )
 
-// ErrorCode represents a specific error type
+// ErrorCode: 특정 오류 타입을 나타내는 타입
 type ErrorCode string
 
 const (
-	// Authentication errors
+	// 인증 관련 오류
 	ErrCodeUnauthorized       ErrorCode = "UNAUTHORIZED"
 	ErrCodeForbidden          ErrorCode = "FORBIDDEN"
 	ErrCodeInvalidToken       ErrorCode = "INVALID_TOKEN"
 	ErrCodeTokenExpired       ErrorCode = "TOKEN_EXPIRED"
 	ErrCodeInvalidCredentials ErrorCode = "INVALID_CREDENTIALS"
 
-	// Validation errors
+	// 유효성 검증 오류
 	ErrCodeValidationFailed ErrorCode = "VALIDATION_FAILED"
 	ErrCodeInvalidInput     ErrorCode = "INVALID_INPUT"
 	ErrCodeMissingField     ErrorCode = "MISSING_FIELD"
 	ErrCodeBadRequest       ErrorCode = "BAD_REQUEST"
 
-	// Resource errors
+	// 리소스 관련 오류
 	ErrCodeNotFound          ErrorCode = "NOT_FOUND"
 	ErrCodeAlreadyExists     ErrorCode = "ALREADY_EXISTS"
 	ErrCodeConflict          ErrorCode = "CONFLICT"
 	ErrCodeResourceExhausted ErrorCode = "RESOURCE_EXHAUSTED"
 
-	// System errors
+	// 시스템 오류
 	ErrCodeInternalError      ErrorCode = "INTERNAL_ERROR"
 	ErrCodeServiceUnavailable ErrorCode = "SERVICE_UNAVAILABLE"
 	ErrCodeTimeout            ErrorCode = "TIMEOUT"
 	ErrCodeDatabaseError      ErrorCode = "DATABASE_ERROR"
 	ErrCodeNetworkError       ErrorCode = "NETWORK_ERROR"
 
-	// Cloud provider errors
+	// 클라우드 제공자 오류
 	ErrCodeProviderError   ErrorCode = "PROVIDER_ERROR"
 	ErrCodeProviderTimeout ErrorCode = "PROVIDER_TIMEOUT"
 	ErrCodeProviderAuth    ErrorCode = "PROVIDER_AUTH_ERROR"
 	ErrCodeProviderQuota   ErrorCode = "PROVIDER_QUOTA_EXCEEDED"
 
-	// Plugin errors
+	// 플러그인 오류
 	ErrCodePluginError      ErrorCode = "PLUGIN_ERROR"
 	ErrCodePluginNotFound   ErrorCode = "PLUGIN_NOT_FOUND"
 	ErrCodePluginLoadFailed ErrorCode = "PLUGIN_LOAD_FAILED"
 
-	// Feature support errors
+	// 기능 지원 오류
 	ErrCodeNotSupported   ErrorCode = "NOT_SUPPORTED"
 	ErrCodeNotImplemented ErrorCode = "NOT_IMPLEMENTED"
 )
 
-// DomainError represents a structured domain error
+// DomainError: 구조화된 도메인 오류를 나타내는 타입
 type DomainError struct {
 	Code       ErrorCode              `json:"code"`
 	Message    string                 `json:"message"`
@@ -63,12 +63,12 @@ type DomainError struct {
 	StatusCode int                    `json:"-"`
 }
 
-// Error implements the error interface
+// Error: error 인터페이스를 구현합니다
 func (e *DomainError) Error() string {
 	return fmt.Sprintf("[%s] %s", e.Code, e.Message)
 }
 
-// NewDomainError creates a new domain error
+// NewDomainError: 새로운 도메인 오류를 생성합니다
 func NewDomainError(code ErrorCode, message string, statusCode int) *DomainError {
 	return &DomainError{
 		Code:       code,
@@ -79,7 +79,7 @@ func NewDomainError(code ErrorCode, message string, statusCode int) *DomainError
 	}
 }
 
-// WithDetails adds details to the error
+// WithDetails: 오류에 상세 정보를 추가합니다
 func (e *DomainError) WithDetails(key string, value interface{}) *DomainError {
 	if e.Details == nil {
 		e.Details = make(map[string]interface{})
@@ -88,62 +88,63 @@ func (e *DomainError) WithDetails(key string, value interface{}) *DomainError {
 	return e
 }
 
-// WithRequestID adds request ID to the error
+// WithRequestID: 오류에 요청 ID를 추가합니다
 func (e *DomainError) WithRequestID(requestID string) *DomainError {
 	e.RequestID = requestID
 	return e
 }
 
-// ToJSON converts the error to JSON
+// ToJSON: 오류를 JSON으로 변환합니다
 func (e *DomainError) ToJSON() ([]byte, error) {
 	return json.Marshal(e)
 }
 
-// Predefined domain errors
+// 미리 정의된 도메인 오류들
 var (
-	// User errors
+	// 사용자 관련 오류
 	ErrUserNotFound       = NewDomainError(ErrCodeNotFound, "user not found", http.StatusNotFound)
 	ErrUserAlreadyExists  = NewDomainError(ErrCodeAlreadyExists, "user already exists", http.StatusConflict)
 	ErrInvalidCredentials = NewDomainError(ErrCodeInvalidCredentials, "invalid credentials", http.StatusUnauthorized)
 
-	// Workspace errors
+	// 워크스페이스 관련 오류
 	ErrWorkspaceNotFound = NewDomainError(ErrCodeNotFound, "workspace not found", http.StatusNotFound)
 	ErrWorkspaceExists   = NewDomainError(ErrCodeAlreadyExists, "workspace already exists", http.StatusConflict)
 
-	// VM errors
+	// VM 관련 오류
 	ErrVMNotFound      = NewDomainError(ErrCodeNotFound, "VM not found", http.StatusNotFound)
 	ErrVMAlreadyExists = NewDomainError(ErrCodeAlreadyExists, "VM already exists", http.StatusConflict)
 
-	// Credential errors
+	// 자격증명 관련 오류
 	ErrCredentialNotFound  = NewDomainError(ErrCodeNotFound, "credential not found", http.StatusNotFound)
 	ErrNoActiveCredentials = NewDomainError(ErrCodeNotFound, "no active credentials found", http.StatusNotFound)
 
-	// Audit log errors
+	// 감사 로그 관련 오류
 	ErrAuditLogNotFound = NewDomainError(ErrCodeNotFound, "audit log not found", http.StatusNotFound)
 
-	// Plugin errors
+	// 플러그인 관련 오류
 	ErrPluginNotFound  = NewDomainError(ErrCodePluginNotFound, "plugin not found", http.StatusNotFound)
 	ErrPluginNotActive = NewDomainError(ErrCodePluginError, "plugin not active", http.StatusBadRequest)
 	ErrInvalidProvider = NewDomainError(ErrCodeProviderError, "invalid provider", http.StatusBadRequest)
 
-	// Cloud provider errors
+	// 클라우드 제공자 관련 오류
 	ErrProviderError   = NewDomainError(ErrCodeProviderError, "provider error", http.StatusBadGateway)
 	ErrProviderTimeout = NewDomainError(ErrCodeProviderTimeout, "provider timeout", http.StatusGatewayTimeout)
 	ErrProviderAuth    = NewDomainError(ErrCodeProviderAuth, "provider authentication error", http.StatusUnauthorized)
 	ErrProviderQuota   = NewDomainError(ErrCodeProviderQuota, "provider quota exceeded", http.StatusTooManyRequests)
 
-	// General errors
+	// 일반 오류
 	ErrNotFound         = NewDomainError(ErrCodeNotFound, "resource not found", http.StatusNotFound)
 	ErrValidationFailed = NewDomainError(ErrCodeValidationFailed, "validation failed", http.StatusBadRequest)
 	ErrInternalError    = NewDomainError(ErrCodeInternalError, "internal server error", http.StatusInternalServerError)
 )
 
-// Helper functions
+// IsDomainError: 오류가 도메인 오류인지 확인합니다
 func IsDomainError(err error) bool {
 	_, ok := err.(*DomainError)
 	return ok
 }
 
+// GetDomainError: 오류에서 도메인 오류를 추출합니다
 func GetDomainError(err error) *DomainError {
 	if domainErr, ok := err.(*DomainError); ok {
 		return domainErr
@@ -151,6 +152,7 @@ func GetDomainError(err error) *DomainError {
 	return ErrInternalError
 }
 
+// IsNotFoundError: 오류가 리소스를 찾을 수 없는 오류인지 확인합니다
 func IsNotFoundError(err error) bool {
 	if domainErr, ok := err.(*DomainError); ok {
 		return domainErr.Code == ErrCodeNotFound
@@ -158,6 +160,7 @@ func IsNotFoundError(err error) bool {
 	return false
 }
 
+// IsValidationError: 오류가 유효성 검증 오류인지 확인합니다
 func IsValidationError(err error) bool {
 	if domainErr, ok := err.(*DomainError); ok {
 		return domainErr.Code == ErrCodeValidationFailed
@@ -165,6 +168,7 @@ func IsValidationError(err error) bool {
 	return false
 }
 
+// IsUnauthorizedError: 오류가 인증 오류인지 확인합니다
 func IsUnauthorizedError(err error) bool {
 	if domainErr, ok := err.(*DomainError); ok {
 		return domainErr.Code == ErrCodeUnauthorized || domainErr.Code == ErrCodeInvalidCredentials

@@ -78,6 +78,19 @@ export const kubernetesClusters = {
 } as const;
 
 /**
+ * Kubernetes Metadata Query Keys
+ */
+export const kubernetesMetadata = {
+  all: ['kubernetes-metadata'] as const,
+  versions: (provider?: string, credentialId?: string, region?: string) =>
+    [...kubernetesMetadata.all, 'versions', provider, credentialId, region] as const,
+  regions: (provider?: string, credentialId?: string) =>
+    [...kubernetesMetadata.all, 'regions', provider, credentialId] as const,
+  availabilityZones: (provider?: string, credentialId?: string, region?: string) =>
+    [...kubernetesMetadata.all, 'availability-zones', provider, credentialId, region] as const,
+} as const;
+
+/**
  * Clusters Query Keys (간단한 버전 - nodes 페이지에서 사용)
  */
 export const clusters = {
@@ -227,6 +240,15 @@ export const user = {
 } as const;
 
 /**
+ * Dashboard Query Keys
+ */
+export const dashboard = {
+  all: ['dashboard'] as const,
+  summary: (workspaceId: string, credentialId?: string, region?: string) =>
+    [...dashboard.all, 'summary', workspaceId, credentialId, region] as const,
+} as const;
+
+/**
  * Query Keys 통합 객체
  */
 export const queryKeys = {
@@ -234,6 +256,7 @@ export const queryKeys = {
   workspaces,
   vms,
   kubernetesClusters,
+  kubernetesMetadata,
   clusters,
   nodePools,
   nodes,
@@ -246,6 +269,7 @@ export const queryKeys = {
   exports,
   costAnalysis,
   user,
+  dashboard,
 } as const;
 
 /**

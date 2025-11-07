@@ -9,6 +9,8 @@ const (
 	ResourceNetwork    = "network"
 	ResourceVM         = "vm"
 	ResourceCost       = "cost"
+	ResourceWorkspace  = "workspace"
+	ResourceCredential = "credential"
 )
 
 // Event actions
@@ -94,6 +96,24 @@ const (
 	TopicSystemAlert          = "system.alert"
 )
 
+// Workspace topic builders
+// Format: workspace.{workspace_id}.{action}
+// Example: workspace.ws-123.created
+
+// BuildWorkspaceTopic builds a NATS topic for Workspace events
+func BuildWorkspaceTopic(workspaceID, action string) string {
+	return ResourceWorkspace + "." + workspaceID + "." + action
+}
+
+// Credential topic builders
+// Format: credential.{workspace_id}.{provider}.{action}
+// Example: credential.ws-123.aws.created
+
+// BuildCredentialTopic builds a NATS topic for Credential events
+func BuildCredentialTopic(workspaceID, provider, action string) string {
+	return ResourceCredential + "." + workspaceID + "." + provider + "." + action
+}
+
 // Topic patterns for wildcard subscriptions
 const (
 	PatternKubernetesAll = "kubernetes.*"
@@ -102,5 +122,7 @@ const (
 	PatternNetworkAll = "network.*"
 	PatternNetworkProvider = "network.%s.*"
 	PatternVMAll = "vm.*"
+	PatternWorkspaceAll = "workspace.*"
+	PatternCredentialAll = "credential.*"
 )
 

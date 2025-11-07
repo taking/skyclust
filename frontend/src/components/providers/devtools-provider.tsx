@@ -9,6 +9,7 @@
 'use client';
 
 import { ReactNode, useEffect, useState } from 'react';
+import { logger } from '@/lib/logger';
 
 /**
  * 개발 환경 확인
@@ -58,10 +59,7 @@ export function DevtoolsProvider({
         })
         .catch((error) => {
           // 모듈이 없거나 로드 실패 시 조용히 무시
-          // 개발 환경이므로 콘솔에만 경고 출력
-          if (process.env.NODE_ENV === 'development') {
-            console.warn('React Query Devtools is not available:', error.message || error);
-          }
+          logger.warn('React Query Devtools is not available', error instanceof Error ? error : new Error(String(error)));
         });
     }
   }, []);

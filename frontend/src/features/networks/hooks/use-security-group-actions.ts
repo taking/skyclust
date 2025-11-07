@@ -70,9 +70,14 @@ export function useSecurityGroupActions({
 
   const handleDeleteSecurityGroup = (securityGroupId: string, region: string) => {
     if (!selectedCredentialId) return;
-    if (confirm(`Are you sure you want to delete this security group? This action cannot be undone.`)) {
-      deleteSecurityGroupMutation.mutate({ securityGroupId, credentialId: selectedCredentialId, region });
-    }
+    // 모달은 컴포넌트에서 관리하므로 여기서는 바로 삭제 실행
+    deleteSecurityGroupMutation.mutate({ securityGroupId, credentialId: selectedCredentialId, region });
+  };
+
+  // 모달 없이 직접 삭제 실행하는 함수 (컴포넌트에서 모달 확인 후 호출)
+  const executeDeleteSecurityGroup = (securityGroupId: string, region: string) => {
+    if (!selectedCredentialId) return;
+    deleteSecurityGroupMutation.mutate({ securityGroupId, credentialId: selectedCredentialId, region });
   };
 
   return {
@@ -80,6 +85,7 @@ export function useSecurityGroupActions({
     deleteSecurityGroupMutation,
     handleBulkDeleteSecurityGroups,
     handleDeleteSecurityGroup,
+    executeDeleteSecurityGroup,
   };
 }
 

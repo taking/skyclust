@@ -6,10 +6,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// User represents a user in the system
+// User: 시스템의 사용자를 나타내는 도메인 엔티티
 type User struct {
 	ID           uuid.UUID  `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
-	Username     string     `json:"username" gorm:"not null;size:50"` // Not unique - multiple users can have same username
+	Username     string     `json:"username" gorm:"not null;size:50"` // 고유하지 않음 - 여러 사용자가 동일한 사용자명을 가질 수 있음
 	Email        string     `json:"email" gorm:"uniqueIndex;not null;size:100"`
 	PasswordHash string     `json:"-" gorm:"column:password_hash;not null;size:255"`
 	OIDCProvider string     `json:"oidc_provider,omitempty" gorm:"size:20"` // google, github, azure
@@ -17,39 +17,36 @@ type User struct {
 	Active       bool       `json:"is_active" gorm:"default:true"`
 	CreatedAt    time.Time  `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt    time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
-	DeletedAt    *time.Time `json:"-" gorm:"index"`
 
-	// Relationships
-	// Note: Credentials are now workspace-based, not user-based
+	// 관계
+	// 참고: 자격증명은 이제 사용자 기반이 아닌 워크스페이스 기반입니다
 	AuditLogs []AuditLog `json:"audit_logs,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 	UserRoles []UserRole `json:"user_roles,omitempty" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 }
 
-// TableName specifies the table name for User
+// TableName: User의 테이블 이름을 반환합니다
 func (User) TableName() string {
 	return "users"
 }
 
-// Business methods for User entity
-
-// IsActive checks if the user is active
+// IsActive: 사용자가 활성화되어 있는지 확인합니다
 func (u *User) IsActive() bool {
 	return u.Active
 }
 
-// Activate activates the user
+// Activate: 사용자를 활성화합니다
 func (u *User) Activate() {
 	u.Active = true
 	u.UpdatedAt = time.Now()
 }
 
-// Deactivate deactivates the user
+// Deactivate: 사용자를 비활성화합니다
 func (u *User) Deactivate() {
 	u.Active = false
 	u.UpdatedAt = time.Now()
 }
 
-// UpdateProfile updates user profile information
+// UpdateProfile: 사용자 프로필 정보를 업데이트합니다
 func (u *User) UpdateProfile(username, email string) error {
 	if username == "" {
 		return NewDomainError(ErrCodeValidationFailed, "username cannot be empty", 400)
@@ -64,18 +61,18 @@ func (u *User) UpdateProfile(username, email string) error {
 	return nil
 }
 
-// SetPasswordHash sets the password hash
+// SetPasswordHash: 비밀번호 해시를 설정합니다
 func (u *User) SetPasswordHash(hash string) {
 	u.PasswordHash = hash
 	u.UpdatedAt = time.Now()
 }
 
-// CanAccessResource checks if user can access a resource
+// CanAccessResource: 사용자가 리소스에 접근할 수 있는지 확인합니다
 func (u *User) CanAccessResource(resourceUserID uuid.UUID, userRole Role) bool {
 	return u.ID == resourceUserID || userRole == AdminRoleType
 }
 
-// IsAdmin checks if user has admin role
+// IsAdmin: 사용자가 관리자 역할을 가지고 있는지 확인합니다
 func (u *User) IsAdmin(userRoles []Role) bool {
 	for _, role := range userRoles {
 		if role == AdminRoleType {
@@ -85,7 +82,7 @@ func (u *User) IsAdmin(userRoles []Role) bool {
 	return false
 }
 
-// GetDisplayName returns the display name for the user
+// GetDisplayName: 사용자의 표시 이름을 반환합니다
 func (u *User) GetDisplayName() string {
 	if u.Username != "" {
 		return u.Username
@@ -93,19 +90,19 @@ func (u *User) GetDisplayName() string {
 	return u.Email
 }
 
-// IsOIDCUser checks if this is an OIDC user
+// IsOIDCUser: OIDC 사용자인지 확인합니다
 func (u *User) IsOIDCUser() bool {
 	return u.OIDCProvider != "" && u.OIDCSubject != ""
 }
 
-// SetOIDCInfo sets OIDC provider information
+// SetOIDCInfo: OIDC 제공자 정보를 설정합니다
 func (u *User) SetOIDCInfo(provider, subject string) {
 	u.OIDCProvider = provider
 	u.OIDCSubject = subject
 	u.UpdatedAt = time.Now()
 }
 
-// UserFilters represents filters for user queries
+// UserFilters: 사용자 쿼리 필터
 type UserFilters struct {
 	Search string
 	Role   string
@@ -114,7 +111,7 @@ type UserFilters struct {
 	Limit  int
 }
 
-// UserStats represents user statistics
+// UserStats: 사용자 통계
 type UserStats struct {
 	TotalUsers    int64
 	ActiveUsers   int64
@@ -122,14 +119,14 @@ type UserStats struct {
 	NewUsersToday int64
 }
 
-// CreateUserRequest represents the request to create a user
+// CreateUserRequest: 사용자 생성 요청
 type CreateUserRequest struct {
 	Username string `json:"username" validate:"required,min=3,max=50"`
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required,min=8"`
 }
 
-// Validate performs validation on the CreateUserRequest
+// Validate: CreateUserRequest의 유효성을 검사합니다
 func (r *CreateUserRequest) Validate() error {
 	if len(r.Username) < 3 || len(r.Username) > 50 {
 		return NewDomainError(ErrCodeValidationFailed, "username must be between 3 and 50 characters", 400)
@@ -143,7 +140,7 @@ func (r *CreateUserRequest) Validate() error {
 	return nil
 }
 
-// UpdateUserRequest represents the request to update a user
+// UpdateUserRequest: 사용자 업데이트 요청
 type UpdateUserRequest struct {
 	Username *string `json:"username,omitempty" validate:"omitempty,min=3,max=50"`
 	Email    *string `json:"email,omitempty" validate:"omitempty,email"`
@@ -151,7 +148,7 @@ type UpdateUserRequest struct {
 	IsActive *bool   `json:"is_active,omitempty"`
 }
 
-// Validate performs validation on the UpdateUserRequest
+// Validate: UpdateUserRequest의 유효성을 검사합니다
 func (r *UpdateUserRequest) Validate() error {
 	if r.Username != nil && (len(*r.Username) < 3 || len(*r.Username) > 50) {
 		return NewDomainError(ErrCodeValidationFailed, "username must be between 3 and 50 characters", 400)
@@ -165,7 +162,7 @@ func (r *UpdateUserRequest) Validate() error {
 	return nil
 }
 
-// OIDCLoginRequest represents the request for OIDC login
+// OIDCLoginRequest: OIDC 로그인 요청
 type OIDCLoginRequest struct {
 	Provider string `json:"provider" validate:"required,oneof=google github azure"`
 	Code     string `json:"code" validate:"required"`

@@ -3,7 +3,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar } from 'recharts';
-import { Activity, Server, Network } from 'lucide-react';
+import { Activity } from 'lucide-react';
 
 interface ClusterMetricsChartProps {
   clusterName: string;

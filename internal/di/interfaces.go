@@ -13,6 +13,7 @@ type ContainerInterface interface {
 	GetCredentialRepository() domain.CredentialRepository
 	GetAuditLogRepository() domain.AuditLogRepository
 	GetOIDCProviderRepository() domain.OIDCProviderRepository
+	GetOutboxRepository() domain.OutboxRepository
 
 	// Service interfaces
 	GetUserService() domain.UserService
@@ -31,6 +32,7 @@ type ContainerInterface interface {
 	GetExportService() interface{}
 	GetCostAnalysisService() interface{}
 	GetComputeService() interface{}
+	GetDashboardService() interface{}
 	GetBusinessRuleService() interface{}
 
 	// Domain services
@@ -60,6 +62,7 @@ type RepositoryContainer struct {
 	NotificationPreferencesRepository domain.NotificationPreferencesRepository
 	OIDCProviderRepository           domain.OIDCProviderRepository
 	RBACRepository                    domain.RBACRepository
+	OutboxRepository                  domain.OutboxRepository
 }
 
 // ServiceContainer holds service dependencies
@@ -80,6 +83,7 @@ type ServiceContainer struct {
 	ExportService           interface{} // TODO: Define ExportService interface in domain
 	CostAnalysisService     interface{} // TODO: Define CostAnalysisService interface in domain
 	ComputeService          interface{} // TODO: Define ComputeService interface in domain
+	DashboardService        interface{} // DashboardService for dashboard summary data
 	BusinessRuleService     interface{} // TODO: Define BusinessRuleService interface in domain
 }
 
@@ -94,8 +98,9 @@ type DomainContainer struct {
 
 // InfrastructureContainer holds infrastructure dependencies
 type InfrastructureContainer struct {
-	Database  interface{}
-	Cache     interface{}
-	Messaging interface{}
-	Logger    interface{}
+	Database           interface{}
+	Cache              interface{}
+	Messaging          interface{}
+	Logger             interface{}
+	TransactionManager domain.TransactionManager
 }

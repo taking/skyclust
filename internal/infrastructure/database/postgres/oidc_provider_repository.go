@@ -11,12 +11,13 @@ import (
 	"gorm.io/gorm"
 )
 
+// oidcProviderRepository: domain.OIDCProviderRepository 인터페이스 구현체
 type oidcProviderRepository struct {
 	db        *gorm.DB
 	encryptor security.Encryptor
 }
 
-// NewOIDCProviderRepository creates a new OIDC provider repository
+// NewOIDCProviderRepository: 새로운 OIDCProviderRepository를 생성합니다
 func NewOIDCProviderRepository(db *gorm.DB, encryptor security.Encryptor) domain.OIDCProviderRepository {
 	return &oidcProviderRepository{
 		db:        db,
@@ -24,7 +25,7 @@ func NewOIDCProviderRepository(db *gorm.DB, encryptor security.Encryptor) domain
 	}
 }
 
-// Create creates a new OIDC provider
+// Create: 새로운 OIDC 프로바이더를 생성합니다
 func (r *oidcProviderRepository) Create(provider *domain.OIDCProvider) error {
 	// Encrypt client secret before saving
 	if provider.ClientSecret != "" {
@@ -44,10 +45,10 @@ func (r *oidcProviderRepository) Create(provider *domain.OIDCProvider) error {
 	return nil
 }
 
-// GetByID retrieves an OIDC provider by ID
+// GetByID: ID로 OIDC 프로바이더를 조회합니다
 func (r *oidcProviderRepository) GetByID(id uuid.UUID) (*domain.OIDCProvider, error) {
 	var provider domain.OIDCProvider
-	if err := r.db.Where("id = ? AND deleted_at IS NULL", id).First(&provider).Error; err != nil {
+	if err := r.db.Where("id = ?", id).First(&provider).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
 		}
@@ -68,10 +69,10 @@ func (r *oidcProviderRepository) GetByID(id uuid.UUID) (*domain.OIDCProvider, er
 	return &provider, nil
 }
 
-// GetByUserID retrieves all OIDC providers for a user
+// GetByUserID: 사용자의 모든 OIDC 프로바이더를 조회합니다
 func (r *oidcProviderRepository) GetByUserID(userID uuid.UUID) ([]*domain.OIDCProvider, error) {
 	var providers []*domain.OIDCProvider
-	if err := r.db.Where("user_id = ? AND deleted_at IS NULL", userID).
+	if err := r.db.Where("user_id = ?", userID).
 		Order("created_at DESC").
 		Find(&providers).Error; err != nil {
 		logger.Errorf("Failed to get OIDC providers by user ID: %v", err)
@@ -93,10 +94,10 @@ func (r *oidcProviderRepository) GetByUserID(userID uuid.UUID) ([]*domain.OIDCPr
 	return providers, nil
 }
 
-// GetByUserIDAndName retrieves an OIDC provider by user ID and name
+// GetByUserIDAndName: 사용자 ID와 이름으로 OIDC 프로바이더를 조회합니다
 func (r *oidcProviderRepository) GetByUserIDAndName(userID uuid.UUID, name string) (*domain.OIDCProvider, error) {
 	var provider domain.OIDCProvider
-	if err := r.db.Where("user_id = ? AND name = ? AND deleted_at IS NULL", userID, name).
+	if err := r.db.Where("user_id = ? AND name = ?", userID, name).
 		First(&provider).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
@@ -118,7 +119,7 @@ func (r *oidcProviderRepository) GetByUserIDAndName(userID uuid.UUID, name strin
 	return &provider, nil
 }
 
-// Update updates an OIDC provider
+// Update: OIDC 프로바이더 정보를 업데이트합니다
 func (r *oidcProviderRepository) Update(provider *domain.OIDCProvider) error {
 	// Encrypt client secret if it's being updated
 	if provider.ClientSecret != "" {
@@ -154,9 +155,9 @@ func (r *oidcProviderRepository) Update(provider *domain.OIDCProvider) error {
 	return nil
 }
 
-// Delete soft deletes an OIDC provider
+// Delete: OIDC 프로바이더를 영구 삭제합니다
 func (r *oidcProviderRepository) Delete(id uuid.UUID) error {
-	if err := r.db.Where("id = ?", id).
+	if err := r.db.Unscoped().Where("id = ?", id).
 		Delete(&domain.OIDCProvider{}).Error; err != nil {
 		logger.Errorf("Failed to delete OIDC provider: %v", err)
 		return err
@@ -164,10 +165,10 @@ func (r *oidcProviderRepository) Delete(id uuid.UUID) error {
 	return nil
 }
 
-// GetEnabledByUserID retrieves enabled OIDC providers for a user
+// GetEnabledByUserID: 사용자의 활성화된 OIDC 프로바이더를 조회합니다
 func (r *oidcProviderRepository) GetEnabledByUserID(userID uuid.UUID) ([]*domain.OIDCProvider, error) {
 	var providers []*domain.OIDCProvider
-	if err := r.db.Where("user_id = ? AND enabled = true AND deleted_at IS NULL", userID).
+	if err := r.db.Where("user_id = ? AND enabled = true", userID).
 		Order("created_at DESC").
 		Find(&providers).Error; err != nil {
 		logger.Errorf("Failed to get enabled OIDC providers by user ID: %v", err)
@@ -189,7 +190,7 @@ func (r *oidcProviderRepository) GetEnabledByUserID(userID uuid.UUID) ([]*domain
 	return providers, nil
 }
 
-// decryptClientSecret decrypts a base64-encoded encrypted client secret
+// decryptClientSecret: base64로 인코딩된 암호화된 클라이언트 시크릿을 복호화합니다
 func (r *oidcProviderRepository) decryptClientSecret(encryptedSecret string) (string, error) {
 	if encryptedSecret == "" {
 		return "", fmt.Errorf("encrypted secret is empty")

@@ -10,6 +10,7 @@ import (
 	"golang.org/x/oauth2/microsoft"
 	"net/http"
 	"net/url"
+	"skyclust/internal/application/services/common"
 	"skyclust/internal/domain"
 	"strings"
 	"time"
@@ -17,7 +18,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Service handles OIDC authentication
+// Service: OIDC 인증을 처리하는 서비스
 type Service struct {
 	userRepo         domain.UserRepository
 	auditLogRepo     domain.AuditLogRepository
@@ -28,7 +29,7 @@ type Service struct {
 	httpClient       *http.Client
 }
 
-// NewService creates a new OIDC service
+// NewService: 새로운 OIDC 서비스를 생성합니다
 func NewService(
 	userRepo domain.UserRepository,
 	auditLogRepo domain.AuditLogRepository,
@@ -52,7 +53,7 @@ func NewService(
 	return service
 }
 
-// GetAuthURL returns the OAuth authorization URL for the specified provider
+// GetAuthURL: 지정된 프로바이더의 OAuth 인증 URL을 반환합니다
 func (s *Service) GetAuthURL(ctx context.Context, provider string, state string) (string, error) {
 	var config *OIDCConfig
 
@@ -100,7 +101,7 @@ func (s *Service) GetAuthURL(ctx context.Context, provider string, state string)
 	return authURL, nil
 }
 
-// ExchangeCode exchanges authorization code for access token and user info
+// ExchangeCode: 인증 코드를 액세스 토큰과 사용자 정보로 교환합니다
 func (s *Service) ExchangeCode(ctx context.Context, provider, code, state string) (*domain.User, string, error) {
 	var config *OIDCConfig
 	var userProvider *domain.OIDCProvider
@@ -174,18 +175,16 @@ func (s *Service) ExchangeCode(ctx context.Context, provider, code, state string
 		}
 
 		// Log OIDC registration
-		_ = s.auditLogRepo.Create(&domain.AuditLog{
-			UserID:   user.ID,
-			Action:   domain.ActionUserRegister,
-			Resource: "POST /api/v1/auth/oidc/login",
-			Details: map[string]interface{}{
+		common.LogAction(ctx, s.auditLogRepo, &user.ID, domain.ActionUserRegister,
+			"POST /api/v1/auth/oidc/login",
+			map[string]interface{}{
 				"provider":      providerType,
 				"provider_id":   provider,
 				"user_provider": userProvider != nil,
 				"username":      user.Username,
 				"email":         user.Email,
 			},
-		})
+		)
 	}
 
 	// Generate JWT token using auth service
@@ -195,16 +194,14 @@ func (s *Service) ExchangeCode(ctx context.Context, provider, code, state string
 	}
 
 	// Log OIDC login
-	_ = s.auditLogRepo.Create(&domain.AuditLog{
-		UserID:   user.ID,
-		Action:   domain.ActionOIDCLogin,
-		Resource: "POST /api/v1/auth/oidc/login",
-		Details: map[string]interface{}{
+	common.LogAction(ctx, s.auditLogRepo, &user.ID, domain.ActionOIDCLogin,
+		"POST /api/v1/auth/oidc/login",
+		map[string]interface{}{
 			"provider":      providerType,
 			"provider_id":   provider,
 			"user_provider": userProvider != nil,
 		},
-	})
+	)
 
 	// Delete state after successful exchange (prevent reuse)
 	stateKey := fmt.Sprintf("oidc:state:%s", state)
@@ -213,7 +210,7 @@ func (s *Service) ExchangeCode(ctx context.Context, provider, code, state string
 	return user, jwtToken, nil
 }
 
-// validateState validates the OIDC state parameter
+// validateState: OIDC state 파라미터를 검증합니다
 func (s *Service) validateState(ctx context.Context, state, provider string) error {
 	stateKey := fmt.Sprintf("oidc:state:%s", state)
 
@@ -251,7 +248,7 @@ func (s *Service) validateState(ctx context.Context, state, provider string) err
 	return nil
 }
 
-// getUserInfoFromProvider fetches user information from the OIDC provider
+// getUserInfoFromProvider: OIDC 프로바이더로부터 사용자 정보를 가져옵니다
 func (s *Service) getUserInfoFromProvider(providerType string, token *oauth2.Token, userProvider *domain.OIDCProvider) (*OIDCUserInfo, error) {
 	var client *http.Client
 	var apiURL string
@@ -307,7 +304,7 @@ func (s *Service) getUserInfoFromProvider(providerType string, token *oauth2.Tok
 	return &userInfo, nil
 }
 
-// createConfigFromProvider creates an OAuth2 config from a user-registered OIDC provider
+// createConfigFromProvider: 사용자 등록 OIDC 프로바이더로부터 OAuth2 설정을 생성합니다
 func (s *Service) createConfigFromProvider(provider *domain.OIDCProvider) (*OIDCConfig, error) {
 	// Parse scopes
 	var scopes []string
@@ -364,7 +361,7 @@ func (s *Service) createConfigFromProvider(provider *domain.OIDCProvider) (*OIDC
 	}, nil
 }
 
-// EndSession initiates OIDC logout by calling the provider's end_session_endpoint
+// EndSession: 프로바이더의 end_session_endpoint를 호출하여 OIDC 로그아웃을 시작합니다
 func (s *Service) EndSession(ctx context.Context, userID uuid.UUID, provider, idToken, postLogoutRedirectURI string) error {
 	config, exists := s.configs[provider]
 	if !exists {
@@ -391,20 +388,18 @@ func (s *Service) EndSession(ctx context.Context, userID uuid.UUID, provider, id
 	defer resp.Body.Close()
 
 	// Log OIDC logout
-	_ = s.auditLogRepo.Create(&domain.AuditLog{
-		UserID:   userID,
-		Action:   domain.ActionOIDCLogout,
-		Resource: "POST /api/v1/auth/oidc/logout",
-		Details: map[string]interface{}{
+	common.LogAction(ctx, s.auditLogRepo, &userID, domain.ActionOIDCLogout,
+		"POST /api/v1/auth/oidc/logout",
+		map[string]interface{}{
 			"provider": provider,
 			"status":   resp.StatusCode,
 		},
-	})
+	)
 
 	return nil
 }
 
-// getEndSessionEndpoint returns the end_session_endpoint URL for the provider
+// getEndSessionEndpoint: 프로바이더의 end_session_endpoint URL을 반환합니다
 func (s *Service) getEndSessionEndpoint(provider string) (string, error) {
 	switch provider {
 	case "google":
@@ -420,7 +415,7 @@ func (s *Service) getEndSessionEndpoint(provider string) (string, error) {
 	}
 }
 
-// buildLogoutURL constructs the logout URL with required parameters
+// buildLogoutURL: 필요한 파라미터로 로그아웃 URL을 구성합니다
 func (s *Service) buildLogoutURL(endSessionURL, idToken, postLogoutRedirectURI, clientID string) (string, error) {
 	u, err := url.Parse(endSessionURL)
 	if err != nil {
@@ -436,7 +431,7 @@ func (s *Service) buildLogoutURL(endSessionURL, idToken, postLogoutRedirectURI, 
 	return u.String(), nil
 }
 
-// HandleBackChannelLogout handles back-channel logout notifications from OIDC providers
+// HandleBackChannelLogout: OIDC 프로바이더로부터 백채널 로그아웃 알림을 처리합니다
 func (s *Service) HandleBackChannelLogout(ctx context.Context, logoutToken string) error {
 	// Parse and validate the logout token
 	// This is a simplified implementation - in production, you should properly validate the JWT
@@ -452,7 +447,7 @@ func (s *Service) HandleBackChannelLogout(ctx context.Context, logoutToken strin
 	return nil
 }
 
-// GetLogoutURL returns a logout URL that can be used for front-channel logout
+// GetLogoutURL: 프론트채널 로그아웃에 사용할 수 있는 로그아웃 URL을 반환합니다
 func (s *Service) GetLogoutURL(ctx context.Context, provider, postLogoutRedirectURI string) (string, error) {
 	config, exists := s.configs[provider]
 	if !exists {
@@ -478,7 +473,7 @@ func (s *Service) GetLogoutURL(ctx context.Context, provider, postLogoutRedirect
 	return u.String(), nil
 }
 
-// initializeConfigs initializes OIDC provider configurations
+// initializeConfigs: OIDC 프로바이더 설정을 초기화합니다
 func (s *Service) initializeConfigs() {
 	// Google OAuth2
 	s.configs["google"] = &OIDCConfig{
@@ -526,7 +521,7 @@ func (s *Service) initializeConfigs() {
 	}
 }
 
-// CreateProvider creates a new OIDC provider for a user
+// CreateProvider: 사용자를 위한 새로운 OIDC 프로바이더를 생성합니다
 func (s *Service) CreateProvider(ctx context.Context, userID uuid.UUID, provider *domain.OIDCProvider) (*domain.OIDCProvider, error) {
 	// Check if provider name already exists for this user
 	existing, err := s.oidcProviderRepo.GetByUserIDAndName(userID, provider.Name)
@@ -548,7 +543,7 @@ func (s *Service) CreateProvider(ctx context.Context, userID uuid.UUID, provider
 	return provider, nil
 }
 
-// GetUserProviders retrieves all OIDC providers for a user
+// GetUserProviders: 사용자의 모든 OIDC 프로바이더를 조회합니다
 func (s *Service) GetUserProviders(ctx context.Context, userID uuid.UUID) ([]*domain.OIDCProvider, error) {
 	providers, err := s.oidcProviderRepo.GetByUserID(userID)
 	if err != nil {
@@ -558,7 +553,7 @@ func (s *Service) GetUserProviders(ctx context.Context, userID uuid.UUID) ([]*do
 	return providers, nil
 }
 
-// GetProvider retrieves a specific OIDC provider for a user
+// GetProvider: 사용자의 특정 OIDC 프로바이더를 조회합니다
 func (s *Service) GetProvider(ctx context.Context, userID uuid.UUID, providerID uuid.UUID) (*domain.OIDCProvider, error) {
 	provider, err := s.oidcProviderRepo.GetByID(providerID)
 	if err != nil {
@@ -576,7 +571,7 @@ func (s *Service) GetProvider(ctx context.Context, userID uuid.UUID, providerID 
 	return provider, nil
 }
 
-// UpdateProvider updates an OIDC provider for a user
+// UpdateProvider: 사용자의 OIDC 프로바이더를 업데이트합니다
 func (s *Service) UpdateProvider(ctx context.Context, userID uuid.UUID, providerID uuid.UUID, req *domain.OIDCProvider) (*domain.OIDCProvider, error) {
 	// Get existing provider
 	provider, err := s.oidcProviderRepo.GetByID(providerID)
@@ -637,7 +632,7 @@ func (s *Service) UpdateProvider(ctx context.Context, userID uuid.UUID, provider
 	return provider, nil
 }
 
-// DeleteProvider deletes an OIDC provider for a user
+// DeleteProvider: 사용자의 OIDC 프로바이더를 삭제합니다
 func (s *Service) DeleteProvider(ctx context.Context, userID uuid.UUID, providerID uuid.UUID) error {
 	// Get existing provider
 	provider, err := s.oidcProviderRepo.GetByID(providerID)

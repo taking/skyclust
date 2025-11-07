@@ -45,6 +45,11 @@ type ProviderHandler interface {
 	// SSH access
 	GetNodeSSHConfig(c *gin.Context)
 	ExecuteNodeCommand(c *gin.Context)
+
+	// Metadata endpoints (AWS only, other providers return NotImplemented)
+	GetEKSVersions(c *gin.Context)
+	GetAWSRegions(c *gin.Context)
+	GetAvailabilityZones(c *gin.Context)
 }
 
 // Factory creates and manages provider-specific Kubernetes handlers

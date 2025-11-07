@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Container, Server, AlertCircle } from 'lucide-react';
+import { Container, AlertCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { kubernetesService } from '@/features/kubernetes';
 import { useWorkspaceStore } from '@/store/workspace';

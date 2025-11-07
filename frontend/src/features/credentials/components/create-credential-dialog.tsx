@@ -5,7 +5,6 @@
 
 'use client';
 
-import { useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,9 +12,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createCredentialSchema } from '@/lib/validations';
+import { createValidationSchemas } from '@/lib/validations';
 import { ProviderFormFields } from './provider-form-fields';
 import type { CreateCredentialForm } from '@/lib/types';
+import { useTranslation } from '@/hooks/use-translation';
 
 interface CreateCredentialDialogProps {
   open: boolean;
@@ -34,6 +34,8 @@ export function CreateCredentialDialog({
   gcpInputMode,
   onGcpInputModeChange,
 }: CreateCredentialDialogProps) {
+  const { t } = useTranslation();
+  const schemas = createValidationSchemas(t);
   const {
     register,
     handleSubmit,
@@ -42,7 +44,7 @@ export function CreateCredentialDialog({
     setValue,
     watch,
   } = useForm<CreateCredentialForm>({
-    resolver: zodResolver(createCredentialSchema),
+    resolver: zodResolver(schemas.createCredentialSchema),
   });
 
   const selectedProvider = watch('provider');
@@ -56,26 +58,26 @@ export function CreateCredentialDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Add New Credentials</DialogTitle>
+          <DialogTitle>{t('credential.addNewCredentials')}</DialogTitle>
           <DialogDescription>
-            Add credentials for a cloud provider to enable VM management.
+            {t('credential.addCredentialsDialogDescription')}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleFormSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor="name">{t('common.name')}</Label>
             <Input
               id="name"
-              placeholder="e.g., AWS Production"
+              placeholder={t('credential.namePlaceholder')}
               {...register('name')}
             />
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="provider">Provider</Label>
+            <Label htmlFor="provider">{t('credential.provider')}</Label>
             <Select onValueChange={(value) => setValue('provider', value)}>
               <SelectTrigger>
-                <SelectValue placeholder="Select provider" />
+                <SelectValue placeholder={t('credential.selectProvider')} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="aws">AWS</SelectItem>
@@ -91,7 +93,7 @@ export function CreateCredentialDialog({
           {selectedProvider && (
             <div className="space-y-4">
               <div className="text-sm text-gray-600">
-                Enter your {selectedProvider.toUpperCase()} credentials:
+                {t('credential.enterCredentials', { provider: selectedProvider.toUpperCase() })}
               </div>
               
               <ProviderFormFields
@@ -113,10 +115,10 @@ export function CreateCredentialDialog({
                 reset();
               }}
             >
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button type="submit" disabled={isPending}>
-              {isPending ? 'Adding...' : 'Add Credentials'}
+              {isPending ? t('credential.adding') : t('credential.add')}
             </Button>
           </div>
         </form>

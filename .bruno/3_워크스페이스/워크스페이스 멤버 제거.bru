@@ -1,0 +1,109 @@
+meta {
+  name: 워크스페이스 멤버 제거
+  type: http
+  seq: 8
+}
+
+delete {
+  url: {{baseUrl}}/api/{{apiVersion}}/workspaces/{{workspaceId}}/members/{{memberId}}
+  body: none
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains success message", function() {
+    expect(res.getBody()).to.have.property('success');
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response contains message", function() {
+    expect(res.getBody()).to.have.property('message');
+    expect(res.getBody().message).to.include('Member removed');
+  });
+}
+
+docs {
+  # 워크스페이스 멤버 제거
+  
+  워크스페이스에서 멤버를 제거합니다.
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "message": "Member removed successfully"
+    },
+    "message": "Member removed from workspace successfully",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
+  }
+  ```
+  
+  ## 사용 예시
+  
+  ```bash
+  DELETE /api/v1/workspaces/{workspaceId}/members/{memberId}
+  Authorization: Bearer your-jwt-token
+  ```
+  
+  ## Path Parameters
+  
+  - `workspaceId`: 워크스페이스 ID
+  - `memberId`: 제거할 멤버의 사용자 ID
+  
+  ## 에러 응답
+  
+  ### 멤버가 아닌 경우 (404)
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "NOT_FOUND",
+      "message": "user is not a member of this workspace"
+    }
+  }
+  ```
+  
+  ### Owner를 제거하려는 경우 (400)
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "BAD_REQUEST",
+      "message": "Cannot remove workspace owner"
+    }
+  }
+  ```
+  
+  ### 권한 부족 (403)
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "FORBIDDEN",
+      "message": "Insufficient permissions to remove members from this workspace"
+    }
+  }
+  ```
+  
+  ## 주의사항
+  
+  - Owner 또는 Admin만 멤버를 제거할 수 있습니다
+  - Owner는 제거할 수 없습니다
+  - 멤버가 아닌 사용자를 제거하려고 하면 에러가 발생합니다
+}
+

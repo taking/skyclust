@@ -4,8 +4,9 @@
  */
 
 import type { IVPCRepository } from '@/lib/types/repository';
-import type { CloudProvider, VPC } from '@/lib/types';
+import type { CloudProvider } from '@/lib/types';
 import { DeleteVPCUseCase } from './delete-vpc-use-case';
+import { logger } from '@/lib/logger';
 
 export interface BulkDeleteVPCsUseCaseInput {
   provider: CloudProvider;
@@ -54,7 +55,11 @@ export class BulkDeleteVPCsUseCase {
         region: vpc.region || defaultRegion,
       }).catch(error => {
         // 개별 삭제 실패는 로깅만 하고 계속 진행
-        console.error(`Failed to delete VPC ${vpc.id}:`, error);
+        logger.error(`Failed to delete VPC ${vpc.id}`, error instanceof Error ? error : new Error(String(error)), {
+          vpcId: vpc.id,
+          provider,
+          credentialId,
+        });
         throw error;
       })
     );

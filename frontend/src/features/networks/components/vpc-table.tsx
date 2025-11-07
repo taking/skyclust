@@ -5,6 +5,9 @@
 
 'use client';
 
+import { useMemo, useCallback } from 'react';
+import * as React from 'react';
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -30,7 +33,7 @@ interface VPCTableProps {
   isDeleting?: boolean;
 }
 
-export function VPCTable({
+function VPCTableComponent({
   vpcs,
   filteredVPCs,
   paginatedVPCs,
@@ -44,21 +47,26 @@ export function VPCTable({
   onPageSizeChange,
   isDeleting = false,
 }: VPCTableProps) {
-  const handleSelectAll = (checked: boolean) => {
+  const allSelected = useMemo(
+    () => selectedVPCIds.length === filteredVPCs.length && filteredVPCs.length > 0,
+    [selectedVPCIds.length, filteredVPCs.length]
+  );
+
+  const handleSelectAll = useCallback((checked: boolean) => {
     if (checked) {
       onSelectionChange(filteredVPCs.map(v => v.id));
     } else {
       onSelectionChange([]);
     }
-  };
+  }, [filteredVPCs, onSelectionChange]);
 
-  const handleSelectOne = (vpcId: string, checked: boolean) => {
+  const handleSelectOne = useCallback((vpcId: string, checked: boolean) => {
     if (checked) {
       onSelectionChange([...selectedVPCIds, vpcId]);
     } else {
       onSelectionChange(selectedVPCIds.filter(id => id !== vpcId));
     }
-  };
+  }, [selectedVPCIds, onSelectionChange]);
 
   return (
     <Card>
@@ -74,7 +82,7 @@ export function VPCTable({
             <TableRow>
               <TableHead className="w-12">
                 <Checkbox
-                  checked={selectedVPCIds.length === filteredVPCs.length && filteredVPCs.length > 0}
+                  checked={allSelected}
                   onCheckedChange={handleSelectAll}
                 />
               </TableHead>
@@ -149,4 +157,6 @@ export function VPCTable({
     </Card>
   );
 }
+
+export const VPCTable = React.memo(VPCTableComponent);
 

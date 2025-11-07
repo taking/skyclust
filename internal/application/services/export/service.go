@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// Service: 데이터 내보내기 서비스 구현체
 type Service struct {
 	logger         *zap.Logger
 	vmRepo         domain.VMRepository
@@ -21,6 +22,7 @@ type Service struct {
 	auditLogRepo   domain.AuditLogRepository
 }
 
+// NewService: 새로운 내보내기 서비스를 생성합니다
 func NewService(
 	logger *zap.Logger,
 	vmRepo domain.VMRepository,
@@ -37,7 +39,7 @@ func NewService(
 	}
 }
 
-// ExportRequest represents an export request
+// ExportRequest: 내보내기 요청 DTO
 type ExportRequest struct {
 	UserID         string                 `json:"user_id"`
 	WorkspaceID    string                 `json:"workspace_id,omitempty"`
@@ -49,7 +51,7 @@ type ExportRequest struct {
 	IncludeDeleted bool                   `json:"include_deleted,omitempty"`
 }
 
-// ExportResult represents the result of an export operation
+// ExportResult: 내보내기 작업 결과 DTO
 type ExportResult struct {
 	ID          string       `json:"id"`
 	UserID      string       `json:"user_id"`
@@ -63,7 +65,7 @@ type ExportResult struct {
 	CompletedAt *time.Time   `json:"completed_at,omitempty"`
 }
 
-// ExportVMs exports VM data
+// ExportVMs: VM 데이터를 내보냅니다
 func (s *Service) ExportVMs(ctx context.Context, req ExportRequest) (*ExportResult, error) {
 	// Get VMs based on filters
 	vms, err := s.getVMsForExport(ctx, req)
@@ -165,7 +167,7 @@ func (s *Service) ExportWorkspaces(ctx context.Context, req ExportRequest) (*Exp
 	return result, nil
 }
 
-// ExportCredentials exports credential data
+// ExportCredentials: 자격증명 데이터를 내보냅니다
 func (s *Service) ExportCredentials(ctx context.Context, req ExportRequest) (*ExportResult, error) {
 	// Get credentials based on filters
 	credentials, err := s.getCredentialsForExport(ctx, req)
@@ -213,7 +215,7 @@ func (s *Service) ExportCredentials(ctx context.Context, req ExportRequest) (*Ex
 	return result, nil
 }
 
-// ExportAuditLogs exports audit log data
+// ExportAuditLogs: 감사 로그 데이터를 내보냅니다
 func (s *Service) ExportAuditLogs(ctx context.Context, req ExportRequest) (*ExportResult, error) {
 	// Get audit logs based on filters
 	auditLogs, err := s.getAuditLogsForExport(ctx, req)
@@ -263,7 +265,7 @@ func (s *Service) ExportAuditLogs(ctx context.Context, req ExportRequest) (*Expo
 	return result, nil
 }
 
-// GetExportStatus retrieves the status of an export
+// GetExportStatus: 내보내기 작업의 상태를 조회합니다
 func (s *Service) GetExportStatus(ctx context.Context, exportID string) (*ExportResult, error) {
 	// This would typically query a database
 	// For now, return a mock result

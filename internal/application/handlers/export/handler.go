@@ -14,13 +14,13 @@ import (
 	"github.com/google/uuid"
 )
 
-// ExportStorage stores export data and status in memory
+// ExportStorage: 메모리에 내보내기 데이터와 상태를 저장하는 구조체
 type ExportStorage struct {
 	mu    sync.RWMutex
 	store map[string]*ExportStorageItem
 }
 
-// ExportStorageItem represents a stored export
+// ExportStorageItem: 저장된 내보내기 항목을 나타내는 구조체
 type ExportStorageItem struct {
 	ID          string
 	UserID      string
@@ -35,21 +35,21 @@ type ExportStorageItem struct {
 	CompletedAt *time.Time
 }
 
-// NewExportStorage creates a new in-memory export storage
+// NewExportStorage: 새로운 메모리 내보내기 저장소를 생성합니다
 func NewExportStorage() *ExportStorage {
 	return &ExportStorage{
 		store: make(map[string]*ExportStorageItem),
 	}
 }
 
-// Store stores an export item
+// Store: 내보내기 항목을 저장합니다
 func (s *ExportStorage) Store(item *ExportStorageItem) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.store[item.ID] = item
 }
 
-// Get retrieves an export item by ID
+// Get: ID로 내보내기 항목을 조회합니다
 func (s *ExportStorage) Get(id string) (*ExportStorageItem, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -57,7 +57,7 @@ func (s *ExportStorage) Get(id string) (*ExportStorageItem, bool) {
 	return item, exists
 }
 
-// GetByUserID retrieves all exports for a user
+// GetByUserID: 사용자의 모든 내보내기를 조회합니다
 func (s *ExportStorage) GetByUserID(userID string) []*ExportStorageItem {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -70,14 +70,14 @@ func (s *ExportStorage) GetByUserID(userID string) []*ExportStorageItem {
 	return items
 }
 
-// Delete removes an export item
+// Delete: 내보내기 항목을 제거합니다
 func (s *ExportStorage) Delete(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.store, id)
 }
 
-// Handler handles export operations using improved patterns
+// Handler: 내보내기 작업을 처리하는 핸들러
 type Handler struct {
 	*handlers.BaseHandler
 	readabilityHelper *readability.ReadabilityHelper
@@ -85,7 +85,7 @@ type Handler struct {
 	exportStorage     *ExportStorage
 }
 
-// NewHandler creates a new export handler
+// NewHandler: 새로운 내보내기 핸들러를 생성합니다
 func NewHandler() *Handler {
 	return &Handler{
 		BaseHandler:       handlers.NewBaseHandler("export"),
@@ -94,12 +94,12 @@ func NewHandler() *Handler {
 	}
 }
 
-// SetExportService sets the export service (for dependency injection)
+// SetExportService: 내보내기 서비스를 설정합니다 (의존성 주입용)
 func (h *Handler) SetExportService(exportService *exportservice.Service) {
 	h.exportService = exportService
 }
 
-// ExportData handles data export requests using decorator pattern
+// ExportData: 데이터 내보내기 요청을 처리합니다 (데코레이터 패턴 사용)
 func (h *Handler) ExportData(c *gin.Context) {
 	var req gin.H
 
@@ -111,7 +111,7 @@ func (h *Handler) ExportData(c *gin.Context) {
 	handler(c)
 }
 
-// exportDataHandler is the core business logic for exporting data
+// exportDataHandler: 데이터 내보내기의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) exportDataHandler(req gin.H) handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		var exportReq ExportRequest
@@ -247,7 +247,7 @@ func (h *Handler) exportDataHandler(req gin.H) handlers.HandlerFunc {
 	}
 }
 
-// GetSupportedFormats returns supported export formats using decorator pattern
+// GetSupportedFormats: 지원되는 내보내기 형식을 반환합니다 (데코레이터 패턴 사용)
 func (h *Handler) GetSupportedFormats(c *gin.Context) {
 	handler := h.Compose(
 		h.getSupportedFormatsHandler(),
@@ -257,7 +257,7 @@ func (h *Handler) GetSupportedFormats(c *gin.Context) {
 	handler(c)
 }
 
-// getSupportedFormatsHandler is the core business logic for getting supported formats
+// getSupportedFormatsHandler: 지원되는 형식 조회의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) getSupportedFormatsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		h.logSupportedFormatsRequest(c)
@@ -270,7 +270,7 @@ func (h *Handler) getSupportedFormatsHandler() handlers.HandlerFunc {
 	}
 }
 
-// GetExportHistory retrieves export history using decorator pattern
+// GetExportHistory: 내보내기 이력을 조회합니다 (데코레이터 패턴 사용)
 func (h *Handler) GetExportHistory(c *gin.Context) {
 	handler := h.Compose(
 		h.getExportHistoryHandler(),
@@ -280,7 +280,7 @@ func (h *Handler) GetExportHistory(c *gin.Context) {
 	handler(c)
 }
 
-// getExportHistoryHandler is the core business logic for getting export history
+// getExportHistoryHandler: 내보내기 이력 조회의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) getExportHistoryHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := h.ExtractUserIDFromContext(c)
@@ -300,7 +300,7 @@ func (h *Handler) getExportHistoryHandler() handlers.HandlerFunc {
 	}
 }
 
-// GetExportStatus retrieves export status using decorator pattern
+// GetExportStatus: 내보내기 상태를 조회합니다 (데코레이터 패턴 사용)
 func (h *Handler) GetExportStatus(c *gin.Context) {
 	handler := h.Compose(
 		h.getExportStatusHandler(),
@@ -310,7 +310,7 @@ func (h *Handler) GetExportStatus(c *gin.Context) {
 	handler(c)
 }
 
-// getExportStatusHandler is the core business logic for getting export status
+// getExportStatusHandler: 내보내기 상태 조회의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) getExportStatusHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := h.ExtractUserIDFromContext(c)
@@ -374,8 +374,8 @@ func (h *Handler) getExportStatusHandler() handlers.HandlerFunc {
 	}
 }
 
-// GetExportFile handles export file download (RESTful: GET /exports/:id/file)
-// This replaces GET /exports/:id/download
+// GetExportFile: 내보내기 파일 다운로드를 처리합니다 (RESTful: GET /exports/:id/file)
+// GET /exports/:id/download를 대체합니다
 func (h *Handler) GetExportFile(c *gin.Context) {
 	handler := h.Compose(
 		h.getExportFileHandler(),
@@ -385,7 +385,7 @@ func (h *Handler) GetExportFile(c *gin.Context) {
 	handler(c)
 }
 
-// getExportFileHandler is the core business logic for getting export file
+// getExportFileHandler: 내보내기 파일 다운로드의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) getExportFileHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := h.ExtractUserIDFromContext(c)
@@ -456,6 +456,7 @@ func (h *Handler) getExportFileHandler() handlers.HandlerFunc {
 
 // Helper methods for better readability
 
+// parseExportID: 요청에서 내보내기 ID를 파싱합니다
 func (h *Handler) parseExportID(c *gin.Context) string {
 	exportID := c.Param("id")
 	if exportID == "" {
@@ -465,6 +466,7 @@ func (h *Handler) parseExportID(c *gin.Context) string {
 	return exportID
 }
 
+// getSupportedFormats: 지원되는 내보내기 형식 목록을 반환합니다
 func (h *Handler) getSupportedFormats() []gin.H {
 	return []gin.H{
 		{
@@ -488,6 +490,7 @@ func (h *Handler) getSupportedFormats() []gin.H {
 	}
 }
 
+// getSampleExportHistory: 샘플 내보내기 이력을 반환합니다
 func (h *Handler) getSampleExportHistory() []gin.H {
 	return []gin.H{
 		{
@@ -503,6 +506,7 @@ func (h *Handler) getSampleExportHistory() []gin.H {
 
 // Logging helper methods
 
+// logExportDataAttempt: 데이터 내보내기 시도 로그를 기록합니다
 func (h *Handler) logExportDataAttempt(c *gin.Context, userID uuid.UUID, req gin.H) {
 	h.LogBusinessEvent(c, "data_export_attempted", userID.String(), "", map[string]interface{}{
 		"operation": "export_data",
@@ -510,6 +514,7 @@ func (h *Handler) logExportDataAttempt(c *gin.Context, userID uuid.UUID, req gin
 	})
 }
 
+// logExportDataSuccess: 데이터 내보내기 성공 로그를 기록합니다
 func (h *Handler) logExportDataSuccess(c *gin.Context, userID uuid.UUID, exportID string) {
 	h.LogBusinessEvent(c, "data_export_initiated", userID.String(), exportID, map[string]interface{}{
 		"operation": "export_data",
@@ -517,24 +522,28 @@ func (h *Handler) logExportDataSuccess(c *gin.Context, userID uuid.UUID, exportI
 	})
 }
 
+// logSupportedFormatsRequest: 지원 형식 조회 요청 로그를 기록합니다
 func (h *Handler) logSupportedFormatsRequest(c *gin.Context) {
 	h.LogBusinessEvent(c, "supported_formats_requested", "", "", map[string]interface{}{
 		"operation": "get_supported_formats",
 	})
 }
 
+// logExportHistoryRequest: 내보내기 이력 조회 요청 로그를 기록합니다
 func (h *Handler) logExportHistoryRequest(c *gin.Context, userID uuid.UUID) {
 	h.LogBusinessEvent(c, "export_history_requested", userID.String(), "", map[string]interface{}{
 		"operation": "get_export_history",
 	})
 }
 
+// logExportStatusRequest: 내보내기 상태 조회 요청 로그를 기록합니다
 func (h *Handler) logExportStatusRequest(c *gin.Context, userID uuid.UUID, exportID string) {
 	h.LogBusinessEvent(c, "export_status_requested", userID.String(), exportID, map[string]interface{}{
 		"export_id": exportID,
 	})
 }
 
+// logGetExportFileRequest: 내보내기 파일 다운로드 요청 로그를 기록합니다
 func (h *Handler) logGetExportFileRequest(c *gin.Context, userID uuid.UUID, exportID string) {
 	h.LogBusinessEvent(c, "export_file_requested", userID.String(), exportID, map[string]interface{}{
 		"export_id": exportID,

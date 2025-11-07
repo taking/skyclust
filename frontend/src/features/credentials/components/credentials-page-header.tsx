@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Home } from 'lucide-react';
 import type { Workspace } from '@/lib/types';
+import { useTranslation } from '@/hooks/use-translation';
 
 interface CredentialsPageHeaderProps {
   workspace: Workspace | undefined;
@@ -22,22 +23,26 @@ export function CredentialsPageHeader({
   isCreatePending,
 }: CredentialsPageHeaderProps) {
   const router = useRouter();
+  const { t } = useTranslation();
 
   return (
     <div className="flex flex-col space-y-4 md:flex-row md:justify-between md:items-center md:space-y-0 mb-6 md:mb-8">
       <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Credentials</h1>
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">{t('credential.title')}</h1>
         <p className="text-sm md:text-base text-gray-600">
-          {workspace ? `Manage cloud provider credentials for ${workspace.name}` : 'Manage cloud provider credentials'}
+          {workspace 
+            ? t('credential.manageCredentialsForWorkspace', { workspaceName: workspace.name })
+            : t('credential.manageCredentialsDescription')
+          }
         </p>
       </div>
       <div className="flex items-center space-x-2">
         <Button variant="outline" onClick={() => router.push('/dashboard')}>
           <Home className="mr-2 h-4 w-4" />
-          Home
+          {t('common.home')}
         </Button>
         <Button onClick={onCreateClick} disabled={isCreatePending}>
-          Add Credentials
+          {t('credential.add')}
         </Button>
       </div>
     </div>

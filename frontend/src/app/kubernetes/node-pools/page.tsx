@@ -6,78 +6,78 @@
 'use client';
 
 import * as React from 'react';
-import { useState, useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Suspense } from 'react';
+import { useState, useMemo, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useStandardMutation } from '@/hooks/use-standard-mutation';
-import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ResourceListPage } from '@/components/common/resource-list-page';
+import { BulkActionsToolbar } from '@/components/common/bulk-actions-toolbar';
+import { usePagination } from '@/hooks/use-pagination';
+import { useToast } from '@/hooks/use-toast';
+import { useErrorHandler } from '@/hooks/use-error-handler';
+import { UI } from '@/lib/constants';
+import { useWorkspaceStore } from '@/store/workspace';
+import { Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Checkbox } from '@/components/ui/checkbox';
+import { FilterConfig, FilterValue } from '@/components/ui/filter-panel';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import { kubernetesService } from '@/features/kubernetes';
-import { useWorkspaceStore } from '@/store/workspace';
 import { useCredentials } from '@/hooks/use-credentials';
-import { Plus, Trash2, Edit, Layers, Search } from 'lucide-react';
-import { CreateNodePoolForm, CloudProvider, NodePool } from '@/lib/types';
-import { useToast } from '@/hooks/use-toast';
-import { useRequireAuth } from '@/hooks/use-auth';
+import { Plus, Trash2, Edit, Layers } from 'lucide-react';
+import { CreateNodePoolForm, NodePool } from '@/lib/types';
 import { DataProcessor } from '@/lib/data-processor';
-import { SearchBar } from '@/components/ui/search-bar';
-import { useSSEMonitoring } from '@/hooks/use-sse-monitoring';
-import { BulkActionsToolbar } from '@/components/common/bulk-actions-toolbar';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Pagination } from '@/components/ui/pagination';
-import { usePagination } from '@/hooks/use-pagination';
-import { TableSkeleton } from '@/components/ui/table-skeleton';
-import { WorkspaceRequired } from '@/components/common/workspace-required';
-import { Layout } from '@/components/layout/layout';
 import { CredentialRequiredState } from '@/components/common/credential-required-state';
 import { ResourceEmptyState } from '@/components/common/resource-empty-state';
 import { useCredentialContext } from '@/hooks/use-credential-context';
+import { useCredentialAutoSelect } from '@/hooks/use-credential-auto-select';
 import { queryKeys } from '@/lib/query-keys';
 import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
-import { useErrorHandler } from '@/hooks/use-error-handler';
+import { TIME } from '@/lib/constants';
 import { useTranslation } from '@/hooks/use-translation';
-import { UI } from '@/lib/constants';
+import { createValidationSchemas } from '@/lib/validations';
+import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
 
-const createNodePoolSchema = z.object({
-  cluster_name: z.string().min(1, 'Cluster name is required'),
-  name: z.string().min(1, 'Name is required').max(255),
-  region: z.string().min(1, 'Region is required'),
-  instance_type: z.string().min(1, 'Instance type is required'),
-  node_count: z.number().min(1, 'Node count must be at least 1'),
-  min_nodes: z.number().optional(),
-  max_nodes: z.number().optional(),
-  disk_size_gb: z.number().optional(),
-  disk_type: z.string().optional(),
-  auto_scaling: z.boolean().optional(),
-});
-
-export default function NodePoolsPage() {
+function NodePoolsPageContent() {
   const { t } = useTranslation();
+  const { createNodePoolSchema } = createValidationSchemas(t);
   const { currentWorkspace } = useWorkspaceStore();
-  const router = useRouter();
-  const queryClient = useQueryClient();
   const { success } = useToast();
   const { handleError } = useErrorHandler();
-  const { isLoading: authLoading } = useRequireAuth();
 
   // Get credential context from global store
   const { selectedCredentialId, selectedRegion } = useCredentialContext();
+  
+  // Auto-select credential if not selected
+  useCredentialAutoSelect({
+    enabled: !!currentWorkspace,
+    resourceType: 'kubernetes',
+    updateUrl: true,
+  });
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedClusterName, setSelectedClusterName] = useState<string>('');
+  const [filters, setFilters] = useState<FilterValue>({});
+  const [showFilters, setShowFilters] = useState(false);
   const [selectedNodePoolIds, setSelectedNodePoolIds] = useState<string[]>([]);
   const [pageSize, setPageSize] = useState(UI.PAGINATION.DEFAULT_PAGE_SIZE);
-
-  useSSEMonitoring();
+  const [deleteDialogState, setDeleteDialogState] = useState<{
+    open: boolean;
+    nodePoolName: string | null;
+    region: string | null;
+  }>({
+    open: false,
+    nodePoolName: null,
+    region: null,
+  });
 
   const nodePoolForm = useForm<CreateNodePoolForm>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -91,7 +91,7 @@ export default function NodePoolsPage() {
   });
 
   // Fetch credentials using unified hook
-  const { credentials, selectedCredential, selectedProvider } = useCredentials({
+  const { credentials, selectedProvider } = useCredentials({
     workspaceId: currentWorkspace?.id,
     selectedCredentialId: selectedCredentialId || undefined,
   });
@@ -116,30 +116,39 @@ export default function NodePoolsPage() {
     enabled: !!selectedProvider && !!selectedCredentialId && !!selectedClusterName && !!selectedRegion && !!currentWorkspace,
     staleTime: CACHE_TIMES.REALTIME,
     gcTime: GC_TIMES.SHORT,
-    refetchInterval: 30000,
+    refetchInterval: TIME.POLLING.REALTIME,
   });
 
   // Search functionality
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Custom filter function for node pool filtering (memoized)
+  const filterFn = React.useCallback((nodePool: NodePool, filters: FilterValue): boolean => {
+    if (filters.status && nodePool.status !== filters.status) return false;
+    return true;
+  }, []);
+
   // Filtered node pools (memoized for consistency)
   const filteredNodePools = useMemo(() => {
-    if (!searchQuery.trim()) return nodePools;
-    return DataProcessor.search(nodePools, searchQuery, {
+    let result = DataProcessor.search(nodePools, searchQuery, {
       keys: ['name', 'cluster_name', 'status'],
       threshold: 0.3,
     });
-  }, [nodePools, searchQuery]);
 
-  const clearSearch = () => {
+    result = DataProcessor.filter(result, filters, filterFn);
+    
+    return result;
+  }, [nodePools, searchQuery, filters, filterFn]);
+
+  const isSearching = searchQuery.length > 0;
+
+  const clearSearch = useCallback(() => {
     setSearchQuery('');
-  };
+  }, []);
 
   // Pagination
   const {
-    page,
     paginatedItems: paginatedNodePools,
-    setPage,
     setPageSize: setPaginationPageSize,
   } = usePagination(filteredNodePools, {
     totalItems: filteredNodePools.length,
@@ -173,11 +182,11 @@ export default function NodePoolsPage() {
     errorContext: { operation: 'deleteNodePool', resource: 'NodePool' },
   });
 
-  const handleCreateNodePool = (data: CreateNodePoolForm) => {
+  const handleCreateNodePool = useCallback((data: CreateNodePoolForm) => {
     createNodePoolMutation.mutate(data);
-  };
+  }, [createNodePoolMutation]);
 
-  const handleBulkDeleteNodePools = async (nodePoolIds: string[]) => {
+  const handleBulkDeleteNodePools = useCallback(async (nodePoolIds: string[]) => {
     if (!selectedCredentialId || !selectedProvider || !selectedClusterName) return;
     
     const nodePoolsToDelete = filteredNodePools.filter(np => nodePoolIds.includes(np.id));
@@ -196,17 +205,25 @@ export default function NodePoolsPage() {
     } catch (error) {
       handleError(error, { operation: 'bulkDeleteNodePools', resource: 'NodePool' });
     }
-  };
+  }, [selectedCredentialId, selectedProvider, selectedClusterName, filteredNodePools, deleteNodePoolMutation, success, handleError]);
 
   const handleDeleteNodePool = (nodePoolName: string, region: string) => {
     if (!selectedCredentialId || !selectedProvider || !selectedClusterName) return;
-    if (confirm(t('kubernetes.confirmDeleteNodePool', { nodePoolName }))) {
-      deleteNodePoolMutation.mutate({
-        nodePoolName,
-        credentialId: selectedCredentialId,
-        region,
-      });
-    }
+    setDeleteDialogState({ open: true, nodePoolName, region });
+  };
+
+  const handleConfirmDelete = () => {
+    if (!deleteDialogState.nodePoolName || !deleteDialogState.region || !selectedCredentialId || !selectedProvider || !selectedClusterName) return;
+    
+    deleteNodePoolMutation.mutate({
+      nodePoolName: deleteDialogState.nodePoolName,
+      credentialId: selectedCredentialId,
+      region: deleteDialogState.region,
+    }, {
+      onSuccess: () => {
+        setDeleteDialogState({ open: false, nodePoolName: null, region: null });
+      },
+    });
   };
 
   const handlePageSizeChange = (newSize: number) => {
@@ -224,24 +241,83 @@ export default function NodePoolsPage() {
 
   // Header component
   const header = (
-    <div className="flex items-center justify-between">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">{t('kubernetes.nodePools')}</h1>
-        <p className="text-gray-600 mt-1">
-          {currentWorkspace 
-            ? t('kubernetes.manageNodePoolsWithWorkspace', { workspaceName: currentWorkspace.name }) 
-            : t('kubernetes.manageNodePools')
-          }
-        </p>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">{t('kubernetes.nodePools')}</h1>
+          <p className="text-gray-600 mt-1">
+            {currentWorkspace 
+              ? t('kubernetes.manageNodePoolsWithWorkspace', { workspaceName: currentWorkspace.name }) 
+              : t('kubernetes.manageNodePools')
+            }
+          </p>
+        </div>
+        <div className="flex items-center space-x-2">
+          {/* Credential selection is now handled in Header */}
+        </div>
       </div>
-      <div className="flex items-center space-x-2">
-        {/* Credential selection is now handled in Header */}
-      </div>
+      
+      {/* Configuration Card - Cluster Selection */}
+      {selectedProvider && selectedCredentialId && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('common.configuration')}</CardTitle>
+            <CardDescription>{t('kubernetes.selectClusterToViewNodePools')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <Label>{t('kubernetes.cluster')} *</Label>
+              <Select
+                value={selectedClusterName}
+                onValueChange={(value) => {
+                  setSelectedClusterName(value);
+                  nodePoolForm.setValue('cluster_name', value);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={t('kubernetes.selectCluster')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {clusters.length === 0 ? (
+                    <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                      {t('kubernetes.noClustersFound')}
+                    </div>
+                  ) : (
+                    clusters.map((cluster) => (
+                      <SelectItem key={cluster.name} value={cluster.name}>
+                        {cluster.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 
-  // Empty state
-  const emptyState = credentials.length === 0 ? (
+  // Filter configurations
+  const filterConfigs: FilterConfig[] = useMemo(() => [
+    {
+      id: 'status',
+      label: t('filters.status'),
+      type: 'select',
+      options: [
+        { id: 'RUNNING', value: 'RUNNING', label: t('filters.running') },
+        { id: 'CREATING', value: 'CREATING', label: t('kubernetes.creating') },
+        { id: 'DELETING', value: 'DELETING', label: t('kubernetes.deleting') },
+        { id: 'ERROR', value: 'ERROR', label: t('kubernetes.failed') },
+      ],
+    },
+  ], [t]);
+
+  // Determine empty state
+  const isEmpty = !selectedProvider || !selectedCredentialId || !selectedClusterName || !selectedRegion || filteredNodePools.length === 0;
+
+  // Empty state component
+  const emptyStateComponent = credentials.length === 0 ? (
     <CredentialRequiredState serviceName={t('kubernetes.title')} />
   ) : !selectedProvider || !selectedCredentialId ? (
     <CredentialRequiredState
@@ -271,266 +347,248 @@ export default function NodePoolsPage() {
     />
   ) : null;
 
-  // Content component
-  const content = selectedProvider && selectedCredentialId && selectedClusterName && selectedRegion && filteredNodePools.length > 0 ? (
-    <>
-      <BulkActionsToolbar
-        items={paginatedNodePools}
-        selectedIds={selectedNodePoolIds}
-        onSelectionChange={setSelectedNodePoolIds}
-        onBulkDelete={handleBulkDeleteNodePools}
-        getItemDisplayName={(nodePool) => nodePool.name}
-      />
-      
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('kubernetes.nodePools')}</CardTitle>
-          <CardDescription>
-            {t('kubernetes.nodePoolsFound', { filtered: filteredNodePools.length, total: nodePools.length })}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-4">
-            <SearchBar
-              value={searchQuery}
-              onChange={setSearchQuery}
-              onClear={clearSearch}
-              placeholder={t('kubernetes.searchNodePoolsPlaceholder')}
-            />
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-12">
-                  <Checkbox
-                    checked={selectedNodePoolIds.length === filteredNodePools.length && filteredNodePools.length > 0}
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        setSelectedNodePoolIds(filteredNodePools.map(np => np.id));
-                      } else {
-                        setSelectedNodePoolIds([]);
-                      }
-                    }}
-                  />
-                </TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Cluster</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Node Count</TableHead>
-                <TableHead>Instance Type</TableHead>
-                <TableHead>Auto Scaling</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedNodePools.map((nodePool) => {
-                const isSelected = selectedNodePoolIds.includes(nodePool.id);
-                
-                return (
-                  <TableRow key={nodePool.id}>
-                    <TableCell>
-                      <Checkbox
-                        checked={isSelected}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setSelectedNodePoolIds([...selectedNodePoolIds, nodePool.id]);
-                          } else {
-                            setSelectedNodePoolIds(selectedNodePoolIds.filter(id => id !== nodePool.id));
-                          }
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell className="font-medium">{nodePool.name}</TableCell>
-                    <TableCell>{nodePool.cluster_name}</TableCell>
-                    <TableCell>
-                      <Badge variant={nodePool.status === 'RUNNING' ? 'default' : 'secondary'}>
-                        {nodePool.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{nodePool.node_count}</TableCell>
-                    <TableCell>{nodePool.instance_type}</TableCell>
-                    <TableCell>
-                      {nodePool.auto_scaling ? (
-                        <Badge variant="outline">{t('common.enabled')}</Badge>
-                      ) : (
-                        <Badge variant="secondary">{t('common.disabled')}</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Button variant="ghost" size="sm">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteNodePool(nodePool.name, nodePool.region)}
-                          disabled={deleteNodePoolMutation.isPending}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-          
-          {filteredNodePools.length > 0 && (
-            <div className="border-t mt-4">
-              <Pagination
-                total={filteredNodePools.length}
-                page={page}
-                pageSize={pageSize}
-                onPageChange={setPage}
-                onPageSizeChange={handlePageSizeChange}
-                pageSizeOptions={UI.PAGINATION.PAGE_SIZE_OPTIONS}
-                showPageSizeSelector={true}
-              />
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Create Node Pool Dialog */}
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogTrigger asChild>
-          <Button disabled={credentials.length === 0 || !selectedClusterName}>
-            <Plus className="mr-2 h-4 w-4" />
-            {t('kubernetes.createNodePool')}
-          </Button>
-        </DialogTrigger>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t('kubernetes.createNodePool')}</DialogTitle>
-            <DialogDescription>
-              {t('kubernetes.createNodePoolOnProvider', { provider: selectedProvider?.toUpperCase() || '' })}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={nodePoolForm.handleSubmit(handleCreateNodePool)} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="nodepool-name">{t('vm.name')} *</Label>
-              <Input id="nodepool-name" {...nodePoolForm.register('name')} placeholder="my-node-pool" />
-              {nodePoolForm.formState.errors.name && (
-                <p className="text-sm text-red-600">{nodePoolForm.formState.errors.name.message}</p>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="nodepool-instance-type">{t('vm.type')} *</Label>
-                <Input id="nodepool-instance-type" {...nodePoolForm.register('instance_type')} placeholder="n1-standard-2" />
-                {nodePoolForm.formState.errors.instance_type && (
-                  <p className="text-sm text-red-600">{nodePoolForm.formState.errors.instance_type.message}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="nodepool-node-count">{t('kubernetes.nodeCount')} *</Label>
-                <Input 
-                  id="nodepool-node-count" 
-                  type="number"
-                  {...nodePoolForm.register('node_count', { valueAsNumber: true })} 
-                  placeholder="1"
-                  min="1"
-                />
-                {nodePoolForm.formState.errors.node_count && (
-                  <p className="text-sm text-red-600">{nodePoolForm.formState.errors.node_count.message}</p>
-                )}
-              </div>
-            </div>
-            <div className="flex justify-end space-x-2">
-              <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                {t('common.cancel')}
-              </Button>
-              <Button type="submit" disabled={createNodePoolMutation.isPending}>
-                {createNodePoolMutation.isPending ? t('kubernetes.creatingNodePool') : t('kubernetes.createNodePool')}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </>
-  ) : emptyState;
-
-  if (authLoading) {
-    return (
-      <WorkspaceRequired>
-        <Layout>
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-              <p className="mt-2 text-gray-600">{t('common.loading')}</p>
-            </div>
-          </div>
-        </Layout>
-      </WorkspaceRequired>
-    );
-  }
-
   return (
-    <WorkspaceRequired>
-      <Layout>
-        <div className="space-y-6">
-          {header}
-          
-          {/* Configuration */}
-          {selectedProvider && selectedCredentialId && (
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('common.configuration')}</CardTitle>
-                <CardDescription>{t('kubernetes.selectClusterRegionCredentialToViewNodePools')}</CardDescription>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>{t('kubernetes.cluster')} *</Label>
-                  <Select
-                    value={selectedClusterName}
-                    onValueChange={(value) => {
-                      setSelectedClusterName(value);
-                      nodePoolForm.setValue('cluster_name', value);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={t('kubernetes.selectCluster')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clusters.map((cluster) => (
-                        <SelectItem key={cluster.name} value={cluster.name}>
-                          {cluster.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>{t('region.select')} *</Label>
-                  <Input
-                    placeholder={t('region.placeholder')}
-                    value={selectedRegion || ''}
-                    readOnly
-                    className="bg-muted"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {t('network.regionSelectionHandledInHeader')}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+    <>
+    <ResourceListPage
+        title={t('kubernetes.nodePools')}
+        resourceName={t('kubernetes.nodePools')}
+        storageKey="kubernetes-node-pools-page"
+        header={header}
+        items={filteredNodePools}
+        isLoading={isLoadingNodePools}
+        isEmpty={isEmpty}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        onSearchClear={clearSearch}
+        isSearching={isSearching}
+        searchPlaceholder={t('kubernetes.searchNodePoolsPlaceholder')}
+        filterConfigs={selectedCredentialId && selectedClusterName && nodePools.length > 0 ? filterConfigs : []}
+        filters={filters}
+        onFiltersChange={setFilters}
+        onFiltersClear={() => setFilters({})}
+        showFilters={showFilters}
+        onToggleFilters={() => setShowFilters(!showFilters)}
+        filterCount={Object.keys(filters).length}
+        toolbar={
+          selectedProvider && selectedCredentialId && selectedClusterName && selectedRegion && filteredNodePools.length > 0 ? (
+            <BulkActionsToolbar
+              items={filteredNodePools}
+              selectedIds={selectedNodePoolIds}
+              onSelectionChange={setSelectedNodePoolIds}
+              onBulkDelete={handleBulkDeleteNodePools}
+              getItemDisplayName={(nodePool) => nodePool.name}
+            />
+          ) : null
+        }
+        additionalControls={
+          selectedCredentialId && selectedClusterName && nodePools.length > 0 ? (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center"
+              >
+                <Filter className="mr-2 h-4 w-4" />
+                Filters
+                {Object.keys(filters).length > 0 && (
+                  <span className="ml-2 px-2 py-1 bg-gray-100 rounded text-sm">
+                    {Object.keys(filters).length}
+                  </span>
+                )}
+              </Button>
+            </>
+          ) : null
+        }
+        emptyState={emptyStateComponent}
+        content={
+          selectedProvider && selectedCredentialId && selectedClusterName && selectedRegion && filteredNodePools.length > 0 ? (
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t('kubernetes.nodePools')}</CardTitle>
+                  <CardDescription>
+                    {filteredNodePools.length} of {nodePools.length} node pool{nodePools.length !== 1 ? 's' : ''} 
+                    {isSearching && ` (${searchQuery})`}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">
+                          <Checkbox
+                            checked={selectedNodePoolIds.length === filteredNodePools.length && filteredNodePools.length > 0}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedNodePoolIds(filteredNodePools.map(np => np.id));
+                              } else {
+                                setSelectedNodePoolIds([]);
+                              }
+                            }}
+                          />
+                        </TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Cluster</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Node Count</TableHead>
+                        <TableHead>Instance Type</TableHead>
+                        <TableHead>Auto Scaling</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedNodePools.map((nodePool) => {
+                        const isSelected = selectedNodePoolIds.includes(nodePool.id);
+                        
+                        return (
+                          <TableRow key={nodePool.id}>
+                            <TableCell>
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={(checked) => {
+                                  if (checked) {
+                                    setSelectedNodePoolIds([...selectedNodePoolIds, nodePool.id]);
+                                  } else {
+                                    setSelectedNodePoolIds(selectedNodePoolIds.filter(id => id !== nodePool.id));
+                                  }
+                                }}
+                              />
+                            </TableCell>
+                            <TableCell className="font-medium">{nodePool.name}</TableCell>
+                            <TableCell>{nodePool.cluster_name}</TableCell>
+                            <TableCell>
+                              <Badge variant={nodePool.status === 'RUNNING' ? 'default' : 'secondary'}>
+                                {nodePool.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>{nodePool.node_count}</TableCell>
+                            <TableCell>{nodePool.instance_type}</TableCell>
+                            <TableCell>
+                              {nodePool.auto_scaling ? (
+                                <Badge variant="outline">{t('common.enabled')}</Badge>
+                              ) : (
+                                <Badge variant="secondary">{t('common.disabled')}</Badge>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center space-x-2">
+                                <Button variant="ghost" size="sm">
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteNodePool(nodePool.name, nodePool.region)}
+                                  disabled={deleteNodePoolMutation.isPending}
+                                >
+                                  <Trash2 className="h-4 w-4 text-red-600" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
 
-          {/* Content */}
-          {isLoadingNodePools ? (
-            <Card>
-              <CardContent className="pt-6">
-                <TableSkeleton columns={7} rows={5} showCheckbox={true} />
-              </CardContent>
-            </Card>
-          ) : (
-            content
-          )}
+              {/* Create Node Pool Dialog */}
+              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button disabled={credentials.length === 0 || !selectedClusterName}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    {t('kubernetes.createNodePool')}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>{t('kubernetes.createNodePool')}</DialogTitle>
+                    <DialogDescription>
+                      {t('kubernetes.createNodePoolOnProvider', { provider: selectedProvider?.toUpperCase() || '' })}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={nodePoolForm.handleSubmit(handleCreateNodePool)} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="nodepool-name">{t('vm.name')} *</Label>
+                      <Input id="nodepool-name" {...nodePoolForm.register('name')} placeholder="my-node-pool" />
+                      {nodePoolForm.formState.errors.name && (
+                        <p className="text-sm text-red-600">{nodePoolForm.formState.errors.name.message}</p>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="nodepool-instance-type">{t('vm.type')} *</Label>
+                        <Input id="nodepool-instance-type" {...nodePoolForm.register('instance_type')} placeholder="n1-standard-2" />
+                        {nodePoolForm.formState.errors.instance_type && (
+                          <p className="text-sm text-red-600">{nodePoolForm.formState.errors.instance_type.message}</p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="nodepool-node-count">{t('kubernetes.nodeCount')} *</Label>
+                        <Input 
+                          id="nodepool-node-count" 
+                          type="number"
+                          {...nodePoolForm.register('node_count', { valueAsNumber: true })} 
+                          placeholder="1"
+                          min="1"
+                        />
+                        {nodePoolForm.formState.errors.node_count && (
+                          <p className="text-sm text-red-600">{nodePoolForm.formState.errors.node_count.message}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex justify-end space-x-2">
+                      <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                        {t('common.cancel')}
+                      </Button>
+                      <Button type="submit" disabled={createNodePoolMutation.isPending}>
+                        {createNodePoolMutation.isPending ? t('kubernetes.creatingNodePool') : t('kubernetes.createNodePool')}
+                      </Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </>
+          ) : emptyStateComponent
+        }
+        pageSize={pageSize}
+        onPageSizeChange={handlePageSizeChange}
+        searchResultsCount={filteredNodePools.length}
+        skeletonColumns={7}
+        skeletonRows={5}
+        skeletonShowCheckbox={true}
+      showFilterButton={false}
+      showSearchResultsInfo={false}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        open={deleteDialogState.open}
+        onOpenChange={(open) => setDeleteDialogState({ ...deleteDialogState, open })}
+        onConfirm={handleConfirmDelete}
+        title={t('kubernetes.deleteNodePool')}
+        description={deleteDialogState.nodePoolName ? t('kubernetes.confirmDeleteNodePool', { nodePoolName: deleteDialogState.nodePoolName }) : ''}
+        isLoading={deleteNodePoolMutation.isPending}
+        resourceName={deleteDialogState.nodePoolName || undefined}
+        resourceNameLabel="노드 풀 이름"
+      />
+    </>
+  );
+}
+
+export default function NodePoolsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-2 text-gray-600">Loading...</p>
         </div>
-      </Layout>
-    </WorkspaceRequired>
+      </div>
+    }>
+      <NodePoolsPageContent />
+    </Suspense>
   );
 }
 

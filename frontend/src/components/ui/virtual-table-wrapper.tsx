@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableHeader } from '@/components/ui/table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { cn } from '@/lib/utils';
 
@@ -16,7 +16,7 @@ interface VirtualTableWrapperProps<T> {
   containerHeight?: string; // Height of the container (e.g., '500px', '100%')
 }
 
-export function VirtualTableWrapper<T extends { id?: string; [key: string]: unknown }>({
+function VirtualTableWrapperComponent<T extends { id?: string; [key: string]: unknown }>({
   data,
   renderRow,
   renderHeader,
@@ -106,4 +106,7 @@ export function VirtualTableWrapper<T extends { id?: string; [key: string]: unkn
     </div>
   );
 }
+
+// React.memo로 최적화: 데이터가 변경되지 않으면 리렌더링 방지
+export const VirtualTableWrapper = React.memo(VirtualTableWrapperComponent) as typeof VirtualTableWrapperComponent;
 

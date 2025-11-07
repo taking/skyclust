@@ -6,12 +6,10 @@
 
 import { useMemo } from 'react';
 import { useStandardMutation } from '@/hooks/use-standard-mutation';
-import { useToast } from '@/hooks/use-toast';
-import { useErrorHandler } from '@/hooks/use-error-handler';
 import { credentialRepository } from '@/infrastructure/repositories';
 import { CreateCredentialUseCase } from '@/domain/use-cases';
 import { queryKeys } from '@/lib/query-keys';
-import type { CreateCredentialForm, Credential } from '@/lib/types';
+import type { CreateCredentialForm } from '@/lib/types';
 
 export interface UseCredentialActionsOptions {
   workspaceId: string | undefined;

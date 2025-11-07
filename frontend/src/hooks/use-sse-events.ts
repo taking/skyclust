@@ -8,6 +8,7 @@ import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { sseService } from '@/services/sse';
 import { queryKeys } from '@/lib/query-keys';
+import { logger } from '@/lib/logger';
 import type { SSECallbacks } from '@/lib/types/sse';
 import type {
   KubernetesClusterEventData,
@@ -30,16 +31,12 @@ export function useSSEEvents(token: string | null) {
 
     const callbacks: SSECallbacks = {
       onConnected: (data) => {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[SSE] Connected:', data);
-        }
+        logger.debug('[SSE] Connected', { data });
       },
 
       // Kubernetes 클러스터 이벤트
       onKubernetesClusterCreated: (data) => {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[SSE] Kubernetes cluster created:', data);
-        }
+        logger.debug('[SSE] Kubernetes cluster created', { data });
         // Backend 필드명과 일치: credentialId, clusterId (not credential_id, cluster_id)
         const eventData = data as KubernetesClusterEventData;
         const { provider, credentialId, region } = eventData;
@@ -54,12 +51,14 @@ export function useSSEEvents(token: string | null) {
         queryClient.invalidateQueries({
           queryKey: queryKeys.clusters.list(provider, credentialId, region),
         });
+        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.dashboard.all,
+        });
       },
 
       onKubernetesClusterUpdated: (data) => {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[SSE] Kubernetes cluster updated:', data);
-        }
+        logger.debug('[SSE] Kubernetes cluster updated', { data });
         const eventData = data as KubernetesClusterEventData;
         const { provider, credentialId, region, clusterId } = eventData;
         // 목록 쿼리 무효화
@@ -80,12 +79,14 @@ export function useSSEEvents(token: string | null) {
             queryKey: queryKeys.kubernetesClusters.detail(clusterId),
           });
         }
+        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.dashboard.all,
+        });
       },
 
       onKubernetesClusterDeleted: (data) => {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[SSE] Kubernetes cluster deleted:', data);
-        }
+        logger.debug('[SSE] Kubernetes cluster deleted', { data });
         const eventData = data as KubernetesClusterEventData;
         const { provider, credentialId, region } = eventData;
         queryClient.invalidateQueries({
@@ -99,12 +100,14 @@ export function useSSEEvents(token: string | null) {
         queryClient.invalidateQueries({
           queryKey: queryKeys.clusters.list(provider, credentialId, region),
         });
+        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.dashboard.all,
+        });
       },
 
       onKubernetesClusterList: (data) => {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[SSE] Kubernetes cluster list updated:', data);
-        }
+        logger.debug('[SSE] Kubernetes cluster list updated', { data });
         const eventData = data as KubernetesClusterEventData;
         const { provider, credentialId, region } = eventData;
         queryClient.invalidateQueries({
@@ -172,20 +175,20 @@ export function useSSEEvents(token: string | null) {
 
       // Network VPC 이벤트
       onNetworkVPCCreated: (data) => {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[SSE] Network VPC created:', data);
-        }
+        logger.debug('[SSE] Network VPC created', { data });
         const eventData = data as NetworkVPCEventData;
         const { provider, credentialId, region } = eventData;
         queryClient.invalidateQueries({
           queryKey: queryKeys.vpcs.list(provider, credentialId, region),
         });
+        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.dashboard.all,
+        });
       },
 
       onNetworkVPCUpdated: (data) => {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[SSE] Network VPC updated:', data);
-        }
+        logger.debug('[SSE] Network VPC updated', { data });
         const eventData = data as NetworkVPCEventData;
         const { provider, credentialId, region, vpcId } = eventData;
         queryClient.invalidateQueries({
@@ -196,23 +199,27 @@ export function useSSEEvents(token: string | null) {
             queryKey: queryKeys.vpcs.detail(vpcId),
           });
         }
+        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.dashboard.all,
+        });
       },
 
       onNetworkVPCDeleted: (data) => {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[SSE] Network VPC deleted:', data);
-        }
+        logger.debug('[SSE] Network VPC deleted', { data });
         const eventData = data as NetworkVPCEventData;
         const { provider, credentialId, region } = eventData;
         queryClient.invalidateQueries({
           queryKey: queryKeys.vpcs.list(provider, credentialId, region),
         });
+        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.dashboard.all,
+        });
       },
 
       onNetworkVPCList: (data) => {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[SSE] Network VPC list updated:', data);
-        }
+        logger.debug('[SSE] Network VPC list updated', { data });
         const eventData = data as NetworkVPCEventData;
         const { provider, credentialId, region } = eventData;
         queryClient.invalidateQueries({
@@ -226,6 +233,10 @@ export function useSSEEvents(token: string | null) {
         const { provider, credentialId, vpcId, region } = eventData;
         queryClient.invalidateQueries({
           queryKey: queryKeys.subnets.list(provider, credentialId, vpcId, region),
+        });
+        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.dashboard.all,
         });
       },
 
@@ -242,6 +253,10 @@ export function useSSEEvents(token: string | null) {
         const { provider, credentialId, vpcId, region } = eventData;
         queryClient.invalidateQueries({
           queryKey: queryKeys.subnets.list(provider, credentialId, vpcId, region),
+        });
+        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.dashboard.all,
         });
       },
 
@@ -260,6 +275,10 @@ export function useSSEEvents(token: string | null) {
         queryClient.invalidateQueries({
           queryKey: queryKeys.securityGroups.list(provider, credentialId, undefined, region),
         });
+        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.dashboard.all,
+        });
       },
 
       onNetworkSecurityGroupUpdated: (data) => {
@@ -276,6 +295,10 @@ export function useSSEEvents(token: string | null) {
         queryClient.invalidateQueries({
           queryKey: queryKeys.securityGroups.list(provider, credentialId, undefined, region),
         });
+        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.dashboard.all,
+        });
       },
 
       onNetworkSecurityGroupList: (data) => {
@@ -288,14 +311,16 @@ export function useSSEEvents(token: string | null) {
 
       // VM 이벤트
       onVMCreated: (data) => {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[SSE] VM created:', data);
-        }
+        logger.debug('[SSE] VM created', { data });
         const eventData = data as VMEventData;
         const { workspaceId } = eventData;
         if (workspaceId) {
           queryClient.invalidateQueries({
             queryKey: queryKeys.vms.list(workspaceId),
+          });
+          // 대시보드 쿼리 무효화 (모든 credentialId/region 조합)
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.dashboard.all,
           });
         } else {
           queryClient.invalidateQueries({
@@ -305,14 +330,16 @@ export function useSSEEvents(token: string | null) {
       },
 
       onVMUpdated: (data) => {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[SSE] VM updated:', data);
-        }
+        logger.debug('[SSE] VM updated', { data });
         const eventData = data as VMEventData;
         const { vmId, workspaceId } = eventData;
         if (workspaceId) {
           queryClient.invalidateQueries({
             queryKey: queryKeys.vms.list(workspaceId),
+          });
+          // 대시보드 쿼리 무효화 (모든 credentialId/region 조합)
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.dashboard.all,
           });
         } else {
           queryClient.invalidateQueries({
@@ -327,14 +354,16 @@ export function useSSEEvents(token: string | null) {
       },
 
       onVMDeleted: (data) => {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[SSE] VM deleted:', data);
-        }
+        logger.debug('[SSE] VM deleted', { data });
         const eventData = data as VMEventData;
         const { workspaceId } = eventData;
         if (workspaceId) {
           queryClient.invalidateQueries({
             queryKey: queryKeys.vms.list(workspaceId),
+          });
+          // 대시보드 쿼리 무효화 (모든 credentialId/region 조합)
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.dashboard.all,
           });
         } else {
           queryClient.invalidateQueries({
@@ -344,14 +373,16 @@ export function useSSEEvents(token: string | null) {
       },
 
       onVMList: (data) => {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[SSE] VM list updated:', data);
-        }
+        logger.debug('[SSE] VM list updated', { data });
         const eventData = data as VMEventData;
         const { workspaceId } = eventData;
         if (workspaceId) {
           queryClient.invalidateQueries({
             queryKey: queryKeys.vms.list(workspaceId),
+          });
+          // 대시보드 쿼리 무효화 (모든 credentialId/region 조합)
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.dashboard.all,
           });
         } else {
           queryClient.invalidateQueries({
@@ -361,47 +392,35 @@ export function useSSEEvents(token: string | null) {
       },
 
       onError: (event) => {
-        if (process.env.NODE_ENV === 'development') {
-          // SSEErrorInfo 타입인지 확인
-          if (event && typeof event === 'object' && 'type' in event && event.type === 'SSE') {
-            // SSEErrorInfo 타입인 경우 구조화된 정보로 표시
-            const errorInfo = event as { type: string; readyState?: number; url?: string; timestamp?: string; message?: string };
-            const readyStateText = errorInfo.readyState === 0 ? 'CONNECTING' : 
-                                  errorInfo.readyState === 1 ? 'OPEN' : 
-                                  errorInfo.readyState === 2 ? 'CLOSED' : 'UNKNOWN';
-            
-            const errorDetails = {
-              type: errorInfo.type,
-              message: errorInfo.message || 'SSE connection error',
-              readyState: errorInfo.readyState,
-              readyStateText: readyStateText,
-              url: errorInfo.url,
-              timestamp: errorInfo.timestamp,
-            };
-            
-            // Safari 등 일부 브라우저에서 객체가 제대로 표시되지 않을 수 있으므로 JSON으로 변환
-            try {
-              console.error('[SSE] Error:', JSON.stringify(errorDetails, null, 2));
-            } catch (_e) {
-              // JSON.stringify 실패 시 각 속성을 개별 출력
-              console.error('[SSE] Error:', errorInfo.message || 'SSE connection error');
-              console.error('  Type:', errorInfo.type);
-              console.error('  ReadyState:', errorInfo.readyState, `(${readyStateText})`);
-              console.error('  URL:', errorInfo.url);
-              console.error('  Timestamp:', errorInfo.timestamp);
-            }
-          } else {
-            // Event 타입이거나 다른 타입인 경우 변환
-            const errorInfo = typeof event === 'object' && event !== null
-              ? { ...event, timestamp: new Date().toISOString() }
-              : { error: event, timestamp: new Date().toISOString() };
-            
-            try {
-              console.error('[SSE] Error:', JSON.stringify(errorInfo, null, 2));
-            } catch (_e) {
-              console.error('[SSE] Error:', String(event));
-            }
-          }
+        // SSEErrorInfo 타입인지 확인
+        if (event && typeof event === 'object' && 'type' in event && event.type === 'SSE') {
+          // SSEErrorInfo 타입인 경우
+          const errorInfo = event as { type: string; readyState?: number; url?: string; timestamp?: string; message?: string };
+          const readyStateText = errorInfo.readyState === 0 ? 'CONNECTING' : 
+                                errorInfo.readyState === 1 ? 'OPEN' : 
+                                errorInfo.readyState === 2 ? 'CLOSED' : 'UNKNOWN';
+          
+          const errorMessage = errorInfo.message || 'SSE connection error';
+          const error = new Error(errorMessage);
+          error.name = 'SSEError';
+          
+          logger.error('[SSE] Error', error, {
+            type: errorInfo.type,
+            readyState: errorInfo.readyState,
+            readyStateText,
+            url: errorInfo.url,
+            timestamp: errorInfo.timestamp,
+          });
+        } else {
+          // Event 타입이거나 다른 타입인 경우
+          const errorInfo = typeof event === 'object' && event !== null
+            ? { ...event, timestamp: new Date().toISOString() }
+            : { error: event, timestamp: new Date().toISOString() };
+          
+          const error = new Error('SSE connection error');
+          error.name = 'SSEError';
+          
+          logger.error('[SSE] Error', error, errorInfo);
         }
       },
     };

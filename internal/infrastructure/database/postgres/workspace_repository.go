@@ -4,24 +4,25 @@ import (
 	"context"
 	"fmt"
 	"skyclust/internal/domain"
+	"strings"
 
 	"gorm.io/gorm"
 	"skyclust/pkg/logger"
 )
 
-// WorkspaceRepository implements the domain.WorkspaceRepository interface
+// WorkspaceRepository: domain.WorkspaceRepository 인터페이스 구현체
 type WorkspaceRepository struct {
 	db *gorm.DB
 }
 
-// NewWorkspaceRepository creates a new WorkspaceRepository
+// NewWorkspaceRepository: 새로운 WorkspaceRepository를 생성합니다
 func NewWorkspaceRepository(db *gorm.DB) *WorkspaceRepository {
 	return &WorkspaceRepository{db: db}
 }
 
-// Create creates a new workspace
+// Create: 새로운 워크스페이스를 생성합니다
 func (r *WorkspaceRepository) Create(ctx context.Context, workspace *domain.Workspace) error {
-	result := r.db.WithContext(ctx).Create(workspace)
+	result := GetTransaction(ctx, r.db).Create(workspace)
 	if result.Error != nil {
 		logger.Errorf("Failed to create workspace in database: %v - workspace: %+v", result.Error, workspace)
 		return fmt.Errorf("failed to create workspace: %w", result.Error)
@@ -31,10 +32,10 @@ func (r *WorkspaceRepository) Create(ctx context.Context, workspace *domain.Work
 	return nil
 }
 
-// GetByID retrieves a workspace by ID
+// GetByID: ID로 워크스페이스를 조회합니다
 func (r *WorkspaceRepository) GetByID(ctx context.Context, id string) (*domain.Workspace, error) {
 	var workspace domain.Workspace
-	result := r.db.WithContext(ctx).Where("id = ?", id).First(&workspace)
+	result := GetTransaction(ctx, r.db).Where("id = ?", id).First(&workspace)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
 			return nil, nil
@@ -45,10 +46,10 @@ func (r *WorkspaceRepository) GetByID(ctx context.Context, id string) (*domain.W
 	return &workspace, nil
 }
 
-// GetByOwnerID retrieves workspaces by owner ID
+// GetByOwnerID: 소유자 ID로 워크스페이스 목록을 조회합니다
 func (r *WorkspaceRepository) GetByOwnerID(ctx context.Context, ownerID string) ([]*domain.Workspace, error) {
 	var workspaces []*domain.Workspace
-	result := r.db.WithContext(ctx).
+	result := GetTransaction(ctx, r.db).
 		Where("owner_id = ?", ownerID).
 		Order("created_at DESC").
 		Find(&workspaces)
@@ -60,9 +61,9 @@ func (r *WorkspaceRepository) GetByOwnerID(ctx context.Context, ownerID string) 
 	return workspaces, nil
 }
 
-// Update updates a workspace
+// Update: 워크스페이스를 업데이트합니다
 func (r *WorkspaceRepository) Update(ctx context.Context, workspace *domain.Workspace) error {
-	result := r.db.WithContext(ctx).Save(workspace)
+	result := GetTransaction(ctx, r.db).Save(workspace)
 	if result.Error != nil {
 		logger.Errorf("Failed to update workspace in database: %v - workspace: %+v", result.Error, workspace)
 		return fmt.Errorf("failed to update workspace: %w", result.Error)
@@ -76,9 +77,9 @@ func (r *WorkspaceRepository) Update(ctx context.Context, workspace *domain.Work
 	return nil
 }
 
-// Delete deletes a workspace
+// Delete: 워크스페이스를 영구 삭제합니다
 func (r *WorkspaceRepository) Delete(ctx context.Context, id string) error {
-	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&domain.Workspace{})
+	result := GetTransaction(ctx, r.db).Unscoped().Where("id = ?", id).Delete(&domain.Workspace{})
 	if result.Error != nil {
 		return fmt.Errorf("failed to delete workspace: %w", result.Error)
 	}
@@ -91,10 +92,10 @@ func (r *WorkspaceRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// List retrieves a list of workspaces with pagination
+// List: 페이지네이션을 포함한 워크스페이스 목록을 조회합니다
 func (r *WorkspaceRepository) List(ctx context.Context, limit, offset int) ([]*domain.Workspace, error) {
 	var workspaces []*domain.Workspace
-	result := r.db.WithContext(ctx).
+	result := GetTransaction(ctx, r.db).
 		Order("created_at DESC").
 		Limit(limit).
 		Offset(offset).
@@ -107,35 +108,63 @@ func (r *WorkspaceRepository) List(ctx context.Context, limit, offset int) ([]*d
 	return workspaces, nil
 }
 
-// GetUserWorkspaces retrieves workspaces for a user
+// GetUserWorkspaces: 사용자의 워크스페이스 목록을 조회합니다
 func (r *WorkspaceRepository) GetUserWorkspaces(ctx context.Context, userID string) ([]*domain.Workspace, error) {
 	return r.GetByOwnerID(ctx, userID)
 }
 
-// AddUserToWorkspace adds a user to a workspace
+// AddUserToWorkspace: 사용자를 워크스페이스에 추가합니다
 func (r *WorkspaceRepository) AddUserToWorkspace(ctx context.Context, userID, workspaceID string, role string) error {
-	// This would require a workspace_users table
-	// For now, we'll use the database service directly
-	return fmt.Errorf("AddUserToWorkspace not implemented - requires workspace_users table")
+	workspaceUser := &domain.WorkspaceUser{
+		UserID:      userID,
+		WorkspaceID: workspaceID,
+		Role:        role,
+	}
+
+	result := GetTransaction(ctx, r.db).Create(workspaceUser)
+	if result.Error != nil {
+		// 중복 키 에러 확인 (이미 워크스페이스에 속한 사용자)
+		if strings.Contains(result.Error.Error(), "duplicate key") ||
+			strings.Contains(result.Error.Error(), "unique constraint") ||
+			strings.Contains(result.Error.Error(), "UNIQUE constraint failed") {
+			return fmt.Errorf("user is already a member of this workspace")
+		}
+		logger.Errorf("Failed to add user to workspace: %v", result.Error)
+		return fmt.Errorf("failed to add user to workspace: %w", result.Error)
+	}
+
+	logger.Info(fmt.Sprintf("User %s added to workspace %s with role %s", userID, workspaceID, role))
+	return nil
 }
 
-// RemoveUserFromWorkspace removes a user from a workspace
+// RemoveUserFromWorkspace: 워크스페이스에서 사용자를 제거합니다
 func (r *WorkspaceRepository) RemoveUserFromWorkspace(ctx context.Context, userID, workspaceID string) error {
-	// This would require a workspace_users table
-	// For now, we'll use the database service directly
-	return fmt.Errorf("RemoveUserFromWorkspace not implemented - requires workspace_users table")
+	result := GetTransaction(ctx, r.db).
+		Where("user_id = ? AND workspace_id = ?", userID, workspaceID).
+		Delete(&domain.WorkspaceUser{})
+
+	if result.Error != nil {
+		logger.Errorf("Failed to remove user from workspace: %v", result.Error)
+		return fmt.Errorf("failed to remove user from workspace: %w", result.Error)
+	}
+
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("user is not a member of this workspace")
+	}
+
+	logger.Info(fmt.Sprintf("User %s removed from workspace %s", userID, workspaceID))
+	return nil
 }
 
-// GetWorkspaceMembers retrieves all members of a workspace
+// GetWorkspaceMembers: 워크스페이스의 모든 멤버를 조회합니다
 func (r *WorkspaceRepository) GetWorkspaceMembers(ctx context.Context, workspaceID string) ([]*domain.User, error) {
 	var users []*domain.User
 
-	// This is a simplified implementation
-	// In a real implementation, you would have a workspace_members table
-	// For now, we'll return an empty list
-	result := r.db.WithContext(ctx).
+	result := GetTransaction(ctx, r.db).
 		Table("users").
-		Where("id IN (SELECT user_id FROM workspace_members WHERE workspace_id = ?)", workspaceID).
+		Select("users.*").
+		Joins("INNER JOIN workspace_users wu ON users.id = wu.user_id").
+		Where("wu.workspace_id = ?", workspaceID).
 		Find(&users)
 
 	if result.Error != nil {
@@ -145,12 +174,28 @@ func (r *WorkspaceRepository) GetWorkspaceMembers(ctx context.Context, workspace
 	return users, nil
 }
 
-// GetWorkspacesWithUsers retrieves workspaces with their users in a single query (optimized)
+// GetWorkspaceMembersWithRoles: workspace_users 테이블에서 역할과 가입일을 포함한 멤버를 조회합니다
+func (r *WorkspaceRepository) GetWorkspaceMembersWithRoles(ctx context.Context, workspaceID string) ([]*domain.WorkspaceUser, error) {
+	var workspaceUsers []*domain.WorkspaceUser
+
+	result := GetTransaction(ctx, r.db).
+		Where("workspace_id = ?", workspaceID).
+		Order("joined_at ASC").
+		Find(&workspaceUsers)
+
+	if result.Error != nil {
+		return nil, fmt.Errorf("failed to get workspace members with roles: %w", result.Error)
+	}
+
+	return workspaceUsers, nil
+}
+
+// GetWorkspacesWithUsers: 단일 쿼리로 사용자 정보를 포함한 워크스페이스 목록을 조회합니다 (최적화)
 func (r *WorkspaceRepository) GetWorkspacesWithUsers(ctx context.Context, userID string) ([]*domain.Workspace, error) {
 	var workspaces []*domain.Workspace
 
-	// Use JOIN to get workspaces with user information in a single query
-	result := r.db.WithContext(ctx).
+	// JOIN을 사용하여 단일 쿼리로 사용자 정보를 포함한 워크스페이스 조회
+	result := GetTransaction(ctx, r.db).
 		Table("workspaces").
 		Select("workspaces.*, users.id as owner_id, users.username as owner_username, users.email as owner_email").
 		Joins("LEFT JOIN users ON workspaces.owner_id = users.id").
@@ -165,21 +210,21 @@ func (r *WorkspaceRepository) GetWorkspacesWithUsers(ctx context.Context, userID
 	return workspaces, nil
 }
 
-// GetWorkspaceWithMembers retrieves a workspace with its members in a single query (optimized)
+// GetWorkspaceWithMembers: 단일 쿼리로 멤버를 포함한 워크스페이스를 조회합니다 (최적화)
 func (r *WorkspaceRepository) GetWorkspaceWithMembers(ctx context.Context, workspaceID string) (*domain.Workspace, []*domain.User, error) {
 	var workspace domain.Workspace
 	var users []*domain.User
 
-	// Get workspace
-	if err := r.db.WithContext(ctx).Where("id = ?", workspaceID).First(&workspace).Error; err != nil {
+	// 워크스페이스 조회
+	if err := GetTransaction(ctx, r.db).Where("id = ?", workspaceID).First(&workspace).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil, nil
 		}
 		return nil, nil, fmt.Errorf("failed to get workspace: %w", err)
 	}
 
-	// Get workspace members in a single query
-	if err := r.db.WithContext(ctx).
+	// 단일 쿼리로 워크스페이스 멤버 조회
+	if err := GetTransaction(ctx, r.db).
 		Table("users").
 		Select("users.*").
 		Joins("INNER JOIN workspace_users ON users.id = workspace_users.user_id").
@@ -191,12 +236,12 @@ func (r *WorkspaceRepository) GetWorkspaceWithMembers(ctx context.Context, works
 	return &workspace, users, nil
 }
 
-// GetUserWorkspacesOptimized retrieves user workspaces with optimized query
+// GetUserWorkspacesOptimized: 최적화된 쿼리로 사용자의 워크스페이스 목록을 조회합니다
 func (r *WorkspaceRepository) GetUserWorkspacesOptimized(ctx context.Context, userID string) ([]*domain.Workspace, error) {
 	var workspaces []*domain.Workspace
 
-	// First, get workspaces owned by the user
-	result := r.db.WithContext(ctx).
+	// 사용자가 소유한 워크스페이스 조회
+	result := GetTransaction(ctx, r.db).
 		Where("owner_id = ?", userID).
 		Order("created_at DESC").
 		Find(&workspaces)

@@ -4,6 +4,7 @@
  */
 
 import { BaseService } from '@/lib/service-base';
+import { API_ENDPOINTS } from '@/lib/api-endpoints';
 import api from '@/lib/api';
 import type {
   ExportRequest,
@@ -15,17 +16,17 @@ import type {
 class ExportService extends BaseService {
   // 데이터 내보내기
   async exportData(request: Omit<ExportRequest, 'user_id'>): Promise<ExportResult> {
-    return this.post<ExportResult>('/exports', request);
+    return this.post<ExportResult>(API_ENDPOINTS.exports.create(), request);
   }
 
   // 내보내기 상태 조회
   async getExportStatus(exportId: string): Promise<ExportResult> {
-    return this.get<ExportResult>(`/exports/${exportId}/status`);
+    return this.get<ExportResult>(API_ENDPOINTS.exports.status(exportId));
   }
 
   // 내보내기 파일 다운로드 (Blob 반환)
   async downloadExport(exportId: string): Promise<Blob> {
-    const response = await api.get(`/exports/${exportId}/download`, {
+    const response = await api.get(API_ENDPOINTS.exports.download(exportId), {
       responseType: 'blob',
     });
     return response.data;
@@ -33,12 +34,12 @@ class ExportService extends BaseService {
 
   // 내보내기 이력 조회
   async getExportHistory(limit: number = 20, offset: number = 0): Promise<ExportHistory> {
-    return this.get<ExportHistory>(`/exports/history?limit=${limit}&offset=${offset}`);
+    return this.get<ExportHistory>(API_ENDPOINTS.exports.history(limit, offset));
   }
 
   // 지원되는 형식 조회
   async getSupportedFormats(): Promise<SupportedFormats> {
-    return this.get<SupportedFormats>('/exports/formats');
+    return this.get<SupportedFormats>(API_ENDPOINTS.exports.formats());
   }
 }
 

@@ -32,8 +32,8 @@ body:json {
         "private_endpoint": true,
         "private_nodes": true,
         "service_cidr": "10.1.0.0/16",
-        "subnet_id": "projects/{{gcp_project_id}}/regions/asia-northeast3/subnetworks/default",
-        "vpc_id": "projects/{{gcp_project_id}}/global/networks/default"
+        "subnet_id": "{{subnetId}}",
+        "vpc_id": "{{vpcId}}"
      },
      "node_pool": {
         "auto_scaling": {

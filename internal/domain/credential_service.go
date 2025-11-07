@@ -15,15 +15,5 @@ type CredentialService interface {
 	DeleteCredential(ctx context.Context, workspaceID, credentialID uuid.UUID) error
 	EncryptCredentialData(ctx context.Context, data map[string]interface{}) ([]byte, error)
 	DecryptCredentialData(ctx context.Context, encryptedData []byte) (map[string]interface{}, error)
-	// Deprecated: Use CreateCredential with workspaceID instead
-	CreateCredentialByUser(ctx context.Context, userID uuid.UUID, req CreateCredentialRequest) (*Credential, error)
-	// Deprecated: Use GetCredentials with workspaceID instead
-	GetCredentialsByUser(ctx context.Context, userID uuid.UUID) ([]*Credential, error)
-	// Deprecated: Use GetCredentialByID with workspaceID instead
-	GetCredentialByIDAndUser(ctx context.Context, userID, credentialID uuid.UUID) (*Credential, error)
-	// Deprecated: Use UpdateCredential with workspaceID instead
-	UpdateCredentialByUser(ctx context.Context, userID, credentialID uuid.UUID, req UpdateCredentialRequest) (*Credential, error)
-	// Deprecated: Use DeleteCredential with workspaceID instead
-	DeleteCredentialByUser(ctx context.Context, userID, credentialID uuid.UUID) error
+	GetCredentialByIDDirect(ctx context.Context, credentialID uuid.UUID) (*Credential, error)
 }
-
