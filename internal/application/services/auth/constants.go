@@ -13,4 +13,3 @@ const (
 	// BlacklistTokenExpiry is the expiry time for tokens in blacklist (24 hours)
 	BlacklistTokenExpiry = 24 * time.Hour
 )
-

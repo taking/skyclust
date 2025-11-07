@@ -3,30 +3,27 @@ package vm
 import (
 	"context"
 	"fmt"
-	computeservice "skyclust/internal/application/services/compute"
 	"skyclust/internal/application/services/common"
+	computeservice "skyclust/internal/application/services/compute"
 	"skyclust/internal/domain"
-	"skyclust/internal/infrastructure/messaging"
 	"skyclust/pkg/cache"
 	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
-	"skyclust/pkg/logger"
 )
 
 // Service: domain.VMService 인터페이스 구현체
 type Service struct {
-	vmRepo        domain.VMRepository
-	workspaceRepo domain.WorkspaceRepository
+	vmRepo         domain.VMRepository
+	workspaceRepo  domain.WorkspaceRepository
 	computeService computeservice.ComputeService
-	eventService  domain.EventService
-	auditLogRepo  domain.AuditLogRepository
-	cache         cache.Cache
-	keyBuilder    *cache.CacheKeyBuilder
-	invalidator   *cache.Invalidator
-	eventPublisher *messaging.Publisher
-	logger        *zap.Logger
+	eventService   domain.EventService
+	auditLogRepo   domain.AuditLogRepository
+	cache          cache.Cache
+	keyBuilder     *cache.CacheKeyBuilder
+	invalidator    *cache.Invalidator
+	logger         *zap.Logger
 }
 
 // NewService: 새로운 VMService를 생성합니다
@@ -39,7 +36,6 @@ func NewService(
 	cache cache.Cache,
 	keyBuilder *cache.CacheKeyBuilder,
 	invalidator *cache.Invalidator,
-	eventPublisher *messaging.Publisher,
 	logger *zap.Logger,
 ) *Service {
 	return &Service{
@@ -51,7 +47,6 @@ func NewService(
 		cache:          cache,
 		keyBuilder:     keyBuilder,
 		invalidator:    invalidator,
-		eventPublisher: eventPublisher,
 		logger:         logger,
 	}
 }
@@ -117,54 +112,40 @@ func (s *Service) CreateVM(ctx context.Context, req domain.CreateVMRequest) (*do
 	if err := s.vmRepo.Create(ctx, vm); err != nil {
 		// Rollback compute instance creation
 		if rollbackErr := s.computeService.DeleteInstance(ctx, req.Provider, computeInstance.ID); rollbackErr != nil {
-			logger.Error(fmt.Sprintf("Failed to rollback compute instance creation: %v", rollbackErr))
+			s.logger.Error("Failed to rollback compute instance creation", zap.Error(rollbackErr))
 		}
-		logger.Error(fmt.Sprintf("Failed to create VM record: %v", err))
+		s.logger.Error("Failed to create VM record", zap.Error(err))
 		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to create VM record: %v", err), 500)
 	}
 
 	// 캐시 무효화: VM 목록 캐시 삭제
 	if s.invalidator != nil {
 		if err := s.invalidator.InvalidateVMList(ctx, vm.WorkspaceID); err != nil {
-			if s.logger != nil {
-				s.logger.Warn("Failed to invalidate VM list cache",
-					zap.String("workspace_id", vm.WorkspaceID),
-					zap.Error(err))
-			} else {
-				logger.Warn(fmt.Sprintf("Failed to invalidate VM list cache: %v", err))
-			}
+			s.logger.Warn("Failed to invalidate VM list cache",
+				zap.String("workspace_id", vm.WorkspaceID),
+				zap.Error(err))
 		}
 	}
 
-	// Publish event
+	// 이벤트 발행
 	if s.eventService != nil {
-		if err := s.eventService.Publish(ctx, domain.EventVMCreated, map[string]interface{}{
-			"vm_id":        vm.ID,
-			"workspace_id": vm.WorkspaceID,
-			"provider":     vm.Provider,
-			"name":         vm.Name,
-		}); err != nil {
-			logger.Error(fmt.Sprintf("Failed to publish VM created event: %v", err))
-		}
-	}
-
-	// NATS 이벤트 발행
-	if s.eventPublisher != nil {
 		vmData := map[string]interface{}{
 			"vm_id":        vm.ID,
 			"workspace_id": vm.WorkspaceID,
 			"provider":     vm.Provider,
 			"name":         vm.Name,
-			"status":       vm.Status,
+			"status":       string(vm.Status),
 			"region":       vm.Region,
 			"type":         vm.Type,
 		}
-		_ = s.eventPublisher.PublishVMEvent(ctx, vm.Provider, vm.WorkspaceID, vm.ID, "created", vmData)
+		if err := s.eventService.Publish(ctx, domain.EventVMCreated, vmData); err != nil {
+			s.logger.Error("Failed to publish VM created event", zap.Error(err))
+		}
 	}
 
 	// 감사로그 기록
 	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionVMCreate,
-		fmt.Sprintf("POST /api/v1/vms"),
+		"POST /api/v1/vms",
 		map[string]interface{}{
 			"vm_id":        vm.ID,
 			"workspace_id": vm.WorkspaceID,
@@ -175,7 +156,10 @@ func (s *Service) CreateVM(ctx context.Context, req domain.CreateVMRequest) (*do
 		},
 	)
 
-	logger.Info(fmt.Sprintf("VM created successfully: %s (%s) - %s", vm.ID, vm.Name, vm.Provider))
+	s.logger.Info("VM created successfully",
+		zap.String("vm_id", vm.ID),
+		zap.String("name", vm.Name),
+		zap.String("provider", vm.Provider))
 	return vm, nil
 }
 
@@ -206,7 +190,7 @@ func (s *Service) GetVM(ctx context.Context, id string) (*domain.VM, error) {
 	}
 
 	// 응답을 캐시에 저장 (캐시 실패해도 계속 진행)
-	if s.cache != nil && vm != nil {
+	if s.cache != nil {
 		ttl := cache.GetDefaultTTL(cache.ResourceVM)
 		if err := s.cache.Set(ctx, cacheKey, vm, ttl); err != nil {
 			if s.logger != nil {
@@ -250,40 +234,36 @@ func (s *Service) UpdateVM(ctx context.Context, id string, req domain.UpdateVMRe
 	vm.UpdatedAt = time.Now()
 
 	if err := s.vmRepo.Update(ctx, vm); err != nil {
-		logger.Error(fmt.Sprintf("Failed to update VM: %v", err))
+		s.logger.Error("Failed to update VM", zap.Error(err), zap.String("vm_id", id))
 		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to update VM: %v", err), 500)
 	}
 
 	// 캐시 무효화
 	if s.invalidator != nil {
 		if err := s.invalidator.InvalidateVMList(ctx, vm.WorkspaceID); err != nil {
-			if s.logger != nil {
-				s.logger.Warn("Failed to invalidate VM list cache",
-					zap.String("workspace_id", vm.WorkspaceID),
-					zap.Error(err))
-			}
+			s.logger.Warn("Failed to invalidate VM list cache",
+				zap.String("workspace_id", vm.WorkspaceID),
+				zap.Error(err))
 		}
 		if err := s.invalidator.InvalidateByKey(ctx, s.keyBuilder.BuildVMItemKey(id)); err != nil {
-			if s.logger != nil {
-				s.logger.Warn("Failed to invalidate VM item cache",
-					zap.String("vm_id", id),
-					zap.Error(err))
-			}
+			s.logger.Warn("Failed to invalidate VM item cache",
+				zap.String("vm_id", id),
+				zap.Error(err))
 		}
 	}
 
-	// NATS 이벤트 발행
-	if s.eventPublisher != nil {
+	// 이벤트 발행
+	if s.eventService != nil {
 		vmData := map[string]interface{}{
 			"vm_id":        vm.ID,
 			"workspace_id": vm.WorkspaceID,
 			"provider":     vm.Provider,
 			"name":         vm.Name,
-			"status":       vm.Status,
+			"status":       string(vm.Status),
 			"region":       vm.Region,
 			"type":         vm.Type,
 		}
-		_ = s.eventPublisher.PublishVMEvent(ctx, vm.Provider, vm.WorkspaceID, vm.ID, "updated", vmData)
+		_ = s.eventService.Publish(ctx, domain.EventVMUpdated, vmData)
 	}
 
 	// 감사로그 기록
@@ -297,7 +277,7 @@ func (s *Service) UpdateVM(ctx context.Context, id string, req domain.UpdateVMRe
 		},
 	)
 
-	logger.Info(fmt.Sprintf("VM updated successfully: %s", vm.ID))
+	s.logger.Info("VM updated successfully", zap.String("vm_id", vm.ID))
 	return vm, nil
 }
 
@@ -314,58 +294,47 @@ func (s *Service) DeleteVM(ctx context.Context, id string) error {
 
 	// Delete compute instance
 	if err := s.computeService.DeleteInstance(ctx, vm.Provider, vm.InstanceID); err != nil {
-		logger.Error(fmt.Sprintf("Failed to delete compute instance: %v (provider: %s, instance: %s)", err, vm.Provider, vm.InstanceID))
+		s.logger.Error("Failed to delete compute instance",
+			zap.Error(err),
+			zap.String("provider", vm.Provider),
+			zap.String("instance_id", vm.InstanceID))
 		// Continue with VM record deletion even if compute deletion fails
 	}
 
 	// Delete VM record
 	if err := s.vmRepo.Delete(ctx, id); err != nil {
-		logger.Error(fmt.Sprintf("Failed to delete VM record: %v", err))
+		s.logger.Error("Failed to delete VM record", zap.Error(err), zap.String("vm_id", id))
 		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to delete VM record: %v", err), 500)
 	}
 
 	// 캐시 무효화
 	if s.invalidator != nil {
 		if err := s.invalidator.InvalidateVMList(ctx, vm.WorkspaceID); err != nil {
-			if s.logger != nil {
-				s.logger.Warn("Failed to invalidate VM list cache",
-					zap.String("workspace_id", vm.WorkspaceID),
-					zap.Error(err))
-			}
+			s.logger.Warn("Failed to invalidate VM list cache",
+				zap.String("workspace_id", vm.WorkspaceID),
+				zap.Error(err))
 		}
 		if err := s.invalidator.InvalidateByKey(ctx, s.keyBuilder.BuildVMItemKey(id)); err != nil {
-			if s.logger != nil {
-				s.logger.Warn("Failed to invalidate VM item cache",
-					zap.String("vm_id", id),
-					zap.Error(err))
-			}
+			s.logger.Warn("Failed to invalidate VM item cache",
+				zap.String("vm_id", id),
+				zap.Error(err))
 		}
 	}
 
-	// Publish event
+	// 이벤트 발행
 	if s.eventService != nil {
-		if err := s.eventService.Publish(ctx, domain.EventVMDeleted, map[string]interface{}{
-			"vm_id":        vm.ID,
-			"workspace_id": vm.WorkspaceID,
-			"provider":     vm.Provider,
-			"name":         vm.Name,
-		}); err != nil {
-			logger.Error(fmt.Sprintf("Failed to publish VM deleted event: %v", err))
-		}
-	}
-
-	// NATS 이벤트 발행
-	if s.eventPublisher != nil {
 		vmData := map[string]interface{}{
 			"vm_id":        vm.ID,
 			"workspace_id": vm.WorkspaceID,
 			"provider":     vm.Provider,
 			"name":         vm.Name,
-			"status":       vm.Status,
+			"status":       string(vm.Status),
 			"region":       vm.Region,
 			"type":         vm.Type,
 		}
-		_ = s.eventPublisher.PublishVMEvent(ctx, vm.Provider, vm.WorkspaceID, vm.ID, "deleted", vmData)
+		if err := s.eventService.Publish(ctx, domain.EventVMDeleted, vmData); err != nil {
+			s.logger.Error("Failed to publish VM deleted event", zap.Error(err))
+		}
 	}
 
 	// 감사로그 기록
@@ -379,7 +348,7 @@ func (s *Service) DeleteVM(ctx context.Context, id string) error {
 		},
 	)
 
-	logger.Info(fmt.Sprintf("VM deleted successfully: %s", vm.ID))
+	s.logger.Info("VM deleted successfully", zap.String("vm_id", vm.ID))
 	return nil
 }
 
@@ -392,10 +361,8 @@ func (s *Service) GetVMs(ctx context.Context, workspaceID string) ([]*domain.VM,
 	if s.cache != nil {
 		var cachedVMs []*domain.VM
 		if err := s.cache.Get(ctx, cacheKey, &cachedVMs); err == nil {
-			if s.logger != nil {
-				s.logger.Debug("VMs retrieved from cache",
-					zap.String("workspace_id", workspaceID))
-			}
+			s.logger.Debug("VMs retrieved from cache",
+				zap.String("workspace_id", workspaceID))
 			return cachedVMs, nil
 		}
 	}
@@ -441,39 +408,35 @@ func (s *Service) StartVM(ctx context.Context, id string) error {
 
 	// Update status
 	if err := s.vmRepo.UpdateStatus(ctx, id, domain.VMStatusStarting); err != nil {
-		logger.Error(fmt.Sprintf("Failed to update VM status: %v (vm_id: %s)", err, id))
+		s.logger.Error("Failed to update VM status", zap.Error(err), zap.String("vm_id", id))
 	}
 
 	// 캐시 무효화
 	if s.invalidator != nil {
 		if err := s.invalidator.InvalidateVMList(ctx, vm.WorkspaceID); err != nil {
-			if s.logger != nil {
-				s.logger.Warn("Failed to invalidate VM list cache",
-					zap.String("workspace_id", vm.WorkspaceID),
-					zap.Error(err))
-			}
+			s.logger.Warn("Failed to invalidate VM list cache",
+				zap.String("workspace_id", vm.WorkspaceID),
+				zap.Error(err))
 		}
 		if err := s.invalidator.InvalidateByKey(ctx, s.keyBuilder.BuildVMItemKey(id)); err != nil {
-			if s.logger != nil {
-				s.logger.Warn("Failed to invalidate VM item cache",
-					zap.String("vm_id", id),
-					zap.Error(err))
-			}
+			s.logger.Warn("Failed to invalidate VM item cache",
+				zap.String("vm_id", id),
+				zap.Error(err))
 		}
 	}
 
-	// NATS 이벤트 발행
-	if s.eventPublisher != nil {
+	// 이벤트 발행
+	if s.eventService != nil {
 		vmData := map[string]interface{}{
 			"vm_id":        vm.ID,
 			"workspace_id": vm.WorkspaceID,
 			"provider":     vm.Provider,
 			"name":         vm.Name,
-			"status":       domain.VMStatusStarting,
+			"status":       string(domain.VMStatusStarting),
 			"region":       vm.Region,
 			"type":         vm.Type,
 		}
-		_ = s.eventPublisher.PublishVMEvent(ctx, vm.Provider, vm.WorkspaceID, vm.ID, "updated", vmData)
+		_ = s.eventService.Publish(ctx, domain.EventVMStarted, vmData)
 	}
 
 	// 감사로그 기록
@@ -487,7 +450,7 @@ func (s *Service) StartVM(ctx context.Context, id string) error {
 		},
 	)
 
-	logger.Info(fmt.Sprintf("VM start initiated: %s", id))
+	s.logger.Info("VM start initiated", zap.String("vm_id", id))
 	return nil
 }
 
@@ -511,39 +474,35 @@ func (s *Service) StopVM(ctx context.Context, id string) error {
 
 	// Update status
 	if err := s.vmRepo.UpdateStatus(ctx, id, domain.VMStatusStopping); err != nil {
-		logger.Error(fmt.Sprintf("Failed to update VM status: %v (vm_id: %s)", err, id))
+		s.logger.Error("Failed to update VM status", zap.Error(err), zap.String("vm_id", id))
 	}
 
 	// 캐시 무효화
 	if s.invalidator != nil {
 		if err := s.invalidator.InvalidateVMList(ctx, vm.WorkspaceID); err != nil {
-			if s.logger != nil {
-				s.logger.Warn("Failed to invalidate VM list cache",
-					zap.String("workspace_id", vm.WorkspaceID),
-					zap.Error(err))
-			}
+			s.logger.Warn("Failed to invalidate VM list cache",
+				zap.String("workspace_id", vm.WorkspaceID),
+				zap.Error(err))
 		}
 		if err := s.invalidator.InvalidateByKey(ctx, s.keyBuilder.BuildVMItemKey(id)); err != nil {
-			if s.logger != nil {
-				s.logger.Warn("Failed to invalidate VM item cache",
-					zap.String("vm_id", id),
-					zap.Error(err))
-			}
+			s.logger.Warn("Failed to invalidate VM item cache",
+				zap.String("vm_id", id),
+				zap.Error(err))
 		}
 	}
 
-	// NATS 이벤트 발행
-	if s.eventPublisher != nil {
+	// 이벤트 발행
+	if s.eventService != nil {
 		vmData := map[string]interface{}{
 			"vm_id":        vm.ID,
 			"workspace_id": vm.WorkspaceID,
 			"provider":     vm.Provider,
 			"name":         vm.Name,
-			"status":       domain.VMStatusStopping,
+			"status":       string(domain.VMStatusStopping),
 			"region":       vm.Region,
 			"type":         vm.Type,
 		}
-		_ = s.eventPublisher.PublishVMEvent(ctx, vm.Provider, vm.WorkspaceID, vm.ID, "updated", vmData)
+		_ = s.eventService.Publish(ctx, domain.EventVMStopped, vmData)
 	}
 
 	// 감사로그 기록
@@ -557,7 +516,7 @@ func (s *Service) StopVM(ctx context.Context, id string) error {
 		},
 	)
 
-	logger.Info(fmt.Sprintf("VM stop initiated: %s", id))
+	s.logger.Info("VM stop initiated", zap.String("vm_id", id))
 	return nil
 }
 
@@ -586,39 +545,35 @@ func (s *Service) RestartVM(ctx context.Context, id string) error {
 
 	// Update status
 	if err := s.vmRepo.UpdateStatus(ctx, id, domain.VMStatusStarting); err != nil {
-		logger.Error(fmt.Sprintf("Failed to update VM status: %v (vm_id: %s)", err, id))
+		s.logger.Error("Failed to update VM status", zap.Error(err), zap.String("vm_id", id))
 	}
 
 	// 캐시 무효화
 	if s.invalidator != nil {
 		if err := s.invalidator.InvalidateVMList(ctx, vm.WorkspaceID); err != nil {
-			if s.logger != nil {
-				s.logger.Warn("Failed to invalidate VM list cache",
-					zap.String("workspace_id", vm.WorkspaceID),
-					zap.Error(err))
-			}
+			s.logger.Warn("Failed to invalidate VM list cache",
+				zap.String("workspace_id", vm.WorkspaceID),
+				zap.Error(err))
 		}
 		if err := s.invalidator.InvalidateByKey(ctx, s.keyBuilder.BuildVMItemKey(id)); err != nil {
-			if s.logger != nil {
-				s.logger.Warn("Failed to invalidate VM item cache",
-					zap.String("vm_id", id),
-					zap.Error(err))
-			}
+			s.logger.Warn("Failed to invalidate VM item cache",
+				zap.String("vm_id", id),
+				zap.Error(err))
 		}
 	}
 
-	// NATS 이벤트 발행
-	if s.eventPublisher != nil {
+	// 이벤트 발행
+	if s.eventService != nil {
 		vmData := map[string]interface{}{
 			"vm_id":        vm.ID,
 			"workspace_id": vm.WorkspaceID,
 			"provider":     vm.Provider,
 			"name":         vm.Name,
-			"status":       domain.VMStatusStarting,
+			"status":       string(domain.VMStatusStarting),
 			"region":       vm.Region,
 			"type":         vm.Type,
 		}
-		_ = s.eventPublisher.PublishVMEvent(ctx, vm.Provider, vm.WorkspaceID, vm.ID, "updated", vmData)
+		_ = s.eventService.Publish(ctx, domain.EventVMStarted, vmData)
 	}
 
 	// 감사로그 기록
@@ -632,7 +587,7 @@ func (s *Service) RestartVM(ctx context.Context, id string) error {
 		},
 	)
 
-	logger.Info(fmt.Sprintf("VM restart initiated: %s", id))
+	s.logger.Info("VM restart initiated", zap.String("vm_id", id))
 	return nil
 }
 
@@ -649,7 +604,10 @@ func (s *Service) GetVMStatus(ctx context.Context, id string) (domain.VMStatus, 
 	// Get current status from compute service
 	status, err := s.computeService.GetInstanceStatus(ctx, vm.Provider, vm.InstanceID)
 	if err != nil {
-		logger.Error(fmt.Sprintf("Failed to get compute instance status: %v (provider: %s, instance: %s)", err, vm.Provider, vm.InstanceID))
+		s.logger.Error("Failed to get compute instance status",
+			zap.Error(err),
+			zap.String("provider", vm.Provider),
+			zap.String("instance_id", vm.InstanceID))
 		return vm.Status, nil // Return cached status if compute call fails
 	}
 
@@ -657,7 +615,7 @@ func (s *Service) GetVMStatus(ctx context.Context, id string) (domain.VMStatus, 
 	newStatus := domain.VMStatus(status)
 	if newStatus != vm.Status {
 		if err := s.vmRepo.UpdateStatus(ctx, id, newStatus); err != nil {
-			logger.Error(fmt.Sprintf("Failed to update VM status: %v (vm_id: %s)", err, id))
+			s.logger.Error("Failed to update VM status", zap.Error(err), zap.String("vm_id", id))
 		}
 	}
 

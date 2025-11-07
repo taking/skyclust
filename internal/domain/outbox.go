@@ -9,16 +9,16 @@ import (
 // OutboxEvent represents an event stored in the outbox table
 // Outbox 테이블에 저장된 이벤트를 나타냄
 type OutboxEvent struct {
-	ID          uuid.UUID              `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
-	Topic       string                 `json:"topic" gorm:"not null;size:255;index"`
-	EventType   string                 `json:"event_type" gorm:"not null;size:100;index"`
-	Data        JSONBMap               `json:"data" gorm:"type:jsonb;not null"`
-	WorkspaceID *uuid.UUID             `json:"workspace_id" gorm:"type:uuid;index"`
-	Status      OutboxEventStatus      `json:"status" gorm:"type:varchar(20);not null;default:'pending';index"`
-	RetryCount  int                    `json:"retry_count" gorm:"default:0"`
-	LastError   *string                `json:"last_error" gorm:"type:text"`
-	CreatedAt   time.Time              `json:"created_at" gorm:"not null;index"`
-	PublishedAt *time.Time             `json:"published_at" gorm:"index"`
+	ID          uuid.UUID         `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
+	Topic       string            `json:"topic" gorm:"not null;size:255;index"`
+	EventType   string            `json:"event_type" gorm:"not null;size:100;index"`
+	Data        JSONBMap          `json:"data" gorm:"type:jsonb;not null"`
+	WorkspaceID *uuid.UUID        `json:"workspace_id" gorm:"type:uuid;index"`
+	Status      OutboxEventStatus `json:"status" gorm:"type:varchar(20);not null;default:'pending';index"`
+	RetryCount  int               `json:"retry_count" gorm:"default:0"`
+	LastError   *string           `json:"last_error" gorm:"type:text"`
+	CreatedAt   time.Time         `json:"created_at" gorm:"not null;index"`
+	PublishedAt *time.Time        `json:"published_at" gorm:"index"`
 }
 
 // OutboxEventStatus represents the status of an outbox event
@@ -48,4 +48,3 @@ const (
 func (OutboxEvent) TableName() string {
 	return "outbox_events"
 }
-

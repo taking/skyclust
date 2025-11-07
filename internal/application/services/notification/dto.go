@@ -45,4 +45,3 @@ type NotificationPreferences struct {
 	Preferences map[NotificationType]bool                  `json:"preferences"`
 	Channels    map[NotificationType][]NotificationChannel `json:"channels"`
 }
-

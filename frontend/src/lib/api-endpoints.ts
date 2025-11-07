@@ -35,6 +35,21 @@ export const API_ENDPOINTS = {
     upload: () => 'credentials/upload',
   },
 
+  // RBAC endpoints
+  rbac: {
+    // User role management
+    assignRole: (userId: string) => `admin/rbac/users/${userId}/roles`,
+    removeRole: (userId: string) => `admin/rbac/users/${userId}/roles`,
+    getUserRoles: (userId: string) => `admin/rbac/users/${userId}/roles`,
+    // Role permission management
+    grantPermission: (role: string) => `admin/rbac/roles/${role}/permissions`,
+    revokePermission: (role: string, permission: string) => `admin/rbac/roles/${role}/permissions/${permission}`,
+    getRolePermissions: (role: string) => `admin/rbac/roles/${role}/permissions`,
+    // User permission management
+    checkUserPermission: (userId: string, permission: string) => buildEndpointWithQuery(`admin/rbac/users/${userId}/permissions/check`, { permission }),
+    getUserEffectivePermissions: (userId: string) => `admin/rbac/users/${userId}/permissions/effective`,
+  },
+
   // VM endpoints
   vms: {
     list: (workspaceId: string) => buildEndpointWithQuery('vms', { workspace_id: workspaceId }),

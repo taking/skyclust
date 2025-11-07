@@ -183,7 +183,7 @@ func (r *RedisDistributedLock) autoRenew(ctx context.Context, key string, ttl ti
 	for {
 		select {
 		case <-ctx.Done():
-			r.Unlock(context.Background(), key)
+			_ = r.Unlock(context.Background(), key)
 			return
 		case <-ticker.C:
 			if err := r.Extend(ctx, key, ttl); err != nil {
@@ -194,4 +194,3 @@ func (r *RedisDistributedLock) autoRenew(ctx context.Context, key string, ttl ti
 		}
 	}
 }
-

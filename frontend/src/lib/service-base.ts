@@ -43,7 +43,12 @@ export abstract class BaseService {
           response = await api.patch<ApiResponse<T>>(url, data, config);
           break;
         case 'delete':
-          response = await api.delete<ApiResponse<T>>(url, config);
+          // DELETE 요청도 body를 받을 수 있도록 config에 data 포함
+          if (data !== undefined) {
+            response = await api.delete<ApiResponse<T>>(url, { ...config, data });
+          } else {
+            response = await api.delete<ApiResponse<T>>(url, config);
+          }
           break;
       }
 
@@ -182,10 +187,14 @@ export abstract class BaseService {
   /**
    * DELETE 요청 헬퍼
    */
-  protected async delete<T>(endpoint: string, options?: ServiceRequestOptions & { version?: string }): Promise<T> {
+  protected async delete<T>(
+    endpoint: string,
+    data?: unknown,
+    options?: ServiceRequestOptions & { version?: string }
+  ): Promise<T> {
     const url = this.buildApiUrl(endpoint, options?.version);
     const { version: _version, ...requestOptions } = options || {};
-    return this.request<T>('delete', url, undefined, requestOptions);
+    return this.request<T>('delete', url, data, requestOptions);
   }
 }
 

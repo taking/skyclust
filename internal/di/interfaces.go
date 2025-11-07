@@ -60,7 +60,7 @@ type RepositoryContainer struct {
 	AuditLogRepository                domain.AuditLogRepository
 	NotificationRepository            domain.NotificationRepository
 	NotificationPreferencesRepository domain.NotificationPreferencesRepository
-	OIDCProviderRepository           domain.OIDCProviderRepository
+	OIDCProviderRepository            domain.OIDCProviderRepository
 	RBACRepository                    domain.RBACRepository
 	OutboxRepository                  domain.OutboxRepository
 }

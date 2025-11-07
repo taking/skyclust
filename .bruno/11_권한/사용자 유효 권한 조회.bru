@@ -1,0 +1,74 @@
+meta {
+  name: 사용자 유효 권한 조회
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/admin/rbac/users/{{userId}}/permissions/effective
+  body: none
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains permissions", function() {
+    expect(res.getBody()).to.have.property('data');
+    expect(res.getBody().data).to.have.property('permissions');
+    expect(res.getBody().data.permissions).to.be.an('array');
+  });
+}
+
+docs {
+  # 사용자 유효 권한 조회
+  
+  사용자의 모든 유효 권한을 조회합니다. (역할을 통해 상속된 권한 포함)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "user_id": "123e4567-e89b-12d3-a456-426614174000",
+      "permissions": [
+        "user:create",
+        "user:read",
+        "user:update",
+        "user:delete",
+        "workspace:create",
+        "workspace:read",
+        "workspace:update",
+        "system:read"
+      ]
+    },
+    "message": "User effective permissions retrieved successfully"
+  }
+  ```
+  
+  ## Path Parameters
+  
+  - `userId`: 유효 권한을 조회할 사용자 ID
+  
+  ## Response 필드
+  
+  - `user_id`: 사용자 ID
+  - `permissions`: 사용자의 모든 유효 권한 배열 (역할을 통해 상속된 권한 포함)
+  
+  ## 참고
+  
+  - 유효 권한은 사용자가 직접 할당받은 역할의 권한과 역할 상속을 통해 얻은 권한을 모두 포함합니다.
+  - 예: `admin` 역할은 `user`와 `viewer` 역할의 권한을 상속받습니다.
+}
+

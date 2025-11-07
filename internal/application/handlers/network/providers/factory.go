@@ -90,4 +90,3 @@ func (f *Factory) IsProviderSupported(provider string) bool {
 	_, exists := f.handlers[provider]
 	return exists
 }
-

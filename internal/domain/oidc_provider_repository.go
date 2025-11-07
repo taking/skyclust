@@ -14,4 +14,3 @@ type OIDCProviderRepository interface {
 	Delete(id uuid.UUID) error
 	GetEnabledByUserID(userID uuid.UUID) ([]*OIDCProvider, error)
 }
-

@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // Handler: 인증 관련 HTTP 요청을 처리하는 핸들러
@@ -355,15 +356,30 @@ func (h *Handler) GetUsers(c *gin.Context) {
 
 	// Build user responses with role information
 	// Note: Only primary role is exposed for UI control (not detailed permissions)
+	// Batch fetch user roles to avoid N+1 query problem
+	userIDs := make([]uuid.UUID, len(users))
+	for i, user := range users {
+		userIDs[i] = user.ID
+	}
+
+	var userRolesMap map[uuid.UUID][]domain.Role
+	if h.rbacService != nil {
+		var err error
+		userRolesMap, err = h.rbacService.GetUsersRoles(userIDs)
+		if err != nil {
+			h.LogWarn(c, "Failed to get user roles, continuing without roles", zap.Error(err))
+			userRolesMap = make(map[uuid.UUID][]domain.Role)
+		}
+	} else {
+		userRolesMap = make(map[uuid.UUID][]domain.Role)
+	}
+
 	userResponses := make([]*UserResponse, 0, len(users))
 	for _, user := range users {
 		// Get primary role (first role) for each user
 		var primaryRole domain.Role
-		if h.rbacService != nil {
-			userRoles, err := h.rbacService.GetUserRoles(user.ID)
-			if err == nil && len(userRoles) > 0 {
-				primaryRole = userRoles[0] // Use first role as primary
-			}
+		if userRoles, exists := userRolesMap[user.ID]; exists && len(userRoles) > 0 {
+			primaryRole = userRoles[0] // Use first role as primary
 		}
 
 		userResponse := &UserResponse{

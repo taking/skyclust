@@ -82,10 +82,7 @@ func (s *Service) GetEKSVersions(ctx context.Context, credential *domain.Credent
 	//     }
 	// }
 
-	// 빈 배열인 경우에도 nil이 아닌 빈 슬라이스 반환
-	if versions == nil {
-		versions = []string{}
-	}
+	// versions는 이미 빈 슬라이스로 초기화되어 있으므로 nil 체크 불필요
 
 	// 캐시에 저장 (버전 목록은 자주 변하지 않으므로 긴 TTL 사용 - 1시간)
 	if s.cache != nil && len(versions) > 0 {

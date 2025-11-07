@@ -119,6 +119,12 @@ func (h *Handler) getCredentialsHandler() handlers.HandlerFunc {
 			return
 		}
 
+		// Support provider filter via query parameter (RESTful)
+		providerFilter := c.Query("provider")
+		if providerFilter != "" {
+			credentials = h.filterCredentialsByProvider(credentials, providerFilter)
+		}
+
 		h.OK(c, gin.H{"credentials": credentials}, "Credentials retrieved successfully")
 	}
 }
@@ -362,66 +368,7 @@ func (h *Handler) createCredentialFromFileHandler() handlers.HandlerFunc {
 	}
 }
 
-// GetCredentialsByProvider: 제공자별 자격증명을 조회합니다 (데코레이터 패턴 사용)
-func (h *Handler) GetCredentialsByProvider(c *gin.Context) {
-	handler := h.Compose(
-		h.getCredentialsByProviderHandler(),
-		h.StandardCRUDDecorators("get_credentials_by_provider")...,
-	)
-
-	handler(c)
-}
-
-// getCredentialsByProviderHandler: 제공자별 자격증명 조회의 핵심 비즈니스 로직을 처리합니다
-func (h *Handler) getCredentialsByProviderHandler() handlers.HandlerFunc {
-	return func(c *gin.Context) {
-		provider := h.extractProviderParam(c)
-		userID, err := h.ExtractUserIDFromContext(c)
-		if err != nil {
-			h.HandleError(c, err, "get_credentials_by_provider")
-			return
-		}
-
-		// Get workspace ID from query parameter
-		workspaceIDStr, err := h.ExtractRequiredQueryParam(c, "workspace_id")
-		if err != nil {
-			h.HandleError(c, err, "get_credentials_by_provider")
-			return
-		}
-
-		workspaceID, err := uuid.Parse(workspaceIDStr)
-		if err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid workspace ID format", 400), "get_credentials_by_provider")
-			return
-		}
-
-		h.logCredentialsByProviderRequest(c, userID, provider)
-
-		credentials, err := h.credentialService.GetCredentials(c.Request.Context(), workspaceID)
-		if err != nil {
-			h.HandleError(c, err, "get_credentials_by_provider")
-			return
-		}
-
-		filteredCredentials := h.filterCredentialsByProvider(credentials, provider)
-		h.OK(c, gin.H{
-			"credentials": filteredCredentials,
-			"provider":    provider,
-		}, "Credentials retrieved successfully")
-	}
-}
-
 // 헬퍼 메서드들
-
-// extractProviderParam: 경로 파라미터에서 제공자를 추출합니다
-func (h *Handler) extractProviderParam(c *gin.Context) string {
-	provider := c.Param("provider")
-	if provider == "" {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Provider parameter is required", 400), "extract_provider")
-		return ""
-	}
-	return provider
-}
 
 // filterCredentialsByProvider: 제공자별로 자격증명을 필터링합니다
 func (h *Handler) filterCredentialsByProvider(credentials []*domain.Credential, provider string) []*domain.Credential {
@@ -619,12 +566,5 @@ func (h *Handler) logCredentialFromFileCreationSuccess(c *gin.Context, userID uu
 		"credential_id": credential.ID.String(),
 		"provider":      credential.Provider,
 		"name":          credential.Name,
-	})
-}
-
-// logCredentialsByProviderRequest: 제공자별 자격증명 조회 요청 로그를 기록합니다
-func (h *Handler) logCredentialsByProviderRequest(c *gin.Context, userID uuid.UUID, provider string) {
-	h.LogBusinessEvent(c, "credentials_by_provider_requested", userID.String(), "", map[string]interface{}{
-		"provider": provider,
 	})
 }

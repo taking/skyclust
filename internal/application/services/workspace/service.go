@@ -104,7 +104,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, req domain.CreateWorkspac
 	// 감사 로그 기록
 	ownerUUID := ownerID
 	common.LogAction(ctx, s.auditLogRepo, &ownerUUID, domain.ActionWorkspaceCreate,
-		fmt.Sprintf("POST /api/v1/workspaces"),
+		"POST /api/v1/workspaces",
 		map[string]interface{}{
 			"workspace_id": workspace.ID,
 			"name":         workspace.Name,

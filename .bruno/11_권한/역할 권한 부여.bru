@@ -1,0 +1,84 @@
+meta {
+  name: 역할 권한 부여
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/admin/rbac/roles/{{role}}/permissions
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "permission": "user:create"
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains success message", function() {
+    expect(res.getBody()).to.have.property('success');
+    expect(res.getBody().success).to.equal(true);
+  });
+}
+
+docs {
+  # 역할 권한 부여
+  
+  역할에 권한을 부여합니다.
+  
+  ## Request Body
+  
+  ```json
+  {
+    "permission": "user:create"
+  }
+  ```
+  
+  ## Request 필드
+  
+  - `permission` (required): 부여할 권한 (예: `user:create`, `workspace:manage`, `system:read`)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "message": "Permission granted successfully"
+    },
+    "message": "Permission granted successfully"
+  }
+  ```
+  
+  ## Path Parameters
+  
+  - `role`: 권한을 부여할 역할 (`admin`, `user`, `viewer`)
+  
+  ## 에러 응답
+  
+  ### 이미 권한이 있는 경우 (409)
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "ALREADY_EXISTS",
+      "message": "role admin already has permission user:create"
+    }
+  }
+  ```
+}
+

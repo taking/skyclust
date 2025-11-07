@@ -111,4 +111,3 @@ func (h *AzureHandler) RemoveSecurityGroupRule(c *gin.Context) {
 func (h *AzureHandler) UpdateSecurityGroupRules(c *gin.Context) {
 	h.NotImplemented(c, "update_security_group_rules")
 }
-

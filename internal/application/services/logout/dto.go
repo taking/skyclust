@@ -19,4 +19,3 @@ type LogoutResponse struct {
 	LogoutURL             string `json:"logout_url,omitempty"` // For OIDC front-channel logout
 	PostLogoutRedirectURI string `json:"post_logout_redirect_uri,omitempty"`
 }
-

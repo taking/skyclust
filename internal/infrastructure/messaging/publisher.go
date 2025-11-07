@@ -275,9 +275,9 @@ func (p *Publisher) PublishWorkspaceEvent(ctx context.Context, workspaceID, acti
 	}
 
 	event := Event{
-		Type:      topic,
-		Data:      data,
-		Timestamp: time.Now().Unix(),
+		Type:        topic,
+		Data:        data,
+		Timestamp:   time.Now().Unix(),
 		WorkspaceID: workspaceID,
 	}
 

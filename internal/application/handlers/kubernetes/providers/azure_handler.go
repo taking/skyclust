@@ -151,4 +151,3 @@ func (h *AzureHandler) GetAWSRegions(c *gin.Context) {
 func (h *AzureHandler) GetAvailabilityZones(c *gin.Context) {
 	h.NotImplemented(c, "get_availability_zones")
 }
-

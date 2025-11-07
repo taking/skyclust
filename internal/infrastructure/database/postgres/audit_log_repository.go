@@ -242,7 +242,7 @@ func (r *auditLogRepository) GetTopResources(filters domain.AuditStatsFilters, l
 	for i, result := range results {
 		topResources[i] = map[string]interface{}{
 			"resource": result.Resource,
-			"count":     result.Count,
+			"count":    result.Count,
 		}
 	}
 
@@ -348,7 +348,7 @@ func (r *auditLogRepository) GetErrorEventsCount(startTime, endTime time.Time) (
 	// Actions that typically indicate errors: failed login attempts, etc.
 	// For now, we'll check if action contains "error" or if details contains error fields
 	// This is a simplified approach - in production, you might want to check details JSONB more carefully
-	
+
 	// Count logs where action contains "error" or similar patterns
 	query := r.db.Model(&domain.AuditLog{}).
 		Where("created_at BETWEEN ? AND ?", startTime, endTime).

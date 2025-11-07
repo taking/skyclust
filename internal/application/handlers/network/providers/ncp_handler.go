@@ -111,4 +111,3 @@ func (h *NCPHandler) RemoveSecurityGroupRule(c *gin.Context) {
 func (h *NCPHandler) UpdateSecurityGroupRules(c *gin.Context) {
 	h.NotImplemented(c, "update_security_group_rules")
 }
-

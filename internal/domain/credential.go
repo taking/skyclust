@@ -14,7 +14,7 @@ type Credential struct {
 	Name          string                 `json:"name" gorm:"not null;size:100"`
 	EncryptedData []byte                 `json:"-" gorm:"type:bytea;not null"` // 암호화된 자격증명 데이터
 	IsActive      bool                   `json:"is_active" gorm:"default:true"`
-	MaskedData    map[string]interface{} `json:"masked_data,omitempty" gorm:"-"` // 마스킹된 데이터 (응답 전용)
+	MaskedData    map[string]interface{} `json:"masked_data,omitempty" gorm:"-"`             // 마스킹된 데이터 (응답 전용)
 	CreatedBy     uuid.UUID              `json:"created_by" gorm:"type:uuid;not null;index"` // 생성한 사용자
 	CreatedAt     time.Time              `json:"created_at"`
 	UpdatedAt     time.Time              `json:"updated_at"`

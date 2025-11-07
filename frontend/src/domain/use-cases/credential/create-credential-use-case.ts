@@ -44,8 +44,8 @@ export class CreateCredentialUseCase {
   private validateProviderData(provider: string, credentials: Record<string, unknown>): void {
     switch (provider.toLowerCase()) {
       case 'aws':
-        if (!credentials.access_key_id || !credentials.secret_access_key) {
-          throw new Error('AWS credentials require access_key_id and secret_access_key');
+        if (!credentials.access_key || !credentials.secret_key) {
+          throw new Error('AWS credentials require access_key and secret_key');
         }
         break;
       case 'gcp':
@@ -54,8 +54,8 @@ export class CreateCredentialUseCase {
         }
         break;
       case 'azure':
-        if (!credentials.client_id || !credentials.client_secret || !credentials.tenant_id) {
-          throw new Error('Azure credentials require client_id, client_secret, and tenant_id');
+        if (!credentials.subscription_id || !credentials.client_id || !credentials.client_secret || !credentials.tenant_id) {
+          throw new Error('Azure credentials require subscription_id, client_id, client_secret, and tenant_id');
         }
         break;
       default:

@@ -67,4 +67,3 @@ func (h *Handler) getDashboardSummaryHandler() handlers.HandlerFunc {
 		h.OK(c, summary, "Dashboard summary retrieved successfully")
 	}
 }
-

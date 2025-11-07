@@ -40,7 +40,7 @@ func (h *GCPHandler) ListVPCs(c *gin.Context) {
 
 	serviceReq := networkservice.ListVPCsRequest{
 		CredentialID: credential.ID.String(),
-		Region:        "", // VPC is Global, no region needed
+		Region:       "", // VPC is Global, no region needed
 	}
 
 	vpcs, err := h.networkService.ListVPCs(c.Request.Context(), credential, serviceReq)
@@ -342,9 +342,9 @@ func (h *GCPHandler) ListSecurityGroups(c *gin.Context) {
 	region := c.Query("region")
 
 	serviceReq := networkservice.ListSecurityGroupsRequest{
-		CredentialID:    credential.ID.String(),
-		VPCID:           vpcID,
-		Region:          region,
+		CredentialID: credential.ID.String(),
+		VPCID:        vpcID,
+		Region:       region,
 	}
 
 	securityGroups, err := h.networkService.ListSecurityGroups(c.Request.Context(), credential, serviceReq)
@@ -551,4 +551,3 @@ func (h *GCPHandler) UpdateSecurityGroupRules(c *gin.Context) {
 
 	h.OK(c, result, "GCP security group rules updated successfully")
 }
-

@@ -72,7 +72,7 @@ func NewOutboxWorker(outboxRepo domain.OutboxRepository, publisher *Publisher, l
 		publisher:  publisher,
 		logger:     logger,
 		config:     config,
-		stopCh:      make(chan struct{}),
+		stopCh:     make(chan struct{}),
 	}
 }
 
@@ -228,4 +228,3 @@ func (w *OutboxWorker) processEvent(ctx context.Context, event *domain.OutboxEve
 
 	return nil
 }
-

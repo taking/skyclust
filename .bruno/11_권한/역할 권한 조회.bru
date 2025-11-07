@@ -1,0 +1,67 @@
+meta {
+  name: 역할 권한 조회
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/admin/rbac/roles/{{role}}/permissions
+  body: none
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response contains permissions", function() {
+    expect(res.getBody()).to.have.property('data');
+    expect(res.getBody().data).to.have.property('permissions');
+    expect(res.getBody().data.permissions).to.be.an('array');
+  });
+}
+
+docs {
+  # 역할 권한 조회
+  
+  역할의 모든 권한을 조회합니다.
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "role": "admin",
+      "permissions": [
+        "user:create",
+        "user:read",
+        "user:update",
+        "user:delete",
+        "workspace:manage",
+        "system:manage"
+      ]
+    },
+    "message": "Role permissions retrieved successfully"
+  }
+  ```
+  
+  ## Path Parameters
+  
+  - `role`: 권한을 조회할 역할 (`admin`, `user`, `viewer`)
+  
+  ## Response 필드
+  
+  - `role`: 역할 이름
+  - `permissions`: 역할에 부여된 권한 배열
+}
+

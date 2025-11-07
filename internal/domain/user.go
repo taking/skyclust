@@ -8,15 +8,15 @@ import (
 
 // User: 시스템의 사용자를 나타내는 도메인 엔티티
 type User struct {
-	ID           uuid.UUID  `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
-	Username     string     `json:"username" gorm:"not null;size:50"` // 고유하지 않음 - 여러 사용자가 동일한 사용자명을 가질 수 있음
-	Email        string     `json:"email" gorm:"uniqueIndex;not null;size:100"`
-	PasswordHash string     `json:"-" gorm:"column:password_hash;not null;size:255"`
-	OIDCProvider string     `json:"oidc_provider,omitempty" gorm:"size:20"` // google, github, azure
-	OIDCSubject  string     `json:"oidc_subject,omitempty" gorm:"size:100"` // OIDC subject ID
-	Active       bool       `json:"is_active" gorm:"default:true"`
-	CreatedAt    time.Time  `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt    time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
+	ID           uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
+	Username     string    `json:"username" gorm:"not null;size:50"` // 고유하지 않음 - 여러 사용자가 동일한 사용자명을 가질 수 있음
+	Email        string    `json:"email" gorm:"uniqueIndex;not null;size:100"`
+	PasswordHash string    `json:"-" gorm:"column:password_hash;not null;size:255"`
+	OIDCProvider string    `json:"oidc_provider,omitempty" gorm:"size:20"` // google, github, azure
+	OIDCSubject  string    `json:"oidc_subject,omitempty" gorm:"size:100"` // OIDC subject ID
+	Active       bool      `json:"is_active" gorm:"default:true"`
+	CreatedAt    time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt    time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 
 	// 관계
 	// 참고: 자격증명은 이제 사용자 기반이 아닌 워크스페이스 기반입니다

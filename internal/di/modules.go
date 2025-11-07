@@ -194,7 +194,6 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 		config.Cache,
 		cache.NewCacheKeyBuilder(),
 		cache.NewInvalidatorWithEvents(config.Cache, vmEventPublisher),
-		vmEventPublisher,
 		logger.DefaultLogger.GetLogger(),
 	)
 

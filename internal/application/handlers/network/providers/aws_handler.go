@@ -37,7 +37,7 @@ func (h *AWSHandler) ListVPCs(c *gin.Context) {
 
 	serviceReq := networkservice.ListVPCsRequest{
 		CredentialID: credential.ID.String(),
-		Region:        region,
+		Region:       region,
 	}
 
 	vpcs, err := h.networkService.ListVPCs(c.Request.Context(), credential, serviceReq)
@@ -86,8 +86,8 @@ func (h *AWSHandler) ListSubnets(c *gin.Context) {
 
 	serviceReq := networkservice.ListSubnetsRequest{
 		CredentialID: credential.ID.String(),
-		VPCID:         vpcID,
-		Region:        region,
+		VPCID:        vpcID,
+		Region:       region,
 	}
 
 	subnets, err := h.networkService.ListSubnets(c.Request.Context(), credential, serviceReq)
@@ -135,9 +135,9 @@ func (h *AWSHandler) ListSecurityGroups(c *gin.Context) {
 	}
 
 	serviceReq := networkservice.ListSecurityGroupsRequest{
-		CredentialID:    credential.ID.String(),
-		VPCID:           vpcID,
-		Region:          region,
+		CredentialID: credential.ID.String(),
+		VPCID:        vpcID,
+		Region:       region,
 	}
 
 	securityGroups, err := h.networkService.ListSecurityGroups(c.Request.Context(), credential, serviceReq)
@@ -183,4 +183,3 @@ func (h *AWSHandler) RemoveSecurityGroupRule(c *gin.Context) {
 func (h *AWSHandler) UpdateSecurityGroupRules(c *gin.Context) {
 	h.NotImplemented(c, "update_security_group_rules")
 }
-

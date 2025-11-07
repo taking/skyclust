@@ -98,24 +98,24 @@ func (h *Handler) RemoveRole(c *gin.Context) {
 	h.OK(c, gin.H{"message": "Role removed successfully"}, "Role removed successfully")
 }
 
-// GrantPermission: 역할에 권한을 부여합니다
+// GrantPermission: 역할에 권한을 부여합니다 (RESTful: POST /roles/:role/permissions)
 func (h *Handler) GrantPermission(c *gin.Context) {
 	if !h.checkAdminPermission(c) {
 		return
 	}
 
-	var req struct {
-		Role       string `json:"role" binding:"required"`
-		Permission string `json:"permission" binding:"required"`
-	}
-
-	if err := h.ValidateRequest(c, &req); err != nil {
+	roleStr := c.Param("role")
+	roleType, err := h.parseRole(roleStr)
+	if err != nil {
 		h.HandleError(c, err, "grant_permission")
 		return
 	}
 
-	roleType, err := h.parseRole(req.Role)
-	if err != nil {
+	var req struct {
+		Permission string `json:"permission" binding:"required"`
+	}
+
+	if err := h.ValidateRequest(c, &req); err != nil {
 		h.HandleError(c, err, "grant_permission")
 		return
 	}
@@ -131,29 +131,21 @@ func (h *Handler) GrantPermission(c *gin.Context) {
 	h.OK(c, gin.H{"message": "Permission granted successfully"}, "Permission granted successfully")
 }
 
-// RevokePermission: 역할로부터 권한을 회수합니다
+// RevokePermission: 역할로부터 권한을 회수합니다 (RESTful: DELETE /roles/:role/permissions/:permission)
 func (h *Handler) RevokePermission(c *gin.Context) {
 	if !h.checkAdminPermission(c) {
 		return
 	}
 
-	var req struct {
-		Role       string `json:"role" binding:"required"`
-		Permission string `json:"permission" binding:"required"`
-	}
-
-	if err := h.ValidateRequest(c, &req); err != nil {
-		h.HandleError(c, err, "revoke_permission")
-		return
-	}
-
-	roleType, err := h.parseRole(req.Role)
+	roleStr := c.Param("role")
+	roleType, err := h.parseRole(roleStr)
 	if err != nil {
 		h.HandleError(c, err, "revoke_permission")
 		return
 	}
 
-	permission := domain.Permission(req.Permission)
+	permissionStr := c.Param("permission")
+	permission := domain.Permission(permissionStr)
 
 	err = h.rbacService.RevokePermission(roleType, permission)
 	if err != nil {
@@ -274,7 +266,7 @@ func (h *Handler) GetUserRoles(c *gin.Context) {
 
 	h.OK(c, gin.H{
 		"user_id": userIDStr,
-		"roles":    roleStrings,
+		"roles":   roleStrings,
 	}, "User roles retrieved successfully")
 }
 
@@ -327,4 +319,3 @@ func (h *Handler) checkAdminPermission(c *gin.Context) bool {
 
 	return true
 }
-

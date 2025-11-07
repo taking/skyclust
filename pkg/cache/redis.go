@@ -271,7 +271,7 @@ func (r *RedisService) GetMemoryUsage(ctx context.Context) (int64, error) {
 		lines := strings.Split(info, "\n")
 		for _, line := range lines {
 			if strings.HasPrefix(line, "used_memory:") {
-				fmt.Sscanf(line, "used_memory:%d", &usedMemory)
+				_, _ = fmt.Sscanf(line, "used_memory:%d", &usedMemory)
 				break
 			}
 		}

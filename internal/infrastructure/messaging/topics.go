@@ -88,12 +88,12 @@ func BuildVMTopic(provider, credentialID, region, action string) string {
 
 // Legacy topic patterns (for backward compatibility with existing SSE handler)
 const (
-	TopicVMStatusUpdate       = "vm.status.update"
-	TopicVMResourceUpdate     = "vm.resource.update"
-	TopicProviderStatusUpdate = "provider.status.update"
+	TopicVMStatusUpdate         = "vm.status.update"
+	TopicVMResourceUpdate       = "vm.resource.update"
+	TopicProviderStatusUpdate   = "provider.status.update"
 	TopicProviderInstanceUpdate = "provider.instance.update"
-	TopicSystemNotification  = "system.notification"
-	TopicSystemAlert          = "system.alert"
+	TopicSystemNotification     = "system.notification"
+	TopicSystemAlert            = "system.alert"
 )
 
 // Workspace topic builders
@@ -116,13 +116,12 @@ func BuildCredentialTopic(workspaceID, provider, action string) string {
 
 // Topic patterns for wildcard subscriptions
 const (
-	PatternKubernetesAll = "kubernetes.*"
-	PatternKubernetesProvider = "kubernetes.%s.*"
+	PatternKubernetesAll        = "kubernetes.*"
+	PatternKubernetesProvider   = "kubernetes.%s.*"
 	PatternKubernetesCredential = "kubernetes.%s.%s.*"
-	PatternNetworkAll = "network.*"
-	PatternNetworkProvider = "network.%s.*"
-	PatternVMAll = "vm.*"
-	PatternWorkspaceAll = "workspace.*"
-	PatternCredentialAll = "credential.*"
+	PatternNetworkAll           = "network.*"
+	PatternNetworkProvider      = "network.%s.*"
+	PatternVMAll                = "vm.*"
+	PatternWorkspaceAll         = "workspace.*"
+	PatternCredentialAll        = "credential.*"
 )
-

@@ -10,6 +10,7 @@ type RBACService interface {
 	AssignRole(userID uuid.UUID, role Role) error
 	RemoveRole(userID uuid.UUID, role Role) error
 	GetUserRoles(userID uuid.UUID) ([]Role, error)
+	GetUsersRoles(userIDs []uuid.UUID) (map[uuid.UUID][]Role, error) // Batch fetch user roles
 	HasRole(userID uuid.UUID, role Role) (bool, error)
 
 	// Permission management
@@ -30,4 +31,3 @@ type RBACService interface {
 	// Statistics
 	GetRoleDistribution() (map[Role]int, error)
 }
-

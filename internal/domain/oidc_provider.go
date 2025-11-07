@@ -8,16 +8,16 @@ import (
 
 // OIDCProvider: 사용자가 등록한 OIDC 제공자 구성을 나타내는 도메인 엔티티
 type OIDCProvider struct {
-	ID           uuid.UUID  `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
-	UserID       uuid.UUID  `json:"user_id" gorm:"type:uuid;not null;index"`
-	Name         string     `json:"name" gorm:"not null;size:100"`         // Display name for the provider
-	ProviderType string     `json:"provider_type" gorm:"not null;size:50"` // google, github, azure, microsoft, custom
-	ClientID     string     `json:"client_id" gorm:"not null;size:255"`    // Encrypted
-	ClientSecret string     `json:"-" gorm:"not null;size:255"`            // Encrypted, not returned in JSON
-	RedirectURL  string     `json:"redirect_url" gorm:"not null;size:500"`
-	AuthURL      string     `json:"auth_url" gorm:"size:500"`      // Custom OAuth2 authorization URL
-	TokenURL     string     `json:"token_url" gorm:"size:500"`     // Custom OAuth2 token URL
-	UserInfoURL  string     `json:"user_info_url" gorm:"size:500"` // Custom user info endpoint
+	ID           uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
+	UserID       uuid.UUID `json:"user_id" gorm:"type:uuid;not null;index"`
+	Name         string    `json:"name" gorm:"not null;size:100"`         // Display name for the provider
+	ProviderType string    `json:"provider_type" gorm:"not null;size:50"` // google, github, azure, microsoft, custom
+	ClientID     string    `json:"client_id" gorm:"not null;size:255"`    // Encrypted
+	ClientSecret string    `json:"-" gorm:"not null;size:255"`            // Encrypted, not returned in JSON
+	RedirectURL  string    `json:"redirect_url" gorm:"not null;size:500"`
+	AuthURL      string    `json:"auth_url" gorm:"size:500"`      // Custom OAuth2 authorization URL
+	TokenURL     string    `json:"token_url" gorm:"size:500"`     // Custom OAuth2 token URL
+	UserInfoURL  string    `json:"user_info_url" gorm:"size:500"` // Custom user info endpoint
 	Scopes       string    `json:"scopes" gorm:"size:500"`        // Comma-separated scopes
 	Enabled      bool      `json:"enabled" gorm:"default:true"`
 	CreatedAt    time.Time `json:"created_at" gorm:"autoCreateTime"`

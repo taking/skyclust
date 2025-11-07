@@ -3,8 +3,8 @@ package export
 import (
 	"context"
 	"fmt"
-	"skyclust/internal/domain"
 	exportservice "skyclust/internal/application/services/export"
+	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
 	"skyclust/internal/shared/readability"
 	"sync"
@@ -161,9 +161,9 @@ func (h *Handler) exportDataHandler(req gin.H) handlers.HandlerFunc {
 			serviceReq := map[string]interface{}{
 				"user_id":      userID.String(),
 				"workspace_id": exportReq.WorkspaceID,
-				"type":          exportReq.Type,
-				"format":        exportReq.Format,
-				"filters":       exportReq.Filters,
+				"type":         exportReq.Type,
+				"format":       exportReq.Format,
+				"filters":      exportReq.Filters,
 			}
 
 			if exportReq.DateFrom != nil {

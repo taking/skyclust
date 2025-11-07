@@ -8,4 +8,3 @@ const (
 	ProviderAzure = "azure" // Microsoft Azure
 	ProviderNCP   = "ncp"   // Naver Cloud Platform
 )
-

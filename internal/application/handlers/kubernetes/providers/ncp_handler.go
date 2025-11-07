@@ -151,4 +151,3 @@ func (h *NCPHandler) GetAWSRegions(c *gin.Context) {
 func (h *NCPHandler) GetAvailabilityZones(c *gin.Context) {
 	h.NotImplemented(c, "get_availability_zones")
 }
-

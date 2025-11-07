@@ -191,4 +191,3 @@ func (r *outboxRepository) DeleteOldEvents(ctx context.Context, olderThanDays in
 
 	return nil
 }
-

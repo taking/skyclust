@@ -1,10 +1,10 @@
 package cost_analysis
 
 import (
-	"strconv"
-	"skyclust/internal/domain"
 	costanalysisservice "skyclust/internal/application/services/cost_analysis"
+	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -226,8 +226,8 @@ func (h *Handler) getCostTrendHandler() handlers.HandlerFunc {
 
 		// Convert to response format
 		response := gin.H{
-			"workspace_id":     workspaceID,
-			"trend":            trend.DailyCosts,
+			"workspace_id":      workspaceID,
+			"trend":             trend.DailyCosts,
 			"trend_direction":   trend.TrendDirection,
 			"change_percentage": trend.ChangePercentage,
 			"total_cost":        summary.TotalCost,

@@ -61,6 +61,34 @@ func (r *rbacRepository) GetUserRolesByUserID(userID uuid.UUID) ([]domain.UserRo
 	return userRoles, nil
 }
 
+// GetUserRolesByUserIDs: 여러 사용자 ID로 사용자 역할 목록을 배치 조회합니다 (N+1 쿼리 방지)
+func (r *rbacRepository) GetUserRolesByUserIDs(userIDs []uuid.UUID) (map[uuid.UUID][]domain.UserRole, error) {
+	if len(userIDs) == 0 {
+		return make(map[uuid.UUID][]domain.UserRole), nil
+	}
+
+	var userRoles []domain.UserRole
+	if err := r.db.Where("user_id IN ?", userIDs).Find(&userRoles).Error; err != nil {
+		logger.Errorf("Failed to get user roles by user IDs: %v", err)
+		return nil, err
+	}
+
+	// Group by user ID
+	result := make(map[uuid.UUID][]domain.UserRole)
+	for _, userRole := range userRoles {
+		result[userRole.UserID] = append(result[userRole.UserID], userRole)
+	}
+
+	// Ensure all user IDs are in the map (even if they have no roles)
+	for _, userID := range userIDs {
+		if _, exists := result[userID]; !exists {
+			result[userID] = []domain.UserRole{}
+		}
+	}
+
+	return result, nil
+}
+
 // CountUserRoles: 조건에 맞는 사용자 역할 수를 반환합니다
 func (r *rbacRepository) CountUserRoles(userID uuid.UUID, role domain.Role) (int64, error) {
 	var count int64
@@ -148,4 +176,3 @@ func (r *rbacRepository) CountRolePermissions(role domain.Role, permission domai
 	}
 	return count, nil
 }
-

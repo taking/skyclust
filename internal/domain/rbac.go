@@ -49,8 +49,8 @@ const (
 
 // UserRole: 사용자와 역할 간의 관계를 나타내는 엔티티
 type UserRole struct {
-	ID        uuid.UUID  `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
-	UserID    uuid.UUID  `json:"user_id" gorm:"type:uuid;not null;index"`
+	ID        uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
+	UserID    uuid.UUID `json:"user_id" gorm:"type:uuid;not null;index"`
 	Role      Role      `json:"role" gorm:"not null;size:20;index"`
 	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updated_at" gorm:"autoUpdateTime"`
@@ -103,4 +103,3 @@ var RoleHierarchy = map[Role][]Role{
 	UserRoleType:   {ViewerRoleType},
 	ViewerRoleType: {},
 }
-

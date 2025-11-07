@@ -16,4 +16,3 @@ type VMRepository interface {
 	List(ctx context.Context, workspaceID string, limit, offset int) ([]*VM, error)
 	UpdateStatus(ctx context.Context, id string, status VMStatus) error
 }
-

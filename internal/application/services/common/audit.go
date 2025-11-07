@@ -2,11 +2,11 @@ package common
 
 import (
 	"context"
-	"fmt"
 	"skyclust/internal/domain"
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 	"skyclust/pkg/logger"
 )
 
@@ -44,7 +44,7 @@ func LogActionWithContext(
 			userID = id
 		} else {
 			// userID를 찾을 수 없으면 로그만 남기고 감사로그는 기록하지 않음
-			logger.Warn("Cannot log audit action: userID not found in context or parameters")
+			logger.DefaultLogger.GetLogger().Warn("Cannot log audit action: userID not found in context or parameters")
 			return
 		}
 	}
@@ -76,11 +76,18 @@ func LogActionWithContext(
 	}
 
 	if err := auditLogRepo.Create(auditLog); err != nil {
-		logger.Error(fmt.Sprintf("Failed to create audit log: %v - action: %s, resource: %s, userID: %s", err, action, resource, userID.String()))
+		logger.DefaultLogger.GetLogger().Error("Failed to create audit log",
+			zap.Error(err),
+			zap.String("action", action),
+			zap.String("resource", resource),
+			zap.String("user_id", userID.String()))
 		return
 	}
 
-	logger.Debug(fmt.Sprintf("Audit log created successfully: action=%s, resource=%s, userID=%s", action, resource, userID.String()))
+	logger.DefaultLogger.GetLogger().Debug("Audit log created successfully",
+		zap.String("action", action),
+		zap.String("resource", resource),
+		zap.String("user_id", userID.String()))
 }
 
 // getUserIDFromContext attempts to extract userID from context

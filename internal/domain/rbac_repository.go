@@ -11,6 +11,7 @@ type RBACRepository interface {
 	CreateUserRole(userRole *UserRole) error
 	DeleteUserRole(userID uuid.UUID, role Role) (int64, error) // Returns rows affected
 	GetUserRolesByUserID(userID uuid.UUID) ([]UserRole, error)
+	GetUserRolesByUserIDs(userIDs []uuid.UUID) (map[uuid.UUID][]UserRole, error) // Batch fetch user roles
 	CountUserRoles(userID uuid.UUID, role Role) (int64, error)
 	GetRoleDistribution() (map[Role]int, error)
 
@@ -21,4 +22,3 @@ type RBACRepository interface {
 	GetRolePermissionsByRole(role Role) ([]RolePermission, error)
 	CountRolePermissions(role Role, permission Permission) (int64, error)
 }
-

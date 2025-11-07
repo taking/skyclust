@@ -214,4 +214,3 @@ func (r *oidcProviderRepository) decryptClientSecret(encryptedSecret string) (st
 
 	return string(decryptedBytes), nil
 }
-

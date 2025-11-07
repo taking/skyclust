@@ -331,8 +331,8 @@ func (w *SyncWorker) detectChanges(ctx context.Context, credential *domain.Crede
 					zap.String("new_state", currentVPC.State))
 
 				vpcData := map[string]interface{}{
-					"vpc_id":   currentVPC.ID,
-					"name":     currentVPC.Name,
+					"vpc_id":    currentVPC.ID,
+					"name":      currentVPC.Name,
 					"old_state": cachedVPC.State,
 					"new_state": currentVPC.State,
 					"region":    currentVPC.Region,
@@ -363,4 +363,3 @@ func (w *SyncWorker) getRegionsForProvider(provider string) []string {
 		return []string{}
 	}
 }
-

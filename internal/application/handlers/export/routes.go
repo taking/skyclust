@@ -22,6 +22,6 @@ func SetupRoutesWithHandler(router *gin.RouterGroup, handler *Handler) {
 	router.GET("/history", handler.GetExportHistory)
 
 	// Export status and file download (RESTful)
-	router.GET("/:id", handler.GetExportStatus)        // GET /exports/:id (status)
-	router.GET("/:id/file", handler.GetExportFile)      // GET /exports/:id/file (download file)
+	router.GET("/:id", handler.GetExportStatus)    // GET /exports/:id (status)
+	router.GET("/:id/file", handler.GetExportFile) // GET /exports/:id/file (download file)
 }

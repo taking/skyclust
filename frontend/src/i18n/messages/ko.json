@@ -143,6 +143,7 @@
     "selectWorkspaceMessage": "자격 증명을 관리하려면 작업 공간을 선택해주세요.",
     "selectWorkspace": "작업 공간 선택",
     "loadingCredentials": "자격 증명 로딩 중...",
+    "deleteCredential": "자격 증명 삭제",
     "confirmDelete": "이 자격 증명을 삭제하시겠습니까?",
     "addCredentialsDescription": "VM 관리를 시작하려면 클라우드 제공업체 자격 증명을 추가하세요",
     "selectGCPFile": "GCP 서비스 계정 JSON 파일을 선택해주세요",

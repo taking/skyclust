@@ -848,4 +848,3 @@ func (h *AWSHandler) logAvailabilityZonesGetSuccess(c *gin.Context, userID uuid.
 		"count":     count,
 	})
 }
-

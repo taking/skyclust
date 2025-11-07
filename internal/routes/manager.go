@@ -25,7 +25,6 @@ import (
 	kubernetesservice "skyclust/internal/application/services/kubernetes"
 	networkservice "skyclust/internal/application/services/network"
 	"skyclust/internal/di"
-	"skyclust/internal/domain"
 	"skyclust/pkg/config"
 	"skyclust/pkg/middleware"
 )
@@ -432,10 +431,8 @@ func (rm *RouteManager) setupSystemRoutes(router *gin.RouterGroup) {
 	if systemMonitoringService := rm.container.GetSystemMonitoringService(); systemMonitoringService != nil {
 		// UserService가 있으면 초기화 상태 확인 엔드포인트 포함
 		if userService := rm.container.GetUserService(); userService != nil {
-			if svc, ok := userService.(domain.UserService); ok {
-				system.SetupRoutesWithUserService(router, systemMonitoringService, svc)
-				return
-			}
+			system.SetupRoutesWithUserService(router, systemMonitoringService, userService)
+			return
 		}
 		// UserService가 없으면 기본 라우트만 설정
 		system.SetupRoutes(router, systemMonitoringService)

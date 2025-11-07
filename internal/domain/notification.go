@@ -101,4 +101,3 @@ type UpdateNotificationPreferencesRequest struct {
 	QuietHoursEnd         string `json:"quiet_hours_end"`
 	Timezone              string `json:"timezone"`
 }
-

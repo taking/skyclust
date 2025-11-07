@@ -75,4 +75,3 @@ type CacheService interface {
 	GetStats(ctx context.Context) (map[string]interface{}, error)
 	Health(ctx context.Context) error
 }
-

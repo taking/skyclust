@@ -6,17 +6,22 @@ import (
 	"skyclust/pkg/logger"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // rbacService: domain.RBACService 인터페이스 구현체
 type rbacService struct {
 	rbacRepo domain.RBACRepository
+	logger   *zap.Logger
 }
 
 // NewService: 새로운 RBAC 서비스를 생성합니다
 func NewService(rbacRepo domain.RBACRepository) domain.RBACService {
 	// Initialize default role permissions
-	service := &rbacService{rbacRepo: rbacRepo}
+	service := &rbacService{
+		rbacRepo: rbacRepo,
+		logger:   logger.DefaultLogger.GetLogger(),
+	}
 	service.initializeDefaultPermissions()
 	return service
 }
@@ -28,7 +33,10 @@ func (r *rbacService) initializeDefaultPermissions() {
 			// Check if permission already exists
 			existing, err := r.rbacRepo.GetRolePermission(role, permission)
 			if err != nil {
-				logger.Warnf("Failed to check role permission %s for role %s: %v", permission, role, err)
+				r.logger.Warn("Failed to check role permission",
+					zap.String("permission", string(permission)),
+					zap.String("role", string(role)),
+					zap.Error(err))
 				continue
 			}
 			if existing == nil {
@@ -38,7 +46,10 @@ func (r *rbacService) initializeDefaultPermissions() {
 					Permission: permission,
 				}
 				if err := r.rbacRepo.CreateRolePermission(rolePermission); err != nil {
-					logger.Errorf("Failed to create role permission %s for role %s: %v", permission, role, err)
+					r.logger.Error("Failed to create role permission",
+						zap.String("permission", string(permission)),
+						zap.String("role", string(role)),
+						zap.Error(err))
 				}
 			}
 		}
@@ -65,7 +76,9 @@ func (r *rbacService) AssignRole(userID uuid.UUID, role domain.Role) error {
 		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to assign role: %v", err), 500)
 	}
 
-	logger.Infof("Assigned role %s to user %s", role, userID)
+	r.logger.Info("Assigned role to user",
+		zap.String("role", string(role)),
+		zap.String("user_id", userID.String()))
 	return nil
 }
 
@@ -80,7 +93,9 @@ func (r *rbacService) RemoveRole(userID uuid.UUID, role domain.Role) error {
 		return domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("user does not have role %s", role), 404)
 	}
 
-	logger.Infof("Removed role %s from user %s", role, userID)
+	r.logger.Info("Removed role from user",
+		zap.String("role", string(role)),
+		zap.String("user_id", userID.String()))
 	return nil
 }
 
@@ -97,6 +112,30 @@ func (r *rbacService) GetUserRoles(userID uuid.UUID) ([]domain.Role, error) {
 	}
 
 	return roles, nil
+}
+
+// GetUsersRoles: 여러 사용자에게 할당된 모든 역할을 배치로 반환합니다 (N+1 쿼리 방지)
+func (r *rbacService) GetUsersRoles(userIDs []uuid.UUID) (map[uuid.UUID][]domain.Role, error) {
+	if len(userIDs) == 0 {
+		return make(map[uuid.UUID][]domain.Role), nil
+	}
+
+	userRolesMap, err := r.rbacRepo.GetUserRolesByUserIDs(userIDs)
+	if err != nil {
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to get user roles: %v", err), 500)
+	}
+
+	// Convert UserRole to Role
+	result := make(map[uuid.UUID][]domain.Role, len(userRolesMap))
+	for userID, userRoles := range userRolesMap {
+		roles := make([]domain.Role, len(userRoles))
+		for i, userRole := range userRoles {
+			roles[i] = userRole.Role
+		}
+		result[userID] = roles
+	}
+
+	return result, nil
 }
 
 // HasRole: 사용자가 특정 역할을 가지고 있는지 확인합니다
@@ -129,7 +168,9 @@ func (r *rbacService) GrantPermission(role domain.Role, permission domain.Permis
 		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to grant permission: %v", err), 500)
 	}
 
-	logger.Infof("Granted permission %s to role %s", permission, role)
+	r.logger.Info("Granted permission to role",
+		zap.String("permission", string(permission)),
+		zap.String("role", string(role)))
 	return nil
 }
 
@@ -144,7 +185,9 @@ func (r *rbacService) RevokePermission(role domain.Role, permission domain.Permi
 		return domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("role %s does not have permission %s", role, permission), 404)
 	}
 
-	logger.Infof("Revoked permission %s from role %s", permission, role)
+	r.logger.Info("Revoked permission from role",
+		zap.String("permission", string(permission)),
+		zap.String("role", string(role)))
 	return nil
 }
 

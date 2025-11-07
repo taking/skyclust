@@ -616,15 +616,6 @@ func (s *Service) listAWSEKSClusters(ctx context.Context, credential *domain.Cre
 	}, nil
 }
 
-// getMapKeys: 맵의 키 목록을 반환합니다
-func getMapKeys(m map[string]interface{}) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	return keys
-}
-
 // GetEKSCluster: 이름으로 EKS 클러스터 상세 정보를 조회합니다
 func (s *Service) GetEKSCluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (*ClusterInfo, error) {
 	// 캐시 키 생성

@@ -434,7 +434,7 @@ func (h *Handler) CleanupAuditLogs(c *gin.Context) {
 
 	// Log business event
 	h.LogBusinessEvent(c, "audit_logs_cleanup_requested", "", "", map[string]interface{}{
-		"operation":     "cleanup_audit_logs",
+		"operation":      "cleanup_audit_logs",
 		"retention_days": retentionDays,
 	})
 

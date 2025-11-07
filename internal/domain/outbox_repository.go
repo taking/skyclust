@@ -39,4 +39,3 @@ type OutboxRepository interface {
 	// 지정된 기간보다 오래된 이벤트를 삭제
 	DeleteOldEvents(ctx context.Context, olderThanDays int) error
 }
-

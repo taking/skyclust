@@ -5,6 +5,7 @@ import (
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/logging"
 	"skyclust/internal/shared/responses"
+	"skyclust/internal/shared/validation"
 	"skyclust/pkg/auth"
 	"skyclust/pkg/logger"
 	"skyclust/pkg/telemetry"
@@ -16,6 +17,14 @@ import (
 	"go.uber.org/zap"
 )
 
+// contextKey는 context.WithValue에서 사용할 커스텀 키 타입입니다
+type contextKey string
+
+const (
+	contextKeyClientIP  contextKey = "client_ip"
+	contextKeyUserAgent contextKey = "user_agent"
+)
+
 // BaseHandler provides common functionality for all API handlers
 type BaseHandler struct {
 	logger             *zap.Logger
@@ -23,18 +32,21 @@ type BaseHandler struct {
 	performanceTracker *PerformanceTracker
 	requestLogger      *logging.RequestLogger
 	auditLogger        *AuditLogger
-	validationRules    *ValidationRules
+	validationRules    *validation.ValidationRules
+	errorBuilder       *responses.ErrorBuilder
 }
 
 // NewBaseHandler creates a new base handler with common dependencies
 func NewBaseHandler(handlerName string) *BaseHandler {
+	loggerInstance := logger.DefaultLogger.GetLogger()
 	return &BaseHandler{
-		logger:             logger.DefaultLogger.GetLogger(),
+		logger:             loggerInstance,
 		tokenExtractor:     auth.NewTokenExtractor(),
 		performanceTracker: NewPerformanceTracker(handlerName),
 		requestLogger:      logging.NewRequestLogger(nil),
 		auditLogger:        NewAuditLogger(nil),
-		validationRules:    NewValidationRules(),
+		validationRules:    validation.NewValidationRules(),
+		errorBuilder:       responses.NewErrorBuilder(loggerInstance),
 	}
 }
 
@@ -260,21 +272,8 @@ func (h *BaseHandler) HandleError(c *gin.Context, err error, operation string) {
 	h.LogError(c, err, "Handler error occurred",
 		zap.String("operation", operation))
 
-	// Handle domain errors (primary mechanism)
-	if domain.IsDomainError(err) {
-		domainErr := domain.GetDomainError(err)
-		responses.DomainError(c, domainErr)
-		return
-	}
-
-	// Fallback for non-domain errors (should be rare, mostly for external library errors)
-	// These will be logged but not exposed to client with full details
-	h.logger.Error("Unexpected non-domain error",
-		zap.Error(err),
-		zap.String("operation", operation),
-		zap.String("path", c.Request.URL.Path),
-		zap.String("method", c.Request.Method))
-	responses.InternalServerError(c, "An unexpected error occurred")
+	// Use ErrorBuilder for consistent error handling
+	h.errorBuilder.Handle(c, err)
 }
 
 // LogBusinessEvent logs a business event
@@ -518,8 +517,8 @@ func (h *BaseHandler) EnrichContextWithRequestMetadata(c *gin.Context) context.C
 	ctx := c.Request.Context()
 	clientIP := c.ClientIP()
 	userAgent := c.GetHeader("User-Agent")
-	ctx = context.WithValue(ctx, "client_ip", clientIP)
-	ctx = context.WithValue(ctx, "user_agent", userAgent)
+	ctx = context.WithValue(ctx, contextKeyClientIP, clientIP)
+	ctx = context.WithValue(ctx, contextKeyUserAgent, userAgent)
 	return ctx
 }
 
@@ -598,55 +597,73 @@ func (h *BaseHandler) AddSpanAttribute(c *gin.Context, key, value string) {
 
 // Success sends a success response
 func (h *BaseHandler) Success(c *gin.Context, statusCode int, data interface{}, message string) {
-	responses.Success(c, statusCode, data, message)
+	responses.NewResponseBuilder(c).
+		WithData(data).
+		WithMessage(message).
+		Send(statusCode)
 }
 
 // OK sends a 200 OK response
 func (h *BaseHandler) OK(c *gin.Context, data interface{}, message string) {
-	responses.OK(c, data, message)
+	responses.NewResponseBuilder(c).
+		WithData(data).
+		WithMessage(message).
+		SendOK()
 }
 
 // Created sends a 201 Created response
 func (h *BaseHandler) Created(c *gin.Context, data interface{}, message string) {
-	responses.Created(c, data, message)
+	responses.NewResponseBuilder(c).
+		WithData(data).
+		WithMessage(message).
+		SendCreated()
 }
 
 // BadRequest sends a 400 Bad Request response
 func (h *BaseHandler) BadRequest(c *gin.Context, message string) {
-	responses.BadRequest(c, message)
+	h.errorBuilder.BadRequest(c, message)
 }
 
 // Unauthorized sends a 401 Unauthorized response
 func (h *BaseHandler) Unauthorized(c *gin.Context, message string) {
-	responses.Unauthorized(c, message)
+	h.errorBuilder.Unauthorized(c, message)
 }
 
 // Forbidden sends a 403 Forbidden response
 func (h *BaseHandler) Forbidden(c *gin.Context, message string) {
-	responses.Forbidden(c, message)
+	h.errorBuilder.Forbidden(c, message)
 }
 
 // NotFound sends a 404 Not Found response
 func (h *BaseHandler) NotFound(c *gin.Context, message string) {
-	responses.NotFound(c, message)
+	h.errorBuilder.NotFound(c, message)
 }
 
 // Conflict sends a 409 Conflict response
 func (h *BaseHandler) Conflict(c *gin.Context, message string) {
-	responses.Conflict(c, message)
+	h.errorBuilder.Conflict(c, message)
 }
 
 // InternalServerError sends a 500 Internal Server Error response
 func (h *BaseHandler) InternalServerError(c *gin.Context, message string) {
-	responses.InternalServerError(c, message)
+	h.errorBuilder.InternalServerError(c, message)
 }
 
 // DomainError sends a domain error response
 func (h *BaseHandler) DomainError(c *gin.Context, err *domain.DomainError) {
-	responses.DomainError(c, err)
+	h.errorBuilder.DomainError(c, err)
 }
 
 // ValidationError sends a validation error response
 func (h *BaseHandler) ValidationError(c *gin.Context, errors map[string]string) {
-	responses.ValidationError(c, errors)
+	h.errorBuilder.ValidationError(c, errors)
+}
+
+// OKWithPagination sends a 200 OK response with pagination metadata
+func (h *BaseHandler) OKWithPagination(c *gin.Context, data interface{}, message string, page, limit int, total int64) {
+	responses.NewResponseBuilder(c).
+		WithData(data).
+		WithMessage(message).
+		WithPagination(page, limit, total).
+		SendOK()
 }

@@ -29,7 +29,7 @@ type VM struct {
 	Region      string                 `json:"region" gorm:"size:50;not null"`
 	ImageID     string                 `json:"image_id" gorm:"size:255"`
 	CPUs        int                    `json:"cpus" gorm:"not null"`
-	Memory      int                    `json:"memory" gorm:"not null"`   // in MB
+	Memory      int                    `json:"memory" gorm:"not null"`  // in MB
 	Storage     int                    `json:"storage" gorm:"not null"` // in GB
 	CreatedAt   time.Time              `json:"created_at" gorm:"autoCreateTime;index"`
 	UpdatedAt   time.Time              `json:"updated_at" gorm:"autoUpdateTime"`

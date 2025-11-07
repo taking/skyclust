@@ -90,12 +90,12 @@ func (r *userRepository) Update(user *domain.User) error {
 
 // Delete: 사용자를 영구 삭제합니다
 func (r *userRepository) Delete(id uuid.UUID) error {
-		if err := r.db.Unscoped().Where("id = ?", id).Delete(&domain.User{}).Error; err != nil {
-			logger.Errorf("Failed to delete user: %v", err)
-			return err
-		}
-		return nil
+	if err := r.db.Unscoped().Where("id = ?", id).Delete(&domain.User{}).Error; err != nil {
+		logger.Errorf("Failed to delete user: %v", err)
+		return err
 	}
+	return nil
+}
 
 // List: 페이지네이션과 필터링을 포함한 사용자 목록을 조회합니다
 func (r *userRepository) List(limit, offset int, filters map[string]interface{}) ([]*domain.User, int64, error) {

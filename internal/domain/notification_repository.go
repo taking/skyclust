@@ -26,4 +26,3 @@ type NotificationPreferencesRepository interface {
 	Update(ctx context.Context, preferences *NotificationPreferences) error
 	Upsert(ctx context.Context, preferences *NotificationPreferences) error
 }
-

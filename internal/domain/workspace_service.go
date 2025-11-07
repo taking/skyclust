@@ -18,4 +18,3 @@ type WorkspaceService interface {
 	GetWorkspaceMembersWithRoles(ctx context.Context, workspaceID string) ([]*WorkspaceUser, error)
 	UpdateMemberRole(ctx context.Context, workspaceID, userID, role string) error
 }
-

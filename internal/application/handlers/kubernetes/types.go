@@ -20,7 +20,7 @@ type CreateClusterResponse struct {
 	Region    string            `json:"region"`
 	Status    string            `json:"status"`
 	Endpoint  string            `json:"endpoint,omitempty"`
-	Tags      map[string]string  `json:"tags,omitempty"`
+	Tags      map[string]string `json:"tags,omitempty"`
 	CreatedAt string            `json:"created_at"`
 }
 

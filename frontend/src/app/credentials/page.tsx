@@ -99,17 +99,18 @@ export default function CredentialsPage() {
       return;
     }
     
-    // Transform credentials object to data field (remove _file if present)
+    // Transform credentials object (remove _file if present)
     const credentials = { ...data.credentials };
     delete (credentials as any)._file; // eslint-disable-line @typescript-eslint/no-explicit-any
     
-    const requestData = {
-      workspace_id: currentWorkspace.id,
-      name: data.name || `${data.provider.toUpperCase()} Credential`,
+    // Create request data in CreateCredentialForm format
+    const requestData: CreateCredentialForm & { workspace_id?: string; name?: string } = {
       provider: data.provider,
-      data: credentials || {},
+      credentials: credentials || {},
+      name: data.name || `${data.provider.toUpperCase()} Credential`,
+      workspace_id: currentWorkspace.id,
     };
-    createCredentialMutation.mutate(requestData as any); // eslint-disable-line @typescript-eslint/no-explicit-any
+    createCredentialMutation.mutate(requestData);
   };
 
   const handleEditCredential = (credential: Credential) => {

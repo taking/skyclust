@@ -639,5 +639,3 @@ type GCPSecurityGroupRuleResponse struct {
 	Message string                `json:"message"`
 	Data    *GCPSecurityGroupInfo `json:"data,omitempty"`
 }
-
-

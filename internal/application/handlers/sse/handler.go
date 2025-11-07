@@ -26,12 +26,12 @@ var (
 // SSEHandler: Server-Sent Events 핸들러
 type SSEHandler struct {
 	*handlers.BaseHandler
-	logger       *zap.Logger
-	natsConn     *nats.Conn
-	realtimeSvc  realtime.Service
-	clients      map[string]*SSEClient
-	clientsMux   sync.RWMutex
-	batchBuffer  *BatchBuffer
+	logger      *zap.Logger
+	natsConn    *nats.Conn
+	realtimeSvc realtime.Service
+	clients     map[string]*SSEClient
+	clientsMux  sync.RWMutex
+	batchBuffer *BatchBuffer
 }
 
 // SSEClient: SSE 클라이언트를 나타내는 구조체

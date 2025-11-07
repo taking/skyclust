@@ -43,13 +43,14 @@ func NewService(
 // CreateCredential: 새로운 자격증명을 생성합니다 (워크스페이스 기반)
 func (s *Service) CreateCredential(ctx context.Context, workspaceID, createdBy uuid.UUID, req domain.CreateCredentialRequest) (*domain.Credential, error) {
 	// Validate provider
-	if !s.isValidProvider(req.Provider) {
+	validator := common.NewCredentialValidator()
+	if !validator.ValidateProvider(req.Provider) {
 		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "unsupported provider", 400)
 	}
 
 	// Validate credential data based on provider
-	if err := s.validateCredentialData(req.Provider, req.Data); err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "invalid credential data: "+err.Error(), 400)
+	if err := validator.ValidateCredentialData(req.Provider, req.Data); err != nil {
+		return nil, err
 	}
 
 	// Additional validation for GCP credentials
@@ -175,8 +176,9 @@ func (s *Service) UpdateCredential(ctx context.Context, workspaceID, credentialI
 
 	if req.Data != nil {
 		// Validate credential data
-		if err := s.validateCredentialData(credential.Provider, req.Data); err != nil {
-			return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "invalid credential data: "+err.Error(), 400)
+		validator := common.NewCredentialValidator()
+		if err := validator.ValidateCredentialData(credential.Provider, req.Data); err != nil {
+			return nil, err
 		}
 
 		// Encrypt new data
@@ -307,77 +309,7 @@ func min(a, b int) int {
 	return b
 }
 
-// isValidProvider: 프로바이더가 지원되는지 확인합니다
-func (s *Service) isValidProvider(provider string) bool {
-	validProviders := []string{"aws", "gcp", "openstack", "azure"}
-	for _, valid := range validProviders {
-		if provider == valid {
-			return true
-		}
-	}
-	return false
-}
-
-// validateCredentialData: 프로바이더에 따라 자격증명 데이터를 검증합니다
-func (s *Service) validateCredentialData(provider string, data map[string]interface{}) error {
-	switch provider {
-	case "aws":
-		return s.validateAWSCredentials(data)
-	case "gcp":
-		return s.validateGCPCredentials(data)
-	case "openstack":
-		return s.validateOpenStackCredentials(data)
-	case "azure":
-		return s.validateAzureCredentials(data)
-	default:
-		return domain.NewDomainError(domain.ErrCodeValidationFailed, "unsupported provider", 400)
-	}
-}
-
-// validateAWSCredentials: AWS 자격증명 데이터를 검증합니다
-func (s *Service) validateAWSCredentials(data map[string]interface{}) error {
-	if _, ok := data["access_key"]; !ok {
-		return domain.NewDomainError(domain.ErrCodeValidationFailed, "access_key is required for AWS", 400)
-	}
-	if _, ok := data["secret_key"]; !ok {
-		return domain.NewDomainError(domain.ErrCodeValidationFailed, "secret_key is required for AWS", 400)
-	}
-	return nil
-}
-
-// validateGCPCredentials: GCP 자격증명 데이터를 검증합니다
-func (s *Service) validateGCPCredentials(data map[string]interface{}) error {
-	// 필수 필드 검증
-	requiredFields := []string{"type", "project_id", "private_key", "client_email", "client_id"}
-	for _, field := range requiredFields {
-		if _, ok := data[field]; !ok {
-			return domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("%s is required for GCP service account", field), 400)
-		}
-	}
-
-	// service_account 타입 확인
-	if data["type"] != "service_account" {
-		return domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("invalid service account type: %s", data["type"]), 400)
-	}
-
-	return nil
-}
-
-// validateOpenStackCredentials: OpenStack 자격증명 데이터를 검증합니다
-func (s *Service) validateOpenStackCredentials(data map[string]interface{}) error {
-	if _, ok := data["auth_url"]; !ok {
-		return domain.NewDomainError(domain.ErrCodeValidationFailed, "auth_url is required for OpenStack", 400)
-	}
-	if _, ok := data["username"]; !ok {
-		return domain.NewDomainError(domain.ErrCodeValidationFailed, "username is required for OpenStack", 400)
-	}
-	if _, ok := data["password"]; !ok {
-		return domain.NewDomainError(domain.ErrCodeValidationFailed, "password is required for OpenStack", 400)
-	}
-	return nil
-}
-
-// validateGCPCredentialAccess: GCP 서비스 계정 접근 및 권한을 검증합니다
+// validateGCPCredentialAccess: GCP 서비스 계정 접근 및 권한을 검증합니다 (GCP 특화 로직)
 func (s *Service) validateGCPCredentialAccess(ctx context.Context, data map[string]interface{}) error {
 	projectID := data["project_id"].(string)
 	clientEmail := data["client_email"].(string)
@@ -429,19 +361,5 @@ func (s *Service) validateGCPPermissions(ctx context.Context, containerService *
 		return domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("IAM API access failed: %v", err), 502)
 	}
 
-	return nil
-}
-
-// validateAzureCredentials: Azure 자격증명 데이터를 검증합니다
-func (s *Service) validateAzureCredentials(data map[string]interface{}) error {
-	if _, ok := data["client_id"]; !ok {
-		return domain.NewDomainError(domain.ErrCodeValidationFailed, "client_id is required for Azure", 400)
-	}
-	if _, ok := data["client_secret"]; !ok {
-		return domain.NewDomainError(domain.ErrCodeValidationFailed, "client_secret is required for Azure", 400)
-	}
-	if _, ok := data["tenant_id"]; !ok {
-		return domain.NewDomainError(domain.ErrCodeValidationFailed, "tenant_id is required for Azure", 400)
-	}
 	return nil
 }

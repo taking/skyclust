@@ -3,6 +3,8 @@ package logging
 import (
 	"time"
 
+	"skyclust/pkg/logger"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -23,16 +25,16 @@ const (
 	FieldEventType    = "event_type"
 
 	// Request context fields
-	FieldPath      = "path"
-	FieldMethod    = "method"
-	FieldUserAgent = "user_agent"
-	FieldClientIP  = "client_ip"
-	FieldIP        = "ip"
-	FieldRequestID = "request_id"
-	FieldMessage   = "message"
-	FieldDuration  = "duration"
+	FieldPath       = "path"
+	FieldMethod     = "method"
+	FieldUserAgent  = "user_agent"
+	FieldClientIP   = "client_ip"
+	FieldIP         = "ip"
+	FieldRequestID  = "request_id"
+	FieldMessage    = "message"
+	FieldDuration   = "duration"
 	FieldStatusCode = "status_code"
-	FieldSuccess   = "success"
+	FieldSuccess    = "success"
 )
 
 // RequestLogger provides structured logging for HTTP requests
@@ -41,12 +43,12 @@ type RequestLogger struct {
 }
 
 // NewRequestLogger creates a new request logger
-func NewRequestLogger(logger *zap.Logger) *RequestLogger {
-	if logger == nil {
-		logger = zap.NewNop()
+func NewRequestLogger(loggerInstance *zap.Logger) *RequestLogger {
+	if loggerInstance == nil {
+		loggerInstance = logger.DefaultLogger.GetLogger()
 	}
 	return &RequestLogger{
-		logger: logger,
+		logger: loggerInstance,
 	}
 }
 
@@ -242,4 +244,3 @@ func LogBusinessEvent(c *gin.Context, eventType string, userID string, resourceI
 func LogAudit(c *gin.Context, action string, resource string, userID string, success bool, details map[string]interface{}) {
 	NewRequestLogger(nil).LogAudit(c, action, resource, userID, success, details)
 }
-

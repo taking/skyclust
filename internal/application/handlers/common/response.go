@@ -20,8 +20,8 @@ type APIResponse struct {
 // ErrorInfo represents error information in API response
 // API 응답의 에러 정보
 type ErrorInfo struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code    string      `json:"code"`
+	Message string      `json:"message"`
 	Details interface{} `json:"details,omitempty"`
 }
 
@@ -29,7 +29,7 @@ type ErrorInfo struct {
 // API 응답의 메타데이터 (페이지네이션 등)
 type MetaInfo struct {
 	Pagination *PaginationInfo `json:"pagination,omitempty"`
-	Version    string           `json:"version,omitempty"`
+	Version    string          `json:"version,omitempty"`
 }
 
 // PaginationInfo represents pagination information
@@ -126,7 +126,7 @@ func InternalServerErrorResponse(c *gin.Context, message string) {
 // 페이지네이션된 응답 전송
 func PaginatedResponse(c *gin.Context, data interface{}, page, pageSize int, total int64) {
 	totalPages := int((total + int64(pageSize) - 1) / int64(pageSize))
-	
+
 	SuccessResponseWithMeta(c, data, &MetaInfo{
 		Pagination: &PaginationInfo{
 			Page:       page,
@@ -136,4 +136,3 @@ func PaginatedResponse(c *gin.Context, data interface{}, page, pageSize int, tot
 		},
 	})
 }
-

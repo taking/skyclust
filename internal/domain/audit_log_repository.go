@@ -27,4 +27,3 @@ type AuditLogRepository interface {
 	GetSecurityEventsCount(startTime, endTime time.Time) (int64, error)
 	GetErrorEventsCount(startTime, endTime time.Time) (int64, error)
 }
-

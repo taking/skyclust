@@ -12,6 +12,14 @@ import (
 	"github.com/google/uuid"
 )
 
+// contextKey는 context.WithValue에서 사용할 커스텀 키 타입입니다
+type contextKey string
+
+const (
+	contextKeyClientIP  contextKey = "client_ip"
+	contextKeyUserAgent contextKey = "user_agent"
+)
+
 // Service: 인증 비즈니스 로직 구현체
 type Service struct {
 	userRepo     domain.UserRepository
@@ -180,8 +188,8 @@ func (s *Service) LoginWithContext(email, password, clientIP, userAgent string) 
 	if clientIP == "" {
 		clientIP = "127.0.0.1" // Default to localhost if no IP
 	}
-	ctx = context.WithValue(ctx, "client_ip", clientIP)
-	ctx = context.WithValue(ctx, "user_agent", userAgent)
+	ctx = context.WithValue(ctx, contextKeyClientIP, clientIP)
+	ctx = context.WithValue(ctx, contextKeyUserAgent, userAgent)
 
 	common.LogActionWithContext(ctx, s.auditLogRepo, &user.ID, domain.ActionUserLogin,
 		"POST /api/v1/auth/login",

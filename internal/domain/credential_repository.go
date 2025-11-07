@@ -14,4 +14,3 @@ type CredentialRepository interface {
 	Delete(id uuid.UUID) error
 	DeleteByWorkspaceID(workspaceID uuid.UUID) error
 }
-

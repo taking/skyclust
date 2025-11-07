@@ -281,7 +281,7 @@ func (s *Service) getNetworkStats(ctx context.Context, workspaceID string, crede
 		if vpcs != nil {
 			for _, vpc := range vpcs.VPCs {
 				subnetReq := networkservice.ListSubnetsRequest{
-					VPCID: vpc.ID,
+					VPCID:  vpc.ID,
 					Region: regionStr,
 				}
 				subnets, err := s.networkService.ListSubnets(ctx, credential, subnetReq)
@@ -347,4 +347,3 @@ func (s *Service) getMemberStats(ctx context.Context, workspaceID string) (*doma
 
 	return &stats, nil
 }
-

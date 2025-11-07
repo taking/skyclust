@@ -65,9 +65,9 @@ type SSEConnection struct {
 // 새로운 realtime 서비스 생성
 func NewService(eventBus messaging.Bus, logger *zap.Logger) Service {
 	return &service{
-		eventBus:  eventBus,
-		logger:    logger,
-		connections: make(map[string]*SSEConnection),
+		eventBus:       eventBus,
+		logger:         logger,
+		connections:    make(map[string]*SSEConnection),
 		connectionsMux: sync.RWMutex{},
 	}
 }
@@ -78,7 +78,7 @@ type service struct {
 	connections     map[string]*SSEConnection
 	connectionsMux  sync.RWMutex
 	cleanupInterval time.Duration
-	clientTimeout time.Duration
+	clientTimeout   time.Duration
 }
 
 // CreateSSEConnection creates a Server-Sent Events connection
@@ -129,11 +129,11 @@ func (s *service) CreateSSEConnection(w http.ResponseWriter, r *http.Request, us
 func (s *service) HandleSSE(conn *SSEConnection) {
 	defer func() {
 		conn.Cancel()
-		s.RemoveConnection(conn.ID)
+		_ = s.RemoveConnection(conn.ID)
 	}()
 
 	// 초기 연결 이벤트 전송
-	s.BroadcastToConnection(conn.ID, "connected", map[string]interface{}{
+	_ = s.BroadcastToConnection(conn.ID, "connected", map[string]interface{}{
 		"connection_id": conn.ID,
 		"message":       "Connected to real-time updates",
 		"timestamp":     time.Now().Unix(),

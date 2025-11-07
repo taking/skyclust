@@ -176,7 +176,6 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 	h.OK(c, gin.H{"message": "User deleted successfully"}, "User deleted successfully")
 }
 
-
 // GetUserStats: 사용자 통계를 조회합니다
 func (h *Handler) GetUserStats(c *gin.Context) {
 	// Check admin permission
@@ -261,7 +260,6 @@ func (h *Handler) parseUserFilters(c *gin.Context) domain.UserFilters {
 		Status: status,
 	}
 }
-
 
 // 로깅 헬퍼 메서드들
 

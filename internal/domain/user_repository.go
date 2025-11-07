@@ -16,4 +16,3 @@ type UserRepository interface {
 	List(limit, offset int, filters map[string]interface{}) ([]*User, int64, error)
 	Count() (int64, error)
 }
-
