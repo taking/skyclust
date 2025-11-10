@@ -1,0 +1,135 @@
+meta {
+  name: 자격증명 생성 (Azure)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/credentials
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "workspace_id": "{{workspaceId}}",
+    "name": "Azure Production",
+    "provider": "azure",
+    "data": {
+      "subscription_id": "{{azure_subscription_id}}",
+      "client_id": "{{azure_client_id}}",
+      "client_secret": "{{azure_client_secret}}",
+      "tenant_id": "{{azure_tenant_id}}",
+      "resource_group": "skyclust-rg"
+    }
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("azure_credentialsId", res.body.data.id);
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response contains credential data", function() {
+    expect(res.getBody()).to.have.property('id');
+    expect(res.getBody()).to.have.property('name');
+    expect(res.getBody()).to.have.property('provider');
+  });
+  
+  test("Credential has correct provider", function() {
+    expect(res.getBody().provider).to.equal('azure');
+  });
+}
+
+docs {
+  # Azure 자격증명 생성
+  
+  Azure 자격증명을 생성합니다.
+  
+  ## Azure Service Principal 생성 방법
+  
+  Azure CLI를 사용하여 Service Principal을 생성합니다:
+  
+  ```bash
+  # Azure에 로그인
+  az login
+  
+  # Subscription ID 확인
+  az account show --query id -o tsv
+  
+  # Service Principal 생성
+  az ad sp create-for-rbac \
+    --name "skyclust-sp" \
+    --role contributor \
+    --scopes /subscriptions/{subscription-id}
+  ```
+  
+  출력 예시:
+  ```json
+  {
+    "appId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "displayName": "skyclust-sp",
+    "password": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "tenant": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+  }
+  ```
+  
+  ## Request Body
+  
+  - `workspace_id`: 워크스페이스 ID (필수)
+  - `name`: 자격증명 이름 (선택)
+  - `provider`: "azure" (필수)
+  - `data`: Azure 자격증명 정보 (필수)
+    - `subscription_id`: Azure Subscription ID (필수)
+    - `client_id`: Service Principal App ID (필수)
+    - `client_secret`: Service Principal Password (필수)
+    - `tenant_id`: Azure Tenant ID (필수)
+    - `resource_group`: 기본 Resource Group 이름 (선택)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "name": "Azure Production",
+      "provider": "azure",
+      "workspace_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "created_at": "2025-10-21T17:00:00Z",
+      "updated_at": "2025-10-21T17:00:00Z"
+    },
+    "message": "Credential created successfully"
+  }
+  ```
+  
+  ## 필수 권한
+  
+  Service Principal에 다음 권한이 필요합니다:
+  
+  - `Contributor` 역할 (Subscription 또는 Resource Group 레벨)
+  - 또는 다음 최소 권한:
+    - `Microsoft.ContainerService/managedClusters/*`
+    - `Microsoft.Network/virtualNetworks/*`
+    - `Microsoft.Network/subnets/*`
+    - `Microsoft.Compute/virtualMachines/*`
+  
+  ## 주의사항
+  
+  1. **보안**: `client_secret`은 안전하게 보관해야 합니다
+  2. **만료**: Service Principal의 비밀번호는 만료될 수 있으므로 주기적으로 갱신해야 합니다
+  3. **Resource Group**: 기본 Resource Group이 없으면 자동으로 생성되지 않으므로 미리 생성해야 합니다
+}
+

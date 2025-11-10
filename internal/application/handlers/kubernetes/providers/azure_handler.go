@@ -7,12 +7,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// AzureHandler handles Azure AKS-related HTTP requests
+// AzureHandler: Azure AKS 관련 HTTP 요청을 처리하는 핸들러
 type AzureHandler struct {
 	*BaseHandler
 }
 
-// NewAzureHandler creates a new Azure AKS handler
+// NewAzureHandler: 새로운 Azure AKS 핸들러를 생성합니다
 func NewAzureHandler(
 	k8sService *kubernetesservice.Service,
 	credentialService domain.CredentialService,
@@ -22,132 +22,283 @@ func NewAzureHandler(
 	}
 }
 
-// CreateCluster handles AKS cluster creation
+// CreateCluster: AKS 클러스터 생성을 처리합니다
 func (h *AzureHandler) CreateCluster(c *gin.Context) {
-	h.NotImplemented(c, "create_cluster")
+	var req kubernetesservice.CreateAKSClusterRequest
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "create_cluster")
+		return
+	}
+
+	credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, domain.ProviderAzure)
+	if err != nil {
+		h.HandleError(c, err, "create_cluster")
+		return
+	}
+
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	cluster, err := h.k8sService.CreateAKSCluster(ctx, credential, req)
+	if err != nil {
+		h.HandleError(c, err, "create_cluster")
+		return
+	}
+
+	h.Created(c, cluster, "AKS cluster creation initiated")
 }
 
-// ListClusters handles listing AKS clusters
+// ListClusters: AKS 클러스터 목록 조회를 처리합니다
 func (h *AzureHandler) ListClusters(c *gin.Context) {
-	h.NotImplemented(c, "list_clusters")
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	if err != nil {
+		h.HandleError(c, err, "list_clusters")
+		return
+	}
+
+	location := c.Query("region")
+	if location == "" {
+		location = c.Query("location") // Azure uses "location" instead of "region"
+	}
+
+	clusters, err := h.k8sService.ListEKSClusters(c.Request.Context(), credential, location)
+	if err != nil {
+		h.HandleError(c, err, "list_clusters")
+		return
+	}
+
+	if clusters == nil {
+		clusters = &kubernetesservice.ListClustersResponse{Clusters: []kubernetesservice.ClusterInfo{}}
+	}
+	if clusters.Clusters == nil {
+		clusters.Clusters = []kubernetesservice.ClusterInfo{}
+	}
+
+	h.OK(c, clusters, "AKS clusters retrieved successfully")
 }
 
-// GetCluster handles getting AKS cluster details
+// GetCluster: AKS 클러스터 상세 정보 조회를 처리합니다
 func (h *AzureHandler) GetCluster(c *gin.Context) {
-	h.NotImplemented(c, "get_cluster")
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	if err != nil {
+		h.HandleError(c, err, "get_cluster")
+		return
+	}
+
+	clusterName := h.parseClusterName(c)
+	location := h.parseRegion(c)
+
+	if clusterName == "" || location == "" {
+		return
+	}
+
+	cluster, err := h.k8sService.GetEKSCluster(c.Request.Context(), credential, clusterName, location)
+	if err != nil {
+		h.HandleError(c, err, "get_cluster")
+		return
+	}
+
+	h.OK(c, cluster, "AKS cluster retrieved successfully")
 }
 
-// DeleteCluster handles AKS cluster deletion
+// DeleteCluster: AKS 클러스터 삭제를 처리합니다
 func (h *AzureHandler) DeleteCluster(c *gin.Context) {
-	h.NotImplemented(c, "delete_cluster")
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	if err != nil {
+		h.HandleError(c, err, "delete_cluster")
+		return
+	}
+
+	clusterName := h.parseClusterName(c)
+	location := h.parseRegion(c)
+
+	if clusterName == "" || location == "" {
+		return
+	}
+
+	err = h.k8sService.DeleteEKSCluster(c.Request.Context(), credential, clusterName, location)
+	if err != nil {
+		h.HandleError(c, err, "delete_cluster")
+		return
+	}
+
+	h.OK(c, nil, "AKS cluster deletion initiated")
 }
 
-// GetKubeconfig handles getting kubeconfig for AKS cluster
+// GetKubeconfig: AKS 클러스터의 kubeconfig 조회를 처리합니다
 func (h *AzureHandler) GetKubeconfig(c *gin.Context) {
-	h.NotImplemented(c, "get_kubeconfig")
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	if err != nil {
+		h.HandleError(c, err, "get_kubeconfig")
+		return
+	}
+
+	clusterName := h.parseClusterName(c)
+	location := h.parseRegion(c)
+
+	if clusterName == "" || location == "" {
+		return
+	}
+
+	kubeconfig, err := h.k8sService.GetEKSKubeconfig(c.Request.Context(), credential, clusterName, location)
+	if err != nil {
+		h.HandleError(c, err, "get_kubeconfig")
+		return
+	}
+
+	h.OK(c, map[string]string{"kubeconfig": kubeconfig}, "Kubeconfig retrieved successfully")
 }
 
-// CreateNodePool handles creating a node pool
+// ListNodeGroups: 노드 그룹 목록 조회를 처리합니다
+func (h *AzureHandler) ListNodeGroups(c *gin.Context) {
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	if err != nil {
+		h.HandleError(c, err, "list_node_groups")
+		return
+	}
+
+	clusterName := h.parseClusterName(c)
+	location := h.parseRegion(c)
+
+	if clusterName == "" || location == "" {
+		return
+	}
+
+	req := kubernetesservice.ListNodeGroupsRequest{
+		ClusterName: clusterName,
+		Region:      location,
+	}
+
+	nodeGroups, err := h.k8sService.ListNodeGroups(c.Request.Context(), credential, req)
+	if err != nil {
+		h.HandleError(c, err, "list_node_groups")
+		return
+	}
+
+	h.OK(c, nodeGroups, "Node groups retrieved successfully")
+}
+
+// GetNodeGroup: 노드 그룹 상세 정보 조회를 처리합니다
+func (h *AzureHandler) GetNodeGroup(c *gin.Context) {
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	if err != nil {
+		h.HandleError(c, err, "get_node_group")
+		return
+	}
+
+	clusterName := h.parseClusterName(c)
+	location := h.parseRegion(c)
+	nodeGroupName := c.Param("node_group_name")
+
+	if clusterName == "" || location == "" || nodeGroupName == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "cluster name, region, and node group name are required", 400), "get_node_group")
+		return
+	}
+
+	req := kubernetesservice.GetNodeGroupRequest{
+		ClusterName:  clusterName,
+		NodeGroupName: nodeGroupName,
+		Region:       location,
+	}
+
+	nodeGroup, err := h.k8sService.GetNodeGroup(c.Request.Context(), credential, req)
+	if err != nil {
+		h.HandleError(c, err, "get_node_group")
+		return
+	}
+
+	h.OK(c, nodeGroup, "Node group retrieved successfully")
+}
+
+// CreateNodePool: 노드 풀 생성을 처리합니다
 func (h *AzureHandler) CreateNodePool(c *gin.Context) {
 	h.NotImplemented(c, "create_node_pool")
 }
 
-// ListNodePools handles listing node pools
+// ListNodePools: 노드 풀 목록 조회를 처리합니다
 func (h *AzureHandler) ListNodePools(c *gin.Context) {
-	h.NotImplemented(c, "list_node_pools")
+	h.ListNodeGroups(c) // Azure uses the same endpoint
 }
 
-// GetNodePool handles getting node pool details
+// GetNodePool: 노드 풀 상세 정보 조회를 처리합니다
 func (h *AzureHandler) GetNodePool(c *gin.Context) {
-	h.NotImplemented(c, "get_node_pool")
+	h.GetNodeGroup(c) // Azure uses the same endpoint
 }
 
-// DeleteNodePool handles deleting a node pool
+// DeleteNodePool: 노드 풀 삭제를 처리합니다
 func (h *AzureHandler) DeleteNodePool(c *gin.Context) {
 	h.NotImplemented(c, "delete_node_pool")
 }
 
-// ScaleNodePool handles scaling a node pool
+// ScaleNodePool: 노드 풀 스케일링을 처리합니다
 func (h *AzureHandler) ScaleNodePool(c *gin.Context) {
 	h.NotImplemented(c, "scale_node_pool")
 }
 
-// CreateNodeGroup handles creating a node group
+// CreateNodeGroup: 노드 그룹 생성을 처리합니다
 func (h *AzureHandler) CreateNodeGroup(c *gin.Context) {
 	h.NotImplemented(c, "create_node_group")
 }
 
-// ListNodeGroups handles listing node groups
-func (h *AzureHandler) ListNodeGroups(c *gin.Context) {
-	h.NotImplemented(c, "list_node_groups")
-}
-
-// GetNodeGroup handles getting node group details
-func (h *AzureHandler) GetNodeGroup(c *gin.Context) {
-	h.NotImplemented(c, "get_node_group")
-}
-
-// DeleteNodeGroup handles deleting a node group
+// DeleteNodeGroup: 노드 그룹 삭제를 처리합니다
 func (h *AzureHandler) DeleteNodeGroup(c *gin.Context) {
 	h.NotImplemented(c, "delete_node_group")
 }
 
-// UpgradeCluster handles cluster upgrade
+// UpgradeCluster: 클러스터 업그레이드를 처리합니다
 func (h *AzureHandler) UpgradeCluster(c *gin.Context) {
 	h.NotImplemented(c, "upgrade_cluster")
 }
 
-// GetUpgradeStatus handles getting cluster upgrade status
+// GetUpgradeStatus: 클러스터 업그레이드 상태 조회를 처리합니다
 func (h *AzureHandler) GetUpgradeStatus(c *gin.Context) {
 	h.NotImplemented(c, "get_upgrade_status")
 }
 
-// ListNodes handles listing cluster nodes
+// ListNodes: 클러스터 노드 목록 조회를 처리합니다
 func (h *AzureHandler) ListNodes(c *gin.Context) {
 	h.NotImplemented(c, "list_nodes")
 }
 
-// GetNode handles getting node details
+// GetNode: 노드 상세 정보 조회를 처리합니다
 func (h *AzureHandler) GetNode(c *gin.Context) {
 	h.NotImplemented(c, "get_node")
 }
 
-// DrainNode handles draining a node
+// DrainNode: 노드 드레인을 처리합니다
 func (h *AzureHandler) DrainNode(c *gin.Context) {
 	h.NotImplemented(c, "drain_node")
 }
 
-// CordonNode handles cordoning a node
+// CordonNode: 노드 코돈을 처리합니다
 func (h *AzureHandler) CordonNode(c *gin.Context) {
 	h.NotImplemented(c, "cordon_node")
 }
 
-// UncordonNode handles uncordoning a node
+// UncordonNode: 노드 언코돈을 처리합니다
 func (h *AzureHandler) UncordonNode(c *gin.Context) {
 	h.NotImplemented(c, "uncordon_node")
 }
 
-// GetNodeSSHConfig handles getting SSH config for a node
+// GetNodeSSHConfig: 노드 SSH 설정 조회를 처리합니다
 func (h *AzureHandler) GetNodeSSHConfig(c *gin.Context) {
 	h.NotImplemented(c, "get_node_ssh_config")
 }
 
-// ExecuteNodeCommand handles executing a command on a node
+// ExecuteNodeCommand: 노드에서 명령 실행을 처리합니다
 func (h *AzureHandler) ExecuteNodeCommand(c *gin.Context) {
 	h.NotImplemented(c, "execute_node_command")
 }
 
-// GetEKSVersions handles EKS versions listing (AWS only)
+// GetEKSVersions: EKS 버전 목록 조회를 처리합니다 (AWS 전용)
 func (h *AzureHandler) GetEKSVersions(c *gin.Context) {
 	h.NotImplemented(c, "get_eks_versions")
 }
 
-// GetAWSRegions handles AWS regions listing (AWS only)
+// GetAWSRegions: AWS 리전 목록 조회를 처리합니다 (AWS 전용)
 func (h *AzureHandler) GetAWSRegions(c *gin.Context) {
 	h.NotImplemented(c, "get_aws_regions")
 }
 
-// GetAvailabilityZones handles availability zones listing (AWS only)
+// GetAvailabilityZones: 가용 영역 목록 조회를 처리합니다 (AWS 전용)
 func (h *AzureHandler) GetAvailabilityZones(c *gin.Context) {
 	h.NotImplemented(c, "get_availability_zones")
 }

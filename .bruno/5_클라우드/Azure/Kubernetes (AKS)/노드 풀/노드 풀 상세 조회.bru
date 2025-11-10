@@ -1,0 +1,67 @@
+meta {
+  name: 노드 풀 상세 조회
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/kubernetes/clusters/{{aksClusterName}}/nodepools/nodepool1?credential_id={{azure_credentialsId}}&region={{aksLocation}}
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{azure_credentialsId}}
+  region: {{aksLocation}}
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # AKS 노드 풀 상세 조회
+  
+  특정 AKS 노드 풀의 상세 정보를 조회합니다.
+  
+  ## Path Parameters
+  
+  - `clusterName`: 클러스터 이름 (예: `skyclust-aks-cluster`)
+  - `nodepool`: 노드 풀 이름 (예: `nodepool1`)
+  
+  ## Query Parameters
+  
+  - `credential_id`: Azure credential ID (필수)
+  - `region`: Azure 리전 (필수, 예: "eastus")
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "nodepool1",
+      "name": "nodepool1",
+      "version": "1.28",
+      "status": "Succeeded",
+      "node_count": 3,
+      "min_nodes": 1,
+      "max_nodes": 10,
+      "instance_type": "Standard_D2s_v3",
+      "disk_size_gb": 128,
+      "disk_type": "Managed",
+      "region": "eastus",
+      "auto_scaling": true,
+      "created_at": "2025-10-21T17:00:00Z",
+      "updated_at": "2025-10-21T18:00:00Z"
+    },
+    "message": "Node pool retrieved successfully"
+  }
+  ```
+}
+

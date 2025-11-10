@@ -112,7 +112,7 @@ type ListSecurityGroupsResponse struct {
 
 // CreateVPCRequest represents a request to create a VPC
 type CreateVPCRequest struct {
-	CredentialID      string            `json:"credential_id" validate:"required,uuid"`
+	CredentialID      string            `json:"credential_id" validate:"omitempty,uuid"` // Optional: can be from body or query
 	Name              string            `json:"name" validate:"required,min=1,max=255"`
 	Description       string            `json:"description,omitempty"`
 	CIDRBlock         string            `json:"cidr_block,omitempty"`          // Optional for GCP subnet mode
@@ -132,7 +132,7 @@ type UpdateVPCRequest struct {
 
 // CreateSubnetRequest represents a request to create a subnet
 type CreateSubnetRequest struct {
-	CredentialID          string            `json:"credential_id" validate:"required,uuid"`
+	CredentialID          string            `json:"credential_id" validate:"omitempty,uuid"` // Optional: can be from body or query
 	Name                  string            `json:"name" validate:"required,min=1,max=255"`
 	VPCID                 string            `json:"vpc_id" validate:"required"`
 	CIDRBlock             string            `json:"cidr_block" validate:"required,cidr"`

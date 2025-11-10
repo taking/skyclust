@@ -1,0 +1,191 @@
+meta {
+  name: 클러스터 생성
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/kubernetes/clusters
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "credential_id": "{{azure_credentialsId}}",
+    "name": "skyclust-aks-cluster-{{$timestamp}}",
+    "version": "1.28",
+    "location": "eastus",
+    "resource_group": "skyclust-rg",
+    "network": {
+      "virtual_network_id": "/subscriptions/{{azure_subscription_id}}/resourceGroups/skyclust-rg/providers/Microsoft.Network/virtualNetworks/skyclust-vnet",
+      "subnet_id": "/subscriptions/{{azure_subscription_id}}/resourceGroups/skyclust-rg/providers/Microsoft.Network/virtualNetworks/skyclust-vnet/subnets/skyclust-subnet",
+      "network_plugin": "azure",
+      "network_policy": "azure",
+      "pod_cidr": "10.244.0.0/16",
+      "service_cidr": "10.0.0.0/16",
+      "dns_service_ip": "10.0.0.10",
+      "docker_bridge_cidr": "172.17.0.1/16"
+    },
+    "node_pool": {
+      "name": "nodepool1",
+      "vm_size": "Standard_D2s_v3",
+      "os_disk_size_gb": 128,
+      "os_disk_type": "Managed",
+      "os_type": "Linux",
+      "os_sku": "Ubuntu",
+      "node_count": 3,
+      "min_count": 1,
+      "max_count": 10,
+      "enable_auto_scaling": true,
+      "max_pods": 30,
+      "availability_zones": ["1", "2", "3"],
+      "labels": {
+        "environment": "development",
+        "managedBy": "skyclust"
+      },
+      "mode": "System"
+    },
+    "security": {
+      "enable_rbac": true,
+      "enable_pod_security_policy": false,
+      "enable_private_cluster": false,
+      "api_server_authorized_ip_ranges": [],
+      "enable_azure_policy": false,
+      "enable_workload_identity": false
+    },
+    "tags": {
+      "Environment": "development",
+      "ManagedBy": "skyclust",
+      "Team": "platform"
+    }
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("aksClusterName", res.body.data.name);
+  bru.setEnvVar("aksResourceGroup", res.body.data.resource_group);
+  bru.setEnvVar("aksLocation", res.body.data.location);
+}
+
+settings {
+  encodeUrl: true
+  timeout: 300000
+}
+
+docs {
+  # Azure AKS 클러스터 생성
+  
+  Azure Kubernetes Service (AKS) 클러스터를 생성합니다.
+  
+  ## 필수 정보
+  
+  ### Resource Group
+  AKS 클러스터를 생성하기 전에 Azure Resource Group을 미리 생성해야 합니다.
+  
+  ```bash
+  az group create \
+    --name skyclust-rg \
+    --location eastus
+  ```
+  
+  ### Virtual Network 및 Subnet
+  AKS 클러스터를 위한 Virtual Network와 Subnet이 필요합니다.
+  
+  ```bash
+  # Virtual Network 생성
+  az network vnet create \
+    --resource-group skyclust-rg \
+    --name skyclust-vnet \
+    --address-prefix 10.0.0.0/16 \
+    --subnet-name skyclust-subnet \
+    --subnet-prefix 10.0.1.0/24
+  ```
+  
+  ## Request Body
+  
+  ### 기본 정보
+  - `credential_id`: Azure credential ID (필수)
+  - `name`: 클러스터 이름 (필수, 1-63자, 영문자, 숫자, 하이픈만 허용)
+  - `version`: Kubernetes 버전 (예: "1.28", "1.27", "1.26")
+  - `location`: Azure 리전 (예: "eastus", "westus2", "koreacentral")
+  - `resource_group`: Azure Resource Group 이름 (필수)
+  
+  ### 네트워크 설정 (network)
+  - `virtual_network_id`: Azure Virtual Network 리소스 ID (필수)
+  - `subnet_id`: Azure Subnet 리소스 ID (필수)
+  - `network_plugin`: 네트워크 플러그인 ("azure" 또는 "kubenet", 기본: "azure")
+  - `network_policy`: 네트워크 정책 ("azure" 또는 "calico", 선택)
+  - `pod_cidr`: Pod CIDR 블록 (선택, kubenet 사용 시 필수)
+  - `service_cidr`: Service CIDR 블록 (선택)
+  - `dns_service_ip`: DNS 서비스 IP (선택)
+  - `docker_bridge_cidr`: Docker 브리지 CIDR (선택)
+  
+  ### 노드 풀 설정 (node_pool)
+  - `name`: 노드 풀 이름 (필수)
+  - `vm_size`: VM 크기 (필수, 예: "Standard_D2s_v3", "Standard_DS2_v2")
+  - `os_disk_size_gb`: OS 디스크 크기 (GB, 선택, 기본: 128)
+  - `os_disk_type`: OS 디스크 타입 ("Managed" 또는 "Ephemeral", 선택)
+  - `os_type`: OS 타입 ("Linux" 또는 "Windows", 선택, 기본: "Linux")
+  - `os_sku`: OS SKU ("Ubuntu" 또는 "CBLMariner", 선택)
+  - `node_count`: 노드 개수 (필수, 최소 1)
+  - `min_count`: 최소 노드 개수 (선택, auto-scaling 사용 시)
+  - `max_count`: 최대 노드 개수 (선택, auto-scaling 사용 시)
+  - `enable_auto_scaling`: 자동 스케일링 활성화 (선택, 기본: false)
+  - `max_pods`: 노드당 최대 Pod 수 (선택)
+  - `vnet_subnet_id`: VNet Subnet ID (선택)
+  - `availability_zones`: 가용 영역 목록 (선택, 예: ["1", "2", "3"])
+  - `labels`: 노드 레이블 (선택)
+  - `taints`: 노드 테인트 (선택)
+  - `mode`: 노드 풀 모드 ("System" 또는 "User", 선택, 기본: "System")
+  
+  ### 보안 설정 (security, 선택)
+  - `enable_rbac`: RBAC 활성화 (선택, 기본: true)
+  - `enable_pod_security_policy`: Pod Security Policy 활성화 (선택)
+  - `enable_private_cluster`: Private 클러스터 활성화 (선택)
+  - `api_server_authorized_ip_ranges`: API 서버 승인 IP 범위 (선택)
+  - `enable_azure_policy`: Azure Policy 활성화 (선택)
+  - `enable_workload_identity`: Workload Identity 활성화 (선택)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "cluster_id": "/subscriptions/xxx/resourceGroups/skyclust-rg/providers/Microsoft.ContainerService/managedClusters/skyclust-aks-cluster",
+      "name": "skyclust-aks-cluster",
+      "version": "1.28",
+      "location": "eastus",
+      "resource_group": "skyclust-rg",
+      "status": "Creating",
+      "endpoint": "",
+      "tags": {
+        "Environment": "development",
+        "ManagedBy": "skyclust"
+      },
+      "created_at": "2025-10-21T17:00:00Z"
+    },
+    "message": "Cluster creation initiated"
+  }
+  ```
+  
+  ## 주의사항
+  
+  1. **클러스터 생성 시간**: 약 10-15분 소요
+  2. **Status 확인**: `Creating` → `Succeeded`로 변경되면 사용 가능
+  3. **비용**: AKS 클러스터 자체는 무료, 노드 VM 비용만 발생
+  4. **Node Pool**: 클러스터 생성 시 기본 노드 풀이 함께 생성됨
+  
+  ## 다음 단계
+  
+  클러스터 생성 후:
+  1. 상태 확인: `GET /api/v1/azure/kubernetes/clusters/{name}?credential_id={id}&location={location}`
+  2. 추가 노드 풀 생성: `POST /api/v1/azure/kubernetes/clusters/{name}/nodepools`
+  3. Kubeconfig 다운로드: `GET /api/v1/azure/kubernetes/clusters/{name}/kubeconfig?credential_id={id}&location={location}`
+}
+

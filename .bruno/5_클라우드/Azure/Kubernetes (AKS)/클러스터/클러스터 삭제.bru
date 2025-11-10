@@ -1,0 +1,59 @@
+meta {
+  name: 클러스터 삭제
+  type: http
+  seq: 4
+}
+
+delete {
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/kubernetes/clusters/{{aksClusterName}}?credential_id={{azure_credentialsId}}&location={{aksLocation}}
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{azure_credentialsId}}
+  location: {{aksLocation}}
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 300000
+}
+
+docs {
+  # AKS 클러스터 삭제
+  
+  Azure AKS 클러스터를 삭제합니다.
+  
+  ## Path Parameters
+  
+  - `name`: 클러스터 이름 (예: `skyclust-aks-cluster`)
+  
+  ## Query Parameters
+  
+  - `credential_id`: Azure credential ID (필수)
+  - `location`: Azure 리전 (필수, 예: "eastus")
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "message": "Cluster deletion initiated",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
+  }
+  ```
+  
+  ## 주의사항
+  
+  1. **삭제 시간**: 약 10-15분 소요
+  2. **연관 리소스**: 클러스터와 함께 생성된 노드 풀도 함께 삭제됨
+  3. **복구 불가**: 삭제된 클러스터는 복구할 수 없음
+  4. **비용**: 삭제 중에도 노드 VM 비용이 발생할 수 있음
+}
+

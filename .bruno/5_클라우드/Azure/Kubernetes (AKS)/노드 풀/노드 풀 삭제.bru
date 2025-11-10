@@ -1,0 +1,59 @@
+meta {
+  name: 노드 풀 삭제
+  type: http
+  seq: 4
+}
+
+delete {
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/kubernetes/clusters/{{aksClusterName}}/nodepools/nodepool1?credential_id={{azure_credentialsId}}&region={{aksLocation}}
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{azure_credentialsId}}
+  region: {{aksLocation}}
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 300000
+}
+
+docs {
+  # AKS 노드 풀 삭제
+  
+  AKS 클러스터의 노드 풀을 삭제합니다.
+  
+  ## Path Parameters
+  
+  - `clusterName`: 클러스터 이름 (예: `skyclust-aks-cluster`)
+  - `nodepool`: 노드 풀 이름 (예: `nodepool1`)
+  
+  ## Query Parameters
+  
+  - `credential_id`: Azure credential ID (필수)
+  - `region`: Azure 리전 (필수, 예: "eastus")
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "message": "Node pool deletion initiated",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
+  }
+  ```
+  
+  ## 주의사항
+  
+  1. **System 노드 풀**: 기본 System 노드 풀은 삭제할 수 없습니다
+  2. **삭제 시간**: 약 5-10분 소요
+  3. **Pod 영향**: 노드 풀 삭제 시 해당 노드의 Pod가 다른 노드로 이동해야 합니다
+}
+

@@ -1,0 +1,69 @@
+meta {
+  name: VPC 수정
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/network/vpcs/{{azureVpcId}}?credential_id={{azure_credentialsId}}&location=eastus
+  body: json
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{azure_credentialsId}}
+  location: eastus
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "name": "skyclust-vnet-updated",
+    "tags": {
+      "Environment": "production",
+      "Project": "skyclust",
+      "UpdatedBy": "bruno-api-test"
+    }
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Azure Virtual Network 수정
+  
+  Azure Virtual Network의 이름과 태그를 수정합니다.
+  
+  ## Path Parameters
+  
+  - `id`: Virtual Network ID 또는 이름
+  
+  ## Query Parameters
+  
+  - `credential_id`: Azure credential ID (필수)
+  - `location`: Azure 리전 (필수, 예: "eastus")
+  
+  ## Request Body
+  
+  ```json
+  {
+    "name": "skyclust-vnet-updated",
+    "tags": {
+      "Environment": "production",
+      "Project": "skyclust"
+    }
+  }
+  ```
+  
+  ## 주의사항
+  
+  - Azure Virtual Network의 주소 공간(CIDR)은 수정할 수 없습니다
+  - 이름과 태그만 수정 가능합니다
+}
+

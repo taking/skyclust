@@ -9,6 +9,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"go.uber.org/zap"
 )
 
 const (
@@ -70,4 +72,47 @@ func (s *Service) createAWSConfig(ctx context.Context, creds *AWSCredentials) (a
 	}
 
 	return cfg, nil
+}
+
+// getAWSAccountID: AWS STS를 통해 Account ID를 조회합니다
+func (s *Service) getAWSAccountID(ctx context.Context, cfg aws.Config) (string, error) {
+	stsClient := sts.NewFromConfig(cfg)
+
+	result, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		return "", domain.NewDomainError(
+			domain.ErrCodeProviderError,
+			fmt.Sprintf("failed to get AWS account ID: %v", err),
+			502,
+		)
+	}
+
+	if result.Account == nil {
+		return "", domain.NewDomainError(
+			domain.ErrCodeProviderError,
+			"account ID not found in STS response",
+			502,
+		)
+	}
+
+	return *result.Account, nil
+}
+
+// generateDefaultRoleARN: 기본 Role ARN을 생성합니다
+func (s *Service) generateDefaultRoleARN(ctx context.Context, cfg aws.Config, roleName string) (string, error) {
+	accountID, err := s.getAWSAccountID(ctx, cfg)
+	if err != nil {
+		return "", err
+	}
+
+	roleARN := fmt.Sprintf("arn:aws:iam::%s:role/%s", accountID, roleName)
+
+	if s.logger != nil {
+		s.logger.Info("Auto-generated Role ARN",
+			zap.String("role_arn", roleARN),
+			zap.String("account_id", accountID),
+			zap.String("role_name", roleName))
+	}
+
+	return roleARN, nil
 }

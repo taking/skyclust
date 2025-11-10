@@ -1,0 +1,88 @@
+meta {
+  name: 노드 풀 목록 조회
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/kubernetes/clusters/{{aksClusterName}}/nodepools?credential_id={{azure_credentialsId}}&region={{aksLocation}}
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{azure_credentialsId}}
+  region: {{aksLocation}}
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+script:post-response {
+  const rowData = res.body.data.node_pools || res.body.data.node_groups || [];
+  
+  const columnDefinitions = [
+    { field: "id", filter: true, floatingFilter: true },
+    { field: "name", filter: true, floatingFilter: true },
+    { field: "version", filter: true, floatingFilter: true },
+    { field: "status", filter: true, floatingFilter: true },
+    { field: "node_count", filter: true, floatingFilter: true },
+    { field: "instance_type", filter: true, floatingFilter: true },
+    { field: "region", filter: true, floatingFilter: true }
+  ];
+   
+  bru.visualize('table', {
+    name: 'table',
+    provider: 'ag-grid',
+    props: { rowData, columnDefinitions }
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # AKS 노드 풀 목록 조회
+  
+  AKS 클러스터의 노드 풀 목록을 조회합니다.
+  
+  ## Path Parameters
+  
+  - `clusterName`: 클러스터 이름 (예: `skyclust-aks-cluster`)
+  
+  ## Query Parameters
+  
+  - `credential_id`: Azure credential ID (필수)
+  - `region`: Azure 리전 (필수, 예: "eastus")
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "node_pools": [
+        {
+          "id": "nodepool1",
+          "name": "nodepool1",
+          "version": "1.28",
+          "status": "Succeeded",
+          "node_count": 3,
+          "min_nodes": 1,
+          "max_nodes": 10,
+          "instance_type": "Standard_D2s_v3",
+          "region": "eastus",
+          "auto_scaling": true,
+          "created_at": "2025-10-21T17:00:00Z"
+        }
+      ],
+      "total": 1
+    },
+    "message": "Node pools retrieved successfully"
+  }
+  ```
+}
+

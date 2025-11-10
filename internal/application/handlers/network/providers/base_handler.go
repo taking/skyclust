@@ -54,6 +54,18 @@ func (h *BaseHandler) parseVPCID(c *gin.Context) string {
 	return vpcID
 }
 
+func (h *BaseHandler) parseSubnetID(c *gin.Context) string {
+	subnetID := c.Query("subnet_id")
+	if subnetID == "" {
+		subnetID = c.Param("subnet_id")
+	}
+	if subnetID == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "subnet_id is required", 400), "parse_subnet_id")
+		return ""
+	}
+	return subnetID
+}
+
 // NotImplemented handles unimplemented endpoints
 func (h *BaseHandler) NotImplemented(c *gin.Context, operation string) {
 	h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotImplemented, operation+" not yet implemented", 501), operation)

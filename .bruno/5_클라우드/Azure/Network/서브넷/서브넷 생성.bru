@@ -1,0 +1,104 @@
+meta {
+  name: 서브넷 생성
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/network/subnets
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "credential_id": "{{azure_credentialsId}}",
+    "name": "skyclust-subnet-{{$timestamp}}",
+    "vpc_id": "{{azureVpcId}}",
+    "cidr_block": "10.0.1.0/24",
+    "availability_zone": "eastus",
+    "region": "eastus",
+    "description": "Skyclust Azure Subnet",
+    "tags": {
+      "Environment": "development",
+      "Project": "skyclust",
+      "CreatedBy": "bruno-api-test"
+    }
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("azureSubnetId", res.body.data.id);
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.be.true;
+  });
+  
+  test("Response has Subnet data", function() {
+    expect(res.getBody().data).to.have.property('id');
+    expect(res.getBody().data).to.have.property('name');
+    expect(res.getBody().data).to.have.property('cidr_block');
+    expect(res.getBody().data).to.have.property('vpc_id');
+  });
+}
+
+docs {
+  # Azure Subnet 생성
+  
+  Azure Virtual Network에 Subnet을 생성합니다.
+  
+  ## Request Body
+  
+  - `credential_id`: Azure credential ID (필수)
+  - `name`: Subnet 이름 (필수)
+  - `vpc_id`: Virtual Network ID (필수)
+  - `cidr_block`: CIDR 블록 (필수, Virtual Network의 주소 공간 내에 있어야 함)
+  - `availability_zone`: 가용 영역 (필수, Azure의 경우 리전 이름 사용)
+  - `region`: Azure 리전 (필수, 예: "eastus")
+  - `description`: 설명 (선택)
+  - `tags`: 리소스 태그 (선택)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "/subscriptions/xxx/resourceGroups/skyclust-rg/providers/Microsoft.Network/virtualNetworks/skyclust-vnet/subnets/skyclust-subnet",
+      "name": "skyclust-subnet",
+      "vpc_id": "/subscriptions/xxx/resourceGroups/skyclust-rg/providers/Microsoft.Network/virtualNetworks/skyclust-vnet",
+      "cidr_block": "10.0.1.0/24",
+      "availability_zone": "eastus",
+      "state": "Succeeded",
+      "is_public": false,
+      "region": "eastus",
+      "tags": {
+        "Environment": "development",
+        "Project": "skyclust"
+      }
+    },
+    "message": "Subnet created successfully"
+  }
+  ```
+  
+  ## 주의사항
+  
+  1. **CIDR 블록**: Subnet의 CIDR 블록은 Virtual Network의 주소 공간 내에 있어야 합니다
+  2. **중복 불가**: 같은 Virtual Network 내에서 CIDR 블록이 겹치면 안 됩니다
+  3. **비용**: Subnet 자체는 무료입니다
+}
+

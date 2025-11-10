@@ -1,0 +1,58 @@
+meta {
+  name: VPC 삭제
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/network/vpcs/{{azureVpcId}}?credential_id={{azure_credentialsId}}&location=eastus
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{azure_credentialsId}}
+  location: eastus
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 300000
+}
+
+docs {
+  # Azure Virtual Network 삭제
+  
+  Azure Virtual Network를 삭제합니다.
+  
+  ## Path Parameters
+  
+  - `id`: Virtual Network ID 또는 이름
+  
+  ## Query Parameters
+  
+  - `credential_id`: Azure credential ID (필수)
+  - `location`: Azure 리전 (필수, 예: "eastus")
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "message": "VPC deleted successfully",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
+  }
+  ```
+  
+  ## 주의사항
+  
+  1. **연관 리소스**: Virtual Network에 연결된 Subnet, Network Security Group 등이 있으면 삭제할 수 없습니다
+  2. **삭제 순서**: 먼저 Subnet을 삭제한 후 Virtual Network를 삭제해야 합니다
+  3. **복구 불가**: 삭제된 Virtual Network는 복구할 수 없습니다
+}
+

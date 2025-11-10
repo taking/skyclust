@@ -1,6 +1,9 @@
 package providers
 
 import (
+	"fmt"
+	"strings"
+
 	networkservice "skyclust/internal/application/services/network"
 	"skyclust/internal/domain"
 
@@ -51,22 +54,143 @@ func (h *AWSHandler) ListVPCs(c *gin.Context) {
 
 // CreateVPC handles VPC creation
 func (h *AWSHandler) CreateVPC(c *gin.Context) {
-	h.NotImplemented(c, "create_vpc")
+	var req networkservice.CreateVPCRequest
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "create_vpc")
+		return
+	}
+
+	// credential_id는 body 또는 query parameter에서 가져올 수 있음
+	credentialID := req.CredentialID
+	if credentialID == "" {
+		credentialID = c.Query("credential_id")
+	}
+
+	if credentialID == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "credential_id is required", 400), "create_vpc")
+		return
+	}
+
+	credential, err := h.GetCredentialFromBody(c, h.credentialService, credentialID, domain.ProviderAWS)
+	if err != nil {
+		h.HandleError(c, err, "create_vpc")
+		return
+	}
+
+	req.CredentialID = credential.ID.String()
+
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	vpc, err := h.networkService.CreateVPC(ctx, credential, req)
+	if err != nil {
+		h.HandleError(c, err, "create_vpc")
+		return
+	}
+
+	h.Created(c, vpc, "AWS VPC created successfully")
 }
 
 // GetVPC handles VPC detail requests
 func (h *AWSHandler) GetVPC(c *gin.Context) {
-	h.NotImplemented(c, "get_vpc")
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	if err != nil {
+		h.HandleError(c, err, "get_vpc")
+		return
+	}
+
+	vpcID := c.Param("id")
+	if vpcID == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "VPC ID is required", 400), "get_vpc")
+		return
+	}
+
+	region := h.parseRegion(c)
+	if region == "" {
+		return
+	}
+
+	serviceReq := networkservice.GetVPCRequest{
+		CredentialID: credential.ID.String(),
+		VPCID:        vpcID,
+		Region:       region,
+	}
+
+	vpc, err := h.networkService.GetVPC(c.Request.Context(), credential, serviceReq)
+	if err != nil {
+		h.HandleError(c, err, "get_vpc")
+		return
+	}
+
+	h.OK(c, vpc, "AWS VPC retrieved successfully")
 }
 
 // UpdateVPC handles VPC update requests
 func (h *AWSHandler) UpdateVPC(c *gin.Context) {
-	h.NotImplemented(c, "update_vpc")
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	if err != nil {
+		h.HandleError(c, err, "update_vpc")
+		return
+	}
+
+	vpcID := c.Param("id")
+	if vpcID == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "VPC ID is required", 400), "update_vpc")
+		return
+	}
+
+	region := h.parseRegion(c)
+	if region == "" {
+		return
+	}
+
+	var req networkservice.UpdateVPCRequest
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "update_vpc")
+		return
+	}
+
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	vpc, err := h.networkService.UpdateVPC(ctx, credential, req, vpcID, region)
+	if err != nil {
+		h.HandleError(c, err, "update_vpc")
+		return
+	}
+
+	h.OK(c, vpc, "AWS VPC updated successfully")
 }
 
 // DeleteVPC handles VPC deletion requests
 func (h *AWSHandler) DeleteVPC(c *gin.Context) {
-	h.NotImplemented(c, "delete_vpc")
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	if err != nil {
+		h.HandleError(c, err, "delete_vpc")
+		return
+	}
+
+	vpcID := c.Param("id")
+	if vpcID == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "VPC ID is required", 400), "delete_vpc")
+		return
+	}
+
+	region := h.parseRegion(c)
+	if region == "" {
+		return
+	}
+
+	serviceReq := networkservice.DeleteVPCRequest{
+		CredentialID: credential.ID.String(),
+		VPCID:        vpcID,
+		Region:       region,
+	}
+
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	err = h.networkService.DeleteVPC(ctx, credential, serviceReq)
+	if err != nil {
+		h.HandleError(c, err, "delete_vpc")
+		return
+	}
+
+	h.OK(c, nil, "AWS VPC deleted successfully")
 }
 
 // ListSubnets handles subnet listing requests
@@ -101,22 +225,131 @@ func (h *AWSHandler) ListSubnets(c *gin.Context) {
 
 // CreateSubnet handles subnet creation
 func (h *AWSHandler) CreateSubnet(c *gin.Context) {
-	h.NotImplemented(c, "create_subnet")
+	var req networkservice.CreateSubnetRequest
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "create_subnet")
+		return
+	}
+
+	// credential_id는 body 또는 query parameter에서 가져올 수 있음
+	credentialID := req.CredentialID
+	if credentialID == "" {
+		credentialID = c.Query("credential_id")
+	}
+
+	if credentialID == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "credential_id is required", 400), "create_subnet")
+		return
+	}
+
+	credential, err := h.GetCredentialFromBody(c, h.credentialService, credentialID, domain.ProviderAWS)
+	if err != nil {
+		h.HandleError(c, err, "create_subnet")
+		return
+	}
+
+	req.CredentialID = credential.ID.String()
+
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	subnet, err := h.networkService.CreateSubnet(ctx, credential, req)
+	if err != nil {
+		h.HandleError(c, err, "create_subnet")
+		return
+	}
+
+	h.Created(c, subnet, "AWS subnet created successfully")
 }
 
 // GetSubnet handles subnet detail requests
 func (h *AWSHandler) GetSubnet(c *gin.Context) {
-	h.NotImplemented(c, "get_subnet")
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	if err != nil {
+		h.HandleError(c, err, "get_subnet")
+		return
+	}
+
+	subnetID := h.parseSubnetID(c)
+	region := h.parseRegion(c)
+
+	if subnetID == "" || region == "" {
+		return
+	}
+
+	serviceReq := networkservice.GetSubnetRequest{
+		CredentialID: credential.ID.String(),
+		SubnetID:     subnetID,
+		Region:       region,
+	}
+
+	subnet, err := h.networkService.GetSubnet(c.Request.Context(), credential, serviceReq)
+	if err != nil {
+		h.HandleError(c, err, "get_subnet")
+		return
+	}
+
+	h.OK(c, subnet, "AWS subnet retrieved successfully")
 }
 
 // UpdateSubnet handles subnet update requests
 func (h *AWSHandler) UpdateSubnet(c *gin.Context) {
-	h.NotImplemented(c, "update_subnet")
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	if err != nil {
+		h.HandleError(c, err, "update_subnet")
+		return
+	}
+
+	subnetID := h.parseSubnetID(c)
+	region := h.parseRegion(c)
+
+	if subnetID == "" || region == "" {
+		return
+	}
+
+	var req networkservice.UpdateSubnetRequest
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "update_subnet")
+		return
+	}
+
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	subnet, err := h.networkService.UpdateSubnet(ctx, credential, req, subnetID, region)
+	if err != nil {
+		h.HandleError(c, err, "update_subnet")
+		return
+	}
+
+	h.OK(c, subnet, "AWS subnet updated successfully")
 }
 
 // DeleteSubnet handles subnet deletion requests
 func (h *AWSHandler) DeleteSubnet(c *gin.Context) {
-	h.NotImplemented(c, "delete_subnet")
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	if err != nil {
+		h.HandleError(c, err, "delete_subnet")
+		return
+	}
+
+	subnetID := h.parseSubnetID(c)
+	region := h.parseRegion(c)
+
+	if subnetID == "" || region == "" {
+		return
+	}
+
+	serviceReq := networkservice.DeleteSubnetRequest{
+		CredentialID: credential.ID.String(),
+		SubnetID:     subnetID,
+		Region:       region,
+	}
+
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	err = h.networkService.DeleteSubnet(ctx, credential, serviceReq)
+	if err != nil {
+		h.HandleError(c, err, "delete_subnet")
+		return
+	}
+
+	h.OK(c, nil, "AWS subnet deleted successfully")
 }
 
 // ListSecurityGroups handles security group listing requests
@@ -127,10 +360,23 @@ func (h *AWSHandler) ListSecurityGroups(c *gin.Context) {
 		return
 	}
 
-	vpcID := h.parseVPCID(c)
-	region := h.parseRegion(c)
+	vpcID := c.Query("vpc_id")
+	region := c.Query("region")
 
-	if vpcID == "" || region == "" {
+	// Validate required parameters
+	if vpcID == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "vpc_id is required", 400), "list_security_groups")
+		return
+	}
+
+	if region == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region is required", 400), "list_security_groups")
+		return
+	}
+
+	// Validate region is not a VPC ID
+	if strings.HasPrefix(region, "vpc-") {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("invalid region: '%s' appears to be a VPC ID, not a region", region), 400), "list_security_groups")
 		return
 	}
 
@@ -151,7 +397,37 @@ func (h *AWSHandler) ListSecurityGroups(c *gin.Context) {
 
 // CreateSecurityGroup handles security group creation
 func (h *AWSHandler) CreateSecurityGroup(c *gin.Context) {
-	h.NotImplemented(c, "create_security_group")
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	if err != nil {
+		h.HandleError(c, err, "create_security_group")
+		return
+	}
+
+	var req networkservice.CreateSecurityGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("invalid request body: %v", err), 400), "create_security_group")
+		return
+	}
+
+	// credential_id는 body 또는 query에서 가져올 수 있음
+	if req.CredentialID == "" {
+		req.CredentialID = credential.ID.String()
+	}
+
+	// Validate required fields
+	if req.Name == "" || req.Description == "" || req.VPCID == "" || req.Region == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("name, description, vpc_id, and region are required"), 400), "create_security_group")
+		return
+	}
+
+	ctx := c.Request.Context()
+	securityGroup, err := h.networkService.CreateSecurityGroup(ctx, credential, req)
+	if err != nil {
+		h.HandleError(c, err, "create_security_group")
+		return
+	}
+
+	h.Created(c, securityGroup, "Security group created successfully")
 }
 
 // GetSecurityGroup handles security group detail requests

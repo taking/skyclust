@@ -1,0 +1,63 @@
+meta {
+  name: VPC 상세 조회
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/network/vpcs/{{azureVpcId}}?credential_id={{azure_credentialsId}}&location=eastus
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{azure_credentialsId}}
+  location: eastus
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Azure Virtual Network 상세 조회
+  
+  특정 Azure Virtual Network의 상세 정보를 조회합니다.
+  
+  ## Path Parameters
+  
+  - `id`: Virtual Network ID 또는 이름
+  
+  ## Query Parameters
+  
+  - `credential_id`: Azure credential ID (필수)
+  - `location`: Azure 리전 (필수, 예: "eastus")
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "/subscriptions/xxx/resourceGroups/skyclust-rg/providers/Microsoft.Network/virtualNetworks/skyclust-vnet",
+      "name": "skyclust-vnet",
+      "state": "Succeeded",
+      "is_default": false,
+      "region": "eastus",
+      "cidr_block": "10.0.0.0/16",
+      "description": "Skyclust Azure Virtual Network",
+      "tags": {
+        "Environment": "development",
+        "Project": "skyclust"
+      }
+    },
+    "message": "VPC retrieved successfully"
+  }
+  ```
+}
+

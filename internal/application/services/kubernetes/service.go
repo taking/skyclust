@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -13,9 +14,12 @@ import (
 	"skyclust/internal/infrastructure/messaging"
 	"skyclust/pkg/cache"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v5"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/eks/types"
 	"github.com/aws/smithy-go"
@@ -101,6 +105,11 @@ func (s *Service) CreateEKSCluster(ctx context.Context, credential *domain.Crede
 // CreateGCPGKECluster: 새로운 섹션 구조로 GCP GKE 클러스터를 생성합니다
 func (s *Service) CreateGCPGKECluster(ctx context.Context, credential *domain.Credential, req CreateGKEClusterRequest) (*CreateClusterResponse, error) {
 	return s.createGCPGKEClusterWithAdvanced(ctx, credential, req)
+}
+
+// CreateAKSCluster: Azure AKS 클러스터를 생성합니다
+func (s *Service) CreateAKSCluster(ctx context.Context, credential *domain.Credential, req CreateAKSClusterRequest) (*CreateClusterResponse, error) {
+	return s.createAzureAKSCluster(ctx, credential, req)
 }
 
 // createGCPGKEClusterWithAdvanced: 고급 설정으로 GCP GKE 클러스터를 생성합니다
@@ -399,6 +408,47 @@ func (s *Service) createAWSEKSCluster(ctx context.Context, credential *domain.Cr
 	// Create EKS client
 	eksClient := eks.NewFromConfig(cfg)
 
+	// AWS EKS: 서브넷이 최소 2개의 다른 AZ에 있는지 사전 검증
+	if len(req.SubnetIDs) > 0 {
+		// EC2 클라이언트 생성 (서브넷 정보 조회용)
+		ec2Client := ec2.NewFromConfig(cfg)
+
+		// 서브넷 정보 조회
+		describeSubnetsOutput, err := ec2Client.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
+			SubnetIds: req.SubnetIDs,
+		})
+		if err != nil {
+			return nil, domain.NewDomainError(
+				domain.ErrCodeProviderError,
+				fmt.Sprintf("failed to describe subnets for validation: %v", err),
+				502,
+			)
+		}
+
+		// 고유한 Availability Zone 추출
+		uniqueAZs := make(map[string]bool)
+		for _, subnet := range describeSubnetsOutput.Subnets {
+			if subnet.AvailabilityZone != nil {
+				uniqueAZs[*subnet.AvailabilityZone] = true
+			}
+		}
+
+		// 최소 2개의 다른 AZ가 필요
+		if len(uniqueAZs) < 2 {
+			// AZ 목록을 문자열로 변환
+			azList := make([]string, 0, len(uniqueAZs))
+			for az := range uniqueAZs {
+				azList = append(azList, az)
+			}
+
+			return nil, domain.NewDomainError(
+				domain.ErrCodeValidationFailed,
+				fmt.Sprintf("AWS EKS requires subnets from at least two different availability zones. Currently selected subnets are in %d zone(s): %v. Please select subnets from at least two different availability zones.", len(uniqueAZs), azList),
+				400,
+			)
+		}
+	}
+
 	// Prepare cluster input
 	input := &eks.CreateClusterInput{
 		Name:    aws.String(req.Name),
@@ -408,10 +458,24 @@ func (s *Service) createAWSEKSCluster(ctx context.Context, credential *domain.Cr
 		},
 	}
 
-	// Add optional fields
-	if req.RoleARN != "" {
-		input.RoleArn = aws.String(req.RoleARN)
+	// Role ARN 자동 생성 (role_arn이 없을 경우)
+	roleARN := req.RoleARN
+	if roleARN == "" {
+		// 환경 변수로 기본 Role 이름 커스터마이징 가능 (기본값: EKSClusterRole)
+		defaultRoleName := os.Getenv("AWS_EKS_DEFAULT_CLUSTER_ROLE_NAME")
+		if defaultRoleName == "" {
+			defaultRoleName = "EKSClusterRole"
+		}
+
+		generatedARN, err := s.generateDefaultRoleARN(ctx, cfg, defaultRoleName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate default role ARN: %w", err)
+		}
+		roleARN = generatedARN
 	}
+
+	// Role ARN 설정
+	input.RoleArn = aws.String(roleARN)
 
 	if len(req.Tags) > 0 {
 		input.Tags = req.Tags
@@ -516,8 +580,7 @@ func (s *Service) ListEKSClusters(ctx context.Context, credential *domain.Creden
 	case "gcp":
 		response, err = s.listGCPGKEClusters(ctx, credential, region)
 	case "azure":
-		// TODO: Implement Azure AKS cluster listing
-		response = &ListClustersResponse{Clusters: []ClusterInfo{}}
+		response, err = s.listAzureAKSClusters(ctx, credential, region)
 	case "ncp":
 		// TODO: Implement NCP NKS cluster listing
 		response = &ListClustersResponse{Clusters: []ClusterInfo{}}
@@ -644,8 +707,7 @@ func (s *Service) GetEKSCluster(ctx context.Context, credential *domain.Credenti
 	case "gcp":
 		cluster, err = s.getGCPGKECluster(ctx, credential, clusterName, region)
 	case "azure":
-		// TODO: Implement Azure AKS cluster retrieval
-		return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "Azure AKS cluster retrieval not implemented yet", 501)
+		cluster, err = s.getAzureAKSCluster(ctx, credential, clusterName, region)
 	case "ncp":
 		// TODO: Implement NCP NKS cluster retrieval
 		return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP NKS cluster retrieval not implemented yet", 501)
@@ -725,8 +787,7 @@ func (s *Service) DeleteEKSCluster(ctx context.Context, credential *domain.Crede
 	case "gcp":
 		return s.deleteGCPGKECluster(ctx, credential, clusterName, region)
 	case "azure":
-		// TODO: Implement Azure AKS cluster deletion
-		return domain.NewDomainError(domain.ErrCodeNotImplemented, "Azure AKS cluster deletion not implemented yet", 501)
+		return s.deleteAzureAKSCluster(ctx, credential, clusterName, region)
 	case "ncp":
 		// TODO: Implement NCP NKS cluster deletion
 		return domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP NKS cluster deletion not implemented yet", 501)
@@ -815,8 +876,7 @@ func (s *Service) GetEKSKubeconfig(ctx context.Context, credential *domain.Crede
 	case "gcp":
 		return s.getGCPGKEKubeconfig(ctx, credential, clusterName, region)
 	case "azure":
-		// TODO: Implement Azure AKS kubeconfig generation
-		return "", domain.NewDomainError(domain.ErrCodeNotImplemented, "Azure AKS kubeconfig generation not implemented yet", 501)
+		return s.getAzureAKSKubeconfig(ctx, credential, clusterName, region)
 	case "ncp":
 		// TODO: Implement NCP NKS kubeconfig generation
 		return "", domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP NKS kubeconfig generation not implemented yet", 501)
@@ -1022,11 +1082,27 @@ func (s *Service) CreateEKSNodeGroup(ctx context.Context, credential *domain.Cre
 	// Create EKS client
 	eksClient := eks.NewFromConfig(cfg)
 
+	// Node Role ARN 자동 생성 (node_role_arn이 없을 경우)
+	nodeRoleARN := req.NodeRoleARN
+	if nodeRoleARN == "" {
+		// 환경 변수로 기본 Node Role 이름 커스터마이징 가능 (기본값: EKSNodeRole)
+		defaultNodeRoleName := os.Getenv("AWS_EKS_DEFAULT_NODE_ROLE_NAME")
+		if defaultNodeRoleName == "" {
+			defaultNodeRoleName = "EKSNodeRole"
+		}
+
+		generatedARN, err := s.generateDefaultRoleARN(ctx, cfg, defaultNodeRoleName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate default node role ARN: %w", err)
+		}
+		nodeRoleARN = generatedARN
+	}
+
 	// Prepare node group input
 	input := &eks.CreateNodegroupInput{
 		ClusterName:   aws.String(req.ClusterName),
 		NodegroupName: aws.String(req.NodeGroupName),
-		NodeRole:      aws.String(req.NodeRoleARN),
+		NodeRole:      aws.String(nodeRoleARN),
 		Subnets:       req.SubnetIDs,
 		InstanceTypes: req.InstanceTypes,
 		ScalingConfig: &types.NodegroupScalingConfig{
@@ -1098,7 +1174,7 @@ func (s *Service) ListNodeGroups(ctx context.Context, credential *domain.Credent
 	case "gcp":
 		return s.listGCPGKENodePools(ctx, credential, req)
 	case "azure":
-		return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "Azure node groups not implemented yet", 501)
+		return s.listAzureNodePools(ctx, credential, req)
 	case "ncp":
 		return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP node groups not implemented yet", 501)
 	default:
@@ -1292,7 +1368,7 @@ func (s *Service) GetNodeGroup(ctx context.Context, credential *domain.Credentia
 	case "gcp":
 		return s.getGCPGKENodePool(ctx, credential, req)
 	case "azure":
-		return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "Azure node groups not implemented yet", 501)
+		return s.getAzureNodePool(ctx, credential, req)
 	case "ncp":
 		return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP node groups not implemented yet", 501)
 	default:
@@ -2072,4 +2148,829 @@ func (s *Service) deleteGCPGKECluster(ctx context.Context, credential *domain.Cr
 	}
 
 	return nil
+}
+
+// createAzureAKSCluster: Azure AKS 클러스터를 생성합니다
+func (s *Service) createAzureAKSCluster(ctx context.Context, credential *domain.Credential, req CreateAKSClusterRequest) (*CreateClusterResponse, error) {
+	// Extract Azure credentials
+	creds, err := s.extractAzureCredentials(ctx, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	// Override resource group from request if provided
+	if req.ResourceGroup != "" {
+		creds.ResourceGroup = req.ResourceGroup
+	}
+	if creds.ResourceGroup == "" {
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "resource_group is required for Azure AKS cluster", 400)
+	}
+
+	// Create Azure Container Service client
+	clientFactory, err := s.createAzureContainerServiceClient(ctx, creds)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get managed clusters client
+	managedClustersClient := clientFactory.NewManagedClustersClient()
+
+	// Build network profile
+	networkPlugin := armcontainerservice.NetworkPluginAzure
+	if req.Network != nil && req.Network.NetworkPlugin != "" {
+		switch req.Network.NetworkPlugin {
+		case "azure":
+			networkPlugin = armcontainerservice.NetworkPluginAzure
+		case "kubenet":
+			networkPlugin = armcontainerservice.NetworkPluginKubenet
+		default:
+			networkPlugin = armcontainerservice.NetworkPluginAzure
+		}
+	}
+
+	var networkPolicy *armcontainerservice.NetworkPolicy
+	if req.Network != nil && req.Network.NetworkPolicy != "" {
+		switch req.Network.NetworkPolicy {
+		case "azure":
+			networkPolicy = to.Ptr(armcontainerservice.NetworkPolicyAzure)
+		case "calico":
+			networkPolicy = to.Ptr(armcontainerservice.NetworkPolicyCalico)
+		}
+	}
+
+	networkProfile := &armcontainerservice.NetworkProfile{
+		NetworkPlugin: &networkPlugin,
+		NetworkPolicy: networkPolicy,
+	}
+
+	if req.Network != nil {
+		if req.Network.PodCIDR != "" {
+			networkProfile.PodCidr = to.Ptr(req.Network.PodCIDR)
+		}
+		if req.Network.ServiceCIDR != "" {
+			networkProfile.ServiceCidr = to.Ptr(req.Network.ServiceCIDR)
+		}
+		if req.Network.DNSServiceIP != "" {
+			networkProfile.DNSServiceIP = to.Ptr(req.Network.DNSServiceIP)
+		}
+		// DockerBridgeCIDR is not directly supported in NetworkProfile
+		// It's typically set at the cluster level or through CNI configuration
+	}
+
+	// Build agent pool profile (node pool)
+	agentPoolProfiles := []*armcontainerservice.ManagedClusterAgentPoolProfile{}
+	if req.NodePool != nil {
+		agentPoolProfile := &armcontainerservice.ManagedClusterAgentPoolProfile{
+			Name:   to.Ptr(req.NodePool.Name),
+			VMSize: to.Ptr(req.NodePool.VMSize),
+			Count:  to.Ptr(int32(req.NodePool.NodeCount)),
+		}
+
+		if req.NodePool.OSDiskSizeGB > 0 {
+			agentPoolProfile.OSDiskSizeGB = to.Ptr(int32(req.NodePool.OSDiskSizeGB))
+		}
+
+		if req.NodePool.OSDiskType != "" {
+			switch req.NodePool.OSDiskType {
+			case "Managed":
+				agentPoolProfile.OSDiskType = to.Ptr(armcontainerservice.OSDiskTypeManaged)
+			case "Ephemeral":
+				agentPoolProfile.OSDiskType = to.Ptr(armcontainerservice.OSDiskTypeEphemeral)
+			}
+		}
+
+		if req.NodePool.OSType != "" {
+			switch req.NodePool.OSType {
+			case "Linux":
+				agentPoolProfile.OSType = to.Ptr(armcontainerservice.OSTypeLinux)
+			case "Windows":
+				agentPoolProfile.OSType = to.Ptr(armcontainerservice.OSTypeWindows)
+			}
+		} else {
+			agentPoolProfile.OSType = to.Ptr(armcontainerservice.OSTypeLinux)
+		}
+
+		if req.NodePool.OSSKU != "" {
+			switch req.NodePool.OSSKU {
+			case "Ubuntu":
+				agentPoolProfile.OSSKU = to.Ptr(armcontainerservice.OSSKUUbuntu)
+			case "CBLMariner":
+				agentPoolProfile.OSSKU = to.Ptr(armcontainerservice.OSSKUCBLMariner)
+			}
+		}
+
+		if req.NodePool.EnableAutoScaling {
+			agentPoolProfile.EnableAutoScaling = to.Ptr(true)
+			if req.NodePool.MinCount > 0 {
+				agentPoolProfile.MinCount = to.Ptr(int32(req.NodePool.MinCount))
+			}
+			if req.NodePool.MaxCount > 0 {
+				agentPoolProfile.MaxCount = to.Ptr(int32(req.NodePool.MaxCount))
+			}
+		}
+
+		if req.NodePool.MaxPods > 0 {
+			agentPoolProfile.MaxPods = to.Ptr(int32(req.NodePool.MaxPods))
+		}
+
+		if req.NodePool.VnetSubnetID != "" {
+			agentPoolProfile.VnetSubnetID = to.Ptr(req.NodePool.VnetSubnetID)
+		} else if req.Network != nil && req.Network.SubnetID != "" {
+			agentPoolProfile.VnetSubnetID = to.Ptr(req.Network.SubnetID)
+		}
+
+		if len(req.NodePool.AvailabilityZones) > 0 {
+			availabilityZones := make([]*string, len(req.NodePool.AvailabilityZones))
+			for i, zone := range req.NodePool.AvailabilityZones {
+				availabilityZones[i] = to.Ptr(zone)
+			}
+			agentPoolProfile.AvailabilityZones = availabilityZones
+		}
+
+		if len(req.NodePool.Labels) > 0 {
+			labels := make(map[string]*string)
+			for k, v := range req.NodePool.Labels {
+				labels[k] = to.Ptr(v)
+			}
+			agentPoolProfile.NodeLabels = labels
+		}
+
+		if req.NodePool.Mode != "" {
+			switch req.NodePool.Mode {
+			case "System":
+				agentPoolProfile.Mode = to.Ptr(armcontainerservice.AgentPoolModeSystem)
+			case "User":
+				agentPoolProfile.Mode = to.Ptr(armcontainerservice.AgentPoolModeUser)
+			}
+		} else {
+			agentPoolProfile.Mode = to.Ptr(armcontainerservice.AgentPoolModeSystem)
+		}
+
+		agentPoolProfiles = append(agentPoolProfiles, agentPoolProfile)
+	}
+
+	// Build security profile
+	enableRBAC := true
+	if req.Security != nil {
+		enableRBAC = req.Security.EnableRBAC
+	}
+
+	// Build API server access profile
+	var apiServerAccessProfile *armcontainerservice.ManagedClusterAPIServerAccessProfile
+	if req.Security != nil {
+		apiServerAccessProfile = &armcontainerservice.ManagedClusterAPIServerAccessProfile{}
+		if req.Security.EnablePrivateCluster {
+			apiServerAccessProfile.EnablePrivateCluster = to.Ptr(true)
+		}
+		if len(req.Security.APIServerAuthorizedIPRanges) > 0 {
+			authorizedIPRanges := make([]*string, len(req.Security.APIServerAuthorizedIPRanges))
+			for i, ipRange := range req.Security.APIServerAuthorizedIPRanges {
+				authorizedIPRanges[i] = to.Ptr(ipRange)
+			}
+			apiServerAccessProfile.AuthorizedIPRanges = authorizedIPRanges
+		}
+	}
+
+	// Build addon profiles
+	addonProfiles := make(map[string]*armcontainerservice.ManagedClusterAddonProfile)
+	if req.Security != nil {
+		if req.Security.EnableAzurePolicy {
+			addonProfiles["azurepolicy"] = &armcontainerservice.ManagedClusterAddonProfile{
+				Enabled: to.Ptr(true),
+			}
+		}
+	}
+
+	// Build workload identity profile
+	var workloadIdentityProfile *armcontainerservice.ManagedClusterSecurityProfileWorkloadIdentity
+	if req.Security != nil && req.Security.EnableWorkloadIdentity {
+		workloadIdentityProfile = &armcontainerservice.ManagedClusterSecurityProfileWorkloadIdentity{
+			Enabled: to.Ptr(true),
+		}
+	}
+
+	// Build managed cluster
+	managedCluster := armcontainerservice.ManagedCluster{
+		Location: to.Ptr(req.Location),
+		Properties: &armcontainerservice.ManagedClusterProperties{
+			KubernetesVersion: to.Ptr(req.Version),
+			DNSPrefix:         to.Ptr(req.Name),
+			AgentPoolProfiles: agentPoolProfiles,
+			NetworkProfile:    networkProfile,
+			EnableRBAC:        to.Ptr(enableRBAC),
+		},
+		Tags: req.Tags,
+	}
+
+	if apiServerAccessProfile != nil {
+		managedCluster.Properties.APIServerAccessProfile = apiServerAccessProfile
+	}
+
+	if len(addonProfiles) > 0 {
+		managedCluster.Properties.AddonProfiles = addonProfiles
+	}
+
+	if workloadIdentityProfile != nil {
+		if managedCluster.Properties.SecurityProfile == nil {
+			managedCluster.Properties.SecurityProfile = &armcontainerservice.ManagedClusterSecurityProfile{}
+		}
+		managedCluster.Properties.SecurityProfile.WorkloadIdentity = workloadIdentityProfile
+	}
+
+	// Create cluster
+	poller, err := managedClustersClient.BeginCreateOrUpdate(ctx, creds.ResourceGroup, req.Name, managedCluster, nil)
+	if err != nil {
+		return nil, s.handleAzureError(err, "create AKS cluster")
+	}
+
+	// Wait for the operation to complete (optional, can be async)
+	// For now, we'll return immediately and let the user poll for status
+	s.logger.Info("Azure AKS cluster creation initiated",
+		zap.String("cluster_name", req.Name),
+		zap.String("location", req.Location),
+		zap.String("resource_group", creds.ResourceGroup),
+		zap.String("version", req.Version))
+
+	// Build response
+	response := &CreateClusterResponse{
+		ClusterID: fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.ContainerService/managedClusters/%s",
+			creds.SubscriptionID, creds.ResourceGroup, req.Name),
+		Name:      req.Name,
+		Version:   req.Version,
+		Region:    req.Location,
+		Status:    "creating",
+		CreatedAt: time.Now().Format(time.RFC3339),
+	}
+
+	// 캐시 무효화: 클러스터 목록 캐시 삭제
+	credentialID := credential.ID.String()
+	if err := s.invalidator.InvalidateKubernetesClusterList(ctx, credential.Provider, credentialID, req.Location); err != nil {
+		s.logger.Warn("Failed to invalidate Kubernetes cluster list cache",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("location", req.Location),
+			zap.Error(err))
+	}
+
+	// 이벤트 발행: 클러스터 생성 이벤트
+	clusterData := map[string]interface{}{
+		"cluster_name":   req.Name,
+		"location":       req.Location,
+		"resource_group": creds.ResourceGroup,
+		"version":        req.Version,
+	}
+	if err := s.eventPublisher.PublishKubernetesClusterEvent(ctx, credential.Provider, credentialID, req.Location, "created", clusterData); err != nil {
+		s.logger.Warn("Failed to publish Kubernetes cluster created event",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("cluster_name", req.Name),
+			zap.Error(err))
+	}
+
+	// 감사로그 기록
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionKubernetesClusterCreate,
+		fmt.Sprintf("POST /api/v1/%s/kubernetes/clusters", credential.Provider),
+		map[string]interface{}{
+			"cluster_name":   req.Name,
+			"provider":       credential.Provider,
+			"credential_id":  credentialID,
+			"location":       req.Location,
+			"resource_group": creds.ResourceGroup,
+			"version":        req.Version,
+		},
+	)
+
+	// Note: Azure operations are async, so we return immediately
+	// The actual cluster will be created in the background
+	// Users should poll GetCluster to check status
+	_ = poller // Suppress unused variable warning
+
+	return response, nil
+}
+
+// listAzureAKSClusters: Azure AKS 클러스터 목록을 조회합니다
+func (s *Service) listAzureAKSClusters(ctx context.Context, credential *domain.Credential, location string) (*ListClustersResponse, error) {
+	creds, err := s.extractAzureCredentials(ctx, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create Azure Container Service client
+	clientFactory, err := s.createAzureContainerServiceClient(ctx, creds)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get managed clusters client
+	managedClustersClient := clientFactory.NewManagedClustersClient()
+
+	// List all clusters in the subscription
+	var clusters []ClusterInfo
+	pager := managedClustersClient.NewListPager(nil)
+
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, s.handleAzureError(err, "list AKS clusters")
+		}
+
+		for _, cluster := range page.Value {
+			// Filter by location if provided
+			if location != "" && cluster.Location != nil && *cluster.Location != location {
+				continue
+			}
+
+			clusterInfo := ClusterInfo{
+				ID:      *cluster.ID,
+				Name:    *cluster.Name,
+				Version: "",
+				Status:  "",
+				Region:  "",
+			}
+
+			if cluster.Properties != nil {
+				if cluster.Properties.KubernetesVersion != nil {
+					clusterInfo.Version = *cluster.Properties.KubernetesVersion
+				}
+				if cluster.Properties.PowerState != nil && cluster.Properties.PowerState.Code != nil {
+					clusterInfo.Status = string(*cluster.Properties.PowerState.Code)
+				}
+				if cluster.Properties.Fqdn != nil {
+					clusterInfo.Endpoint = *cluster.Properties.Fqdn
+				}
+			}
+
+			if cluster.Location != nil {
+				clusterInfo.Region = *cluster.Location
+			}
+
+			if cluster.Tags != nil {
+				tags := make(map[string]string)
+				for k, v := range cluster.Tags {
+					if v != nil {
+						tags[k] = *v
+					}
+				}
+				clusterInfo.Tags = tags
+			}
+
+			clusters = append(clusters, clusterInfo)
+		}
+	}
+
+	return &ListClustersResponse{Clusters: clusters}, nil
+}
+
+// getAzureAKSCluster: Azure AKS 클러스터 상세 정보를 조회합니다
+func (s *Service) getAzureAKSCluster(ctx context.Context, credential *domain.Credential, clusterName, location string) (*ClusterInfo, error) {
+	creds, err := s.extractAzureCredentials(ctx, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	// Resource group is required for getting a specific cluster
+	// We need to find the resource group first by listing all clusters
+	// or it should be provided in the request
+	if creds.ResourceGroup == "" {
+		// Try to find the cluster by listing all clusters
+		clusters, err := s.listAzureAKSClusters(ctx, credential, location)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, cluster := range clusters.Clusters {
+			if cluster.Name == clusterName {
+				// Extract resource group from cluster ID
+				// Format: /subscriptions/{sub}/resourceGroups/{rg}/providers/...
+				parts := strings.Split(cluster.ID, "/")
+				for i, part := range parts {
+					if part == "resourceGroups" && i+1 < len(parts) {
+						creds.ResourceGroup = parts[i+1]
+						break
+					}
+				}
+				break
+			}
+		}
+
+		if creds.ResourceGroup == "" {
+			return nil, domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("AKS cluster %s not found", clusterName), 404)
+		}
+	}
+
+	// Create Azure Container Service client
+	clientFactory, err := s.createAzureContainerServiceClient(ctx, creds)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get managed clusters client
+	managedClustersClient := clientFactory.NewManagedClustersClient()
+
+	// Get cluster details
+	cluster, err := managedClustersClient.Get(ctx, creds.ResourceGroup, clusterName, nil)
+	if err != nil {
+		return nil, s.handleAzureError(err, "get AKS cluster")
+	}
+
+	clusterInfo := ClusterInfo{
+		ID:      *cluster.ID,
+		Name:    *cluster.Name,
+		Version: "",
+		Status:  "",
+		Region:  "",
+	}
+
+	if cluster.Properties != nil {
+		if cluster.Properties.KubernetesVersion != nil {
+			clusterInfo.Version = *cluster.Properties.KubernetesVersion
+		}
+		if cluster.Properties.PowerState != nil && cluster.Properties.PowerState.Code != nil {
+			clusterInfo.Status = string(*cluster.Properties.PowerState.Code)
+		}
+		if cluster.Properties.Fqdn != nil {
+			clusterInfo.Endpoint = *cluster.Properties.Fqdn
+		}
+		// Note: Azure SDK doesn't expose CreatedAt directly in ManagedClusterProperties
+	}
+
+	if cluster.Location != nil {
+		clusterInfo.Region = *cluster.Location
+	}
+
+	if cluster.Tags != nil {
+		tags := make(map[string]string)
+		for k, v := range cluster.Tags {
+			if v != nil {
+				tags[k] = *v
+			}
+		}
+		clusterInfo.Tags = tags
+	}
+
+	return &clusterInfo, nil
+}
+
+// deleteAzureAKSCluster: Azure AKS 클러스터를 삭제합니다
+func (s *Service) deleteAzureAKSCluster(ctx context.Context, credential *domain.Credential, clusterName, location string) error {
+	creds, err := s.extractAzureCredentials(ctx, credential)
+	if err != nil {
+		return err
+	}
+
+	// Resource group is required for deleting a cluster
+	// We need to find the resource group first
+	if creds.ResourceGroup == "" {
+		// Try to find the cluster by listing all clusters
+		clusters, err := s.listAzureAKSClusters(ctx, credential, location)
+		if err != nil {
+			return err
+		}
+
+		for _, cluster := range clusters.Clusters {
+			if cluster.Name == clusterName {
+				// Extract resource group from cluster ID
+				parts := strings.Split(cluster.ID, "/")
+				for i, part := range parts {
+					if part == "resourceGroups" && i+1 < len(parts) {
+						creds.ResourceGroup = parts[i+1]
+						break
+					}
+				}
+				break
+			}
+		}
+
+		if creds.ResourceGroup == "" {
+			return domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("AKS cluster %s not found", clusterName), 404)
+		}
+	}
+
+	// Create Azure Container Service client
+	clientFactory, err := s.createAzureContainerServiceClient(ctx, creds)
+	if err != nil {
+		return err
+	}
+
+	// Get managed clusters client
+	managedClustersClient := clientFactory.NewManagedClustersClient()
+
+	// Delete cluster
+	poller, err := managedClustersClient.BeginDelete(ctx, creds.ResourceGroup, clusterName, nil)
+	if err != nil {
+		return s.handleAzureError(err, "delete AKS cluster")
+	}
+
+	s.logger.Info("Azure AKS cluster deletion initiated",
+		zap.String("cluster_name", clusterName),
+		zap.String("location", location),
+		zap.String("resource_group", creds.ResourceGroup))
+
+	// 캐시 무효화: 클러스터 목록 및 개별 클러스터 캐시 삭제
+	credentialID := credential.ID.String()
+	if err := s.invalidator.InvalidateKubernetesClusterList(ctx, credential.Provider, credentialID, location); err != nil {
+		s.logger.Warn("Failed to invalidate Kubernetes cluster list cache",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("location", location),
+			zap.Error(err))
+	}
+	if err := s.invalidator.InvalidateKubernetesClusterItem(ctx, credential.Provider, credentialID, clusterName); err != nil {
+		s.logger.Warn("Failed to invalidate Kubernetes cluster item cache",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("cluster_name", clusterName),
+			zap.Error(err))
+	}
+
+	// 이벤트 발행: 클러스터 삭제 이벤트
+	clusterData := map[string]interface{}{
+		"cluster_name":   clusterName,
+		"location":       location,
+		"resource_group": creds.ResourceGroup,
+	}
+	if err := s.eventPublisher.PublishKubernetesClusterEvent(ctx, credential.Provider, credentialID, location, "deleted", clusterData); err != nil {
+		s.logger.Warn("Failed to publish Kubernetes cluster deleted event",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("cluster_name", clusterName),
+			zap.Error(err))
+	}
+
+	// 감사로그 기록
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionKubernetesClusterDelete,
+		fmt.Sprintf("DELETE /api/v1/%s/kubernetes/clusters/%s", credential.Provider, clusterName),
+		map[string]interface{}{
+			"cluster_name":   clusterName,
+			"provider":       credential.Provider,
+			"credential_id":  credentialID,
+			"location":       location,
+			"resource_group": creds.ResourceGroup,
+		},
+	)
+
+	// Note: Azure operations are async, so we return immediately
+	_ = poller // Suppress unused variable warning
+
+	return nil
+}
+
+// getAzureAKSKubeconfig: Azure AKS 클러스터의 kubeconfig를 생성합니다
+func (s *Service) getAzureAKSKubeconfig(ctx context.Context, credential *domain.Credential, clusterName, location string) (string, error) {
+	creds, err := s.extractAzureCredentials(ctx, credential)
+	if err != nil {
+		return "", err
+	}
+
+	// Resource group is required for getting kubeconfig
+	// We need to find the resource group first
+	if creds.ResourceGroup == "" {
+		// Try to find the cluster by listing all clusters
+		clusters, err := s.listAzureAKSClusters(ctx, credential, location)
+		if err != nil {
+			return "", err
+		}
+
+		for _, cluster := range clusters.Clusters {
+			if cluster.Name == clusterName {
+				// Extract resource group from cluster ID
+				parts := strings.Split(cluster.ID, "/")
+				for i, part := range parts {
+					if part == "resourceGroups" && i+1 < len(parts) {
+						creds.ResourceGroup = parts[i+1]
+						break
+					}
+				}
+				break
+			}
+		}
+
+		if creds.ResourceGroup == "" {
+			return "", domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("AKS cluster %s not found", clusterName), 404)
+		}
+	}
+
+	// Create Azure Container Service client
+	clientFactory, err := s.createAzureContainerServiceClient(ctx, creds)
+	if err != nil {
+		return "", err
+	}
+
+	// Get managed clusters client
+	managedClustersClient := clientFactory.NewManagedClustersClient()
+
+	// Get cluster credentials (kubeconfig)
+	credentialResult, err := managedClustersClient.ListClusterUserCredentials(ctx, creds.ResourceGroup, clusterName, nil)
+	if err != nil {
+		return "", s.handleAzureError(err, "get AKS kubeconfig")
+	}
+
+	// Extract kubeconfig from the credential result
+	if credentialResult.Kubeconfigs == nil || len(credentialResult.Kubeconfigs) == 0 {
+		return "", domain.NewDomainError(domain.ErrCodeInternalError, "no kubeconfig found in Azure response", 500)
+	}
+
+	// Return the first kubeconfig (usually there's only one)
+	kubeconfigBytes := credentialResult.Kubeconfigs[0].Value
+	return string(kubeconfigBytes), nil
+}
+
+// listAzureNodePools: Azure AKS 클러스터의 노드 풀 목록을 조회합니다
+func (s *Service) listAzureNodePools(ctx context.Context, credential *domain.Credential, req ListNodeGroupsRequest) (*ListNodeGroupsResponse, error) {
+	creds, err := s.extractAzureCredentials(ctx, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find resource group from cluster
+	if creds.ResourceGroup == "" {
+		clusters, err := s.listAzureAKSClusters(ctx, credential, req.Region)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, cluster := range clusters.Clusters {
+			if cluster.Name == req.ClusterName {
+				parts := strings.Split(cluster.ID, "/")
+				for i, part := range parts {
+					if part == "resourceGroups" && i+1 < len(parts) {
+						creds.ResourceGroup = parts[i+1]
+						break
+					}
+				}
+				break
+			}
+		}
+
+		if creds.ResourceGroup == "" {
+			return nil, domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("AKS cluster %s not found", req.ClusterName), 404)
+		}
+	}
+
+	// Create Azure Container Service client
+	clientFactory, err := s.createAzureContainerServiceClient(ctx, creds)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get agent pools client
+	agentPoolsClient := clientFactory.NewAgentPoolsClient()
+
+	// List agent pools
+	var nodeGroups []NodeGroupInfo
+	pager := agentPoolsClient.NewListPager(creds.ResourceGroup, req.ClusterName, nil)
+
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, s.handleAzureError(err, "list AKS node pools")
+		}
+
+		for _, agentPool := range page.Value {
+			nodeGroup := NodeGroupInfo{
+				ID:          *agentPool.ID,
+				Name:        *agentPool.Name,
+				ClusterName: req.ClusterName,
+				Region:      req.Region,
+				Status:      "",
+			}
+
+			if agentPool.Properties != nil {
+				if agentPool.Properties.Count != nil {
+					nodeGroup.ScalingConfig = NodeGroupScalingConfig{
+						DesiredSize: *agentPool.Properties.Count,
+					}
+					if agentPool.Properties.MinCount != nil {
+						nodeGroup.ScalingConfig.MinSize = *agentPool.Properties.MinCount
+					}
+					if agentPool.Properties.MaxCount != nil {
+						nodeGroup.ScalingConfig.MaxSize = *agentPool.Properties.MaxCount
+					}
+				}
+
+				if agentPool.Properties.VMSize != nil {
+					nodeGroup.InstanceTypes = []string{*agentPool.Properties.VMSize}
+				}
+
+				if agentPool.Properties.OSDiskSizeGB != nil {
+					nodeGroup.DiskSize = *agentPool.Properties.OSDiskSizeGB
+				}
+
+				if agentPool.Properties.ProvisioningState != nil {
+					nodeGroup.Status = *agentPool.Properties.ProvisioningState
+				}
+
+				if agentPool.Properties.NodeLabels != nil {
+					labels := make(map[string]string)
+					for k, v := range agentPool.Properties.NodeLabels {
+						if v != nil {
+							labels[k] = *v
+						}
+					}
+					nodeGroup.Labels = labels
+				}
+			}
+
+			nodeGroups = append(nodeGroups, nodeGroup)
+		}
+	}
+
+	return &ListNodeGroupsResponse{
+		NodeGroups: nodeGroups,
+		Total:      len(nodeGroups),
+	}, nil
+}
+
+// getAzureNodePool: Azure AKS 클러스터의 노드 풀 상세 정보를 조회합니다
+func (s *Service) getAzureNodePool(ctx context.Context, credential *domain.Credential, req GetNodeGroupRequest) (*NodeGroupInfo, error) {
+	creds, err := s.extractAzureCredentials(ctx, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find resource group from cluster
+	if creds.ResourceGroup == "" {
+		clusters, err := s.listAzureAKSClusters(ctx, credential, req.Region)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, cluster := range clusters.Clusters {
+			if cluster.Name == req.ClusterName {
+				parts := strings.Split(cluster.ID, "/")
+				for i, part := range parts {
+					if part == "resourceGroups" && i+1 < len(parts) {
+						creds.ResourceGroup = parts[i+1]
+						break
+					}
+				}
+				break
+			}
+		}
+
+		if creds.ResourceGroup == "" {
+			return nil, domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("AKS cluster %s not found", req.ClusterName), 404)
+		}
+	}
+
+	// Create Azure Container Service client
+	clientFactory, err := s.createAzureContainerServiceClient(ctx, creds)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get agent pools client
+	agentPoolsClient := clientFactory.NewAgentPoolsClient()
+
+	// Get agent pool details
+	agentPool, err := agentPoolsClient.Get(ctx, creds.ResourceGroup, req.ClusterName, req.NodeGroupName, nil)
+	if err != nil {
+		return nil, s.handleAzureError(err, "get AKS node pool")
+	}
+
+	nodeGroup := NodeGroupInfo{
+		ID:          *agentPool.ID,
+		Name:        *agentPool.Name,
+		ClusterName: req.ClusterName,
+		Region:      req.Region,
+		Status:      "",
+	}
+
+	if agentPool.Properties != nil {
+		if agentPool.Properties.Count != nil {
+			nodeGroup.ScalingConfig = NodeGroupScalingConfig{
+				DesiredSize: *agentPool.Properties.Count,
+			}
+			if agentPool.Properties.MinCount != nil {
+				nodeGroup.ScalingConfig.MinSize = *agentPool.Properties.MinCount
+			}
+			if agentPool.Properties.MaxCount != nil {
+				nodeGroup.ScalingConfig.MaxSize = *agentPool.Properties.MaxCount
+			}
+		}
+
+		if agentPool.Properties.VMSize != nil {
+			nodeGroup.InstanceTypes = []string{*agentPool.Properties.VMSize}
+		}
+
+		if agentPool.Properties.OSDiskSizeGB != nil {
+			nodeGroup.DiskSize = *agentPool.Properties.OSDiskSizeGB
+		}
+
+		if agentPool.Properties.ProvisioningState != nil {
+			nodeGroup.Status = *agentPool.Properties.ProvisioningState
+		}
+
+		if agentPool.Properties.NodeLabels != nil {
+			labels := make(map[string]string)
+			for k, v := range agentPool.Properties.NodeLabels {
+				if v != nil {
+					labels[k] = *v
+				}
+			}
+			nodeGroup.Labels = labels
+		}
+	}
+
+	return &nodeGroup, nil
 }

@@ -1,0 +1,119 @@
+meta {
+  name: 노드 풀 생성
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/kubernetes/clusters/{{aksClusterName}}/nodepools
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "credential_id": "{{azure_credentialsId}}",
+    "cluster_name": "{{aksClusterName}}",
+    "region": "{{aksLocation}}",
+    "node_pool_name": "userpool1",
+    "instance_type": "Standard_D2s_v3",
+    "min_size": 1,
+    "max_size": 10,
+    "desired_size": 3,
+    "disk_size": 128,
+    "subnet_ids": [
+      "/subscriptions/{{azure_subscription_id}}/resourceGroups/{{aksResourceGroup}}/providers/Microsoft.Network/virtualNetworks/skyclust-vnet/subnets/skyclust-subnet"
+    ],
+    "tags": {
+      "Environment": "development",
+      "Project": "skyclust",
+      "CreatedBy": "bruno-api-test"
+    }
+  }
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has node pool data", function() {
+    expect(res.getBody().data).to.be.an('object');
+    expect(res.getBody().data.node_pool_name).to.be.a('string');
+    expect(res.getBody().data.cluster_name).to.be.a('string');
+  });
+}
+
+docs {
+  # AKS 노드 풀 생성
+  
+  AKS 클러스터에 노드 풀을 생성합니다.
+  
+  ## Path Parameters
+  
+  - `clusterName`: 클러스터 이름 (예: `skyclust-aks-cluster`)
+  
+  ## Request Body
+  
+  ```json
+  {
+    "credential_id": "your-credential-id",
+    "cluster_name": "skyclust-aks-cluster",
+    "region": "eastus",
+    "node_pool_name": "userpool1",
+    "instance_type": "Standard_D2s_v3",
+    "min_size": 1,
+    "max_size": 10,
+    "desired_size": 3,
+    "disk_size": 128,
+    "subnet_ids": [
+      "/subscriptions/xxx/resourceGroups/skyclust-rg/providers/Microsoft.Network/virtualNetworks/skyclust-vnet/subnets/skyclust-subnet"
+    ],
+    "tags": {
+      "Environment": "development",
+      "Project": "skyclust"
+    }
+  }
+  ```
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "node_pool_name": "userpool1",
+      "cluster_name": "skyclust-aks-cluster",
+      "status": "Creating",
+      "instance_type": "Standard_D2s_v3",
+      "scaling_config": {
+        "min_size": 1,
+        "max_size": 10,
+        "desired_size": 3
+      },
+      "disk_size": 128,
+      "region": "eastus",
+      "tags": {
+        "Environment": "development",
+        "Project": "skyclust"
+      }
+    },
+    "message": "Node pool creation initiated"
+  }
+  ```
+  
+  ## 주의사항
+  
+  - 노드 풀은 클러스터와 동일한 Virtual Network의 Subnet에 생성되어야 합니다
+  - VM 크기는 리전에 따라 가용성이 다를 수 있습니다
+  - Auto-scaling을 사용하려면 min_size와 max_size를 설정해야 합니다
+}
+

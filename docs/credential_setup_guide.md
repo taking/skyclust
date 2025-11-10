@@ -104,6 +104,27 @@ SkyClust가 EKS 클러스터와 관련 리소스를 관리하기 위해 필요�
             "Resource": "*"
         },
         {
+            "Sid": "EC2NetworkCreation",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:CreateVpc",
+                "ec2:DeleteVpc",
+                "ec2:ModifyVpcAttribute",
+                "ec2:CreateSubnet",
+                "ec2:DeleteSubnet",
+                "ec2:ModifySubnetAttribute",
+                "ec2:CreateSecurityGroup",
+                "ec2:DeleteSecurityGroup",
+                "ec2:AuthorizeSecurityGroupIngress",
+                "ec2:AuthorizeSecurityGroupEgress",
+                "ec2:RevokeSecurityGroupIngress",
+                "ec2:RevokeSecurityGroupEgress",
+                "ec2:UpdateSecurityGroupRuleDescriptionsIngress",
+                "ec2:UpdateSecurityGroupRuleDescriptionsEgress"
+            ],
+            "Resource": "*"
+        },
+        {
             "Sid": "CloudFormationSupport",
             "Effect": "Allow",
             "Action": [
@@ -179,7 +200,8 @@ SkyClust가 EKS 클러스터와 관련 리소스를 관리하기 위해 필요�
 - **EKSNodeGroupManagement**: 노드 그룹 관리 권한
 - **EKSConsoleAccess**: Kubernetes API 접근 및 업데이트 조회 권한
 - **IAMRoleManagement**: EKS 클러스터 및 노드 그룹에 필요한 IAM 역할 생성 및 관리 권한
-- **EC2NetworkManagement**: VPC, 서브넷, 보안 그룹 조회 및 관리 권한
+- **EC2NetworkManagement**: VPC, 서브넷, 보안 그룹 조회 및 태그 관리 권한
+- **EC2NetworkCreation**: VPC, 서브넷, 보안 그룹 생성, 삭제, 수정 권한 (네트워크 리소스 생성/관리용)
 - **CloudFormationSupport**: CloudFormation 스택 관리 권한 (EKS 생성 시 내부적으로 사용)
 - **LogsManagement**: CloudWatch Logs 관리 권한
 - **SecurityGroupManagement**: 보안 그룹 규칙 관리 권한
@@ -584,9 +606,18 @@ file: <json-key-file>
 
 ### AWS
 
-**문제**: `AccessDeniedException` 발생
+**문제**: `AccessDeniedException` 또는 `UnauthorizedOperation` 발생
 - **원인**: IAM Policy 권한 부족
-- **해결**: `SkyClustEKSFullAccess` Policy가 올바르게 연결되었는지 확인
+- **해결**: 
+  - `SkyClustEKSFullAccess` Policy가 올바르게 연결되었는지 확인
+  - Policy에 `EC2NetworkCreation` 섹션이 포함되어 있는지 확인
+  - 필요한 권한: `ec2:CreateVpc`, `ec2:CreateSubnet`, `ec2:DeleteVpc`, `ec2:DeleteSubnet` 등
+
+**문제**: VPC/Subnet 생성 실패 (`ec2:CreateVpc` 또는 `ec2:CreateSubnet` 권한 없음)
+- **원인**: `EC2NetworkCreation` 섹션이 Policy에 없거나 권한이 부족함
+- **해결**: 
+  - `SkyClustEKSFullAccess` Policy에 `EC2NetworkCreation` 섹션 추가
+  - 또는 `AmazonEC2FullAccess` 정책을 임시로 연결하여 테스트 (프로덕션에서는 최소 권한 원칙 준수)
 
 **문제**: EKS 클러스터 생성 실패
 - **원인**: `EKSClusterRole` 또는 `EKSNodeRole`이 올바르게 설정되지 않음

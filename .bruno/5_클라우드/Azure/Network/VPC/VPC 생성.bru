@@ -1,0 +1,102 @@
+meta {
+  name: VPC 생성
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/network/vpcs
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "credential_id": "{{azure_credentialsId}}",
+    "name": "skyclust-vnet-{{$timestamp}}",
+    "description": "Skyclust Azure Virtual Network",
+    "location": "eastus",
+    "resource_group": "skyclust-rg",
+    "address_space": [
+      "10.0.0.0/16"
+    ],
+    "tags": {
+      "Environment": "development",
+      "Project": "skyclust",
+      "CreatedBy": "bruno-api-test"
+    }
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("azureVpcId", res.body.data.id);
+  bru.setEnvVar("azureVpcName", res.body.data.name);
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.be.true;
+  });
+  
+  test("Response has VPC data", function() {
+    expect(res.getBody().data).to.have.property('id');
+    expect(res.getBody().data).to.have.property('name');
+    expect(res.getBody().data).to.have.property('state');
+  });
+}
+
+docs {
+  # Azure Virtual Network 생성
+  
+  Azure Virtual Network (VNet)를 생성합니다.
+  
+  ## Request Body
+  
+  - `credential_id`: Azure credential ID (필수)
+  - `name`: Virtual Network 이름 (필수)
+  - `description`: 설명 (선택)
+  - `location`: Azure 리전 (필수, 예: "eastus", "westus2", "koreacentral")
+  - `resource_group`: Azure Resource Group 이름 (필수)
+  - `address_space`: 주소 공간 CIDR 블록 배열 (선택, 예: ["10.0.0.0/16"])
+  - `tags`: 리소스 태그 (선택)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "/subscriptions/xxx/resourceGroups/skyclust-rg/providers/Microsoft.Network/virtualNetworks/skyclust-vnet",
+      "name": "skyclust-vnet",
+      "state": "Succeeded",
+      "is_default": false,
+      "region": "eastus",
+      "cidr_block": "10.0.0.0/16",
+      "tags": {
+        "Environment": "development",
+        "Project": "skyclust"
+      }
+    },
+    "message": "VPC created successfully"
+  }
+  ```
+  
+  ## 주의사항
+  
+  1. **Resource Group**: Virtual Network를 생성하기 전에 Resource Group이 존재해야 합니다
+  2. **Address Space**: CIDR 블록은 Azure에서 사용 가능한 범위여야 합니다
+  3. **비용**: Virtual Network 자체는 무료입니다
+}
+

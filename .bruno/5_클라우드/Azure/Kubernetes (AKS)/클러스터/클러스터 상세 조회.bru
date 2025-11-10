@@ -1,0 +1,77 @@
+meta {
+  name: 클러스터 상세 조회
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/kubernetes/clusters/{{aksClusterName}}?credential_id={{azure_credentialsId}}&location={{aksLocation}}
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{azure_credentialsId}}
+  location: {{aksLocation}}
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # AKS 클러스터 상세 조회
+  
+  특정 Azure AKS 클러스터의 상세 정보를 조회합니다.
+  
+  ## Path Parameters
+  
+  - `name`: 클러스터 이름 (예: `skyclust-aks-cluster`)
+  
+  ## Query Parameters
+  
+  - `credential_id`: Azure credential ID (필수)
+  - `location`: Azure 리전 (필수, 예: "eastus")
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "/subscriptions/xxx/resourceGroups/skyclust-rg/providers/Microsoft.ContainerService/managedClusters/skyclust-aks-cluster",
+      "name": "skyclust-aks-cluster",
+      "version": "1.28",
+      "status": "Succeeded",
+      "location": "eastus",
+      "resource_group": "skyclust-rg",
+      "endpoint": "https://skyclust-aks-cluster-xxx.eastus.azmk8s.io",
+      "created_at": "2025-10-21T17:00:00Z",
+      "updated_at": "2025-10-21T18:00:00Z",
+      "tags": {
+        "Environment": "development",
+        "ManagedBy": "skyclust"
+      },
+      "network_config": {
+        "vpc_id": "/subscriptions/xxx/resourceGroups/skyclust-rg/providers/Microsoft.Network/virtualNetworks/skyclust-vnet",
+        "subnet_id": "/subscriptions/xxx/resourceGroups/skyclust-rg/providers/Microsoft.Network/virtualNetworks/skyclust-vnet/subnets/skyclust-subnet",
+        "pod_cidr": "10.244.0.0/16",
+        "service_cidr": "10.0.0.0/16"
+      },
+      "node_pool_info": {
+        "total_node_pools": 1,
+        "total_nodes": 3,
+        "min_nodes": 1,
+        "max_nodes": 10
+      }
+    },
+    "message": "Cluster retrieved successfully"
+  }
+  ```
+}
+

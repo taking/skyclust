@@ -11,7 +11,7 @@ type CreateClusterRequest struct {
 	Zone         string            `json:"zone,omitempty"` // GCP zone (optional)
 	SubnetIDs    []string          `json:"subnet_ids" validate:"required,min=1"`
 	VPCID        string            `json:"vpc_id,omitempty"`
-	RoleARN      string            `json:"role_arn,omitempty"`
+	RoleARN      string            `json:"role_arn,omitempty"` // Optional: 없으면 자동 생성 (arn:aws:iam::{accountId}:role/EKSClusterRole)
 	Tags         map[string]string `json:"tags,omitempty"`
 	// Access Entry configuration
 	AccessConfig *AccessConfigRequest `json:"access_config,omitempty"`
@@ -142,7 +142,7 @@ type CreateNodeGroupRequest struct {
 	ClusterName   string                 `json:"cluster_name" validate:"required"`
 	Region        string                 `json:"region" validate:"required"`
 	NodeGroupName string                 `json:"node_group_name" validate:"required"`
-	NodeRoleARN   string                 `json:"node_role_arn" validate:"required"`
+	NodeRoleARN   string                 `json:"node_role_arn,omitempty"` // Optional: 없으면 자동 생성 (arn:aws:iam::{accountId}:role/EKSNodeRole)
 	SubnetIDs     []string               `json:"subnet_ids" validate:"required,min=1"`
 	InstanceTypes []string               `json:"instance_types" validate:"required,min=1"`
 	ScalingConfig NodeGroupScalingConfig `json:"scaling_config" validate:"required"`
@@ -638,4 +638,83 @@ type GCPSecurityGroupRuleResponse struct {
 	Success bool                  `json:"success"`
 	Message string                `json:"message"`
 	Data    *GCPSecurityGroupInfo `json:"data,omitempty"`
+}
+
+// Azure AKS Cluster DTOs
+
+// CreateAKSClusterRequest represents a request to create an Azure AKS cluster
+type CreateAKSClusterRequest struct {
+	// 기본 정보 (필수)
+	CredentialID  string `json:"credential_id" validate:"required,uuid"`
+	Name          string `json:"name" validate:"required,min=1,max=63"`
+	Version       string `json:"version" validate:"required"`
+	Location      string `json:"location" validate:"required"` // Azure location (e.g., "eastus")
+	ResourceGroup string `json:"resource_group" validate:"required"`
+
+	// 네트워크 설정 (필수)
+	Network *AKSNetworkConfig `json:"network" validate:"required"`
+
+	// 노드 풀 설정 (필수)
+	NodePool *AKSNodePoolConfig `json:"node_pool" validate:"required"`
+
+	// 보안 설정 (선택)
+	Security *AKSSecurityConfig `json:"security,omitempty"`
+
+	// 태그
+	Tags map[string]*string `json:"tags,omitempty"`
+}
+
+// AKSNetworkConfig represents AKS network configuration
+type AKSNetworkConfig struct {
+	VirtualNetworkID string `json:"virtual_network_id" validate:"required"` // Azure Virtual Network ID
+	SubnetID         string `json:"subnet_id" validate:"required"`          // Azure Subnet ID
+	NetworkPlugin    string `json:"network_plugin,omitempty"`               // "azure" or "kubenet"
+	NetworkPolicy    string `json:"network_policy,omitempty"`               // "azure" or "calico"
+	PodCIDR          string `json:"pod_cidr,omitempty"`
+	ServiceCIDR      string `json:"service_cidr,omitempty"`
+	DNSServiceIP     string `json:"dns_service_ip,omitempty"`
+	DockerBridgeCIDR string `json:"docker_bridge_cidr,omitempty"`
+}
+
+// AKSNodePoolConfig represents AKS node pool configuration
+type AKSNodePoolConfig struct {
+	Name              string            `json:"name" validate:"required"`
+	VMSize            string            `json:"vm_size" validate:"required"` // e.g., "Standard_D2s_v3"
+	OSDiskSizeGB      int32             `json:"os_disk_size_gb,omitempty"`
+	OSDiskType        string            `json:"os_disk_type,omitempty"` // "Managed" or "Ephemeral"
+	OSType            string            `json:"os_type,omitempty"`      // "Linux" or "Windows"
+	OSSKU             string            `json:"os_sku,omitempty"`       // "Ubuntu" or "CBLMariner"
+	NodeCount         int32             `json:"node_count" validate:"required,min=1"`
+	MinCount          int32             `json:"min_count,omitempty"`
+	MaxCount          int32             `json:"max_count,omitempty"`
+	EnableAutoScaling bool              `json:"enable_auto_scaling,omitempty"`
+	MaxPods           int32             `json:"max_pods,omitempty"`
+	VnetSubnetID      string            `json:"vnet_subnet_id,omitempty"`
+	AvailabilityZones []string          `json:"availability_zones,omitempty"`
+	Labels            map[string]string `json:"labels,omitempty"`
+	Taints            []string          `json:"taints,omitempty"`
+	Mode              string            `json:"mode,omitempty"` // "System" or "User"
+}
+
+// AKSSecurityConfig represents AKS security configuration
+type AKSSecurityConfig struct {
+	EnableRBAC                  bool     `json:"enable_rbac,omitempty"`
+	EnablePodSecurityPolicy     bool     `json:"enable_pod_security_policy,omitempty"`
+	EnablePrivateCluster        bool     `json:"enable_private_cluster,omitempty"`
+	APIServerAuthorizedIPRanges []string `json:"api_server_authorized_ip_ranges,omitempty"`
+	EnableAzurePolicy           bool     `json:"enable_azure_policy,omitempty"`
+	EnableWorkloadIdentity      bool     `json:"enable_workload_identity,omitempty"`
+}
+
+// CreateAKSClusterResponse represents the response after creating an AKS cluster
+type CreateAKSClusterResponse struct {
+	ClusterID     string             `json:"cluster_id"`
+	Name          string             `json:"name"`
+	Version       string             `json:"version"`
+	Location      string             `json:"location"`
+	ResourceGroup string             `json:"resource_group"`
+	Status        string             `json:"status"`
+	Endpoint      string             `json:"endpoint,omitempty"`
+	Tags          map[string]*string `json:"tags,omitempty"`
+	CreatedAt     string             `json:"created_at"`
 }

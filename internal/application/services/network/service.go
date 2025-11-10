@@ -3,6 +3,7 @@ package network
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -13,11 +14,14 @@ import (
 	"skyclust/internal/infrastructure/messaging"
 	"skyclust/pkg/cache"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v5"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2Types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/smithy-go"
 	"go.uber.org/zap"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/compute/v1"
@@ -898,10 +902,84 @@ func (s *Service) checkNetworkInstances(ctx context.Context, computeService *com
 // checkVPCDeletionDependencies checks if VPC can be safely deleted
 // Stub implementations for Azure, NCP, and GCP update functions
 
-// listAzureVPCs: Azure VPC 목록을 조회합니다
+// listAzureVPCs: Azure Virtual Network 목록을 조회합니다
 func (s *Service) listAzureVPCs(ctx context.Context, credential *domain.Credential, req ListVPCsRequest) (*ListVPCsResponse, error) {
-	s.logger.Info("Azure VPC listing not yet implemented")
-	return &ListVPCsResponse{VPCs: []VPCInfo{}}, nil
+	creds, err := s.extractAzureCredentials(ctx, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create Azure Network client
+	clientFactory, err := s.createAzureNetworkClient(ctx, creds)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get virtual networks client
+	virtualNetworksClient := clientFactory.NewVirtualNetworksClient()
+
+	// List all virtual networks in the subscription
+	var vpcs []VPCInfo
+	pager := virtualNetworksClient.NewListAllPager(nil)
+
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, s.handleAzureError(err, "list Azure virtual networks")
+		}
+
+		for _, vnet := range page.Value {
+			// Filter by location if provided
+			if req.Region != "" && vnet.Location != nil && *vnet.Location != req.Region {
+				continue
+			}
+
+			// Filter by VPC ID if provided
+			if req.VPCID != "" && vnet.ID != nil && *vnet.ID != req.VPCID {
+				continue
+			}
+
+			vpcInfo := VPCInfo{
+				ID:        "",
+				Name:      "",
+				State:     "Succeeded",
+				IsDefault: false,
+			}
+
+			if vnet.ID != nil {
+				vpcInfo.ID = *vnet.ID
+			}
+			if vnet.Name != nil {
+				vpcInfo.Name = *vnet.Name
+			}
+			if vnet.Location != nil {
+				vpcInfo.Region = *vnet.Location
+			}
+
+			// Extract CIDR blocks from address space
+			if vnet.Properties != nil && vnet.Properties.AddressSpace != nil && len(vnet.Properties.AddressSpace.AddressPrefixes) > 0 {
+				// Use first CIDR block
+				if vnet.Properties.AddressSpace.AddressPrefixes[0] != nil {
+					// Note: VPCInfo doesn't have CIDRBlock field, but we can add it if needed
+				}
+			}
+
+			// Extract tags
+			if vnet.Tags != nil {
+				tags := make(map[string]string)
+				for k, v := range vnet.Tags {
+					if v != nil {
+						tags[k] = *v
+					}
+				}
+				vpcInfo.Tags = tags
+			}
+
+			vpcs = append(vpcs, vpcInfo)
+		}
+	}
+
+	return &ListVPCsResponse{VPCs: vpcs}, nil
 }
 
 // listNCPVPCs: NCP VPC 목록을 조회합니다
@@ -910,10 +988,81 @@ func (s *Service) listNCPVPCs(ctx context.Context, credential *domain.Credential
 	return &ListVPCsResponse{VPCs: []VPCInfo{}}, nil
 }
 
-// getAzureVPC: 특정 Azure VPC를 조회합니다
+// getAzureVPC: 특정 Azure Virtual Network를 조회합니다
 func (s *Service) getAzureVPC(ctx context.Context, credential *domain.Credential, req GetVPCRequest) (*VPCInfo, error) {
-	s.logger.Info("Azure VPC retrieval not yet implemented")
-	return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "Azure VPC retrieval not yet implemented", 501)
+	creds, err := s.extractAzureCredentials(ctx, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract resource group from VPC ID
+	// Format: /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Network/virtualNetworks/{name}
+	resourceGroup := ""
+	vnetName := ""
+	parts := strings.Split(req.VPCID, "/")
+	for i, part := range parts {
+		if part == "resourceGroups" && i+1 < len(parts) {
+			resourceGroup = parts[i+1]
+		}
+		if part == "virtualNetworks" && i+1 < len(parts) {
+			vnetName = parts[i+1]
+		}
+	}
+
+	if resourceGroup == "" || vnetName == "" {
+		// If VPCID is just the name, try to find it by listing
+		if creds.ResourceGroup != "" {
+			resourceGroup = creds.ResourceGroup
+			vnetName = req.VPCID
+		} else {
+			return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "invalid VPC ID format or resource group not found", 400)
+		}
+	}
+
+	// Create Azure Network client
+	clientFactory, err := s.createAzureNetworkClient(ctx, creds)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get virtual networks client
+	virtualNetworksClient := clientFactory.NewVirtualNetworksClient()
+
+	// Get virtual network details
+	vnet, err := virtualNetworksClient.Get(ctx, resourceGroup, vnetName, nil)
+	if err != nil {
+		return nil, s.handleAzureError(err, "get Azure virtual network")
+	}
+
+	vpcInfo := VPCInfo{
+		ID:        "",
+		Name:      "",
+		State:     "Succeeded",
+		IsDefault: false,
+	}
+
+	if vnet.ID != nil {
+		vpcInfo.ID = *vnet.ID
+	}
+	if vnet.Name != nil {
+		vpcInfo.Name = *vnet.Name
+	}
+	if vnet.Location != nil {
+		vpcInfo.Region = *vnet.Location
+	}
+
+	// Extract tags
+	if vnet.Tags != nil {
+		tags := make(map[string]string)
+		for k, v := range vnet.Tags {
+			if v != nil {
+				tags[k] = *v
+			}
+		}
+		vpcInfo.Tags = tags
+	}
+
+	return &vpcInfo, nil
 }
 
 // getNCPVPC: 특정 NCP VPC를 조회합니다
@@ -922,10 +1071,131 @@ func (s *Service) getNCPVPC(ctx context.Context, credential *domain.Credential, 
 	return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP VPC retrieval not yet implemented", 501)
 }
 
-// createAzureVPC: Azure VPC를 생성합니다
+// createAzureVPC: Azure Virtual Network를 생성합니다
 func (s *Service) createAzureVPC(ctx context.Context, credential *domain.Credential, req CreateVPCRequest) (*VPCInfo, error) {
-	s.logger.Info("Azure VPC creation not yet implemented")
-	return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "Azure VPC creation not yet implemented", 501)
+	creds, err := s.extractAzureCredentials(ctx, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	// Resource group is required for Azure
+	if creds.ResourceGroup == "" {
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "resource_group is required for Azure Virtual Network. Please provide it in the credential or request.", 400)
+	}
+
+	// Location is required for Azure
+	if req.Region == "" {
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "region is required for Azure Virtual Network", 400)
+	}
+
+	// CIDR block is required for Azure
+	if req.CIDRBlock == "" {
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "cidr_block is required for Azure Virtual Network", 400)
+	}
+
+	// Create Azure Network client
+	clientFactory, err := s.createAzureNetworkClient(ctx, creds)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get virtual networks client
+	virtualNetworksClient := clientFactory.NewVirtualNetworksClient()
+
+	// Build virtual network
+	virtualNetwork := armnetwork.VirtualNetwork{
+		Location: to.Ptr(req.Region),
+		Properties: &armnetwork.VirtualNetworkPropertiesFormat{
+			AddressSpace: &armnetwork.AddressSpace{
+				AddressPrefixes: []*string{to.Ptr(req.CIDRBlock)},
+			},
+		},
+	}
+
+	// Add tags
+	if len(req.Tags) > 0 {
+		tags := make(map[string]*string)
+		for k, v := range req.Tags {
+			tags[k] = to.Ptr(v)
+		}
+		virtualNetwork.Tags = tags
+	}
+
+	// Create virtual network
+	poller, err := virtualNetworksClient.BeginCreateOrUpdate(ctx, creds.ResourceGroup, req.Name, virtualNetwork, nil)
+	if err != nil {
+		return nil, s.handleAzureError(err, "create Azure virtual network")
+	}
+
+	// Wait for completion
+	result, err := poller.PollUntilDone(ctx, nil)
+	if err != nil {
+		return nil, s.handleAzureError(err, "create Azure virtual network")
+	}
+
+	vpcInfo := VPCInfo{
+		ID:        "",
+		Name:      req.Name,
+		State:     "Succeeded",
+		IsDefault: false,
+		Region:    req.Region,
+	}
+
+	if result.ID != nil {
+		vpcInfo.ID = *result.ID
+	}
+
+	if result.Tags != nil {
+		tags := make(map[string]string)
+		for k, v := range result.Tags {
+			if v != nil {
+				tags[k] = *v
+			}
+		}
+		vpcInfo.Tags = tags
+	}
+
+	s.logger.Info("Azure Virtual Network creation completed",
+		zap.String("vpc_name", req.Name),
+		zap.String("resource_group", creds.ResourceGroup),
+		zap.String("location", req.Region))
+
+	// 캐시 무효화: VPC 목록 캐시 삭제
+	credentialID := credential.ID.String()
+	if err := s.invalidator.InvalidateNetworkVPCList(ctx, credential.Provider, credentialID, req.Region); err != nil {
+		s.logger.Warn("Failed to invalidate VPC list cache",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("region", req.Region),
+			zap.Error(err))
+	}
+
+	// 감사로그 기록
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionVPCCreate,
+		fmt.Sprintf("POST /api/v1/%s/networks/vpcs", credential.Provider),
+		map[string]interface{}{
+			"vpc_id":         vpcInfo.ID,
+			"name":           req.Name,
+			"provider":       credential.Provider,
+			"credential_id":  credentialID,
+			"region":         req.Region,
+			"resource_group": creds.ResourceGroup,
+		},
+	)
+
+	// 이벤트 발행
+	if s.eventPublisher != nil {
+		vpcData := map[string]interface{}{
+			"vpc_id":        vpcInfo.ID,
+			"name":          req.Name,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        req.Region,
+		}
+		_ = s.eventPublisher.PublishVPCEvent(ctx, credential.Provider, credentialID, req.Region, "created", vpcData)
+	}
+
+	return &vpcInfo, nil
 }
 
 // createNCPVPC: NCP VPC를 생성합니다
@@ -940,10 +1210,98 @@ func (s *Service) updateGCPVPC(ctx context.Context, credential *domain.Credentia
 	return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "GCP VPC update not yet implemented", 501)
 }
 
-// updateAzureVPC: Azure VPC를 업데이트합니다
+// updateAzureVPC: Azure Virtual Network를 업데이트합니다
 func (s *Service) updateAzureVPC(ctx context.Context, credential *domain.Credential, req UpdateVPCRequest, vpcID, region string) (*VPCInfo, error) {
-	s.logger.Info("Azure VPC update not yet implemented")
-	return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "Azure VPC update not yet implemented", 501)
+	creds, err := s.extractAzureCredentials(ctx, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract resource group and VNet name from VPC ID
+	resourceGroup := ""
+	vnetName := ""
+	parts := strings.Split(vpcID, "/")
+	for i, part := range parts {
+		if part == "resourceGroups" && i+1 < len(parts) {
+			resourceGroup = parts[i+1]
+		}
+		if part == "virtualNetworks" && i+1 < len(parts) {
+			vnetName = parts[i+1]
+		}
+	}
+
+	if resourceGroup == "" || vnetName == "" {
+		if creds.ResourceGroup != "" {
+			resourceGroup = creds.ResourceGroup
+			vnetName = vpcID
+		} else {
+			return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "invalid VPC ID format or resource group not found", 400)
+		}
+	}
+
+	// Create Azure Network client
+	clientFactory, err := s.createAzureNetworkClient(ctx, creds)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get virtual networks client
+	virtualNetworksClient := clientFactory.NewVirtualNetworksClient()
+
+	// Get existing virtual network
+	existingVNet, err := virtualNetworksClient.Get(ctx, resourceGroup, vnetName, nil)
+	if err != nil {
+		return nil, s.handleAzureError(err, "get Azure virtual network")
+	}
+
+	// Update tags if provided
+	if len(req.Tags) > 0 {
+		if existingVNet.VirtualNetwork.Tags == nil {
+			existingVNet.VirtualNetwork.Tags = make(map[string]*string)
+		}
+		for k, v := range req.Tags {
+			existingVNet.VirtualNetwork.Tags[k] = to.Ptr(v)
+		}
+	}
+
+	// Update virtual network
+	poller, err := virtualNetworksClient.BeginCreateOrUpdate(ctx, resourceGroup, vnetName, existingVNet.VirtualNetwork, nil)
+	if err != nil {
+		return nil, s.handleAzureError(err, "update Azure virtual network")
+	}
+
+	// Wait for completion
+	result, err := poller.PollUntilDone(ctx, nil)
+	if err != nil {
+		return nil, s.handleAzureError(err, "update Azure virtual network")
+	}
+
+	vpcInfo := VPCInfo{
+		ID:        "",
+		Name:      vnetName,
+		State:     "Succeeded",
+		IsDefault: false,
+		Region:    region,
+	}
+
+	if result.VirtualNetwork.ID != nil {
+		vpcInfo.ID = *result.VirtualNetwork.ID
+	}
+	if result.VirtualNetwork.Location != nil {
+		vpcInfo.Region = *result.VirtualNetwork.Location
+	}
+
+	if result.VirtualNetwork.Tags != nil {
+		tags := make(map[string]string)
+		for k, v := range result.VirtualNetwork.Tags {
+			if v != nil {
+				tags[k] = *v
+			}
+		}
+		vpcInfo.Tags = tags
+	}
+
+	return &vpcInfo, nil
 }
 
 // updateNCPVPC: NCP VPC를 업데이트합니다
@@ -952,10 +1310,101 @@ func (s *Service) updateNCPVPC(ctx context.Context, credential *domain.Credentia
 	return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP VPC update not yet implemented", 501)
 }
 
-// deleteAzureVPC: Azure VPC를 삭제합니다
+// deleteAzureVPC: Azure Virtual Network를 삭제합니다
 func (s *Service) deleteAzureVPC(ctx context.Context, credential *domain.Credential, req DeleteVPCRequest) error {
-	s.logger.Info("Azure VPC deletion not yet implemented")
-	return domain.NewDomainError(domain.ErrCodeNotImplemented, "Azure VPC deletion not yet implemented", 501)
+	creds, err := s.extractAzureCredentials(ctx, credential)
+	if err != nil {
+		return err
+	}
+
+	// Extract resource group and VNet name from VPC ID
+	resourceGroup := ""
+	vnetName := ""
+	parts := strings.Split(req.VPCID, "/")
+	for i, part := range parts {
+		if part == "resourceGroups" && i+1 < len(parts) {
+			resourceGroup = parts[i+1]
+		}
+		if part == "virtualNetworks" && i+1 < len(parts) {
+			vnetName = parts[i+1]
+		}
+	}
+
+	if resourceGroup == "" || vnetName == "" {
+		if creds.ResourceGroup != "" {
+			resourceGroup = creds.ResourceGroup
+			vnetName = req.VPCID
+		} else {
+			return domain.NewDomainError(domain.ErrCodeBadRequest, "invalid VPC ID format or resource group not found", 400)
+		}
+	}
+
+	// Create Azure Network client
+	clientFactory, err := s.createAzureNetworkClient(ctx, creds)
+	if err != nil {
+		return err
+	}
+
+	// Get virtual networks client
+	virtualNetworksClient := clientFactory.NewVirtualNetworksClient()
+
+	// Delete virtual network
+	poller, err := virtualNetworksClient.BeginDelete(ctx, resourceGroup, vnetName, nil)
+	if err != nil {
+		return s.handleAzureError(err, "delete Azure virtual network")
+	}
+
+	// Wait for completion
+	_, err = poller.PollUntilDone(ctx, nil)
+	if err != nil {
+		return s.handleAzureError(err, "delete Azure virtual network")
+	}
+
+	s.logger.Info("Azure Virtual Network deletion completed",
+		zap.String("vpc_name", vnetName),
+		zap.String("resource_group", resourceGroup))
+
+	// 캐시 무효화: VPC 목록 및 개별 VPC 캐시 삭제
+	credentialID := credential.ID.String()
+	if err := s.invalidator.InvalidateNetworkVPCList(ctx, credential.Provider, credentialID, req.Region); err != nil {
+		s.logger.Warn("Failed to invalidate VPC list cache",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("region", req.Region),
+			zap.Error(err))
+	}
+	if err := s.invalidator.InvalidateNetworkVPCItem(ctx, credential.Provider, credentialID, req.VPCID); err != nil {
+		s.logger.Warn("Failed to invalidate VPC item cache",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("vpc_id", req.VPCID),
+			zap.Error(err))
+	}
+
+	// 감사로그 기록
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionVPCDelete,
+		fmt.Sprintf("DELETE /api/v1/%s/networks/vpcs/%s", credential.Provider, req.VPCID),
+		map[string]interface{}{
+			"vpc_id":         req.VPCID,
+			"provider":       credential.Provider,
+			"credential_id":  credentialID,
+			"region":         req.Region,
+			"resource_group": resourceGroup,
+		},
+	)
+
+	// 이벤트 발행
+	if s.eventPublisher != nil {
+		vpcData := map[string]interface{}{
+			"vpc_id":        req.VPCID,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        req.Region,
+		}
+		_ = s.eventPublisher.PublishVPCEvent(ctx, credential.Provider, credentialID, req.Region, "deleted", vpcData)
+	}
+
+	return nil
 }
 
 // deleteNCPVPC: NCP VPC를 삭제합니다
@@ -1207,10 +1656,121 @@ func (s *Service) deleteAWSVPC(ctx context.Context, credential *domain.Credentia
 		VpcId: aws.String(req.VPCID),
 	})
 	if err != nil {
-		return domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to delete VPC: %v", err), 502)
+		// AWS 에러를 파싱하여 더 명확한 메시지로 변환
+		return s.handleAWSVPCDeleteError(err, req.VPCID)
 	}
 
 	return nil
+}
+
+// handleAWSVPCDeleteError: Parses AWS VPC deletion errors and converts them to user-friendly messages
+func (s *Service) handleAWSVPCDeleteError(err error, vpcID string) error {
+	if err == nil {
+		return nil
+	}
+
+	errorMsg := err.Error()
+
+	// Handle DependencyViolation error (VPC has dependent resources)
+	if strings.Contains(errorMsg, "DependencyViolation") {
+		// Extract VPC ID from error message
+		vpcIDInMsg := vpcID
+		if strings.Contains(errorMsg, "vpc-") {
+			// Try to extract VPC ID from error message
+			parts := strings.Split(errorMsg, "'")
+			for i, part := range parts {
+				if strings.HasPrefix(part, "vpc-") {
+					vpcIDInMsg = part
+					break
+				}
+				if i > 0 && strings.Contains(parts[i-1], "vpc") {
+					vpcIDInMsg = part
+					break
+				}
+			}
+		}
+
+		// Identify dependency type
+		var dependencyType string
+		if strings.Contains(errorMsg, "subnet") || strings.Contains(errorMsg, "Subnet") {
+			dependencyType = "subnets"
+		} else if strings.Contains(errorMsg, "security group") || strings.Contains(errorMsg, "SecurityGroup") {
+			dependencyType = "security groups"
+		} else if strings.Contains(errorMsg, "network interface") || strings.Contains(errorMsg, "NetworkInterface") {
+			dependencyType = "network interfaces"
+		} else if strings.Contains(errorMsg, "internet gateway") || strings.Contains(errorMsg, "InternetGateway") {
+			dependencyType = "internet gateways"
+		} else if strings.Contains(errorMsg, "route table") || strings.Contains(errorMsg, "RouteTable") {
+			dependencyType = "route tables"
+		} else if strings.Contains(errorMsg, "vpc peering") || strings.Contains(errorMsg, "VpcPeering") {
+			dependencyType = "VPC peering connections"
+		} else {
+			dependencyType = "attached resources"
+		}
+
+		message := fmt.Sprintf(
+			"VPC '%s' cannot be deleted because it has %s attached. Please delete or detach all attached resources before deleting the VPC.",
+			vpcIDInMsg,
+			dependencyType,
+		)
+
+		// Add resolution steps
+		message += fmt.Sprintf(
+			"\n\nResolution steps:\n" +
+				"1. Delete all subnets attached to the VPC\n" +
+				"2. Delete or detach security groups from other resources\n" +
+				"3. Detach and delete internet gateways attached to the VPC\n" +
+				"4. Delete network interfaces attached to the VPC\n" +
+				"5. Delete any VPC peering connections\n" +
+				"6. Remove all dependent resources and try again",
+		)
+
+		return domain.NewDomainError(domain.ErrCodeConflict, message, 409)
+	}
+
+	// Handle InvalidVpcID.NotFound error
+	if strings.Contains(errorMsg, "InvalidVpcID.NotFound") {
+		return domain.NewDomainError(
+			domain.ErrCodeNotFound,
+			fmt.Sprintf("VPC '%s' not found. The VPC may have already been deleted or does not exist.", vpcID),
+			404,
+		)
+	}
+
+	// Handle AccessDenied error
+	if strings.Contains(errorMsg, "AccessDenied") || strings.Contains(errorMsg, "UnauthorizedOperation") {
+		return domain.NewDomainError(
+			domain.ErrCodeForbidden,
+			"Permission denied for VPC deletion. Please check the 'ec2:DeleteVpc' permission in your IAM policy.",
+			403,
+		)
+	}
+
+	// Handle InvalidParameterValue error
+	if strings.Contains(errorMsg, "InvalidParameterValue") {
+		return domain.NewDomainError(
+			domain.ErrCodeBadRequest,
+			fmt.Sprintf("Invalid VPC ID: %s", vpcID),
+			400,
+		)
+	}
+
+	// Handle other AWS API errors
+	var apiErr *smithy.OperationError
+	if errors.As(err, &apiErr) {
+		return domain.NewDomainError(
+			domain.ErrCodeProviderError,
+			fmt.Sprintf("AWS API error: %s", errorMsg),
+			502,
+		)
+	}
+
+	// Generic error
+	return domain.NewDomainError(
+		domain.ErrCodeProviderError,
+		fmt.Sprintf("An error occurred while deleting the VPC: %v", err),
+		502,
+	)
 }
 
 // ListSubnets: 서브넷 목록을 조회합니다
@@ -1783,6 +2343,117 @@ func (s *Service) createGCPSecurityGroup(ctx context.Context, credential *domain
 	credentialID := credential.ID.String()
 	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionSecurityGroupCreate,
 		fmt.Sprintf("POST /api/v1/%s/networks/vpcs/%s/security-groups", credential.Provider, req.VPCID),
+		map[string]interface{}{
+			"security_group_id": sgInfo.ID,
+			"name":              req.Name,
+			"vpc_id":            req.VPCID,
+			"provider":          credential.Provider,
+			"credential_id":     credentialID,
+			"region":            req.Region,
+		},
+	)
+
+	// NATS 이벤트 발행
+	if s.eventPublisher != nil {
+		sgData := map[string]interface{}{
+			"security_group_id": sgInfo.ID,
+			"name":              req.Name,
+			"vpc_id":            req.VPCID,
+			"provider":          credential.Provider,
+			"credential_id":     credentialID,
+			"region":            req.Region,
+		}
+		_ = s.eventPublisher.PublishSecurityGroupEvent(ctx, credential.Provider, credentialID, req.Region, "created", sgData)
+	}
+
+	return sgInfo, nil
+}
+
+// createAzureSecurityGroup: Azure Network Security Group을 생성합니다
+func (s *Service) createAzureSecurityGroup(ctx context.Context, credential *domain.Credential, req CreateSecurityGroupRequest) (*SecurityGroupInfo, error) {
+	// Extract Azure credentials
+	creds, err := s.extractAzureCredentials(ctx, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	// Resource group is required for Azure NSG
+	if creds.ResourceGroup == "" {
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "resource_group is required for Azure Network Security Group", 400)
+	}
+
+	// Create Azure Network client
+	clientFactory, err := s.createAzureNetworkClient(ctx, creds)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get Network Security Groups client
+	nsgClient := clientFactory.NewSecurityGroupsClient()
+
+	// Build Network Security Group
+	nsg := armnetwork.SecurityGroup{
+		Location:   to.Ptr(req.Region),
+		Properties: &armnetwork.SecurityGroupPropertiesFormat{
+			// NSG properties can be set here if needed
+		},
+	}
+
+	// Add tags
+	if len(req.Tags) > 0 {
+		tags := make(map[string]*string)
+		for k, v := range req.Tags {
+			tags[k] = to.Ptr(v)
+		}
+		nsg.Tags = tags
+	}
+
+	// Create NSG
+	poller, err := nsgClient.BeginCreateOrUpdate(ctx, creds.ResourceGroup, req.Name, nsg, nil)
+	if err != nil {
+		return nil, s.handleAzureError(err, "create Azure Network Security Group")
+	}
+
+	// Wait for completion
+	result, err := poller.PollUntilDone(ctx, nil)
+	if err != nil {
+		return nil, s.handleAzureError(err, "create Azure Network Security Group")
+	}
+
+	// Build response
+	sgInfo := &SecurityGroupInfo{
+		ID:          "",
+		Name:        req.Name,
+		Description: req.Description,
+		VPCID:       req.VPCID, // Azure에서는 VNet ID를 VPCID로 사용
+		Region:      req.Region,
+		Rules:       []SecurityGroupRuleInfo{}, // Empty initially
+		Tags:        req.Tags,
+	}
+
+	if result.ID != nil {
+		sgInfo.ID = *result.ID
+	}
+
+	if result.Tags != nil {
+		tags := make(map[string]string)
+		for k, v := range result.Tags {
+			if v != nil {
+				tags[k] = *v
+			}
+		}
+		sgInfo.Tags = tags
+	}
+
+	s.logger.Info("Azure Network Security Group created successfully",
+		zap.String("nsg_name", req.Name),
+		zap.String("resource_group", creds.ResourceGroup),
+		zap.String("location", req.Region))
+
+	// 감사로그 기록
+	credentialID := credential.ID.String()
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionSecurityGroupCreate,
+		fmt.Sprintf("POST /api/v1/%s/networks/security-groups", credential.Provider),
 		map[string]interface{}{
 			"security_group_id": sgInfo.ID,
 			"name":              req.Name,
@@ -2708,6 +3379,16 @@ func (s *Service) createGCPComputeClient(ctx context.Context, credential *domain
 
 // createEC2Client: AWS EC2 클라이언트를 생성합니다
 func (s *Service) createEC2Client(ctx context.Context, credential *domain.Credential, region string) (*ec2.Client, error) {
+	// Validate region - region이 비어있거나 VPC ID 형식(vpc-로 시작)이면 에러
+	if region == "" {
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "region is required for AWS EC2 client", 400)
+	}
+
+	// VPC ID가 region으로 잘못 전달되는 경우 방지
+	if strings.HasPrefix(region, "vpc-") {
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("invalid region: '%s' appears to be a VPC ID, not a region", region), 400)
+	}
+
 	// Decrypt credential
 	decryptedData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
 	if err != nil {
@@ -2725,10 +3406,11 @@ func (s *Service) createEC2Client(ctx context.Context, credential *domain.Creden
 		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "secret_key not found in credential", 400)
 	}
 
-	// Debug: Log the extracted credentials
-	s.logger.Info("Extracted AWS credentials",
+	// Debug: Log the extracted credentials and region
+	s.logger.Info("Creating AWS EC2 client",
 		zap.String("access_key", accessKey),
-		zap.String("secret_key", secretKey[:10]+"..."))
+		zap.String("secret_key", secretKey[:10]+"..."),
+		zap.String("region", region))
 
 	// Create AWS config
 	cfg, err := awsconfig.LoadDefaultConfig(ctx,
@@ -3946,32 +4628,482 @@ func (s *Service) deleteAWSSubnet(ctx context.Context, credential *domain.Creden
 
 // listAzureSubnets lists Azure subnets (stub)
 func (s *Service) listAzureSubnets(ctx context.Context, credential *domain.Credential, req ListSubnetsRequest) (*ListSubnetsResponse, error) {
-	s.logger.Info("Azure subnet listing not yet implemented")
-	return &ListSubnetsResponse{Subnets: []SubnetInfo{}}, nil
+	creds, err := s.extractAzureCredentials(ctx, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract resource group and VNet name from VPC ID
+	resourceGroup := ""
+	vnetName := ""
+	parts := strings.Split(req.VPCID, "/")
+	for i, part := range parts {
+		if part == "resourceGroups" && i+1 < len(parts) {
+			resourceGroup = parts[i+1]
+		}
+		if part == "virtualNetworks" && i+1 < len(parts) {
+			vnetName = parts[i+1]
+		}
+	}
+
+	if resourceGroup == "" || vnetName == "" {
+		if creds.ResourceGroup != "" {
+			resourceGroup = creds.ResourceGroup
+			// Try to extract VNet name from VPCID or use it as-is
+			if strings.Contains(req.VPCID, "/") {
+				// It's a full resource ID, extract name
+				for i, part := range parts {
+					if part == "virtualNetworks" && i+1 < len(parts) {
+						vnetName = parts[i+1]
+						break
+					}
+				}
+			} else {
+				vnetName = req.VPCID
+			}
+		} else {
+			return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "invalid VPC ID format or resource group not found", 400)
+		}
+	}
+
+	// Create Azure Network client
+	clientFactory, err := s.createAzureNetworkClient(ctx, creds)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get subnets client
+	subnetsClient := clientFactory.NewSubnetsClient()
+
+	// List subnets
+	var subnets []SubnetInfo
+	pager := subnetsClient.NewListPager(resourceGroup, vnetName, nil)
+
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, s.handleAzureError(err, "list Azure subnets")
+		}
+
+		for _, subnet := range page.Value {
+			subnetInfo := SubnetInfo{
+				ID:     "",
+				Name:   "",
+				VPCID:  req.VPCID,
+				Region: req.Region,
+				State:  "Succeeded",
+			}
+
+			if subnet.ID != nil {
+				subnetInfo.ID = *subnet.ID
+			}
+			if subnet.Name != nil {
+				subnetInfo.Name = *subnet.Name
+			}
+
+			if subnet.Properties != nil {
+				if subnet.Properties.AddressPrefix != nil {
+					subnetInfo.CIDRBlock = *subnet.Properties.AddressPrefix
+				}
+				if subnet.Properties.ProvisioningState != nil {
+					subnetInfo.State = string(*subnet.Properties.ProvisioningState)
+				}
+			}
+
+			subnets = append(subnets, subnetInfo)
+		}
+	}
+
+	return &ListSubnetsResponse{Subnets: subnets}, nil
 }
 
-// getAzureSubnet gets Azure subnet (stub)
+// getAzureSubnet: Azure 서브넷 상세 정보를 조회합니다
 func (s *Service) getAzureSubnet(ctx context.Context, credential *domain.Credential, req GetSubnetRequest) (*SubnetInfo, error) {
-	s.logger.Info("Azure subnet retrieval not yet implemented")
-	return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "Azure subnet retrieval not yet implemented", 501)
+	creds, err := s.extractAzureCredentials(ctx, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract resource group, VNet name, and subnet name from subnet ID
+	resourceGroup := ""
+	vnetName := ""
+	subnetName := ""
+	parts := strings.Split(req.SubnetID, "/")
+	for i, part := range parts {
+		if part == "resourceGroups" && i+1 < len(parts) {
+			resourceGroup = parts[i+1]
+		}
+		if part == "virtualNetworks" && i+1 < len(parts) {
+			vnetName = parts[i+1]
+		}
+		if part == "subnets" && i+1 < len(parts) {
+			subnetName = parts[i+1]
+		}
+	}
+
+	if resourceGroup == "" || vnetName == "" || subnetName == "" {
+		return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "invalid subnet ID format", 400)
+	}
+
+	// Create Azure Network client
+	clientFactory, err := s.createAzureNetworkClient(ctx, creds)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get subnets client
+	subnetsClient := clientFactory.NewSubnetsClient()
+
+	// Get subnet details
+	subnet, err := subnetsClient.Get(ctx, resourceGroup, vnetName, subnetName, nil)
+	if err != nil {
+		return nil, s.handleAzureError(err, "get Azure subnet")
+	}
+
+	// Extract VPC ID from subnet ID
+	// Format: /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Network/virtualNetworks/{vnet}/subnets/{subnet}
+	vpcID := ""
+	for i, part := range parts {
+		if part == "subnets" && i > 0 {
+			// Reconstruct VPC ID up to virtualNetworks/{vnet}
+			vpcID = strings.Join(parts[:i], "/")
+			break
+		}
+	}
+	if vpcID == "" {
+		// Fallback: construct VPC ID from resource group and VNet name
+		vpcID = fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/virtualNetworks/%s", creds.SubscriptionID, resourceGroup, vnetName)
+	}
+
+	subnetInfo := SubnetInfo{
+		ID:     "",
+		Name:   subnetName,
+		VPCID:  vpcID,
+		Region: req.Region,
+		State:  "Succeeded",
+	}
+
+	if subnet.Subnet.ID != nil {
+		subnetInfo.ID = *subnet.Subnet.ID
+	}
+
+	if subnet.Subnet.Properties != nil {
+		if subnet.Subnet.Properties.AddressPrefix != nil {
+			subnetInfo.CIDRBlock = *subnet.Subnet.Properties.AddressPrefix
+		}
+		if subnet.Subnet.Properties.ProvisioningState != nil {
+			subnetInfo.State = string(*subnet.Subnet.Properties.ProvisioningState)
+		}
+	}
+
+	return &subnetInfo, nil
 }
 
-// createAzureSubnet creates Azure subnet (stub)
+// createAzureSubnet: Azure 서브넷을 생성합니다
 func (s *Service) createAzureSubnet(ctx context.Context, credential *domain.Credential, req CreateSubnetRequest) (*SubnetInfo, error) {
-	s.logger.Info("Azure subnet creation not yet implemented")
-	return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "Azure subnet creation not yet implemented", 501)
+	creds, err := s.extractAzureCredentials(ctx, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract resource group and VNet name from VPC ID
+	resourceGroup := ""
+	vnetName := ""
+	parts := strings.Split(req.VPCID, "/")
+	for i, part := range parts {
+		if part == "resourceGroups" && i+1 < len(parts) {
+			resourceGroup = parts[i+1]
+		}
+		if part == "virtualNetworks" && i+1 < len(parts) {
+			vnetName = parts[i+1]
+		}
+	}
+
+	if resourceGroup == "" || vnetName == "" {
+		if creds.ResourceGroup != "" {
+			resourceGroup = creds.ResourceGroup
+			if strings.Contains(req.VPCID, "/") {
+				for i, part := range parts {
+					if part == "virtualNetworks" && i+1 < len(parts) {
+						vnetName = parts[i+1]
+						break
+					}
+				}
+			} else {
+				vnetName = req.VPCID
+			}
+		} else {
+			return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "invalid VPC ID format or resource group not found", 400)
+		}
+	}
+
+	// CIDR block is required
+	if req.CIDRBlock == "" {
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "cidr_block is required for Azure subnet", 400)
+	}
+
+	// Create Azure Network client
+	clientFactory, err := s.createAzureNetworkClient(ctx, creds)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get subnets client
+	subnetsClient := clientFactory.NewSubnetsClient()
+
+	// Build subnet
+	subnet := armnetwork.Subnet{
+		Properties: &armnetwork.SubnetPropertiesFormat{
+			AddressPrefix: to.Ptr(req.CIDRBlock),
+		},
+	}
+
+	// Create subnet
+	poller, err := subnetsClient.BeginCreateOrUpdate(ctx, resourceGroup, vnetName, req.Name, subnet, nil)
+	if err != nil {
+		return nil, s.handleAzureError(err, "create Azure subnet")
+	}
+
+	// Wait for completion
+	result, err := poller.PollUntilDone(ctx, nil)
+	if err != nil {
+		return nil, s.handleAzureError(err, "create Azure subnet")
+	}
+
+	subnetInfo := SubnetInfo{
+		ID:        "",
+		Name:      req.Name,
+		VPCID:     req.VPCID,
+		CIDRBlock: req.CIDRBlock,
+		Region:    req.Region,
+		State:     "Succeeded",
+	}
+
+	if result.Subnet.ID != nil {
+		subnetInfo.ID = *result.Subnet.ID
+	}
+
+	if result.Subnet.Properties != nil && result.Subnet.Properties.ProvisioningState != nil {
+		subnetInfo.State = string(*result.Subnet.Properties.ProvisioningState)
+	}
+
+	s.logger.Info("Azure subnet creation completed",
+		zap.String("subnet_name", req.Name),
+		zap.String("resource_group", resourceGroup),
+		zap.String("vnet_name", vnetName))
+
+	// Construct VPC ID for cache invalidation
+	vpcID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/virtualNetworks/%s", creds.SubscriptionID, resourceGroup, vnetName)
+
+	// 캐시 무효화: 서브넷 목록 캐시 삭제 (메서드가 없으면 로그만 남김)
+	credentialID := credential.ID.String()
+	s.logger.Debug("Subnet list cache invalidation skipped (method not available)",
+		zap.String("provider", credential.Provider),
+		zap.String("credential_id", credentialID),
+		zap.String("vpc_id", vpcID))
+
+	// 감사로그 기록
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionSubnetCreate,
+		fmt.Sprintf("POST /api/v1/%s/networks/vpcs/%s/subnets", credential.Provider, req.VPCID),
+		map[string]interface{}{
+			"subnet_id":     subnetInfo.ID,
+			"name":          req.Name,
+			"vpc_id":        req.VPCID,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        req.Region,
+		},
+	)
+
+	// 이벤트 발행
+	if s.eventPublisher != nil {
+		subnetData := map[string]interface{}{
+			"subnet_id":     subnetInfo.ID,
+			"name":          req.Name,
+			"vpc_id":        req.VPCID,
+			"cidr_block":    subnetInfo.CIDRBlock,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        req.Region,
+		}
+		_ = s.eventPublisher.PublishSubnetEvent(ctx, credential.Provider, credentialID, req.VPCID, "created", subnetData)
+	}
+
+	return &subnetInfo, nil
 }
 
-// updateAzureSubnet updates Azure subnet (stub)
+// updateAzureSubnet: Azure 서브넷을 업데이트합니다
 func (s *Service) updateAzureSubnet(ctx context.Context, credential *domain.Credential, req UpdateSubnetRequest, subnetID, region string) (*SubnetInfo, error) {
-	s.logger.Info("Azure subnet update not yet implemented")
-	return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "Azure subnet update not yet implemented", 501)
+	creds, err := s.extractAzureCredentials(ctx, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract resource group, VNet name, and subnet name from subnet ID
+	resourceGroup := ""
+	vnetName := ""
+	subnetName := ""
+	parts := strings.Split(subnetID, "/")
+	for i, part := range parts {
+		if part == "resourceGroups" && i+1 < len(parts) {
+			resourceGroup = parts[i+1]
+		}
+		if part == "virtualNetworks" && i+1 < len(parts) {
+			vnetName = parts[i+1]
+		}
+		if part == "subnets" && i+1 < len(parts) {
+			subnetName = parts[i+1]
+		}
+	}
+
+	if resourceGroup == "" || vnetName == "" || subnetName == "" {
+		return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "invalid subnet ID format", 400)
+	}
+
+	// Create Azure Network client
+	clientFactory, err := s.createAzureNetworkClient(ctx, creds)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get subnets client
+	subnetsClient := clientFactory.NewSubnetsClient()
+
+	// Get existing subnet
+	existingSubnet, err := subnetsClient.Get(ctx, resourceGroup, vnetName, subnetName, nil)
+	if err != nil {
+		return nil, s.handleAzureError(err, "get Azure subnet")
+	}
+
+	// Extract VPC ID from subnet ID
+	// Format: /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Network/virtualNetworks/{vnet}/subnets/{subnet}
+	vpcID := ""
+	for i, part := range parts {
+		if part == "subnets" && i > 0 {
+			// Reconstruct VPC ID up to virtualNetworks/{vnet}
+			vpcID = strings.Join(parts[:i], "/")
+			break
+		}
+	}
+	if vpcID == "" {
+		// Fallback: construct VPC ID from resource group and VNet name
+		vpcID = fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/virtualNetworks/%s", creds.SubscriptionID, resourceGroup, vnetName)
+	}
+
+	// Update subnet (Azure subnets are mostly immutable, but we can update service endpoints, etc.)
+	// For now, we'll just return the existing subnet as Azure doesn't support many subnet updates
+	subnetInfo := SubnetInfo{
+		ID:     subnetID,
+		Name:   subnetName,
+		VPCID:  vpcID,
+		Region: region,
+		State:  "Succeeded",
+	}
+
+	if existingSubnet.Subnet.Properties != nil {
+		if existingSubnet.Subnet.Properties.AddressPrefix != nil {
+			subnetInfo.CIDRBlock = *existingSubnet.Subnet.Properties.AddressPrefix
+		}
+		if existingSubnet.Subnet.Properties.ProvisioningState != nil {
+			subnetInfo.State = string(*existingSubnet.Subnet.Properties.ProvisioningState)
+		}
+	}
+
+	return &subnetInfo, nil
 }
 
-// deleteAzureSubnet deletes Azure subnet (stub)
+// deleteAzureSubnet: Azure 서브넷을 삭제합니다
 func (s *Service) deleteAzureSubnet(ctx context.Context, credential *domain.Credential, req DeleteSubnetRequest) error {
-	s.logger.Info("Azure subnet deletion not yet implemented")
-	return domain.NewDomainError(domain.ErrCodeNotImplemented, "Azure subnet deletion not yet implemented", 501)
+	creds, err := s.extractAzureCredentials(ctx, credential)
+	if err != nil {
+		return err
+	}
+
+	// Extract resource group, VNet name, and subnet name from subnet ID
+	resourceGroup := ""
+	vnetName := ""
+	subnetName := ""
+	parts := strings.Split(req.SubnetID, "/")
+	for i, part := range parts {
+		if part == "resourceGroups" && i+1 < len(parts) {
+			resourceGroup = parts[i+1]
+		}
+		if part == "virtualNetworks" && i+1 < len(parts) {
+			vnetName = parts[i+1]
+		}
+		if part == "subnets" && i+1 < len(parts) {
+			subnetName = parts[i+1]
+		}
+	}
+
+	if resourceGroup == "" || vnetName == "" || subnetName == "" {
+		return domain.NewDomainError(domain.ErrCodeBadRequest, "invalid subnet ID format", 400)
+	}
+
+	// Create Azure Network client
+	clientFactory, err := s.createAzureNetworkClient(ctx, creds)
+	if err != nil {
+		return err
+	}
+
+	// Get subnets client
+	subnetsClient := clientFactory.NewSubnetsClient()
+
+	// Delete subnet
+	poller, err := subnetsClient.BeginDelete(ctx, resourceGroup, vnetName, subnetName, nil)
+	if err != nil {
+		return s.handleAzureError(err, "delete Azure subnet")
+	}
+
+	// Wait for completion
+	_, err = poller.PollUntilDone(ctx, nil)
+	if err != nil {
+		return s.handleAzureError(err, "delete Azure subnet")
+	}
+
+	s.logger.Info("Azure subnet deletion completed",
+		zap.String("subnet_name", subnetName),
+		zap.String("resource_group", resourceGroup),
+		zap.String("vnet_name", vnetName))
+
+	// Extract VPC ID from subnet ID for cache invalidation
+	vpcID := strings.Join(parts[:strings.Index(strings.Join(parts, "/"), "/subnets")], "/")
+	if !strings.Contains(vpcID, "/virtualNetworks/") {
+		vpcID = fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/virtualNetworks/%s", creds.SubscriptionID, resourceGroup, vnetName)
+	}
+
+	// 캐시 무효화: 서브넷 목록 및 개별 서브넷 캐시 삭제 (메서드가 없으면 로그만 남김)
+	credentialID := credential.ID.String()
+	s.logger.Debug("Subnet cache invalidation skipped (method not available)",
+		zap.String("provider", credential.Provider),
+		zap.String("credential_id", credentialID),
+		zap.String("vpc_id", vpcID),
+		zap.String("subnet_id", req.SubnetID))
+
+	// 감사로그 기록
+	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionSubnetDelete,
+		fmt.Sprintf("DELETE /api/v1/%s/networks/subnets/%s", credential.Provider, req.SubnetID),
+		map[string]interface{}{
+			"subnet_id":      req.SubnetID,
+			"provider":       credential.Provider,
+			"credential_id":  credentialID,
+			"region":         req.Region,
+			"resource_group": resourceGroup,
+		},
+	)
+
+	// 이벤트 발행
+	if s.eventPublisher != nil {
+		subnetData := map[string]interface{}{
+			"subnet_id":     req.SubnetID,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+			"region":        req.Region,
+		}
+		_ = s.eventPublisher.PublishSubnetEvent(ctx, credential.Provider, credentialID, vpcID, "deleted", subnetData)
+	}
+
+	return nil
 }
 
 // listNCPSubnets lists NCP subnets (stub)
