@@ -32,11 +32,11 @@ export function Stepper({ currentStep, totalSteps: _totalSteps, steps, className
           return (
             <React.Fragment key={stepNumber}>
               <div className="flex flex-col items-center flex-1">
-                <div className="flex items-center w-full">
+                <div className="flex items-start w-full">
                   {/* Step Circle */}
                   <div
                     className={cn(
-                      'flex items-center justify-center w-10 h-10 rounded-full border-2 transition-colors',
+                      'flex items-center justify-center w-10 h-10 rounded-full border-2 transition-colors flex-shrink-0',
                       isCompleted && 'bg-primary border-primary text-primary-foreground',
                       isActive && 'bg-primary border-primary text-primary-foreground',
                       isPending && 'bg-background border-muted-foreground/30 text-muted-foreground'
@@ -50,10 +50,10 @@ export function Stepper({ currentStep, totalSteps: _totalSteps, steps, className
                   </div>
                   
                   {/* Step Label */}
-                  <div className="ml-4 flex-1">
+                  <div className="ml-4 flex-1 min-w-0">
                     <div
                       className={cn(
-                        'text-sm font-medium',
+                        'text-sm font-medium leading-tight',
                         isActive && 'text-foreground',
                         isCompleted && 'text-foreground',
                         isPending && 'text-muted-foreground'
@@ -64,7 +64,7 @@ export function Stepper({ currentStep, totalSteps: _totalSteps, steps, className
                     {step.description && (
                       <div
                         className={cn(
-                          'text-xs mt-1',
+                          'text-xs mt-1 leading-tight',
                           isActive && 'text-muted-foreground',
                           isCompleted && 'text-muted-foreground',
                           isPending && 'text-muted-foreground/60'
@@ -101,7 +101,7 @@ interface StepContentProps {
 
 export function StepContent({ children, className }: StepContentProps) {
   return (
-    <div className={cn('mt-8', className)}>
+    <div className={cn('', className)}>
       {children}
     </div>
   );

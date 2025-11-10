@@ -1,0 +1,303 @@
+/**
+ * Create VPC Page
+ * VPC 생성 페이지 (Stepper 방식)
+ */
+
+'use client';
+
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Stepper } from '@/components/ui/stepper';
+import { StepContent } from '@/components/ui/stepper';
+import { useToast } from '@/hooks/use-toast';
+import { useErrorHandler } from '@/hooks/use-error-handler';
+import { useTranslation } from '@/hooks/use-translation';
+import { createValidationSchemas } from '@/lib/validations';
+import { useCredentialContext } from '@/hooks/use-credential-context';
+import { useCredentialAutoSelect } from '@/hooks/use-credential-auto-select';
+import { useWorkspaceStore } from '@/store/workspace';
+import { ArrowLeft } from 'lucide-react';
+import { useCredentials } from '@/hooks/use-credentials';
+import type { CreateVPCForm, CloudProvider } from '@/lib/types';
+import { BasicVPCConfigStep } from '@/features/networks/components/create-vpc/basic-vpc-config-step';
+import { AdvancedVPCConfigStep } from '@/features/networks/components/create-vpc/advanced-vpc-config-step';
+import { ReviewVPCStep } from '@/features/networks/components/create-vpc/review-vpc-step';
+import { useVPCActions } from '@/features/networks/hooks/use-vpc-actions';
+
+const STEPS = [
+  {
+    label: 'Basic Configuration',
+    description: 'Configure basic VPC settings',
+  },
+  {
+    label: 'Advanced Configuration',
+    description: 'Optional advanced settings',
+  },
+  {
+    label: 'Review & Create',
+    description: 'Review and create VPC',
+  },
+];
+
+function CreateVPCPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { t } = useTranslation();
+  const { success } = useToast();
+  const { handleError } = useErrorHandler();
+  const { selectedCredentialId, selectedRegion } = useCredentialContext();
+  const { currentWorkspace } = useWorkspaceStore();
+  const schemas = createValidationSchemas(t);
+  
+  // Auto-select credential if not selected
+  useCredentialAutoSelect({
+    enabled: !!currentWorkspace,
+    resourceType: 'network',
+    updateUrl: true,
+  });
+
+  const { credentials } = useCredentials({
+    workspaceId: currentWorkspace?.id,
+    selectedCredentialId: selectedCredentialId || undefined,
+  });
+
+  const selectedCredential = credentials.find(c => c.id === selectedCredentialId);
+  const selectedProvider = selectedCredential?.provider as CloudProvider | undefined;
+
+  const [currentStep, setCurrentStep] = useState(1);
+  const [formData, setFormData] = useState<Partial<CreateVPCForm>>({
+    credential_id: selectedCredentialId || '',
+    name: '',
+    description: '',
+    cidr_block: '',
+    region: selectedRegion || '',
+    tags: {},
+  });
+
+  const { createVPCMutation } = useVPCActions({
+    selectedProvider,
+    selectedCredentialId,
+    selectedRegion: selectedRegion || '',
+  });
+
+  const form = useForm<CreateVPCForm>({
+    resolver: zodResolver(schemas.createVPCSchema),
+    defaultValues: {
+      credential_id: selectedCredentialId || '',
+      name: '',
+      description: '',
+      cidr_block: '',
+      region: selectedRegion || '',
+      tags: {},
+    },
+  });
+
+  // Update form when credential/region changes
+  useEffect(() => {
+    if (selectedCredentialId) {
+      form.setValue('credential_id', selectedCredentialId);
+      setFormData(prev => ({ ...prev, credential_id: selectedCredentialId }));
+    }
+    if (selectedRegion) {
+      form.setValue('region', selectedRegion);
+      setFormData(prev => ({ ...prev, region: selectedRegion }));
+      if (selectedProvider === 'azure') {
+        form.setValue('location', selectedRegion);
+      }
+    }
+  }, [selectedCredentialId, selectedRegion, selectedProvider, form]);
+
+  const updateFormData = (data: Partial<CreateVPCForm>) => {
+    setFormData(prev => ({ ...prev, ...data }));
+    Object.entries(data).forEach(([key, value]) => {
+      form.setValue(key as keyof CreateVPCForm, value as any);
+    });
+  };
+
+  const handleNext = async () => {
+    const isValid = await form.trigger();
+    if (isValid && currentStep < STEPS.length) {
+      setCurrentStep(prev => prev + 1);
+    }
+  };
+
+  const handlePrevious = () => {
+    if (currentStep > 1) {
+      setCurrentStep(prev => prev - 1);
+    }
+  };
+
+  const handleSkipAdvanced = () => {
+    setCurrentStep(3); // Skip to Review step
+  };
+
+  const handleCreateVPC = async () => {
+    if (!selectedProvider) {
+      handleError(new Error('Provider not selected'), { operation: 'createVPC' });
+      return;
+    }
+
+    const validatedData = await form.trigger();
+    if (!validatedData) {
+      handleError(new Error('Please fix validation errors'), { operation: 'createVPC' });
+      return;
+    }
+
+    const finalData = form.getValues();
+    
+    // Provider별 필드 정리
+    const vpcData: CreateVPCForm = {
+      ...finalData,
+      credential_id: finalData.credential_id || selectedCredentialId,
+      region: selectedRegion || finalData.region,
+    };
+
+    if (selectedProvider === 'azure') {
+      vpcData.location = selectedRegion || finalData.region;
+      delete vpcData.cidr_block;
+    } else if (selectedProvider === 'aws' && !vpcData.cidr_block) {
+      handleError(new Error('CIDR block is required for AWS VPC'), { operation: 'createVPC' });
+      return;
+    }
+
+    try {
+      await createVPCMutation.mutateAsync(vpcData);
+      success('VPC creation initiated');
+      router.push('/networks/vpcs');
+    } catch (error) {
+      handleError(error, { operation: 'createVPC', resource: 'VPC' });
+    }
+  };
+
+  const handleCancel = () => {
+    if (confirm('Are you sure you want to cancel? All entered data will be lost.')) {
+      router.push('/networks/vpcs');
+    }
+  };
+
+  const renderStepContent = () => {
+    switch (currentStep) {
+      case 1:
+        return (
+          <BasicVPCConfigStep
+            form={form}
+            selectedProvider={selectedProvider}
+            onDataChange={updateFormData}
+          />
+        );
+      case 2:
+        return (
+          <AdvancedVPCConfigStep
+            form={form}
+            selectedProvider={selectedProvider}
+            onDataChange={updateFormData}
+          />
+        );
+      case 3:
+        return (
+          <ReviewVPCStep
+            formData={formData as CreateVPCForm}
+            selectedProvider={selectedProvider}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="mb-8">
+          <Button
+            variant="ghost"
+            onClick={handleCancel}
+            className="mb-4"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            {t('common.back')}
+          </Button>
+          <h1 className="text-3xl font-bold text-gray-900">{t('network.createVPCTitle')}</h1>
+          <p className="text-gray-600 mt-2">
+            {t('network.createVPCDescriptionNoRegion', { provider: selectedProvider?.toUpperCase() || '' })}
+          </p>
+        </div>
+
+        {/* Stepper */}
+        <Card className="mb-6">
+          <CardContent className="pt-6">
+            <Stepper
+              currentStep={currentStep}
+              totalSteps={STEPS.length}
+              steps={STEPS.map(step => ({
+                label: t(step.label) || step.label.replace('network.', ''),
+                description: t(step.description) || step.description.replace('network.', ''),
+              }))}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Step Content */}
+        <Card>
+          <CardHeader className="pb-6">
+            <CardTitle>{t(STEPS[currentStep - 1].label) || STEPS[currentStep - 1].label.replace('network.', '')}</CardTitle>
+            <CardDescription>{t(STEPS[currentStep - 1].description) || STEPS[currentStep - 1].description.replace('network.', '')}</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <StepContent>{renderStepContent()}</StepContent>
+
+            {/* Navigation Buttons */}
+            <div className="flex justify-between mt-8 pt-6 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={currentStep === 1 ? handleCancel : handlePrevious}
+                disabled={createVPCMutation.isPending}
+              >
+                {currentStep === 1 ? t('common.cancel') : t('common.back')}
+              </Button>
+              <div className="flex gap-2">
+                {currentStep === 2 && (
+                  <Button variant="outline" onClick={handleSkipAdvanced}>
+                    {t('network.skipAdvancedOptions')}
+                  </Button>
+                )}
+                {currentStep < STEPS.length ? (
+                  <Button
+                    type="button"
+                    onClick={handleNext}
+                    disabled={createVPCMutation.isPending}
+                  >
+                    {t('common.next')}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    onClick={handleCreateVPC}
+                    disabled={createVPCMutation.isPending}
+                  >
+                    {createVPCMutation.isPending ? t('actions.creating') : t('network.createVPC')}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+export default function CreateVPCPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <CreateVPCPageContent />
+    </Suspense>
+  );
+}
+

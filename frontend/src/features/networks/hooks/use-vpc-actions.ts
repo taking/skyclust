@@ -12,6 +12,7 @@ import { useErrorHandler } from '@/hooks/use-error-handler';
 import { vpcRepository } from '@/infrastructure/repositories';
 import { CreateVPCUseCase, BulkDeleteVPCsUseCase } from '@/domain/use-cases';
 import type { CreateVPCForm, CloudProvider } from '@/lib/types';
+import { getVPCCreationErrorMessage, getVPCDeletionErrorMessage } from '@/lib/network-error-messages';
 
 export interface UseVPCActionsOptions {
   selectedProvider: string | undefined;
@@ -40,7 +41,7 @@ export function useVPCActions({
     []
   );
 
-  // Create VPC mutation
+  // Create VPC mutation with enhanced error handling
   const createVPCMutation = useStandardMutation({
     mutationFn: (data: CreateVPCForm) => {
       if (!selectedProvider) throw new Error('Provider not selected');
@@ -53,6 +54,15 @@ export function useVPCActions({
     successMessage: 'VPC creation initiated',
     errorContext: { operation: 'createVPC', resource: 'VPC' },
     onSuccess,
+    onError: (error) => {
+      // Enhanced error handling for VPC creation
+      const errorMessage = getVPCCreationErrorMessage(error, selectedProvider);
+      handleError(error, { 
+        operation: 'createVPC', 
+        resource: 'VPC',
+        customMessage: errorMessage,
+      });
+    },
   });
 
   // Delete VPC mutation (단일 삭제는 기존 방식 유지 - Use Case는 bulk에만 적용)
@@ -64,6 +74,15 @@ export function useVPCActions({
     invalidateQueries: [queryKeys.vpcs.all],
     successMessage: 'VPC deletion initiated',
     errorContext: { operation: 'deleteVPC', resource: 'VPC' },
+    onError: (error) => {
+      // Enhanced error handling for VPC deletion
+      const errorMessage = getVPCDeletionErrorMessage(error, selectedProvider);
+      handleError(error, { 
+        operation: 'deleteVPC', 
+        resource: 'VPC',
+        customMessage: errorMessage,
+      });
+    },
   });
 
   const handleBulkDeleteVPCs = async (vpcIds: string[], vpcs: Array<{ id: string; region?: string }>) => {

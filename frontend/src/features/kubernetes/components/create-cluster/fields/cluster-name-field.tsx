@@ -32,8 +32,8 @@ export function ClusterNameField({
       control={form.control}
       name="name"
       render={({ field }) => (
-        <FormItem>
-          <FormLabel>{t('kubernetes.clusterName')} *</FormLabel>
+        <FormItem className="flex flex-col h-full min-h-[100px]">
+          <FormLabel className="mb-2">{t('kubernetes.clusterName')} *</FormLabel>
           <FormControl>
             <Input
               placeholder={t('kubernetes.enterClusterName')}
@@ -44,10 +44,10 @@ export function ClusterNameField({
               }}
             />
           </FormControl>
-          <FormDescription>
+          <FormDescription className="mt-1">
             {t('kubernetes.clusterNameDescription')}
           </FormDescription>
-          <FormMessage />
+          <FormMessage className="mt-1" />
         </FormItem>
       )}
     />

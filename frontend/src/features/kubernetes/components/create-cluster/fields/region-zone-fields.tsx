@@ -67,6 +67,12 @@ export function RegionZoneFields({
     form.setValue('region', value);
     onFieldChange('region', value);
     
+    // Azure의 경우 location 필드도 업데이트
+    if (provider === 'azure') {
+      form.setValue('location', value);
+      onFieldChange('location', value);
+    }
+    
     // Zone 초기화
     form.setValue('zone', '');
     onFieldChange('zone', '');
@@ -135,6 +141,9 @@ export function RegionZoneFields({
                 </SelectContent>
               </Select>
             )}
+            <FormDescription>
+              {t('kubernetes.regionDescription')}
+            </FormDescription>
             {canLoadMetadata && regionsError && (
               <FormDescription className="text-destructive">
                 Failed to load regions: {regionsError.message}
@@ -152,31 +161,29 @@ export function RegionZoneFields({
         )}
       />
 
-      {/* Zone Selection (AWS only, optional) */}
+      {/* Zone Selection (AWS only, required) */}
       {provider === 'aws' && (
         <FormField
           control={form.control}
           name="zone"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Availability Zone (Optional)</FormLabel>
+              <FormLabel>Availability Zone *</FormLabel>
               {canLoadMetadata && selectedRegion ? (
                 <Select
-                  value={field.value || 'none'}
+                  value={field.value || ''}
                   onValueChange={(value) => {
-                    const zoneValue = value === 'none' ? '' : value;
-                    field.onChange(zoneValue);
-                    onFieldChange('zone', zoneValue);
+                    field.onChange(value);
+                    onFieldChange('zone', value);
                   }}
                   disabled={isLoadingZones}
                 >
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder={isLoadingZones ? 'Loading zones...' : 'Select zone (optional)'} />
+                      <SelectValue placeholder={isLoadingZones ? 'Loading zones...' : 'Select zone *'} />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="none">None (optional)</SelectItem>
                     {zones.length === 0 && !isLoadingZones ? (
                       <SelectItem value="no-zones" disabled>
                         No zones available
@@ -193,7 +200,7 @@ export function RegionZoneFields({
               ) : (
                 <FormControl>
                   <Input
-                    placeholder="e.g., ap-northeast-2a"
+                    placeholder="e.g., ap-northeast-3b"
                     {...field}
                     onChange={(e) => {
                       field.onChange(e);

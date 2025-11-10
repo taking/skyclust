@@ -13,15 +13,18 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Plus, X } from 'lucide-react';
-import type { CreateClusterForm } from '@/lib/types';
+import type { CreateClusterForm, CloudProvider } from '@/lib/types';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface AdvancedConfigStepProps {
   form: UseFormReturn<CreateClusterForm>;
+  selectedProvider?: CloudProvider;
   onDataChange: (data: Partial<CreateClusterForm>) => void;
 }
 
 export function AdvancedConfigStep({
   form,
+  selectedProvider,
   onDataChange,
 }: AdvancedConfigStepProps) {
   const [tagKey, setTagKey] = useState('');
@@ -31,11 +34,6 @@ export function AdvancedConfigStep({
   const accessConfig = form.watch('access_config') || {
     authentication_mode: 'API',
     bootstrap_cluster_creator_admin_permissions: true,
-  };
-
-  const handleRoleARNChange = (value: string) => {
-    form.setValue('role_arn', value);
-    onDataChange({ role_arn: value });
   };
 
   const handleAddTag = () => {
@@ -66,31 +64,6 @@ export function AdvancedConfigStep({
   return (
     <Form {...form}>
       <div className="space-y-6">
-        {/* Role ARN */}
-        <FormField
-          control={form.control}
-          name="role_arn"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Role ARN (Optional)</FormLabel>
-              <FormControl>
-                <Input
-                  placeholder="e.g., arn:aws:iam::123456789012:role/EKSServiceRole"
-                  {...field}
-                  onChange={(e) => {
-                    field.onChange(e);
-                    handleRoleARNChange(e.target.value);
-                  }}
-                />
-              </FormControl>
-              <FormDescription>
-                IAM role ARN for the EKS cluster service role
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
         {/* Tags */}
         <div className="space-y-4">
           <div>
@@ -208,6 +181,180 @@ export function AdvancedConfigStep({
             </div>
           </div>
         </div>
+
+        {/* Azure specific: Node Pool Configuration */}
+        {selectedProvider === 'azure' && (
+          <div className="space-y-6 mt-6 pt-6 border-t">
+            <h3 className="text-lg font-semibold">Azure Node Pool Configuration</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Node Pool Name */}
+              <FormField
+                control={form.control}
+                name="node_pool.name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Node Pool Name *</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="nodepool1"
+                        value={field.value || ''}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          const currentNodePool = form.getValues('node_pool') || {};
+                          form.setValue('node_pool', { ...currentNodePool, name: e.target.value });
+                          onDataChange({ node_pool: { ...currentNodePool, name: e.target.value } });
+                        }}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Name for the node pool
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* VM Size */}
+              <FormField
+                control={form.control}
+                name="node_pool.vm_size"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>VM Size *</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Standard_D2s_v3"
+                        value={field.value || ''}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          const currentNodePool = form.getValues('node_pool') || {};
+                          form.setValue('node_pool', { ...currentNodePool, vm_size: e.target.value });
+                          onDataChange({ node_pool: { ...currentNodePool, vm_size: e.target.value } });
+                        }}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Azure VM size (e.g., Standard_D2s_v3)
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Node Count */}
+              <FormField
+                control={form.control}
+                name="node_pool.node_count"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Node Count *</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min="1"
+                        placeholder="3"
+                        value={field.value || ''}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value, 10) || 0;
+                          field.onChange(value);
+                          const currentNodePool = form.getValues('node_pool') || {};
+                          form.setValue('node_pool', { ...currentNodePool, node_count: value });
+                          onDataChange({ node_pool: { ...currentNodePool, node_count: value } });
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Min Count (for auto-scaling) */}
+              <FormField
+                control={form.control}
+                name="node_pool.min_count"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Min Count</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min="0"
+                        placeholder="1"
+                        value={field.value || ''}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value, 10) || 0;
+                          field.onChange(value);
+                          const currentNodePool = form.getValues('node_pool') || {};
+                          form.setValue('node_pool', { ...currentNodePool, min_count: value });
+                          onDataChange({ node_pool: { ...currentNodePool, min_count: value } });
+                        }}
+                      />
+                    </FormControl>
+                    <FormDescription>Minimum nodes (for auto-scaling)</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Max Count (for auto-scaling) */}
+              <FormField
+                control={form.control}
+                name="node_pool.max_count"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Max Count</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min="1"
+                        placeholder="10"
+                        value={field.value || ''}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value, 10) || 0;
+                          field.onChange(value);
+                          const currentNodePool = form.getValues('node_pool') || {};
+                          form.setValue('node_pool', { ...currentNodePool, max_count: value });
+                          onDataChange({ node_pool: { ...currentNodePool, max_count: value } });
+                        }}
+                      />
+                    </FormControl>
+                    <FormDescription>Maximum nodes (for auto-scaling)</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Enable Auto Scaling */}
+            <FormField
+              control={form.control}
+              name="node_pool.enable_auto_scaling"
+              render={({ field }) => (
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="enable-auto-scaling"
+                    checked={field.value || false}
+                    onCheckedChange={(checked) => {
+                      field.onChange(checked);
+                      const currentNodePool = form.getValues('node_pool') || {};
+                      form.setValue('node_pool', { ...currentNodePool, enable_auto_scaling: checked });
+                      onDataChange({ node_pool: { ...currentNodePool, enable_auto_scaling: checked } });
+                    }}
+                  />
+                  <Label
+                    htmlFor="enable-auto-scaling"
+                    className="text-sm font-normal cursor-pointer"
+                  >
+                    Enable Auto Scaling
+                  </Label>
+                </div>
+              )}
+            />
+          </div>
+        )}
       </div>
     </Form>
   );

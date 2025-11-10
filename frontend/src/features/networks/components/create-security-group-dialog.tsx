@@ -53,19 +53,32 @@ export function CreateSecurityGroupDialog({
     },
   });
 
-  // Update form when VPC changes
+  // Reset form when dialog opens/closes
   React.useEffect(() => {
-    if (selectedVPCId) {
+    if (open) {
+      form.reset({
+        region: selectedRegion || '',
+        vpc_id: selectedVPCId,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedRegion, selectedVPCId]);
+
+  // Update form when VPC changes (only when dialog is open)
+  React.useEffect(() => {
+    if (open && selectedVPCId) {
       form.setValue('vpc_id', selectedVPCId);
     }
-  }, [selectedVPCId, form]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedVPCId]);
 
-  // Update form when region changes
+  // Update form when region changes (only when dialog is open)
   React.useEffect(() => {
-    if (selectedRegion) {
+    if (open && selectedRegion) {
       form.setValue('region', selectedRegion);
     }
-  }, [selectedRegion, form]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedRegion]);
 
   const handleSubmit = form.handleSubmit((data) => {
     onSubmit(data);

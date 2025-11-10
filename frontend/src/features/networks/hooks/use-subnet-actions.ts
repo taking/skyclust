@@ -9,6 +9,7 @@ import { queryKeys } from '@/lib/query-keys';
 import { useToast } from '@/hooks/use-toast';
 import { useErrorHandler } from '@/hooks/use-error-handler';
 import type { CreateSubnetForm, CloudProvider } from '@/lib/types';
+import { getSubnetCreationErrorMessage } from '@/lib/network-error-messages';
 
 export interface UseSubnetActionsOptions {
   selectedProvider: string | undefined;
@@ -24,7 +25,7 @@ export function useSubnetActions({
   const { success } = useToast();
   const { handleError } = useErrorHandler();
 
-  // Create Subnet mutation
+  // Create Subnet mutation with enhanced error handling
   const createSubnetMutation = useStandardMutation({
     mutationFn: (data: CreateSubnetForm) => {
       if (!selectedProvider) throw new Error('Provider not selected');
@@ -34,6 +35,15 @@ export function useSubnetActions({
     successMessage: 'Subnet creation initiated',
     errorContext: { operation: 'createSubnet', resource: 'Subnet' },
     onSuccess,
+    onError: (error) => {
+      // Enhanced error handling for Subnet creation
+      const errorMessage = getSubnetCreationErrorMessage(error, selectedProvider);
+      handleError(error, { 
+        operation: 'createSubnet', 
+        resource: 'Subnet',
+        customMessage: errorMessage,
+      });
+    },
   });
 
   // Delete Subnet mutation

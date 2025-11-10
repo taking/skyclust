@@ -7,13 +7,13 @@
 
 import { Suspense } from 'react';
 import { useState, useMemo, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { ResourceListPage } from '@/components/common/resource-list-page';
 import { BulkActionsToolbar } from '@/components/common/bulk-actions-toolbar';
 import { usePagination } from '@/hooks/use-pagination';
-import { useCreateDialog } from '@/hooks/use-create-dialog';
 import { EVENTS, UI } from '@/lib/constants';
-import { Network, Filter } from 'lucide-react';
+import { Network, Filter, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -34,15 +34,6 @@ import {
 } from '@/features/networks';
 import type { CreateVPCForm, VPC } from '@/lib/types';
 
-// Dynamic imports for heavy components
-const CreateVPCDialog = dynamic(
-  () => import('@/features/networks').then(mod => ({ default: mod.CreateVPCDialog })),
-  { 
-    ssr: false,
-    loading: () => null,
-  }
-);
-
 const VPCTable = dynamic(
   () => import('@/features/networks').then(mod => ({ default: mod.VPCTable })),
   { 
@@ -52,6 +43,7 @@ const VPCTable = dynamic(
 );
 
 function VPCsPageContent() {
+  const router = useRouter();
   const { t } = useTranslation();
   const { currentWorkspace } = useWorkspaceStore();
 
@@ -71,14 +63,12 @@ function VPCsPageContent() {
     updateUrl: true,
   });
 
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useCreateDialog(EVENTS.CREATE_DIALOG.VPC);
   const [filters, setFilters] = useState<FilterValue>({});
   const [showFilters, setShowFilters] = useState(false);
   const [selectedVPCIds, setSelectedVPCIds] = useState<string[]>([]);
   const [pageSize, setPageSize] = useState<number>(UI.PAGINATION.DEFAULT_PAGE_SIZE);
 
   const {
-    createVPCMutation,
     deleteVPCMutation,
     handleBulkDeleteVPCs: handleBulkDelete,
     executeDeleteVPC,
@@ -86,10 +76,11 @@ function VPCsPageContent() {
     selectedProvider,
     selectedCredentialId,
     selectedRegion,
-    onSuccess: () => {
-      setIsCreateDialogOpen(false);
-    },
   });
+
+  const handleCreateVPC = () => {
+    router.push('/networks/vpcs/create');
+  };
 
   const [deleteDialogState, setDeleteDialogState] = useState<{
     open: boolean;
@@ -158,9 +149,6 @@ function VPCsPageContent() {
     initialPageSize: pageSize,
   });
 
-  const handleCreateVPC = useCallback((data: CreateVPCForm) => {
-    createVPCMutation.mutate(data);
-  }, [createVPCMutation]);
 
   const handleBulkDeleteVPCs = useCallback(async (vpcIds: string[]) => {
     try {
@@ -212,11 +200,11 @@ function VPCsPageContent() {
       serviceName={t('network.title')}
     />
   ) : filteredVPCs.length === 0 ? (
-    <ResourceEmptyState
-      resourceName={t('network.vpcs')}
-      icon={Network}
-      onCreateClick={() => setIsCreateDialogOpen(true)}
-      isSearching={isSearching}
+      <ResourceEmptyState
+        resourceName={t('network.vpcs')}
+        icon={Network}
+        onCreateClick={handleCreateVPC}
+        isSearching={isSearching}
       searchQuery={searchQuery}
       withCard={true}
     />
@@ -256,21 +244,30 @@ function VPCsPageContent() {
           ) : null
         }
         additionalControls={
-          selectedCredentialId && vpcs.length > 0 ? (
+          selectedCredentialId ? (
             <>
               <Button
-                variant="outline"
-                onClick={() => setShowFilters(!showFilters)}
+                onClick={handleCreateVPC}
                 className="flex items-center"
               >
-                <Filter className="mr-2 h-4 w-4" />
-                Filters
-                {Object.keys(filters).length > 0 && (
-                  <span className="ml-2 px-2 py-1 bg-gray-100 rounded text-sm">
-                    {Object.keys(filters).length}
-                  </span>
-                )}
+                <Plus className="mr-2 h-4 w-4" />
+                Create VPC
               </Button>
+              {vpcs.length > 0 && (
+                <Button
+                  variant="outline"
+                  onClick={() => setShowFilters(!showFilters)}
+                  className="flex items-center"
+                >
+                  <Filter className="mr-2 h-4 w-4" />
+                  Filters
+                  {Object.keys(filters).length > 0 && (
+                    <span className="ml-2 px-2 py-1 bg-gray-100 rounded text-sm">
+                      {Object.keys(filters).length}
+                    </span>
+                  )}
+                </Button>
+              )}
             </>
           ) : null
         }
@@ -291,15 +288,6 @@ function VPCsPageContent() {
                 onPageChange={setPage}
                 onPageSizeChange={handlePageSizeChange}
                 isDeleting={deleteVPCMutation.isPending}
-              />
-              <CreateVPCDialog
-                open={isCreateDialogOpen}
-                onOpenChange={setIsCreateDialogOpen}
-                onSubmit={handleCreateVPC}
-                selectedProvider={selectedProvider}
-                selectedRegion={selectedRegion}
-                isPending={createVPCMutation.isPending}
-                disabled={credentials.length === 0}
               />
             </>
           ) : emptyStateComponent

@@ -11,44 +11,73 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { createValidationSchemas } from '@/lib/validations';
-import type { CreateSubnetForm, VPC } from '@/lib/types';
+import type { CreateSubnetForm, VPC, CloudProvider } from '@/lib/types';
 import { useTranslation } from '@/hooks/use-translation';
+import { useSubnetActions } from '@/features/networks/hooks/use-subnet-actions';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query-keys';
 
 interface CreateSubnetDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (data: CreateSubnetForm) => void;
   selectedProvider?: string;
+  selectedCredentialId: string;
   selectedRegion?: string;
+  selectedZone?: string;
   selectedVPCId: string;
   vpcs: VPC[];
   onVPCChange: (vpcId: string) => void;
-  isPending: boolean;
+  onSuccess?: (subnetId: string) => void;
   disabled?: boolean;
 }
 
 export function CreateSubnetDialog({
   open,
   onOpenChange,
-  onSubmit,
   selectedProvider,
+  selectedCredentialId,
   selectedRegion,
+  selectedZone,
   selectedVPCId,
   vpcs,
   onVPCChange,
-  isPending,
+  onSuccess,
   disabled: _disabled = false,
 }: CreateSubnetDialogProps) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const schemas = createValidationSchemas(t);
+
+  // Subnet 생성 mutation
+  const { createSubnetMutation } = useSubnetActions({
+    selectedProvider,
+    selectedCredentialId,
+    onSuccess: () => {
+      // Subnet 목록 갱신
+      if (selectedProvider && selectedCredentialId && selectedVPCId) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.subnets.list(
+            selectedProvider as CloudProvider,
+            selectedCredentialId,
+            selectedVPCId,
+            selectedRegion || ''
+          ),
+        });
+      }
+    },
+  });
+
   const form = useForm<CreateSubnetForm>({
     resolver: zodResolver(schemas.createSubnetSchema),
     defaultValues: {
       region: selectedRegion || '',
+      availability_zone: selectedZone || '',
       vpc_id: selectedVPCId,
+      credential_id: selectedCredentialId, // credential_id를 defaultValues에 포함
     },
   });
 
@@ -57,30 +86,107 @@ export function CreateSubnetDialog({
     if (open) {
       form.reset({
         region: selectedRegion || '',
+        availability_zone: selectedZone || '',
         vpc_id: selectedVPCId,
+        credential_id: selectedCredentialId, // credential_id를 reset values에 포함
       });
     }
-  }, [open, selectedRegion, selectedVPCId, form]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedRegion, selectedZone, selectedVPCId, selectedCredentialId]);
 
-  // Update form when VPC changes
+  // Update form when VPC changes (only when dialog is open)
   React.useEffect(() => {
-    if (selectedVPCId) {
+    if (open && selectedVPCId) {
       form.setValue('vpc_id', selectedVPCId);
     }
-  }, [selectedVPCId, form]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedVPCId]);
 
-  // Update form when region changes
+  // Update form when region changes (only when dialog is open)
   React.useEffect(() => {
-    if (selectedRegion) {
-      form.setValue('region', selectedRegion);
+    if (open && selectedRegion) {
+      form.setValue('region', selectedRegion, { shouldValidate: true });
     }
-  }, [selectedRegion, form]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedRegion]);
+
+  // Update form when zone changes (only when dialog is open)
+  React.useEffect(() => {
+    if (open && selectedZone) {
+      form.setValue('availability_zone', selectedZone, { shouldValidate: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedZone]);
+
+  // Update form when credential_id changes (only when dialog is open)
+  React.useEffect(() => {
+    if (open && selectedCredentialId) {
+      form.setValue('credential_id', selectedCredentialId, { shouldValidate: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedCredentialId]);
 
   const handleSubmit = form.handleSubmit(async (data) => {
-    await onSubmit(data);
+    if (!selectedProvider) {
+      throw new Error('Provider not selected');
+    }
+    
+    // selectedRegion과 selectedZone이 있으면 항상 그 값을 사용
+    const finalRegion = selectedRegion || data.region;
+    const finalZone = selectedZone || data.availability_zone || data.zone;
+    
+    // credential_id 자동 추가
+    const subnetData: CreateSubnetForm = {
+      ...data,
+      credential_id: selectedCredentialId,
+      vpc_id: selectedVPCId,
+      region: finalRegion,
+    };
+    
+    // Provider별 필드 설정
+    if (selectedProvider === 'gcp') {
+      // GCP는 zone 사용 (availability_zone 대신)
+      subnetData.zone = finalZone;
+      // availability_zone은 사용하지 않음
+      delete subnetData.availability_zone;
+    } else {
+      // AWS/Azure는 availability_zone 사용
+      subnetData.availability_zone = finalZone;
+      // zone은 사용하지 않음
+      delete subnetData.zone;
+    }
+    
+    // Validation: Provider별 필수 필드 확인
+    if (!subnetData.name || !subnetData.cidr_block || !subnetData.region) {
+      throw new Error('Name, CIDR block, and region are required');
+    }
+    
+    if (selectedProvider === 'gcp') {
+      if (!subnetData.zone) {
+        throw new Error('Zone is required for GCP subnet');
+      }
+    } else {
+      if (!subnetData.availability_zone) {
+        throw new Error('Availability zone is required');
+      }
+    }
+    
+    const result = await createSubnetMutation.mutateAsync(subnetData);
+    
+    // 성공 시 콜백 호출
+    if (result?.id && onSuccess) {
+      onSuccess(result.id);
+    }
+    
+    // 다이얼로그 닫기
+    onOpenChange(false);
+    
+    // Form reset
     form.reset({
       region: selectedRegion || '',
+      availability_zone: selectedZone || '',
       vpc_id: selectedVPCId,
+      credential_id: selectedCredentialId, // credential_id를 reset values에 포함
     });
   });
 
@@ -88,83 +194,162 @@ export function CreateSubnetDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create Subnet</DialogTitle>
+          <DialogTitle>{t('network.createSubnetTitle')}</DialogTitle>
           <DialogDescription>
-            Create a new subnet on {selectedProvider?.toUpperCase()}
+            {selectedRegion && selectedZone
+              ? t('network.createSubnetDescription', {
+                  region: selectedRegion,
+                  zone: selectedZone,
+                  provider: selectedProvider?.toUpperCase() || ''
+                })
+              : selectedRegion
+              ? t('network.createSubnetDescriptionRegionOnly', {
+                  region: selectedRegion,
+                  provider: selectedProvider?.toUpperCase() || ''
+                })
+              : t('network.createSubnetDescriptionNoRegion', {
+                  provider: selectedProvider?.toUpperCase() || ''
+                })
+            }
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="subnet-name">Name *</Label>
-            <Input id="subnet-name" {...form.register('name')} placeholder="my-subnet" />
-            {form.formState.errors.name && (
-              <p className="text-sm text-red-600">{form.formState.errors.name.message}</p>
-            )}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="subnet-vpc">VPC ID *</Label>
-            <Select
-              value={selectedVPCId}
-              onValueChange={(value) => {
-                onVPCChange(value);
-                form.setValue('vpc_id', value);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select VPC" />
-              </SelectTrigger>
-              <SelectContent>
-                {vpcs.map((vpc) => (
-                  <SelectItem key={vpc.id} value={vpc.id}>
-                    {vpc.name || vpc.id}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {form.formState.errors.vpc_id && (
-              <p className="text-sm text-red-600">{form.formState.errors.vpc_id.message}</p>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="subnet-cidr">CIDR Block *</Label>
-              <Input id="subnet-cidr" {...form.register('cidr_block')} placeholder="10.0.1.0/24" />
-              {form.formState.errors.cidr_block && (
-                <p className="text-sm text-red-600">{form.formState.errors.cidr_block.message}</p>
+        <Form {...form}>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('network.subnetName')} *</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="my-subnet" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
               )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="subnet-az">Availability Zone *</Label>
-              <Input id="subnet-az" {...form.register('availability_zone')} placeholder="ap-northeast-2a" />
-              {form.formState.errors.availability_zone && (
-                <p className="text-sm text-red-600">{form.formState.errors.availability_zone.message}</p>
-              )}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="subnet-region">Region *</Label>
-            <Input
-              id="subnet-region"
-              {...form.register('region')}
-              placeholder="ap-northeast-2"
-              defaultValue={selectedRegion || ''}
-              onChange={(e) => {
-                form.setValue('region', e.target.value);
-              }}
             />
-            {form.formState.errors.region && (
-              <p className="text-sm text-red-600">{form.formState.errors.region.message}</p>
-            )}
-          </div>
-          <div className="flex justify-end space-x-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? 'Creating...' : 'Create Subnet'}
-            </Button>
-          </div>
-        </form>
+            
+            <FormField
+              control={form.control}
+              name="vpc_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('network.vpcId')} *</FormLabel>
+                  <FormControl>
+                    <Select
+                      value={selectedVPCId}
+                      onValueChange={(value) => {
+                        onVPCChange(value);
+                        field.onChange(value);
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={t('network.selectVPC')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {vpcs.map((vpc) => (
+                          <SelectItem key={vpc.id} value={vpc.id}>
+                            {vpc.name || vpc.id}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="cidr_block"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('network.cidrBlock')} *</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="10.0.1.0/24" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="region"
+                render={({ field }) => {
+                  // selectedRegion이 있으면 항상 그 값을 사용하고 form에 등록
+                  const regionValue = selectedRegion || field.value || '';
+                  
+                  return (
+                    <FormItem>
+                      <FormLabel>Region *</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          placeholder="ap-northeast-2"
+                          value={regionValue}
+                          disabled={true}
+                          readOnly
+                          className="bg-muted cursor-not-allowed"
+                        />
+                      </FormControl>
+                      {selectedRegion && (
+                        <p className="text-sm text-muted-foreground">
+                          Fixed from Basic Configuration
+                        </p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
+              />
+              
+              <FormField
+                control={form.control}
+                name="availability_zone"
+                render={({ field }) => {
+                  // selectedZone이 있으면 항상 그 값을 사용하고 form에 등록
+                  const zoneValue = selectedZone || field.value || '';
+                  
+                  return (
+                    <FormItem>
+                      <FormLabel>Availability Zone *</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          placeholder="ap-northeast-2a"
+                          value={zoneValue}
+                          disabled={true}
+                          readOnly
+                          className="bg-muted cursor-not-allowed"
+                        />
+                      </FormControl>
+                      {selectedZone && (
+                        <p className="text-sm text-muted-foreground">
+                          Fixed from Basic Configuration
+                        </p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={createSubnetMutation.isPending}>
+                {t('common.cancel')}
+              </Button>
+              <Button 
+                type="submit" 
+                disabled={createSubnetMutation.isPending || !selectedProvider || !selectedCredentialId || !selectedVPCId}
+              >
+                {createSubnetMutation.isPending ? t('actions.creating') : t('network.createSubnet')}
+              </Button>
+            </div>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );

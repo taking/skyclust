@@ -39,10 +39,11 @@ export function useSecurityGroups() {
   const { data: securityGroups = [], isLoading: isLoadingSecurityGroups } = useQuery({
     queryKey: queryKeys.securityGroups.list(selectedProvider, watchedCredentialId, selectedVPCId, watchedRegion),
     queryFn: async () => {
-      if (!selectedProvider || !watchedCredentialId || !currentWorkspace) {
+      if (!selectedProvider || !watchedCredentialId || !currentWorkspace || !selectedVPCId || !watchedRegion) {
         return [];
       }
-      return networkService.listSecurityGroups(selectedProvider, watchedCredentialId, watchedRegion, selectedVPCId);
+      // 파라미터 순서: provider, credentialId, vpcId, region
+      return networkService.listSecurityGroups(selectedProvider, watchedCredentialId, selectedVPCId, watchedRegion);
     },
     enabled: !!selectedProvider && !!watchedCredentialId && !!currentWorkspace && !!selectedVPCId && !!watchedRegion,
     staleTime: CACHE_TIMES.REALTIME,

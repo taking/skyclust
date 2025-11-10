@@ -75,6 +75,10 @@ export interface CreateVPCForm {
   routing_mode?: string;
   mtu?: number;
   tags?: Record<string, string>;
+  // Azure specific fields
+  location?: string; // Azure uses 'location' instead of 'region'
+  resource_group?: string;
+  address_space?: string[]; // Azure Virtual Network address spaces
 }
 
 export interface CreateSubnetForm {
@@ -82,9 +86,12 @@ export interface CreateSubnetForm {
   name: string;
   vpc_id: string;
   cidr_block: string;
-  availability_zone: string;
+  availability_zone?: string; // AWS/Azure에만 필요, GCP는 zone 사용
   region: string;
   description?: string;
+  // GCP specific fields
+  project_id?: string;
+  zone?: string; // GCP uses 'zone' instead of 'availability_zone'
   private_ip_google_access?: boolean;
   flow_logs?: boolean;
   tags?: Record<string, string>;

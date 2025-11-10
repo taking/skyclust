@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * useErrorHandler Hook
  * 에러 처리를 위한 React 훅
@@ -5,7 +7,7 @@
  * 에러 로깅, 사용자 알림, 재시도 로직 등을 통합적으로 관리
  */
 
-import { useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { 
   ErrorHandler,
@@ -121,14 +123,33 @@ export function useErrorHandler(options: UseErrorHandlerOptions = {}): UseErrorH
     }
 
     // 3. 번역된 에러 메시지 가져오기
-    // 커스텀 메시지가 있으면 우선 사용, 없으면 번역 키로 메시지 가져오기
-    const customMessage = getErrorCustomMessage(error);
+    // context에 customMessage가 있으면 우선 사용
+    const contextCustomMessage = context?.customMessage as string | undefined;
+    const customMessage = contextCustomMessage || getErrorCustomMessage(error);
     const translationKey = getErrorTranslationKey(error);
-    const message = customMessage || t(translationKey);
+    const message = contextCustomMessage || customMessage || t(translationKey);
 
     // 4. 토스트 표시 (옵션이 활성화된 경우)
     if (showToast) {
-      showErrorToast(message);
+      // customMessage가 있으면 줄바꿈을 포함한 메시지를 표시
+      if (contextCustomMessage && contextCustomMessage.includes('\n')) {
+        // 여러 줄 메시지는 React.createElement를 사용하여 표시
+        const lines = contextCustomMessage.split('\n').filter(line => line.trim());
+        const errorContent = React.createElement(
+          'div',
+          { className: 'space-y-1' },
+          lines.map((line, index) =>
+            React.createElement(
+              'div',
+              { key: index, className: index === 0 ? 'font-semibold' : '' },
+              line
+            )
+          )
+        );
+        showErrorToast(errorContent);
+      } else {
+        showErrorToast(message);
+      }
     }
   }, [showToast, isOffline, showErrorToast, onLogError, t]);
 

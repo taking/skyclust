@@ -6,15 +6,15 @@
 'use client';
 
 import { Suspense } from 'react';
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import * as React from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { ResourceListPage } from '@/components/common/resource-list-page';
 import { BulkActionsToolbar } from '@/components/common/bulk-actions-toolbar';
 import { usePagination } from '@/hooks/use-pagination';
-import { useCreateDialog } from '@/hooks/use-create-dialog';
 import { EVENTS, UI } from '@/lib/constants';
-import { Layers, Filter } from 'lucide-react';
+import { Layers, Filter, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -36,15 +36,6 @@ import {
 } from '@/features/networks';
 import type { CreateSubnetForm, Subnet } from '@/lib/types';
 
-// Dynamic imports for heavy components
-const CreateSubnetDialog = dynamic(
-  () => import('@/features/networks').then(mod => ({ default: mod.CreateSubnetDialog })),
-  { 
-    ssr: false,
-    loading: () => null,
-  }
-);
-
 const SubnetTable = dynamic(
   () => import('@/features/networks').then(mod => ({ default: mod.SubnetTable })),
   { 
@@ -54,6 +45,8 @@ const SubnetTable = dynamic(
 );
 
 function SubnetsPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { t } = useTranslation();
   const { currentWorkspace } = useWorkspaceStore();
 
@@ -76,24 +69,46 @@ function SubnetsPageContent() {
     updateUrl: true,
   });
 
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useCreateDialog(EVENTS.CREATE_DIALOG.SUBNET);
+  // URL 파라미터에서 VPC ID를 가져와서 자동 선택
+  useEffect(() => {
+    const vpcIdFromUrl = searchParams?.get('vpc_id');
+    if (vpcIdFromUrl && vpcIdFromUrl !== selectedVPCId) {
+      // VPC가 존재하는지 확인
+      const vpcExists = vpcs.some(vpc => vpc.id === vpcIdFromUrl);
+      if (vpcExists) {
+        setSelectedVPCId(vpcIdFromUrl);
+        // URL에서 vpc_id 파라미터 제거 (한 번만 적용)
+        const newParams = new URLSearchParams(searchParams?.toString());
+        newParams.delete('vpc_id');
+        const newUrl = newParams.toString() 
+          ? `${window.location.pathname}?${newParams.toString()}`
+          : window.location.pathname;
+        router.replace(newUrl);
+      }
+    }
+  }, [searchParams, selectedVPCId, vpcs, setSelectedVPCId, router]);
+
   const [filters, setFilters] = useState<FilterValue>({});
   const [showFilters, setShowFilters] = useState(false);
   const [selectedSubnetIds, setSelectedSubnetIds] = useState<string[]>([]);
   const [pageSize, setPageSize] = useState<number>(UI.PAGINATION.DEFAULT_PAGE_SIZE);
 
   const {
-    createSubnetMutation,
     deleteSubnetMutation,
     handleBulkDeleteSubnets: handleBulkDelete,
     executeDeleteSubnet,
   } = useSubnetActions({
     selectedProvider,
     selectedCredentialId,
-    onSuccess: () => {
-      setIsCreateDialogOpen(false);
-    },
   });
+
+  const handleCreateSubnet = () => {
+    const params = new URLSearchParams();
+    if (selectedVPCId) {
+      params.set('vpc_id', selectedVPCId);
+    }
+    router.push(`/networks/subnets/create${params.toString() ? `?${params.toString()}` : ''}`);
+  };
 
   const [deleteDialogState, setDeleteDialogState] = useState<{
     open: boolean;
@@ -158,9 +173,6 @@ function SubnetsPageContent() {
     initialPageSize: pageSize,
   });
 
-  const handleCreateSubnet = useCallback((data: CreateSubnetForm) => {
-    createSubnetMutation.mutate(data);
-  }, [createSubnetMutation]);
 
   const handleBulkDeleteSubnets = useCallback(async (subnetIds: string[]) => {
     try {
@@ -273,21 +285,31 @@ function SubnetsPageContent() {
           ) : null
         }
         additionalControls={
-          selectedCredentialId && selectedVPCId && subnets.length > 0 ? (
+          selectedCredentialId && selectedVPCId ? (
             <>
               <Button
-                variant="outline"
-                onClick={() => setShowFilters(!showFilters)}
+                onClick={handleCreateSubnet}
                 className="flex items-center"
+                disabled={!selectedVPCId}
               >
-                <Filter className="mr-2 h-4 w-4" />
-                Filters
-                {Object.keys(filters).length > 0 && (
-                  <span className="ml-2 px-2 py-1 bg-gray-100 rounded text-sm">
-                    {Object.keys(filters).length}
-                  </span>
-                )}
+                <Plus className="mr-2 h-4 w-4" />
+                Create Subnet
               </Button>
+              {subnets.length > 0 && (
+                <Button
+                  variant="outline"
+                  onClick={() => setShowFilters(!showFilters)}
+                  className="flex items-center"
+                >
+                  <Filter className="mr-2 h-4 w-4" />
+                  Filters
+                  {Object.keys(filters).length > 0 && (
+                    <span className="ml-2 px-2 py-1 bg-gray-100 rounded text-sm">
+                      {Object.keys(filters).length}
+                    </span>
+                  )}
+                </Button>
+              )}
             </>
           ) : null
         }
@@ -310,18 +332,6 @@ function SubnetsPageContent() {
                 onPageChange={setPage}
                 onPageSizeChange={handlePageSizeChange}
                 isDeleting={deleteSubnetMutation.isPending}
-              />
-              <CreateSubnetDialog
-                open={isCreateDialogOpen}
-                onOpenChange={setIsCreateDialogOpen}
-                onSubmit={handleCreateSubnet}
-                selectedProvider={selectedProvider}
-                selectedRegion={selectedRegion}
-                selectedVPCId={selectedVPCId}
-                vpcs={vpcs}
-                onVPCChange={handleVPCChange}
-                isPending={createSubnetMutation.isPending}
-                disabled={credentials.length === 0 || !selectedVPCId}
               />
             </>
           ) : emptyStateComponent

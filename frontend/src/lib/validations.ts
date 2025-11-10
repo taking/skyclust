@@ -34,7 +34,7 @@ export function createValidationSchemas(t: TranslationFunction) {
     name: z.string().min(1, t('form.validation.nameRequired')).max(100, t('form.validation.nameMaxLength', { max: '100' })),
     version: z.string().min(1, t('form.validation.versionRequired')),
     region: z.string().min(1, t('form.validation.regionRequired')),
-    zone: z.string().optional(),
+    zone: z.string().min(1, t('form.validation.required', { field: 'Availability Zone' })),
     subnet_ids: z.array(z.string()).min(1, t('form.validation.atLeastOneSubnet')),
     vpc_id: z.string().optional(),
     role_arn: z.string().optional(),
@@ -96,12 +96,17 @@ export function createValidationSchemas(t: TranslationFunction) {
     credential_id: z.string().uuid(t('form.validation.invalidCredentialId')),
     name: z.string().min(1, t('form.validation.nameRequired')).max(255, t('form.validation.nameMaxLength', { max: '255' })),
     description: z.string().max(500).optional(),
+    // cidr_block은 AWS/Azure에만 필요, GCP는 optional (auto-mode VPC)
     cidr_block: z.string().regex(/^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/, t('form.validation.invalidCidrFormat')).optional(),
-    region: z.string().optional(),
-    project_id: z.string().optional(),
-    auto_create_subnets: z.boolean().optional(),
-    routing_mode: z.string().optional(),
-    mtu: z.number().min(1280).max(8896).optional(),
+    region: z.string().optional(), // GCP는 region이 optional일 수 있음
+    project_id: z.string().optional(), // GCP에만 필요
+    auto_create_subnets: z.boolean().optional(), // GCP에만 필요
+    routing_mode: z.string().optional(), // GCP에만 필요
+    mtu: z.number().min(1280).max(8896).optional(), // GCP에만 필요
+    // Azure specific fields
+    location: z.string().optional(), // Azure uses 'location' instead of 'region'
+    resource_group: z.string().optional(), // Azure에만 필요
+    address_space: z.array(z.string()).optional(), // Azure에만 필요
     tags: z.record(z.string(), z.string()).optional(),
   });
 
@@ -116,11 +121,14 @@ export function createValidationSchemas(t: TranslationFunction) {
     name: z.string().min(1, t('form.validation.nameRequired')).max(255, t('form.validation.nameMaxLength', { max: '255' })),
     vpc_id: z.string().min(1, t('form.validation.vpcIdRequired')),
     cidr_block: z.string().regex(/^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/, t('form.validation.invalidCidrFormat')).min(1, t('form.validation.cidrBlockRequired')),
-    availability_zone: z.string().min(1, t('form.validation.availabilityZoneRequired')),
+    availability_zone: z.string().optional(), // AWS/Azure에만 필요, GCP는 zone 사용
     region: z.string().min(1, t('form.validation.regionRequired')),
     description: z.string().max(500).optional(),
-    private_ip_google_access: z.boolean().optional(),
-    flow_logs: z.boolean().optional(),
+    // GCP specific fields
+    project_id: z.string().optional(), // GCP에만 필요
+    zone: z.string().optional(), // GCP uses 'zone' instead of 'availability_zone'
+    private_ip_google_access: z.boolean().optional(), // GCP에만 필요
+    flow_logs: z.boolean().optional(), // GCP에만 필요
     tags: z.record(z.string(), z.string()).optional(),
   });
 

@@ -159,6 +159,7 @@
   },
   "region": {
     "select": "리전 선택",
+    "all": "전체 리전",
     "noRegion": "리전이 없습니다",
     "selectRegion": "리전을 선택하세요",
     "placeholder": "예: ap-northeast-2"
@@ -202,7 +203,7 @@
     "selectClusterToViewNodes": "노드를 보려면 클러스터를 선택하세요",
     "cluster": "클러스터",
     "selectCluster": "클러스터 선택",
-    "createKubernetesCluster": "Kubernetes 클러스터 생성",
+    "createKubernetesCluster": "클러스터 생성",
     "configureClusterStepByStep": "단계별로 클러스터를 구성하세요",
     "basicConfiguration": "기본 설정",
     "basicConfigurationDescription": "클러스터 이름, 버전 및 리전",
@@ -220,11 +221,16 @@
     "clusterName": "클러스터 이름",
     "clusterNameDescription": "클러스터를 식별하는 고유한 이름을 입력하세요",
     "enterClusterName": "클러스터 이름 입력",
+    "zoneDescription": "가용 영역을 선택하세요",
+    "versionDescription": "Kubernetes 버전을 선택하세요",
+    "regionDescription": "클러스터를 생성할 리전을 선택하세요",
+    "credentialDescription": "클러스터 생성을 위한 자격 증명을 선택하세요",
     "nodeGroups": "노드 그룹",
     "nodeCount": "노드 {count}개",
     "nodePoolCount": "노드 풀 {count}개",
     "nodeGroupCount": "노드 그룹 {count}개",
-    "confirmDeleteNodeGroup": "노드 그룹 {nodeGroupName}을(를) 삭제하시겠습니까? 이 작업은 취소할 수 없습니다."
+    "confirmDeleteNodeGroup": "노드 그룹 {nodeGroupName}을(를) 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.",
+    "deleteCluster": "클러스터 삭제"
   },
   "network": {
     "title": "네트워크",
@@ -234,6 +240,36 @@
     "createVPC": "VPC 생성",
     "createSubnet": "서브넷 생성",
     "createSecurityGroup": "보안 그룹 생성",
+    "deleteVPC": "VPC 삭제",
+    "deleteSubnet": "서브넷 삭제",
+    "deleteSecurityGroup": "보안 그룹 삭제",
+    "createVPCTitle": "VPC 생성",
+    "createVPCDescription": "{region} 리전의 {provider}에 새 VPC를 생성합니다",
+    "createVPCDescriptionNoRegion": "{provider}에 새 VPC를 생성합니다",
+    "createSubnetTitle": "서브넷 생성",
+    "createSubnetDescription": "{region} ({zone}) 리전의 {provider}에 새 서브넷을 생성합니다",
+    "createSubnetDescriptionRegionOnly": "{region} 리전의 {provider}에 새 서브넷을 생성합니다",
+    "createSubnetDescriptionNoRegion": "{provider}에 새 서브넷을 생성합니다",
+    "vpcName": "VPC 이름",
+    "vpcNameDescription": "VPC의 이름을 입력하세요",
+    "vpcDescription": "설명",
+    "vpcDescriptionPlaceholder": "VPC 설명 (선택사항)",
+    "cidrBlock": "CIDR 블록",
+    "subnetName": "서브넷 이름",
+    "vpcId": "VPC ID",
+    "selectVPC": "VPC 선택",
+    "Basic Configuration": "기본 설정",
+    "Advanced Configuration": "고급 설정",
+    "Review & Create": "검토 및 생성",
+    "Configure basic VPC settings": "기본 VPC 설정 구성",
+    "Optional advanced settings": "선택적 고급 설정",
+    "Review and create VPC": "VPC 검토 및 생성",
+    "Configure basic subnet settings": "기본 서브넷 설정 구성",
+    "Review and create subnet": "서브넷 검토 및 생성",
+    "Configure basic security group settings": "기본 보안 그룹 설정 구성",
+    "Review and create security group": "보안 그룹 검토 및 생성",
+    "createSecurityGroupDescription": "{provider}에 새 보안 그룹을 생성합니다",
+    "skipAdvancedOptions": "고급 옵션 건너뛰기",
     "noVPCs": "VPC가 없습니다",
     "noSubnets": "서브넷이 없습니다",
     "noSecurityGroups": "보안 그룹이 없습니다",
@@ -325,7 +361,8 @@
     "bulkTag": "일괄 태그",
     "confirmDelete": "삭제하시겠습니까?",
     "confirmBulkDelete": "{count}개 항목을 삭제하시겠습니까?",
-    "cannotUndo": "이 작업은 취소할 수 없습니다"
+    "cannotUndo": "이 작업은 취소할 수 없습니다",
+    "creating": "생성 중..."
   },
   "status": {
     "active": "활성",
@@ -382,7 +419,7 @@
     "vms": "VM",
     "vmsDescription": "전체 가상 머신 수",
     "clusters": "클러스터",
-    "clustersDescription": "전체 Kubernetes 클러스터 수",
+    "clustersDescription": "전체 클러스터 수",
     "credentials": "자격 증명",
     "credentialsDescription": "전체 자격 증명 수",
     "members": "멤버",
@@ -528,8 +565,8 @@
       "description": "리전별 리소스 분포"
     },
     "kubernetesStatus": {
-      "title": "Kubernetes 클러스터",
-      "description": "Kubernetes 클러스터 상태 및 개요"
+      "title": "클러스터",
+      "description": "클러스터 상태 및 개요"
     },
     "networkStatus": {
       "title": "네트워크 리소스",

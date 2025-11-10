@@ -48,8 +48,8 @@ export function VersionSelectionField({
       control={form.control}
       name="version"
       render={({ field }) => (
-        <FormItem>
-          <FormLabel>Kubernetes Version *</FormLabel>
+        <FormItem className="flex flex-col h-full min-h-[100px]">
+          <FormLabel className="mb-2">Kubernetes Version *</FormLabel>
           {canLoadMetadata && hasSelectedRegion ? (
             <Select
               value={field.value}
@@ -90,8 +90,11 @@ export function VersionSelectionField({
               />
             </FormControl>
           )}
+          <FormDescription className="mt-1">
+            {t('kubernetes.versionDescription')}
+          </FormDescription>
           {canLoadMetadata && hasSelectedRegion && versionsError && (
-            <FormDescription className="text-destructive">
+            <FormDescription className="text-destructive mt-1">
               Failed to load Kubernetes versions: {versionsError.message}
               {(versionsError.message.includes('IAM permission') || 
                 versionsError.message.includes('not authorized') ||
@@ -102,7 +105,7 @@ export function VersionSelectionField({
               )}
             </FormDescription>
           )}
-          <FormMessage />
+          <FormMessage className="mt-1" />
         </FormItem>
       )}
     />

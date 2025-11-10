@@ -26,6 +26,8 @@ import { BasicClusterConfigStep } from '@/features/kubernetes/components/create-
 import { NetworkConfigStep } from '@/features/kubernetes/components/create-cluster/network-config-step';
 import { AdvancedConfigStep } from '@/features/kubernetes/components/create-cluster/advanced-config-step';
 import { ReviewStep } from '@/features/kubernetes/components/create-cluster/review-step';
+import { useVPCs } from '@/features/networks/hooks/use-vpcs';
+import { useSubnets } from '@/features/networks/hooks/use-subnets';
 
 const STEPS = [
   {
@@ -70,7 +72,6 @@ function CreateClusterPageContent() {
     region: selectedRegion || '',
     subnet_ids: [],
     vpc_id: '',
-    role_arn: '',
     tags: {},
     access_config: {
       authentication_mode: 'API',
@@ -89,6 +90,20 @@ function CreateClusterPageContent() {
 
   const selectedCredential = credentials.find(c => c.id === selectedCredentialId);
   const selectedProvider = selectedCredential?.provider as CloudProvider | undefined;
+
+  // Step 2에서 VPC와 Subnet 정보를 가져오기 위해 사용
+  const { vpcs } = useVPCs();
+  
+  // Subnets는 vpc_id가 있을 때만 가져오기
+  const { subnets, setSelectedVPCId: setSubnetVPCId } = useSubnets();
+  
+  // formData.vpc_id가 변경되면 subnets hook의 selectedVPCId 업데이트
+  useEffect(() => {
+    if (formData.vpc_id && setSubnetVPCId) {
+      setSubnetVPCId(formData.vpc_id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.vpc_id]);
 
   const form = useForm<CreateClusterForm>({
     resolver: zodResolver(createClusterSchema),
@@ -127,7 +142,7 @@ function CreateClusterPageContent() {
     
     switch (currentStep) {
       case 1:
-        fieldsToValidate = ['credential_id', 'name', 'version', 'region'];
+        fieldsToValidate = ['credential_id', 'name', 'version', 'region', 'zone'];
         break;
       case 2:
         fieldsToValidate = ['subnet_ids'];
@@ -176,21 +191,79 @@ function CreateClusterPageContent() {
 
     const finalData = form.getValues();
     
-    // VPC ID는 API에 전송하지 않음 (subnet_ids만 전송)
-    const { vpc_id, ...apiData } = finalData;
-    
-    createClusterMutation.mutate(
-      { provider: selectedProvider, data: apiData },
-      {
-        onSuccess: () => {
-          success('Cluster creation initiated');
-          router.push('/kubernetes/clusters');
-        },
-        onError: (error: unknown) => {
-          handleError(error, { operation: 'createCluster', resource: 'Cluster' });
-        },
+    // AWS EKS: 서브넷이 최소 2개의 다른 AZ에 있는지 검증
+    if (selectedProvider === 'aws' && finalData.subnet_ids && finalData.subnet_ids.length > 0) {
+      const selectedSubnets = finalData.subnet_ids
+        .map(id => subnets.find(s => s.id === id))
+        .filter(Boolean);
+      
+      const uniqueAZs = new Set(
+        selectedSubnets
+          .map(s => s?.availability_zone)
+          .filter(Boolean)
+      );
+      
+      if (uniqueAZs.size < 2) {
+        handleError(
+          new Error('AWS EKS requires subnets from at least two different availability zones for high availability.'),
+          { operation: 'createCluster', resource: 'Cluster' }
+        );
+        return;
       }
-    );
+    }
+    
+    // Azure의 경우 특별한 데이터 변환 필요
+    if (selectedProvider === 'azure') {
+      const azureData: CreateClusterForm = {
+        credential_id: finalData.credential_id,
+        name: finalData.name,
+        version: finalData.version,
+        location: finalData.location || finalData.region, // Azure uses 'location'
+        resource_group: finalData.resource_group || '',
+        network: finalData.network || {
+          virtual_network_id: finalData.vpc_id || '',
+          subnet_id: finalData.subnet_ids?.[0] || '',
+          network_plugin: 'azure',
+        },
+        node_pool: finalData.node_pool || {
+          name: 'nodepool1',
+          vm_size: 'Standard_D2s_v3',
+          node_count: 3,
+        },
+        security: finalData.security,
+        tags: finalData.tags,
+      };
+      
+      createClusterMutation.mutate(
+        { provider: selectedProvider, data: azureData },
+        {
+          onSuccess: () => {
+            success('Cluster creation initiated');
+            router.push('/kubernetes/clusters');
+          },
+          onError: (error: unknown) => {
+            handleError(error, { operation: 'createCluster', resource: 'Cluster' });
+          },
+        }
+      );
+    } else {
+      // AWS/GCP의 경우 기존 로직 사용
+      // VPC ID와 role_arn은 API에 전송하지 않음 (role_arn은 백엔드에서 자동 생성)
+      const { vpc_id, role_arn, ...apiData } = finalData;
+      
+      createClusterMutation.mutate(
+        { provider: selectedProvider, data: apiData },
+        {
+          onSuccess: () => {
+            success('Cluster creation initiated');
+            router.push('/kubernetes/clusters');
+          },
+          onError: (error: unknown) => {
+            handleError(error, { operation: 'createCluster', resource: 'Cluster' });
+          },
+        }
+      );
+    }
   };
 
   const handleCancel = () => {
@@ -226,6 +299,7 @@ function CreateClusterPageContent() {
         return (
           <AdvancedConfigStep
             form={form}
+            selectedProvider={selectedProvider}
             onDataChange={updateFormData}
           />
         );
@@ -268,18 +342,21 @@ function CreateClusterPageContent() {
             <Stepper
               currentStep={currentStep}
               totalSteps={STEPS.length}
-              steps={STEPS}
+              steps={STEPS.map(step => ({
+                label: t(`kubernetes.${step.label}`),
+                description: t(`kubernetes.${step.description}`),
+              }))}
             />
           </CardContent>
         </Card>
 
         {/* Step Content */}
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-6">
             <CardTitle>{t(`kubernetes.${STEPS[currentStep - 1].label}`)}</CardTitle>
             <CardDescription>{t(`kubernetes.${STEPS[currentStep - 1].description}`)}</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-0">
             <StepContent>{renderStepContent()}</StepContent>
 
             {/* Navigation Buttons */}
@@ -311,6 +388,54 @@ function CreateClusterPageContent() {
                   </Button>
                 )}
               </div>
+            </div>
+
+            {/* Selected Info - Option C: CardContent 하단, 전체 너비, 우측 정렬 */}
+            <div className="mt-4 pt-4 border-t flex justify-end items-center">
+              <span className="text-sm text-muted-foreground">
+                {(() => {
+                  // Step 1: Credential | Region | Cluster
+                  if (currentStep === 1) {
+                    return `${selectedCredential?.name || selectedCredential?.provider?.toUpperCase() || '-'} | ${formData.region || selectedRegion || '-'} | ${formData.name || '-'}`;
+                  }
+                  
+                  // Step 2: Credential | Region | Cluster | VPC | Subnets
+                  if (currentStep === 2) {
+                    const vpcId = formData.vpc_id || '';
+                    const selectedVPC = vpcs.find(v => v.id === vpcId);
+                    const vpcName = selectedVPC?.name || selectedVPC?.id || '-';
+                    
+                    const subnetIds = formData.subnet_ids || [];
+                    let subnetsDisplay = '-';
+                    if (subnetIds.length > 0) {
+                      const selectedSubnets = subnetIds
+                        .map(id => subnets.find(s => s.id === id))
+                        .filter(Boolean);
+                      
+                      if (selectedSubnets.length > 2) {
+                        // 3개 이상: 첫 번째 + 개수
+                        const firstName = selectedSubnets[0]?.name || selectedSubnets[0]?.id || subnetIds[0];
+                        subnetsDisplay = `${firstName}, +${selectedSubnets.length - 1} more`;
+                      } else if (selectedSubnets.length > 0) {
+                        // 1-2개: 이름 나열
+                        subnetsDisplay = selectedSubnets
+                          .map(s => s?.name || s?.id)
+                          .join(', ');
+                      } else {
+                        // 이름을 찾을 수 없으면 ID 표시
+                        subnetsDisplay = subnetIds.length > 2
+                          ? `${subnetIds[0]}, +${subnetIds.length - 1} more`
+                          : subnetIds.join(', ');
+                      }
+                    }
+                    
+                    return `${selectedCredential?.name || selectedCredential?.provider?.toUpperCase() || '-'} | ${formData.region || selectedRegion || '-'} | ${formData.name || '-'} | ${vpcName} | ${subnetsDisplay}`;
+                  }
+                  
+                  // Step 3, 4: Step 1과 동일
+                  return `${selectedCredential?.name || selectedCredential?.provider?.toUpperCase() || '-'} | ${formData.region || selectedRegion || '-'} | ${formData.name || '-'}`;
+                })()}
+              </span>
             </div>
           </CardContent>
         </Card>

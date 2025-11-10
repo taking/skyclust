@@ -240,6 +240,7 @@ export function useFormWithValidation<T extends FieldValues>({
   // Form submission handler
   const handleSubmit = useCallback(
     async (e?: React.BaseSyntheticEvent) => {
+      console.log('[useFormWithValidation] handleSubmit called', { e, formValues: form.getValues() });
       e?.preventDefault();
 
       // Clear previous error and success
@@ -247,25 +248,36 @@ export function useFormWithValidation<T extends FieldValues>({
       setSuccess(false);
 
       // Validate form before submission
+      console.log('[useFormWithValidation] Triggering validation');
       const isValid = await form.trigger();
+      console.log('[useFormWithValidation] Validation result:', isValid);
+      console.log('[useFormWithValidation] Form errors:', form.formState.errors);
+      
       if (!isValid) {
+        console.warn('[useFormWithValidation] Validation failed, aborting submit');
         return;
       }
 
       try {
+        console.log('[useFormWithValidation] Setting loading state and calling onSubmit');
         setIsLoading(true);
         const formData = form.getValues();
+        console.log('[useFormWithValidation] Form data:', formData);
         const result = await onSubmit(formData);
+        console.log('[useFormWithValidation] onSubmit completed, result:', result);
         setSuccess(true);
 
         // Reset form if configured
         if (resetOnSuccess) {
+          console.log('[useFormWithValidation] Resetting form');
           form.reset(defaultValues as T);
         }
 
         // Call success callback
+        console.log('[useFormWithValidation] Calling onSuccess callback');
         onSuccess?.(formData, result);
       } catch (err: unknown) {
+        console.error('[useFormWithValidation] Error in onSubmit:', err);
         const errorMessage = getErrorMessage
           ? getErrorMessage(err)
           : defaultGetErrorMessage(err);
@@ -276,6 +288,7 @@ export function useFormWithValidation<T extends FieldValues>({
         // Call error callback
         onError?.(err instanceof Error ? err : new Error(errorMessage), form.getValues());
       } finally {
+        console.log('[useFormWithValidation] Clearing loading state');
         setIsLoading(false);
       }
     },
