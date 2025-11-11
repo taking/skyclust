@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/gcp/kubernetes/clusters/{{clusterName}}/nodepools?credential_id={{gcp_credentialsId}}&region=asia-northeast3
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/kubernetes/clusters/{{clusterName}}/node-pools?credential_id={{gcp_credentialsId}}&region=asia-northeast3
   body: none
   auth: bearer
 }
@@ -15,9 +15,12 @@ auth:bearer {
 }
 
 script:post-response {
-  bru.setEnvVar("nodePoolName", res.body.data.node_groups[0].name);
+  const dataArray = Array.isArray(res.body.data) ? res.body.data : [];
+  if (dataArray.length > 0) {
+    bru.setEnvVar("nodePoolName", dataArray[0].name);
+  }
   
-  const rowData = res.body.data.node_groups;
+  const rowData = dataArray;
   
   const columnDefinitions = [
     { field: "id", filter: true, floatingFilter: true },
@@ -52,13 +55,13 @@ tests {
   });
   
   test("Response has node pools data", function() {
-    expect(res.getBody().data).to.be.an('object');
-    expect(res.getBody().data.node_pools).to.be.an('array');
-    expect(res.getBody().data.total).to.be.a('number');
+    expect(res.getBody().data).to.be.an('array');
+    expect(res.getBody().meta).to.be.an('object');
+    expect(res.getBody().meta.total).to.be.a('number');
   });
   
   test("Node pool has required fields", function() {
-    const nodePool = res.getBody().data.node_pools[0];
+    const nodePool = res.getBody().data[0];
     expect(nodePool).to.have.property('id');
     expect(nodePool).to.have.property('name');
     expect(nodePool).to.have.property('version');
@@ -87,39 +90,44 @@ docs {
   ```json
   {
     "success": true,
-    "data": {
-      "node_pools": [
-        {
-          "id": "projects/my-project/locations/us-central1/clusters/skyclust-gke-1234567890/nodePools/skyclust-nodepool-1234567890",
-          "name": "skyclust-nodepool-1234567890",
-          "version": "1.28",
-          "status": "RUNNING",
-          "cluster_name": "skyclust-gke-1234567890",
-          "region": "us-central1",
-          "machine_type": "e2-medium",
-          "disk_size_gb": 20,
-          "disk_type": "pd-standard",
-          "node_count": 1,
-          "auto_scaling": {
-            "enabled": true,
-            "min_node_count": 1,
-            "max_node_count": 5
-          },
-          "labels": {
-            "environment": "development",
-            "workload": "general"
-          },
-          "preemptible": false,
-          "spot": false,
-          "created_at": "2024-01-01T00:00:00Z",
-          "updated_at": "2024-01-01T01:00:00Z",
-          "tags": {
-            "Environment": "development",
-            "Project": "skyclust"
-          }
+    "data": [
+      {
+        "id": "projects/my-project/locations/us-central1/clusters/skyclust-gke-1234567890/nodePools/skyclust-nodepool-1234567890",
+        "name": "skyclust-nodepool-1234567890",
+        "version": "1.28",
+        "status": "RUNNING",
+        "cluster_name": "skyclust-gke-1234567890",
+        "region": "us-central1",
+        "machine_type": "e2-medium",
+        "disk_size_gb": 20,
+        "disk_type": "pd-standard",
+        "node_count": 1,
+        "auto_scaling": {
+          "enabled": true,
+          "min_node_count": 1,
+          "max_node_count": 5
+        },
+        "labels": {
+          "environment": "development",
+          "workload": "general"
+        },
+        "preemptible": false,
+        "spot": false,
+        "created_at": "2024-01-01T00:00:00Z",
+        "updated_at": "2024-01-01T01:00:00Z",
+        "tags": {
+          "Environment": "development",
+          "Project": "skyclust"
         }
-      ],
-      "total": 1
+      }
+    ],
+    "meta": {
+      "page": 1,
+      "limit": 10,
+      "total": 1,
+      "total_pages": 1,
+      "has_next": false,
+      "has_prev": false
     },
     "message": "GKE node pools retrieved successfully"
   }
@@ -138,7 +146,7 @@ docs {
   ## 사용 예시
   
   ```bash
-  GET /api/v1/gcp/kubernetes/clusters/skyclust-gke-1234567890/nodepools?credential_id=123&region=us-central1
+  GET /api/v1/gcp/kubernetes/clusters/skyclust-gke-1234567890/node-pools?credential_id=123&region=us-central1
   Authorization: Bearer your-jwt-token
   ```
   

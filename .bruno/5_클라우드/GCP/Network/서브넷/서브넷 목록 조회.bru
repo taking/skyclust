@@ -15,10 +15,13 @@ auth:bearer {
 }
 
 script:post-response {
-  bru.setEnvVar("subnetId", res.body.data.subnets[2].id);
-  bru.setEnvVar("subnetName", res.body.data.subnets[2].name);
+  const dataArray = Array.isArray(res.body.data) ? res.body.data : [];
+  if (dataArray.length > 2) {
+    bru.setEnvVar("subnetId", dataArray[2].id);
+    bru.setEnvVar("subnetName", dataArray[2].name);
+  }
   
-  const rowData = res.body.data.subnets;
+  const rowData = dataArray;
   
   const columnDefinitions = [
     { field: "id", filter: true, floatingFilter: true },
@@ -51,12 +54,13 @@ tests {
   });
   
   test("Response has subnets data", function() {
-    expect(res.getBody().data).to.be.an('object');
-    expect(res.getBody().data.subnets).to.be.an('array');
+    expect(res.getBody().data).to.be.an('array');
   });
   
   test("Subnet has required fields", function() {
-    const subnet = res.getBody().data.subnets[0];
+    const subnets = res.getBody().data;
+    if (subnets.length === 0) return;
+    const subnet = subnets[0];
     expect(subnet).to.have.property('id');
     expect(subnet).to.have.property('name');
     expect(subnet).to.have.property('vpc_id');
@@ -81,43 +85,46 @@ docs {
   ```json
   {
     "success": true,
-    "data": {
-      "subnets": [
-        {
-          "id": "projects/my-project/regions/us-central1/subnetworks/default",
-          "name": "default",
-          "vpc_id": "projects/my-project/global/networks/default",
-          "cidr_block": "10.0.0.0/24",
-          "region": "us-central1",
-          "zone": "us-central1-a",
-          "state": "READY",
-          "project_id": "my-project",
-          "private_ip_google_access": false,
-          "flow_logs": false,
-          "created_at": "2024-01-01T00:00:00Z",
-          "tags": {
-            "Environment": "development",
-            "Project": "skyclust"
-          }
-        },
-        {
-          "id": "projects/my-project/regions/us-central1/subnetworks/skyclust-subnet-1234567890",
-          "name": "skyclust-subnet-1234567890",
-          "vpc_id": "projects/my-project/global/networks/default",
-          "cidr_block": "10.0.1.0/24",
-          "region": "us-central1",
-          "zone": "us-central1-a",
-          "state": "READY",
-          "project_id": "my-project",
-          "private_ip_google_access": false,
-          "flow_logs": false,
-          "created_at": "2024-01-01T00:00:00Z",
-          "tags": {
-            "Environment": "development",
-            "Project": "skyclust"
-          }
+    "data": [
+      {
+        "id": "projects/my-project/regions/us-central1/subnetworks/default",
+        "name": "default",
+        "vpc_id": "projects/my-project/global/networks/default",
+        "cidr_block": "10.0.0.0/24",
+        "region": "us-central1",
+        "zone": "us-central1-a",
+        "state": "READY",
+        "project_id": "my-project",
+        "private_ip_google_access": false,
+        "flow_logs": false,
+        "created_at": "2024-01-01T00:00:00Z",
+        "tags": {
+          "Environment": "development",
+          "Project": "skyclust"
         }
-      ]
+      },
+      {
+        "id": "projects/my-project/regions/us-central1/subnetworks/skyclust-subnet-1234567890",
+        "name": "skyclust-subnet-1234567890",
+        "vpc_id": "projects/my-project/global/networks/default",
+        "cidr_block": "10.0.1.0/24",
+        "region": "us-central1",
+        "zone": "us-central1-a",
+        "state": "READY",
+        "project_id": "my-project",
+        "private_ip_google_access": false,
+        "flow_logs": false,
+        "created_at": "2024-01-01T00:00:00Z",
+        "tags": {
+          "Environment": "development",
+          "Project": "skyclust"
+        }
+      }
+    ],
+    "meta": {
+      "page": 1,
+      "limit": 10,
+      "total": 2
     },
     "message": "GCP subnets retrieved successfully"
   }

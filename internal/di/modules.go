@@ -28,6 +28,7 @@ import (
 	vmservice "skyclust/internal/application/services/vm"
 	workspaceservice "skyclust/internal/application/services/workspace"
 	"skyclust/internal/domain"
+	"skyclust/internal/infrastructure/adapters"
 	"skyclust/internal/infrastructure/database/postgres"
 	"skyclust/internal/infrastructure/messaging"
 	k8sworker "skyclust/internal/workers/kubernetes"
@@ -94,7 +95,7 @@ func (m *ServiceModule) GetMessagingBus() messaging.Bus {
 }
 
 // NewServiceModule creates a new service module with actual service implementations
-func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceConfig) *ServiceModule {
+func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceConfig, domainModule *DomainModule) *ServiceModule {
 	logger.Info("Starting service module initialization...")
 
 	// Get Redis client from config
@@ -147,18 +148,35 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 		config.JWTExpiry,
 	)
 
-	// Create UserService
-	userService := userservice.NewService(repos.UserRepository, hasher, repos.AuditLogRepository)
+	// Create UserService with domain service
+	userDomainService := domainModule.GetContainer().UserDomainService
+	userService := userservice.NewService(repos.UserRepository, userDomainService, hasher, repos.AuditLogRepository)
 
 	// Create CredentialService with event publisher
 	credentialEventPublisher := messaging.NewPublisher(messagingBus, logger.DefaultLogger.GetLogger())
 	credentialService := credentialservice.NewService(repos.CredentialRepository, repos.AuditLogRepository, encryptor, credentialEventPublisher)
 
 	// Create Kubernetes service
-	k8sService := kubernetesservice.NewService(credentialService, config.Cache, messagingBus, repos.AuditLogRepository, logger.DefaultLogger.GetLogger())
+	k8sCacheAdapter := adapters.NewCacheAdapter(config.Cache)
+	k8sLoggerAdapter := adapters.NewLoggerAdapter(logger.DefaultLogger.GetLogger())
+	k8sService := kubernetesservice.NewService(
+		credentialService,
+		k8sCacheAdapter,
+		eventService,
+		repos.AuditLogRepository,
+		k8sLoggerAdapter,
+	)
 
-	// Create Network service (after credentialService is created)
-	networkService := networkservice.NewService(credentialService, config.Cache, messagingBus, repos.AuditLogRepository, logger.DefaultLogger.GetLogger())
+	// Create Network service
+	networkCacheAdapter := adapters.NewCacheAdapter(config.Cache)
+	networkLoggerAdapter := adapters.NewLoggerAdapter(logger.DefaultLogger.GetLogger())
+	networkService := networkservice.NewService(
+		credentialService,
+		networkCacheAdapter,
+		eventService,
+		repos.AuditLogRepository,
+		networkLoggerAdapter,
+	)
 
 	// Create AuditLogService
 	auditLogService := auditlogservice.NewService(repos.AuditLogRepository)
@@ -173,9 +191,10 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 	// Create OIDCService
 	oidcService := oidcservice.NewService(repos.UserRepository, repos.AuditLogRepository, authService, cacheService, oidcProviderRepo)
 
-	// Create WorkspaceService with event publisher
+	// Create WorkspaceService with event publisher and domain service
 	workspaceEventPublisher := messaging.NewPublisher(messagingBus, logger.DefaultLogger.GetLogger())
-	workspaceService := workspaceservice.NewService(repos.WorkspaceRepository, repos.UserRepository, eventService, repos.AuditLogRepository, workspaceEventPublisher)
+	workspaceDomainService := domainModule.GetContainer().WorkspaceDomainService
+	workspaceService := workspaceservice.NewService(repos.WorkspaceRepository, workspaceDomainService, repos.UserRepository, eventService, repos.AuditLogRepository, workspaceEventPublisher)
 
 	// Create NotificationService
 	notificationService := notificationservice.NewService(
@@ -191,18 +210,24 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 	// Create ComputeService first (needed by VMService)
 	computeService := computeservice.NewService()
 
-	// Create VMService
+	// Create VMService with domain service
 	vmEventPublisher := messaging.NewPublisher(messagingBus, logger.DefaultLogger.GetLogger())
+	vmDomainService := domainModule.GetContainer().VMDomainService
+
+	// Create adapters for VM Service
+	cacheAdapter := adapters.NewCacheAdapter(config.Cache)
+	loggerAdapter := adapters.NewLoggerAdapter(logger.DefaultLogger.GetLogger())
+	eventAdapter := adapters.NewEventAdapter(vmEventPublisher)
+
 	vmService := vmservice.NewService(
 		repos.VMRepository,
+		vmDomainService,
 		repos.WorkspaceRepository,
 		computeService,
-		eventService,
+		eventAdapter,
 		repos.AuditLogRepository,
-		config.Cache,
-		cache.NewCacheKeyBuilder(),
-		cache.NewInvalidatorWithEvents(config.Cache, vmEventPublisher),
-		logger.DefaultLogger.GetLogger(),
+		cacheAdapter,
+		loggerAdapter,
 	)
 
 	// Create ExportService
@@ -277,8 +302,8 @@ type ServiceConfig struct {
 	JWTSecret     string
 	JWTExpiry     time.Duration
 	EncryptionKey string
-	RedisClient   interface{} // Redis client for TokenBlacklist
-	Cache         cache.Cache // Cache for OIDC state storage
+	RedisClient   interface{}   // Redis client for TokenBlacklist
+	Cache         cache.Cache   // Cache for OIDC state storage
 	MessagingBus  messaging.Bus // Optional: messaging bus (NATS or LocalBus)
 }
 

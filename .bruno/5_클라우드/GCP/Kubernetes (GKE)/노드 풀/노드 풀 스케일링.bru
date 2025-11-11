@@ -5,7 +5,7 @@ meta {
 }
 
 put {
-  url: {{baseUrl}}/api/{{apiVersion}}/gcp/kubernetes/clusters/{{clusterName}}/nodepools/{{nodePoolName}}/scale
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/kubernetes/clusters/{{clusterName}}/node-pools/{{nodePoolName}}/scale
   body: json
   auth: bearer
 }
@@ -69,7 +69,7 @@ docs {
   ## 사용 예시
   
   ```bash
-  PUT /api/v1/gcp/kubernetes/clusters/skyclust-gke-1234567890/nodepools/skyclust-nodepool-1234567890/scale
+  PUT /api/v1/gcp/kubernetes/clusters/skyclust-gke-1234567890/node-pools/skyclust-nodepool-1234567890/scale
   Authorization: Bearer your-jwt-token
   Content-Type: application/json
   

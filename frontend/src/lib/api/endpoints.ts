@@ -251,26 +251,26 @@ export const API_ENDPOINTS = {
     nodePools: {
       list: (provider: CloudProvider, clusterName: string, credentialId: string, region: string) => {
         return buildEndpointWithQuery(
-          `${provider}/kubernetes/clusters/${clusterName}/nodepools`,
+          `${provider}/kubernetes/clusters/${clusterName}/node-pools`,
           { credential_id: credentialId, region }
         );
       },
       detail: (provider: CloudProvider, clusterName: string, nodePoolName: string, credentialId: string, region: string) => {
         return buildEndpointWithQuery(
-          `${provider}/kubernetes/clusters/${clusterName}/nodepools/${nodePoolName}`,
+          `${provider}/kubernetes/clusters/${clusterName}/node-pools/${nodePoolName}`,
           { credential_id: credentialId, region }
         );
       },
-      create: (provider: CloudProvider, clusterName: string) => `${provider}/kubernetes/clusters/${clusterName}/nodepools`,
+      create: (provider: CloudProvider, clusterName: string) => `${provider}/kubernetes/clusters/${clusterName}/node-pools`,
       delete: (provider: CloudProvider, clusterName: string, nodePoolName: string, credentialId: string, region: string) => {
         return buildEndpointWithQuery(
-          `${provider}/kubernetes/clusters/${clusterName}/nodepools/${nodePoolName}`,
+          `${provider}/kubernetes/clusters/${clusterName}/node-pools/${nodePoolName}`,
           { credential_id: credentialId, region }
         );
       },
       scale: (provider: CloudProvider, clusterName: string, nodePoolName: string, credentialId: string, region: string) => {
         return buildEndpointWithQuery(
-          `${provider}/kubernetes/clusters/${clusterName}/nodepools/${nodePoolName}/scale`,
+          `${provider}/kubernetes/clusters/${clusterName}/node-pools/${nodePoolName}/scale`,
           { credential_id: credentialId, region }
         );
       },

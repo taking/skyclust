@@ -67,7 +67,7 @@ func (h *Handler) Register(c *gin.Context) {
 // registerHandler: 사용자 등록의 핵심 비즈니스 로직을 처리합니다
 func (h *Handler) registerHandler(req domain.CreateUserRequest) handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		if err := h.ExtractValidatedRequest(c, &req); err != nil {
+		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "register")
 			return
 		}
@@ -135,7 +135,7 @@ func (h *Handler) loginHandler(req struct {
 			Email    string `json:"email" binding:"required,email"`
 			Password string `json:"password" binding:"required"`
 		}
-		if err := h.ExtractValidatedRequest(c, &req); err != nil {
+		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "login")
 			return
 		}
@@ -395,13 +395,8 @@ func (h *Handler) GetUsers(c *gin.Context) {
 		userResponses = append(userResponses, userResponse)
 	}
 
-	// Use standardized pagination metadata
-	paginationMeta := h.CalculatePaginationMeta(total, page, limit)
-
-	h.OK(c, gin.H{
-		"users":      userResponses,
-		"pagination": paginationMeta,
-	}, "Users retrieved successfully")
+	// Use standardized paginated response (direct array: data[])
+	h.BuildPaginatedResponse(c, userResponses, page, limit, total, "Users retrieved successfully")
 }
 
 // GetUser: ID로 특정 사용자를 조회합니다
@@ -468,8 +463,9 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	var req domain.UpdateUserRequest
-	if err := h.ValidateRequest(c, &req); err != nil {
+	// Handler layer DTO 사용
+	var handlerReq UpdateUserRequest
+	if err := h.ValidateRequest(c, &handlerReq); err != nil {
 		h.HandleError(c, err, "update_user")
 		return
 	}
@@ -482,23 +478,23 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 	}
 
 	// Update user fields
-	if req.Username != nil && *req.Username != "" {
-		user.Username = *req.Username
+	if handlerReq.Username != nil && *handlerReq.Username != "" {
+		user.Username = *handlerReq.Username
 	}
-	if req.Email != nil && *req.Email != "" {
-		user.Email = *req.Email
+	if handlerReq.Email != nil && *handlerReq.Email != "" {
+		user.Email = *handlerReq.Email
 	}
-	if req.Password != nil && *req.Password != "" {
+	if handlerReq.Password != nil && *handlerReq.Password != "" {
 		// Hash new password
-		hashedPassword, err := h.userService.HashPassword(*req.Password)
+		hashedPassword, err := h.userService.HashPassword(*handlerReq.Password)
 		if err != nil {
 			h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "failed to hash password", 500), "update_user")
 			return
 		}
 		user.PasswordHash = hashedPassword
 	}
-	if req.IsActive != nil {
-		user.Active = *req.IsActive
+	if handlerReq.IsActive != nil {
+		user.Active = *handlerReq.IsActive
 	}
 
 	// Update user
@@ -509,6 +505,76 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 	}
 
 	h.OK(c, updatedUser, "User updated successfully")
+}
+
+// CreateUser: 관리자가 사용자를 생성합니다 (초기 설정 체크 없음)
+func (h *Handler) CreateUser(c *gin.Context) {
+	// Get current user role from token for authorization
+	userRole, err := h.GetUserRoleFromToken(c)
+	if err != nil {
+		h.HandleError(c, err, "create_user")
+		return
+	}
+
+	// Check if user has permission to create users (admin role only)
+	if userRole != domain.AdminRoleType {
+		h.Forbidden(c, "Only administrators can create users")
+		return
+	}
+
+	// Parse request
+	var req domain.CreateUserRequest
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "create_user")
+		return
+	}
+
+	// Enrich context with request metadata
+	ctx := h.EnrichContextWithRequestMetadata(c)
+
+	// Create user using userService (no initial setup check)
+	user, err := h.userService.CreateUser(ctx, req)
+	if err != nil {
+		h.HandleError(c, err, "create_user")
+		return
+	}
+
+	// Assign default role (user role for admin-created users)
+	if h.rbacService != nil {
+		if err := h.rbacService.AssignRole(user.ID, domain.UserRoleType); err != nil {
+			h.LogWarn(c, "Failed to assign role to created user", zap.Error(err))
+			// Continue even if role assignment fails
+		}
+	}
+
+	// Get primary role for response
+	var primaryRole domain.Role = domain.UserRoleType
+	if h.rbacService != nil {
+		userRoles, err := h.rbacService.GetUserRoles(user.ID)
+		if err == nil && len(userRoles) > 0 {
+			primaryRole = userRoles[0]
+		}
+	}
+
+	// Build response
+	userResponse := &UserResponse{
+		ID:           user.ID.String(),
+		Username:     user.Username,
+		Email:        user.Email,
+		IsActive:     user.Active,
+		Role:         string(primaryRole),
+		OIDCProvider: user.OIDCProvider,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
+	}
+
+	h.LogBusinessEvent(c, "user_created_by_admin", user.ID.String(), "", map[string]interface{}{
+		"user_id":  user.ID.String(),
+		"username": user.Username,
+		"email":    user.Email,
+	})
+
+	h.Created(c, userResponse, "User created successfully")
 }
 
 // DeleteUser: 사용자를 삭제합니다

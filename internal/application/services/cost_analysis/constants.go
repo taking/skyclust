@@ -5,6 +5,12 @@ import "time"
 // Cost Analysis Service Constants
 // These constants are specific to cost analysis and prediction operations
 
+// HTTP Status Code Constants
+const (
+	HTTPStatusBadRequest          = 400
+	HTTPStatusInternalServerError = 500
+)
+
 // Cost calculation constants
 const (
 	// DefaultCostPredictionMargin is the default margin (20%) for cost predictions

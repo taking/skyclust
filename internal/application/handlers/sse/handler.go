@@ -799,14 +799,14 @@ func (h *SSEHandler) subscribeToEventHandler() handlers.HandlerFunc {
 			userIDStr = fmt.Sprintf("%v", v)
 		}
 
-		// 요청 바디 파싱
+		// 요청 바디 파싱 및 검증
 		var req struct {
 			EventType string                 `json:"event_type" binding:"required"`
 			Filters   map[string]interface{} `json:"filters,omitempty"`
 		}
 
-		if err := c.ShouldBindJSON(&req); err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("Invalid request: %v", err), 400), "subscribe_to_event")
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "subscribe_to_event")
 			return
 		}
 
@@ -934,13 +934,13 @@ func (h *SSEHandler) unsubscribeFromEventHandler() handlers.HandlerFunc {
 			userIDStr = fmt.Sprintf("%v", v)
 		}
 
-		// 요청 바디 파싱
+		// 요청 바디 파싱 및 검증
 		var req struct {
 			EventType string `json:"event_type" binding:"required"`
 		}
 
-		if err := c.ShouldBindJSON(&req); err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("Invalid request: %v", err), 400), "unsubscribe_from_event")
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "unsubscribe_from_event")
 			return
 		}
 

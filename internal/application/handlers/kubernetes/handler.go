@@ -115,7 +115,7 @@ func (h *Handler) listClustersHandler() handlers.HandlerFunc {
 		}
 
 		h.logClusterListSuccess(c, userID, len(clusters.Clusters))
-		h.OK(c, clusters, "Clusters retrieved successfully")
+		h.OK(c, clusters.Clusters, "Clusters retrieved successfully")
 	}
 }
 

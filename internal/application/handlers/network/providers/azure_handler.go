@@ -24,7 +24,7 @@ func NewAzureHandler(
 
 // ListVPCs: Virtual Network 목록 조회를 처리합니다
 func (h *AzureHandler) ListVPCs(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "list_vpcs")
 		return
@@ -40,13 +40,23 @@ func (h *AzureHandler) ListVPCs(c *gin.Context) {
 		Region:       region,
 	}
 
-	vpcs, err := h.networkService.ListVPCs(c.Request.Context(), credential, serviceReq)
+	vpcs, err := h.GetNetworkService().ListVPCs(c.Request.Context(), credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "list_vpcs")
 		return
 	}
 
-	h.OK(c, vpcs, "Virtual Networks retrieved successfully")
+	// Direct array: data[] (not data.vpcs[])
+	if vpcs != nil && vpcs.Total > 0 {
+		page, limit := h.ParsePageLimitParams(c)
+		h.OKWithPagination(c, vpcs.VPCs, "Virtual Networks retrieved successfully", page, limit, vpcs.Total)
+	} else {
+		vpcList := []networkservice.VPCInfo{}
+		if vpcs != nil {
+			vpcList = vpcs.VPCs
+		}
+		h.OK(c, vpcList, "Virtual Networks retrieved successfully")
+	}
 }
 
 // CreateVPC: Virtual Network 생성을 처리합니다
@@ -57,14 +67,14 @@ func (h *AzureHandler) CreateVPC(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, domain.ProviderAzure)
+	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), req.CredentialID, domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "create_vpc")
 		return
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	vpc, err := h.networkService.CreateVPC(ctx, credential, req)
+	vpc, err := h.GetNetworkService().CreateVPC(ctx, credential, req)
 	if err != nil {
 		h.HandleError(c, err, "create_vpc")
 		return
@@ -75,7 +85,7 @@ func (h *AzureHandler) CreateVPC(c *gin.Context) {
 
 // GetVPC: Virtual Network 상세 정보 조회를 처리합니다
 func (h *AzureHandler) GetVPC(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "get_vpc")
 		return
@@ -94,7 +104,7 @@ func (h *AzureHandler) GetVPC(c *gin.Context) {
 		Region:       region,
 	}
 
-	vpc, err := h.networkService.GetVPC(c.Request.Context(), credential, serviceReq)
+	vpc, err := h.GetNetworkService().GetVPC(c.Request.Context(), credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "get_vpc")
 		return
@@ -120,7 +130,7 @@ func (h *AzureHandler) UpdateVPC(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "update_vpc")
 		return
@@ -134,7 +144,7 @@ func (h *AzureHandler) UpdateVPC(c *gin.Context) {
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	vpc, err := h.networkService.UpdateVPC(ctx, credential, req, vpcID, region)
+	vpc, err := h.GetNetworkService().UpdateVPC(ctx, credential, req, vpcID, region)
 	if err != nil {
 		h.HandleError(c, err, "update_vpc")
 		return
@@ -145,7 +155,7 @@ func (h *AzureHandler) UpdateVPC(c *gin.Context) {
 
 // DeleteVPC: Virtual Network 삭제를 처리합니다
 func (h *AzureHandler) DeleteVPC(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "delete_vpc")
 		return
@@ -164,7 +174,7 @@ func (h *AzureHandler) DeleteVPC(c *gin.Context) {
 		Region:       region,
 	}
 
-	err = h.networkService.DeleteVPC(c.Request.Context(), credential, serviceReq)
+	err = h.GetNetworkService().DeleteVPC(c.Request.Context(), credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "delete_vpc")
 		return
@@ -175,7 +185,7 @@ func (h *AzureHandler) DeleteVPC(c *gin.Context) {
 
 // ListSubnets: 서브넷 목록 조회를 처리합니다
 func (h *AzureHandler) ListSubnets(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "list_subnets")
 		return
@@ -194,13 +204,23 @@ func (h *AzureHandler) ListSubnets(c *gin.Context) {
 		Region:       region,
 	}
 
-	subnets, err := h.networkService.ListSubnets(c.Request.Context(), credential, serviceReq)
+	subnets, err := h.GetNetworkService().ListSubnets(c.Request.Context(), credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "list_subnets")
 		return
 	}
 
-	h.OK(c, subnets, "Subnets retrieved successfully")
+	// Direct array: data[] (not data.subnets[])
+	if subnets != nil && subnets.Total > 0 {
+		page, limit := h.ParsePageLimitParams(c)
+		h.OKWithPagination(c, subnets.Subnets, "Subnets retrieved successfully", page, limit, subnets.Total)
+	} else {
+		subnetList := []networkservice.SubnetInfo{}
+		if subnets != nil {
+			subnetList = subnets.Subnets
+		}
+		h.OK(c, subnetList, "Subnets retrieved successfully")
+	}
 }
 
 // CreateSubnet: 서브넷 생성을 처리합니다
@@ -211,14 +231,14 @@ func (h *AzureHandler) CreateSubnet(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, domain.ProviderAzure)
+	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), req.CredentialID, domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "create_subnet")
 		return
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	subnet, err := h.networkService.CreateSubnet(ctx, credential, req)
+	subnet, err := h.GetNetworkService().CreateSubnet(ctx, credential, req)
 	if err != nil {
 		h.HandleError(c, err, "create_subnet")
 		return
@@ -229,7 +249,7 @@ func (h *AzureHandler) CreateSubnet(c *gin.Context) {
 
 // GetSubnet: 서브넷 상세 정보 조회를 처리합니다
 func (h *AzureHandler) GetSubnet(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "get_subnet")
 		return
@@ -248,7 +268,7 @@ func (h *AzureHandler) GetSubnet(c *gin.Context) {
 		Region:       region,
 	}
 
-	subnet, err := h.networkService.GetSubnet(c.Request.Context(), credential, serviceReq)
+	subnet, err := h.GetNetworkService().GetSubnet(c.Request.Context(), credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "get_subnet")
 		return
@@ -265,7 +285,7 @@ func (h *AzureHandler) UpdateSubnet(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "update_subnet")
 		return
@@ -279,7 +299,7 @@ func (h *AzureHandler) UpdateSubnet(c *gin.Context) {
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	subnet, err := h.networkService.UpdateSubnet(ctx, credential, req, subnetID, region)
+	subnet, err := h.GetNetworkService().UpdateSubnet(ctx, credential, req, subnetID, region)
 	if err != nil {
 		h.HandleError(c, err, "update_subnet")
 		return
@@ -290,7 +310,7 @@ func (h *AzureHandler) UpdateSubnet(c *gin.Context) {
 
 // DeleteSubnet: 서브넷 삭제를 처리합니다
 func (h *AzureHandler) DeleteSubnet(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "delete_subnet")
 		return
@@ -309,7 +329,7 @@ func (h *AzureHandler) DeleteSubnet(c *gin.Context) {
 		Region:       region,
 	}
 
-	err = h.networkService.DeleteSubnet(c.Request.Context(), credential, serviceReq)
+	err = h.GetNetworkService().DeleteSubnet(c.Request.Context(), credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "delete_subnet")
 		return
@@ -342,7 +362,7 @@ func (h *AzureHandler) CreateSecurityGroup(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromBody(c, h.credentialService, credentialID, domain.ProviderAzure)
+	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), credentialID, domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "create_security_group")
 		return
@@ -357,7 +377,7 @@ func (h *AzureHandler) CreateSecurityGroup(c *gin.Context) {
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	securityGroup, err := h.networkService.CreateSecurityGroup(ctx, credential, req)
+	securityGroup, err := h.GetNetworkService().CreateSecurityGroup(ctx, credential, req)
 	if err != nil {
 		h.HandleError(c, err, "create_security_group")
 		return

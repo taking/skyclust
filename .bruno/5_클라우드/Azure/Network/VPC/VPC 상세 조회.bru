@@ -51,6 +51,18 @@ docs {
       "region": "eastus",
       "cidr_block": "10.0.0.0/16",
       "description": "Skyclust Azure Virtual Network",
+      "subnets": [
+        {
+          "id": "/subscriptions/xxx/resourceGroups/skyclust-rg/providers/Microsoft.Network/virtualNetworks/skyclust-vnet/subnets/subnet-1",
+          "name": "subnet-1",
+          "vpc_id": "/subscriptions/xxx/resourceGroups/skyclust-rg/providers/Microsoft.Network/virtualNetworks/skyclust-vnet",
+          "cidr_block": "10.0.1.0/24",
+          "availability_zone": "eastus-1",
+          "state": "Succeeded",
+          "is_public": false,
+          "region": "eastus"
+        }
+      ],
       "tags": {
         "Environment": "development",
         "Project": "skyclust"
@@ -59,5 +71,25 @@ docs {
     "message": "VPC retrieved successfully"
   }
   ```
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.be.true;
+  });
+  
+  test("Response has VPC data", function() {
+    expect(res.getBody().data).to.have.property('id');
+    expect(res.getBody().data).to.have.property('name');
+    expect(res.getBody().data).to.have.property('state');
+  });
+  
+  test("VPC has subnets array", function() {
+    expect(res.getBody().data.subnets).to.be.an('array');
+  });
 }
 

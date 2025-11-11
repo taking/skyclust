@@ -31,8 +31,8 @@ export class WorkspaceRepository extends BaseRepository implements IWorkspaceRep
   }
 
   async list(): Promise<Workspace[]> {
-    const data = await this.get<{ workspaces: Workspace[] }>(API_ENDPOINTS.workspaces.list());
-    return data.workspaces || [];
+    const data = await this.get<Workspace[]>(API_ENDPOINTS.workspaces.list());
+    return Array.isArray(data) ? data : [];
   }
 
   async create(data: CreateWorkspaceForm): Promise<Workspace> {

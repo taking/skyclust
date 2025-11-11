@@ -1,6 +1,8 @@
 package network
 
 import (
+	"fmt"
+
 	networkservice "skyclust/internal/application/services/network"
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
@@ -65,9 +67,25 @@ func (h *Handler) listVPCsHandler() handlers.HandlerFunc {
 
 		h.logVPCsListAttempt(c, userID, credential.ID, region)
 
-		handlerReq := ListVPCsRequest{
-			Region: region,
+		// Parse pagination parameters
+		page, limit := h.ParsePageLimitParams(c)
+
+		// Parse request with pagination, sorting, and filtering
+		var handlerReq ListVPCsRequest
+		if err := c.ShouldBindQuery(&handlerReq); err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("invalid request parameters: %v", err), 400), "list_vpcs")
+			return
 		}
+
+		// Override with parsed pagination params if not provided
+		if handlerReq.Page == 0 {
+			handlerReq.Page = page
+		}
+		if handlerReq.Limit == 0 {
+			handlerReq.Limit = limit
+		}
+		handlerReq.Region = region
+
 		serviceReq := ToServiceListVPCsRequest(handlerReq, credential.ID.String())
 
 		vpcs, err := h.networkService.ListVPCs(c.Request.Context(), credential, serviceReq)
@@ -78,7 +96,13 @@ func (h *Handler) listVPCsHandler() handlers.HandlerFunc {
 
 		handlerResp := FromServiceListVPCsResponse(vpcs)
 		h.logVPCsListSuccess(c, userID, len(handlerResp.VPCs))
-		h.OK(c, handlerResp, "VPCs retrieved successfully")
+
+		// Use OKWithPagination if total count is available (direct array: data[])
+		if vpcs != nil && vpcs.Total > 0 {
+			h.OKWithPagination(c, handlerResp.VPCs, "VPCs retrieved successfully", handlerReq.Page, handlerReq.Limit, vpcs.Total)
+		} else {
+			h.OK(c, handlerResp.VPCs, "VPCs retrieved successfully")
+		}
 	}
 }
 
@@ -104,7 +128,7 @@ func (h *Handler) listSubnetsHandler() handlers.HandlerFunc {
 
 		userID, err := h.ExtractUserIDFromContext(c)
 		if err != nil {
-			h.HandleError(c, err, "list_vpcs")
+			h.HandleError(c, err, "list_subnets")
 			return
 		}
 		vpcID := h.parseVPCID(c)
@@ -116,10 +140,26 @@ func (h *Handler) listSubnetsHandler() handlers.HandlerFunc {
 
 		h.logSubnetsListAttempt(c, userID, credential.ID, vpcID, region)
 
-		handlerReq := ListSubnetsRequest{
-			VPCID:  vpcID,
-			Region: region,
+		// Parse pagination parameters
+		page, limit := h.ParsePageLimitParams(c)
+
+		// Parse request with pagination, sorting, and filtering
+		var handlerReq ListSubnetsRequest
+		if err := c.ShouldBindQuery(&handlerReq); err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("invalid request parameters: %v", err), 400), "list_subnets")
+			return
 		}
+
+		// Override with parsed pagination params if not provided
+		if handlerReq.Page == 0 {
+			handlerReq.Page = page
+		}
+		if handlerReq.Limit == 0 {
+			handlerReq.Limit = limit
+		}
+		handlerReq.VPCID = vpcID
+		handlerReq.Region = region
+
 		serviceReq := ToServiceListSubnetsRequest(handlerReq, credential.ID.String())
 
 		subnets, err := h.networkService.ListSubnets(c.Request.Context(), credential, serviceReq)
@@ -130,7 +170,13 @@ func (h *Handler) listSubnetsHandler() handlers.HandlerFunc {
 
 		handlerResp := FromServiceListSubnetsResponse(subnets)
 		h.logSubnetsListSuccess(c, userID, vpcID, len(handlerResp.Subnets))
-		h.OK(c, handlerResp, "Subnets retrieved successfully")
+
+		// Use OKWithPagination if total count is available (direct array: data[])
+		if subnets != nil && subnets.Total > 0 {
+			h.OKWithPagination(c, handlerResp.Subnets, "Subnets retrieved successfully", handlerReq.Page, handlerReq.Limit, subnets.Total)
+		} else {
+			h.OK(c, handlerResp.Subnets, "Subnets retrieved successfully")
+		}
 	}
 }
 
@@ -156,7 +202,7 @@ func (h *Handler) listSecurityGroupsHandler() handlers.HandlerFunc {
 
 		userID, err := h.ExtractUserIDFromContext(c)
 		if err != nil {
-			h.HandleError(c, err, "list_vpcs")
+			h.HandleError(c, err, "list_security_groups")
 			return
 		}
 		vpcID := h.parseVPCID(c)
@@ -168,10 +214,26 @@ func (h *Handler) listSecurityGroupsHandler() handlers.HandlerFunc {
 
 		h.logSecurityGroupsListAttempt(c, userID, credential.ID, vpcID, region)
 
-		handlerReq := ListSecurityGroupsRequest{
-			VPCID:  vpcID,
-			Region: region,
+		// Parse pagination parameters
+		page, limit := h.ParsePageLimitParams(c)
+
+		// Parse request with pagination, sorting, and filtering
+		var handlerReq ListSecurityGroupsRequest
+		if err := c.ShouldBindQuery(&handlerReq); err != nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("invalid request parameters: %v", err), 400), "list_security_groups")
+			return
 		}
+
+		// Override with parsed pagination params if not provided
+		if handlerReq.Page == 0 {
+			handlerReq.Page = page
+		}
+		if handlerReq.Limit == 0 {
+			handlerReq.Limit = limit
+		}
+		handlerReq.VPCID = vpcID
+		handlerReq.Region = region
+
 		serviceReq := ToServiceListSecurityGroupsRequest(handlerReq, credential.ID.String())
 
 		securityGroups, err := h.networkService.ListSecurityGroups(c.Request.Context(), credential, serviceReq)
@@ -182,7 +244,13 @@ func (h *Handler) listSecurityGroupsHandler() handlers.HandlerFunc {
 
 		handlerResp := FromServiceListSecurityGroupsResponse(securityGroups)
 		h.logSecurityGroupsListSuccess(c, userID, vpcID, len(handlerResp.SecurityGroups))
-		h.OK(c, handlerResp, "Security groups retrieved successfully")
+
+		// Use OKWithPagination if total count is available (direct array: data[])
+		if securityGroups != nil && securityGroups.Total > 0 {
+			h.OKWithPagination(c, handlerResp.SecurityGroups, "Security groups retrieved successfully", handlerReq.Page, handlerReq.Limit, securityGroups.Total)
+		} else {
+			h.OK(c, handlerResp.SecurityGroups, "Security groups retrieved successfully")
+		}
 	}
 }
 
@@ -233,6 +301,21 @@ func (h *Handler) getVPCHandler() handlers.HandlerFunc {
 		}
 
 		handlerResp := FromServiceVPCInfo(vpc)
+
+		// Fetch subnets for this VPC (direct array: subnets[])
+		if region != "" {
+			subnetsReq := ListSubnetsRequest{
+				VPCID:  vpcID,
+				Region: region,
+			}
+			serviceSubnetsReq := ToServiceListSubnetsRequest(subnetsReq, credential.ID.String())
+			subnetsResp, err := h.networkService.ListSubnets(c.Request.Context(), credential, serviceSubnetsReq)
+			if err == nil && subnetsResp != nil {
+				handlerSubnetsResp := FromServiceListSubnetsResponse(subnetsResp)
+				handlerResp.Subnets = handlerSubnetsResp.Subnets
+			}
+		}
+
 		h.logVPCGetSuccess(c, userID, vpcID)
 		h.OK(c, handlerResp, "VPC retrieved successfully")
 	}

@@ -25,6 +25,10 @@ body:json {
   }
 }
 
+script:post-response {
+  bru.setEnvVar("workspaceId", res.body.data.id);
+}
+
 tests {
   test("Status code is 200", function() {
     expect(res.getStatus()).to.equal(200);

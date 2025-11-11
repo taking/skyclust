@@ -118,18 +118,18 @@ func (c *Container) Initialize(ctx context.Context, cfg *config.Config) error {
 		JWTSecret:     cfg.Security.JWTSecret,
 		JWTExpiry:     cfg.Security.JWTExpiration,
 		EncryptionKey: cfg.Security.EncryptionKey,
-		RedisClient:   redisClient, // Pass Redis client for TokenBlacklist
-		Cache:         c.cache,     // Pass cache for OIDC state storage
+		RedisClient:   redisClient,  // Pass Redis client for TokenBlacklist
+		Cache:         c.cache,      // Pass cache for OIDC state storage
 		MessagingBus:  messagingBus, // Pass messaging bus (NATS or LocalBus)
 	}
-
-	logger.Info("Initializing service module...")
-	c.serviceModule = NewServiceModule(c.repositoryModule.GetContainer(), c.db, serviceConfig)
-	logger.Info("Service module initialized")
 
 	logger.Info("Initializing domain module...")
 	c.domainModule = NewDomainModule(c.repositoryModule.GetContainer())
 	logger.Info("Domain module initialized")
+
+	logger.Info("Initializing service module...")
+	c.serviceModule = NewServiceModule(c.repositoryModule.GetContainer(), c.db, serviceConfig, c.domainModule)
+	logger.Info("Service module initialized")
 
 	logger.Info("Initializing infrastructure module...")
 	c.infrastructureModule = NewInfrastructureModule(c.db, redisClient)

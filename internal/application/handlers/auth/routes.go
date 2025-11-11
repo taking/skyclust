@@ -24,7 +24,7 @@ func SetupUserRoutes(router *gin.RouterGroup, authService domain.AuthService, us
 	authHandler := NewHandler(authService, userService, rbacService)
 
 	// User management routes
-	router.POST("", authHandler.Register)         // Create user
+	router.POST("", authHandler.CreateUser)       // Create user (admin only, no initial setup check)
 	router.GET("", authHandler.GetUsers)          // List users
 	router.GET("/:id", authHandler.GetUser)       // Get specific user
 	router.PUT("/:id", authHandler.UpdateUser)    // Update user

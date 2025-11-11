@@ -20,9 +20,12 @@ auth:bearer {
 }
 
 script:post-response {
-  bru.setEnvVar("nodeGroupName", res.body.data.node_groups[0].name);
+  const dataArray = Array.isArray(res.body.data) ? res.body.data : [];
+  if (dataArray.length > 0) {
+    bru.setEnvVar("nodeGroupName", dataArray[0].name);
+  }
   
-  const rowData = res.body.data.node_groups;
+  const rowData = dataArray;
   
   const columnDefinitions = [
     { field: "id", filter: true, floatingFilter: true },
@@ -54,13 +57,13 @@ tests {
   });
   
   test("Response has node groups data", function() {
-    expect(res.getBody().data).to.be.an('object');
-    expect(res.getBody().data.node_groups).to.be.an('array');
-    expect(res.getBody().data.total).to.be.a('number');
+    expect(res.getBody().data).to.be.an('array');
   });
   
   test("Node group has required fields", function() {
-    const nodeGroup = res.getBody().data.node_groups[0];
+    const nodeGroups = res.getBody().data;
+    if (nodeGroups.length === 0) return;
+    const nodeGroup = nodeGroups[0];
     expect(nodeGroup).to.have.property('id');
     expect(nodeGroup).to.have.property('name');
     expect(nodeGroup).to.have.property('version');
@@ -85,31 +88,31 @@ docs {
   ```json
   {
     "success": true,
-    "data": {
-      "node_groups": [
-        {
-          "id": "arn:aws:eks:ap-northeast-3:123456789012:nodegroup/skyclust-test-cluster/skyclust-node-group-1732344567/12345678-1234-1234-1234-123456789012",
-          "name": "skyclust-node-group-1732344567",
-          "version": "1.28",
-          "status": "ACTIVE",
-          "cluster_name": "skyclust-test-cluster",
-          "region": "ap-northeast-3",
-          "instance_types": ["t3.medium"],
-          "scaling_config": {
-            "min_size": 1,
-            "max_size": 10,
-            "desired_size": 3
-          },
-          "capacity_type": "ON_DEMAND",
-          "disk_size": 20,
-          "created_at": "2025-10-23T10:30:00Z",
-          "updated_at": "2025-10-23T10:35:00Z",
-          "tags": {
-            "Environment": "development",
-            "Project": "skyclust"
-          }
+    "data": [
+      {
+        "id": "arn:aws:eks:ap-northeast-3:123456789012:nodegroup/skyclust-test-cluster/skyclust-node-group-1732344567/12345678-1234-1234-1234-123456789012",
+        "name": "skyclust-node-group-1732344567",
+        "version": "1.28",
+        "status": "ACTIVE",
+        "cluster_name": "skyclust-test-cluster",
+        "region": "ap-northeast-3",
+        "instance_types": ["t3.medium"],
+        "scaling_config": {
+          "min_size": 1,
+          "max_size": 10,
+          "desired_size": 3
+        },
+        "capacity_type": "ON_DEMAND",
+        "disk_size": 20,
+        "created_at": "2025-10-23T10:30:00Z",
+        "updated_at": "2025-10-23T10:35:00Z",
+        "tags": {
+          "Environment": "development",
+          "Project": "skyclust"
         }
-      ],
+      }
+    ],
+    "meta": {
       "total": 1
     },
     "message": "Node groups retrieved successfully",

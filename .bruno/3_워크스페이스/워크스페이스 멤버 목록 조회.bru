@@ -19,7 +19,7 @@ auth:bearer {
 }
 
 script:post-response {
-  const rowData = res.body.data.members;
+  const rowData = Array.isArray(res.body.data) ? res.body.data : [];
   
   const columnDefinitions = [
     { field: "user_id", filter: true, floatingFilter: true },
@@ -48,32 +48,30 @@ docs {
   ```json
   {
     "success": true,
-    "data": {
-      "members": [
-        {
-          "user_id": "123e4567-e89b-12d3-a456-426614174001",
-          "workspace_id": "123e4567-e89b-12d3-a456-426614174000",
-          "role": "owner",
-          "joined_at": "2025-10-23T10:00:00Z",
-          "user": {
-            "id": "123e4567-e89b-12d3-a456-426614174001",
-            "username": "john.doe",
-            "email": "john.doe@example.com"
-          }
-        },
-        {
-          "user_id": "123e4567-e89b-12d3-a456-426614174002",
-          "workspace_id": "123e4567-e89b-12d3-a456-426614174000",
-          "role": "admin",
-          "joined_at": "2025-10-23T11:00:00Z",
-          "user": {
-            "id": "123e4567-e89b-12d3-a456-426614174002",
-            "username": "jane.doe",
-            "email": "jane.doe@example.com"
-          }
+    "data": [
+      {
+        "user_id": "123e4567-e89b-12d3-a456-426614174001",
+        "workspace_id": "123e4567-e89b-12d3-a456-426614174000",
+        "role": "owner",
+        "joined_at": "2025-10-23T10:00:00Z",
+        "user": {
+          "id": "123e4567-e89b-12d3-a456-426614174001",
+          "username": "john.doe",
+          "email": "john.doe@example.com"
         }
-      ]
-    },
+      },
+      {
+        "user_id": "123e4567-e89b-12d3-a456-426614174002",
+        "workspace_id": "123e4567-e89b-12d3-a456-426614174000",
+        "role": "admin",
+        "joined_at": "2025-10-23T11:00:00Z",
+        "user": {
+          "id": "123e4567-e89b-12d3-a456-426614174002",
+          "username": "jane.doe",
+          "email": "jane.doe@example.com"
+        }
+      }
+    ],
     "message": "Workspace members retrieved successfully",
     "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
     "timestamp": "2025-10-23T10:29:22.606589+09:00"

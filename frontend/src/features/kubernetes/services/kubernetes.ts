@@ -24,10 +24,10 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region?: string
   ): Promise<KubernetesCluster[]> {
-    const data = await this.get<{ clusters: KubernetesCluster[] }>(
+    const data = await this.get<KubernetesCluster[]>(
       API_ENDPOINTS.kubernetes.clusters.list(provider, credentialId, region)
     );
-    return data.clusters || [];
+    return Array.isArray(data) ? data : [];
   }
 
   async getCluster(
@@ -145,10 +145,10 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<NodePool[]> {
-    const data = await this.get<{ node_pools: NodePool[] }>(
+    const data = await this.get<NodePool[]>(
       API_ENDPOINTS.kubernetes.nodePools.list(provider, clusterName, credentialId, region)
     );
-    return data.node_pools || [];
+    return Array.isArray(data) ? data : [];
   }
 
   async getNodePool(
@@ -207,10 +207,10 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<NodeGroup[]> {
-    const data = await this.get<{ node_groups: NodeGroup[] }>(
+    const data = await this.get<NodeGroup[]>(
       API_ENDPOINTS.kubernetes.nodeGroups.list(provider, clusterName, credentialId, region)
     );
-    return data.node_groups || [];
+    return Array.isArray(data) ? data : [];
   }
 
   async getNodeGroup(

@@ -20,25 +20,11 @@ class CredentialService extends BaseService {
    * ```
    */
   async getCredentials(workspaceId: string): Promise<Credential[]> {
-    // 1. API 호출 (응답 형식이 다양할 수 있음)
-    const data = await this.get<{ credentials: Credential[] } | Credential[]>(
+    const data = await this.get<Credential[]>(
       API_ENDPOINTS.credentials.list(workspaceId)
     );
     
-    // 2. 응답 데이터 형식에 따라 처리
-    // 백엔드가 { credentials: [...] } 또는 직접 배열을 반환할 수 있음
-    if (Array.isArray(data)) {
-      // 직접 배열인 경우
-      return data;
-    }
-    
-    // 3. 객체 형태로 credentials 필드가 있는 경우
-    if (data && typeof data === 'object' && 'credentials' in data) {
-      return (data as { credentials: Credential[] }).credentials || [];
-    }
-    
-    // 4. 예상치 못한 형식인 경우 빈 배열 반환
-    return [];
+    return Array.isArray(data) ? data : [];
   }
 
   /**

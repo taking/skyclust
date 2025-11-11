@@ -15,9 +15,12 @@ auth:bearer {
 }
 
 script:post-response {
-  bru.setEnvVar("firewallId", res.body.data.security_groups[0].id);
+  const dataArray = Array.isArray(res.body.data) ? res.body.data : [];
+  if (dataArray.length > 0) {
+    bru.setEnvVar("firewallId", dataArray[0].id);
+  }
   
-  const rowData = res.body.data.security_groups;
+  const rowData = dataArray;
   
   const columnDefinitions = [
     { field: "id", filter: true, floatingFilter: true },
@@ -58,49 +61,52 @@ docs {
   ```json
   {
     "success": true,
-    "data": {
-      "security_groups": [
-        {
-          "id": "projects/my-project/global/firewalls/default-allow-ssh",
-          "name": "default-allow-ssh",
-          "description": "Allow SSH from anywhere",
-          "vpc_id": "projects/my-project/global/networks/default",
-          "region": "us-central1",
-          "project_id": "my-project",
-          "direction": "INGRESS",
-          "priority": 65534,
-          "action": "ALLOW",
-          "protocol": "tcp",
-          "ports": ["22"],
-          "source_ranges": ["0.0.0.0/0"],
-          "target_tags": [],
-          "created_at": "2024-01-01T00:00:00Z",
-          "tags": {
-            "Environment": "development",
-            "Project": "skyclust"
-          }
-        },
-        {
-          "id": "projects/my-project/global/firewalls/skyclust-firewall-1234567890",
-          "name": "skyclust-firewall-1234567890",
-          "description": "Allow HTTP and HTTPS traffic",
-          "vpc_id": "projects/my-project/global/networks/default",
-          "region": "us-central1",
-          "project_id": "my-project",
-          "direction": "INGRESS",
-          "priority": 1000,
-          "action": "ALLOW",
-          "protocol": "tcp",
-          "ports": ["80", "443"],
-          "source_ranges": ["0.0.0.0/0"],
-          "target_tags": ["web-server"],
-          "created_at": "2024-01-01T00:00:00Z",
-          "tags": {
-            "Environment": "development",
-            "Project": "skyclust"
-          }
+    "data": [
+      {
+        "id": "projects/my-project/global/firewalls/default-allow-ssh",
+        "name": "default-allow-ssh",
+        "description": "Allow SSH from anywhere",
+        "vpc_id": "projects/my-project/global/networks/default",
+        "region": "us-central1",
+        "project_id": "my-project",
+        "direction": "INGRESS",
+        "priority": 65534,
+        "action": "ALLOW",
+        "protocol": "tcp",
+        "ports": ["22"],
+        "source_ranges": ["0.0.0.0/0"],
+        "target_tags": [],
+        "created_at": "2024-01-01T00:00:00Z",
+        "tags": {
+          "Environment": "development",
+          "Project": "skyclust"
         }
-      ]
+      },
+      {
+        "id": "projects/my-project/global/firewalls/skyclust-firewall-1234567890",
+        "name": "skyclust-firewall-1234567890",
+        "description": "Allow HTTP and HTTPS traffic",
+        "vpc_id": "projects/my-project/global/networks/default",
+        "region": "us-central1",
+        "project_id": "my-project",
+        "direction": "INGRESS",
+        "priority": 1000,
+        "action": "ALLOW",
+        "protocol": "tcp",
+        "ports": ["80", "443"],
+        "source_ranges": ["0.0.0.0/0"],
+        "target_tags": ["web-server"],
+        "created_at": "2024-01-01T00:00:00Z",
+        "tags": {
+          "Environment": "development",
+          "Project": "skyclust"
+        }
+      }
+    ],
+    "meta": {
+      "page": 1,
+      "limit": 10,
+      "total": 2
     },
     "message": "GCP security groups retrieved successfully"
   }
@@ -149,12 +155,13 @@ tests {
   });
   
   test("Response has security groups data", function() {
-    expect(res.getBody().data).to.be.an('object');
-    expect(res.getBody().data.security_groups).to.be.an('array');
+    expect(res.getBody().data).to.be.an('array');
   });
   
   test("Security group has required fields", function() {
-    const securityGroup = res.getBody().data.security_groups[0];
+    const securityGroups = res.getBody().data;
+    if (securityGroups.length === 0) return;
+    const securityGroup = securityGroups[0];
     expect(securityGroup).to.have.property('id');
     expect(securityGroup).to.have.property('name');
     expect(securityGroup).to.have.property('direction');

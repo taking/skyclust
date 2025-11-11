@@ -13,11 +13,11 @@ import (
 
 // EventHistory represents a stored SSE event in Redis Streams
 type EventHistory struct {
-	EventID    string
-	EventType  string
-	Data       []byte
-	Timestamp  time.Time
-	UserID     string
+	EventID   string
+	EventType string
+	Data      []byte
+	Timestamp time.Time
+	UserID    string
 }
 
 // Redis Streams key patterns
@@ -262,14 +262,13 @@ func (h *SSEHandler) getMissedEventsByEventType(ctx context.Context, userID, eve
 
 			events = append(events, EventHistory{
 				EventID:   eventID,
-				EventType:  eventType,
-				Data:       []byte(dataStr),
-				Timestamp:  time.Unix(timestamp, 0),
-				UserID:     userID,
+				EventType: eventType,
+				Data:      []byte(dataStr),
+				Timestamp: time.Unix(timestamp, 0),
+				UserID:    userID,
 			})
 		}
 	}
 
 	return events, nil
 }
-

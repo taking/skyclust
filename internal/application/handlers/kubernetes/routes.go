@@ -26,12 +26,12 @@ func SetupRoutes(router *gin.RouterGroup, k8sService *kubernetesservice.Service,
 	router.GET("/clusters/:name/kubeconfig", handler.GetKubeconfig)
 
 	// Node pool management
-	// Path: /api/v1/{provider}/kubernetes/clusters/:name/nodepools
-	router.POST("/clusters/:name/nodepools", handler.CreateNodePool)
-	router.GET("/clusters/:name/nodepools", handler.ListNodePools)
-	router.GET("/clusters/:name/nodepools/:nodepool", handler.GetNodePool)
-	router.DELETE("/clusters/:name/nodepools/:nodepool", handler.DeleteNodePool)
-	router.PUT("/clusters/:name/nodepools/:nodepool/scale", handler.ScaleNodePool)
+	// Path: /api/v1/{provider}/kubernetes/clusters/:name/node-pools
+	router.POST("/clusters/:name/node-pools", handler.CreateNodePool)
+	router.GET("/clusters/:name/node-pools", handler.ListNodePools)
+	router.GET("/clusters/:name/node-pools/:nodepool", handler.GetNodePool)
+	router.DELETE("/clusters/:name/node-pools/:nodepool", handler.DeleteNodePool)
+	router.PUT("/clusters/:name/node-pools/:nodepool/scale", handler.ScaleNodePool)
 
 	// Node group management (EKS specific)
 	// Path: /api/v1/{provider}/kubernetes/clusters/:name/node-groups

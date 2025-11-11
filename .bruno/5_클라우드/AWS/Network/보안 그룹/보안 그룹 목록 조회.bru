@@ -25,9 +25,12 @@ auth:bearer {
 }
 
 script:post-response {
-  bru.setEnvVar("sgId", res.body.data.security_groups[0].id);
+  const dataArray = Array.isArray(res.body.data) ? res.body.data : [];
+  if (dataArray.length > 0) {
+    bru.setEnvVar("sgId", dataArray[0].id);
+  }
   
-  const rowData = res.body.data.security_groups;
+  const rowData = dataArray;
   
   const columnDefinitions = [
     { field: "id", filter: true, floatingFilter: true },
@@ -55,11 +58,11 @@ tests {
   });
   
   test("Response has security_groups array", function() {
-    expect(res.getBody().data.security_groups).to.be.an('array');
+    expect(res.getBody().data).to.be.an('array');
   });
   
   test("Security group has required fields", function() {
-    const securityGroups = res.getBody().data.security_groups;
+    const securityGroups = res.getBody().data;
     if (securityGroups.length > 0) {
       const sg = securityGroups[0];
       expect(sg).to.have.property('id');

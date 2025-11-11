@@ -3,10 +3,12 @@ package dashboard
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
+
 	kubernetesservice "skyclust/internal/application/services/kubernetes"
 	networkservice "skyclust/internal/application/services/network"
 	"skyclust/internal/domain"
-	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -46,15 +48,15 @@ func NewService(
 	}
 }
 
-// GetDashboardSummary 대시보드 요약 정보 조회
+// GetDashboardSummary 대시보드 요약 정보 조회 (병렬 최적화 버전 사용)
 func (s *Service) GetDashboardSummary(ctx context.Context, workspaceID string, credentialID *string, region *string) (*domain.DashboardSummary, error) {
-	// 워크스페이스 존재 확인
-	workspace, err := s.workspaceRepo.GetByID(ctx, workspaceID)
-	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to get workspace: %v", err), 500)
-	}
-	if workspace == nil {
-		return nil, domain.ErrWorkspaceNotFound
+	return s.GetDashboardSummaryOptimized(ctx, workspaceID, credentialID, region)
+}
+
+// GetDashboardSummaryOptimized 대시보드 요약 정보를 병렬로 조회하여 성능 최적화
+func (s *Service) GetDashboardSummaryOptimized(ctx context.Context, workspaceID string, credentialID *string, region *string) (*domain.DashboardSummary, error) {
+	if err := s.validateWorkspace(ctx, workspaceID); err != nil {
+		return nil, err
 	}
 
 	workspaceUUID, err := uuid.Parse(workspaceID)
@@ -62,58 +64,123 @@ func (s *Service) GetDashboardSummary(ctx context.Context, workspaceID string, c
 		return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "invalid workspace ID format", 400)
 	}
 
-	// VM 통계 조회
-	vmStats, err := s.getVMStats(ctx, workspaceID, credentialID, region)
+	stats := s.collectStatsInParallel(ctx, workspaceID, workspaceUUID, credentialID, region)
+	return s.buildDashboardSummary(workspaceID, stats), nil
+}
+
+// validateWorkspace 워크스페이스 존재 여부를 확인합니다
+func (s *Service) validateWorkspace(ctx context.Context, workspaceID string) error {
+	workspace, err := s.workspaceRepo.GetByID(ctx, workspaceID)
 	if err != nil {
-		s.logger.Warn("Failed to get VM stats", zap.Error(err))
-		vmStats = &domain.VMStats{
-			Total:      0,
-			Running:    0,
-			Stopped:    0,
-			ByProvider: make(map[string]int),
-		}
+		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to get workspace: %v", err), 500)
 	}
+	if workspace == nil {
+		return domain.ErrWorkspaceNotFound
+	}
+	return nil
+}
+
+// dashboardStats 모든 통계 데이터를 담는 구조체
+type dashboardStats struct {
+	vmStats         *domain.VMStats
+	clusterStats    *domain.ClusterStats
+	networkStats    *domain.NetworkStats
+	credentialStats *domain.CredentialStats
+	memberStats     *domain.MemberStats
+	vmStatsErr      error
+	clusterStatsErr error
+	networkStatsErr error
+	credentialStatsErr error
+	memberStatsErr  error
+}
+
+// collectStatsInParallel 모든 통계를 병렬로 수집합니다
+func (s *Service) collectStatsInParallel(ctx context.Context, workspaceID string, workspaceUUID uuid.UUID, credentialID *string, region *string) *dashboardStats {
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	stats := &dashboardStats{}
+
+	// VM 통계 조회
+	wg.Add(1)
+	go s.collectVMStats(ctx, &wg, &mu, stats, workspaceID, credentialID, region)
 
 	// Kubernetes 클러스터 통계 조회
-	clusterStats, err := s.getClusterStats(ctx, workspaceID, credentialID, region)
-	if err != nil {
-		s.logger.Warn("Failed to get cluster stats", zap.Error(err))
-		clusterStats = &domain.ClusterStats{
-			Total:      0,
-			Healthy:    0,
-			ByProvider: make(map[string]int),
-		}
-	}
+	wg.Add(1)
+	go s.collectClusterStats(ctx, &wg, &mu, stats, workspaceID, credentialID, region)
 
 	// 네트워크 통계 조회
-	networkStats, err := s.getNetworkStats(ctx, workspaceID, credentialID, region)
-	if err != nil {
-		s.logger.Warn("Failed to get network stats", zap.Error(err))
-		networkStats = &domain.NetworkStats{
-			VPCs:           0,
-			Subnets:        0,
-			SecurityGroups: 0,
-		}
-	}
+	wg.Add(1)
+	go s.collectNetworkStats(ctx, &wg, &mu, stats, workspaceID, credentialID, region)
 
 	// 자격 증명 통계 조회
-	credentialStats, err := s.getCredentialStats(ctx, workspaceUUID)
-	if err != nil {
-		s.logger.Warn("Failed to get credential stats", zap.Error(err))
-		credentialStats = &domain.CredentialStats{
-			Total:      0,
-			ByProvider: make(map[string]int),
-		}
-	}
+	wg.Add(1)
+	go s.collectCredentialStats(ctx, &wg, &mu, stats, workspaceUUID)
 
 	// 멤버 통계 조회
+	wg.Add(1)
+	go s.collectMemberStats(ctx, &wg, &mu, stats, workspaceID)
+
+	wg.Wait()
+	return stats
+}
+
+// collectVMStats VM 통계를 수집합니다
+func (s *Service) collectVMStats(ctx context.Context, wg *sync.WaitGroup, mu *sync.Mutex, stats *dashboardStats, workspaceID string, credentialID *string, region *string) {
+	defer wg.Done()
+	vmStats, err := s.getVMStats(ctx, workspaceID, credentialID, region)
+	mu.Lock()
+	stats.vmStats = vmStats
+	stats.vmStatsErr = err
+	mu.Unlock()
+}
+
+// collectClusterStats 클러스터 통계를 수집합니다
+func (s *Service) collectClusterStats(ctx context.Context, wg *sync.WaitGroup, mu *sync.Mutex, stats *dashboardStats, workspaceID string, credentialID *string, region *string) {
+	defer wg.Done()
+	clusterStats, err := s.getClusterStats(ctx, workspaceID, credentialID, region)
+	mu.Lock()
+	stats.clusterStats = clusterStats
+	stats.clusterStatsErr = err
+	mu.Unlock()
+}
+
+// collectNetworkStats 네트워크 통계를 수집합니다
+func (s *Service) collectNetworkStats(ctx context.Context, wg *sync.WaitGroup, mu *sync.Mutex, stats *dashboardStats, workspaceID string, credentialID *string, region *string) {
+	defer wg.Done()
+	networkStats, err := s.getNetworkStats(ctx, workspaceID, credentialID, region)
+	mu.Lock()
+	stats.networkStats = networkStats
+	stats.networkStatsErr = err
+	mu.Unlock()
+}
+
+// collectCredentialStats 자격 증명 통계를 수집합니다
+func (s *Service) collectCredentialStats(ctx context.Context, wg *sync.WaitGroup, mu *sync.Mutex, stats *dashboardStats, workspaceUUID uuid.UUID) {
+	defer wg.Done()
+	credentialStats, err := s.getCredentialStats(ctx, workspaceUUID)
+	mu.Lock()
+	stats.credentialStats = credentialStats
+	stats.credentialStatsErr = err
+	mu.Unlock()
+}
+
+// collectMemberStats 멤버 통계를 수집합니다
+func (s *Service) collectMemberStats(ctx context.Context, wg *sync.WaitGroup, mu *sync.Mutex, stats *dashboardStats, workspaceID string) {
+	defer wg.Done()
 	memberStats, err := s.getMemberStats(ctx, workspaceID)
-	if err != nil {
-		s.logger.Warn("Failed to get member stats", zap.Error(err))
-		memberStats = &domain.MemberStats{
-			Total: 0,
-		}
-	}
+	mu.Lock()
+	stats.memberStats = memberStats
+	stats.memberStatsErr = err
+	mu.Unlock()
+}
+
+// buildDashboardSummary 통계 데이터로부터 대시보드 요약을 생성합니다
+func (s *Service) buildDashboardSummary(workspaceID string, stats *dashboardStats) *domain.DashboardSummary {
+	vmStats := s.handleVMStatsError(stats.vmStatsErr, stats.vmStats)
+	clusterStats := s.handleClusterStatsError(stats.clusterStatsErr, stats.clusterStats)
+	networkStats := s.handleNetworkStatsError(stats.networkStatsErr, stats.networkStats)
+	credentialStats := s.handleCredentialStatsError(stats.credentialStatsErr, stats.credentialStats)
+	memberStats := s.handleMemberStatsError(stats.memberStatsErr, stats.memberStats)
 
 	return &domain.DashboardSummary{
 		WorkspaceID: workspaceID,
@@ -123,7 +190,70 @@ func (s *Service) GetDashboardSummary(ctx context.Context, workspaceID string, c
 		Credentials: *credentialStats,
 		Members:     *memberStats,
 		LastUpdated: time.Now().Format(time.RFC3339),
-	}, nil
+	}
+}
+
+// handleVMStatsError VM 통계 에러를 처리하고 기본값을 반환합니다
+func (s *Service) handleVMStatsError(err error, stats *domain.VMStats) *domain.VMStats {
+	if err != nil {
+		s.logger.Warn("Failed to get VM stats", zap.Error(err))
+		return &domain.VMStats{
+			Total:      0,
+			Running:    0,
+			Stopped:    0,
+			ByProvider: make(map[string]int),
+		}
+	}
+	return stats
+}
+
+// handleClusterStatsError 클러스터 통계 에러를 처리하고 기본값을 반환합니다
+func (s *Service) handleClusterStatsError(err error, stats *domain.ClusterStats) *domain.ClusterStats {
+	if err != nil {
+		s.logger.Warn("Failed to get cluster stats", zap.Error(err))
+		return &domain.ClusterStats{
+			Total:      0,
+			Healthy:    0,
+			ByProvider: make(map[string]int),
+		}
+	}
+	return stats
+}
+
+// handleNetworkStatsError 네트워크 통계 에러를 처리하고 기본값을 반환합니다
+func (s *Service) handleNetworkStatsError(err error, stats *domain.NetworkStats) *domain.NetworkStats {
+	if err != nil {
+		s.logger.Warn("Failed to get network stats", zap.Error(err))
+		return &domain.NetworkStats{
+			VPCs:           0,
+			Subnets:        0,
+			SecurityGroups: 0,
+		}
+	}
+	return stats
+}
+
+// handleCredentialStatsError 자격 증명 통계 에러를 처리하고 기본값을 반환합니다
+func (s *Service) handleCredentialStatsError(err error, stats *domain.CredentialStats) *domain.CredentialStats {
+	if err != nil {
+		s.logger.Warn("Failed to get credential stats", zap.Error(err))
+		return &domain.CredentialStats{
+			Total:      0,
+			ByProvider: make(map[string]int),
+		}
+	}
+	return stats
+}
+
+// handleMemberStatsError 멤버 통계 에러를 처리하고 기본값을 반환합니다
+func (s *Service) handleMemberStatsError(err error, stats *domain.MemberStats) *domain.MemberStats {
+	if err != nil {
+		s.logger.Warn("Failed to get member stats", zap.Error(err))
+		return &domain.MemberStats{
+			Total: 0,
+		}
+	}
+	return stats
 }
 
 // getVMStats VM 통계 조회

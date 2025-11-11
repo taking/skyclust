@@ -21,12 +21,11 @@ tests {
   
   test("Response contains providers array", function() {
     const body = res.getBody();
-    expect(body.data).to.have.property('providers');
-    expect(body.data.providers).to.be.an('array');
+    expect(body.data).to.be.an('array');
   });
   
   test("Providers have valid structure", function() {
-    const providers = res.getBody().data.providers;
+    const providers = res.getBody().data;
     if (providers.length > 0) {
       expect(providers[0]).to.be.a('string');
       // Should be one of: google, github, azure, microsoft, custom
@@ -36,7 +35,7 @@ tests {
   });
   
   test("Response includes custom provider type", function() {
-    const providers = res.getBody().data.providers;
+    const providers = res.getBody().data;
     expect(providers).to.include('custom');
   });
 }
@@ -64,10 +63,8 @@ docs {
   ```json
   {
     "success": true,
-    "data": {
-      "providers": ["google", "github", "azure", "microsoft"]
-    },
-    "message": "Providers retrieved successfully"
+    "data": ["google", "github", "azure", "microsoft", "custom"],
+    "message": "System OIDC providers retrieved successfully"
   }
   ```
   

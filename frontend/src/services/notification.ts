@@ -5,6 +5,8 @@
 
 import { BaseService } from '@/lib/api';
 import { API_ENDPOINTS } from '@/lib/api';
+import api from '@/lib/api/client';
+import type { ApiResponse } from '@/lib/types/api';
 import type {
   Notification,
   NotificationPreferences,
@@ -21,7 +23,18 @@ class NotificationService extends BaseService {
     category?: string,
     priority?: string
   ): Promise<NotificationListResponse> {
-    return this.get<NotificationListResponse>(API_ENDPOINTS.notifications.list(limit, offset, unreadOnly, category, priority));
+    // 전체 응답을 읽어서 meta 정보를 가져옴
+    const response = await api.get<ApiResponse<Notification[]>>(
+      API_ENDPOINTS.notifications.list(limit, offset, unreadOnly, category, priority)
+    );
+    const notifications = Array.isArray(response.data.data) ? response.data.data : [];
+    const total = response.data.meta?.total || notifications.length;
+    return {
+      notifications,
+      total,
+      limit,
+      offset,
+    };
   }
 
   // 알림 상세 조회

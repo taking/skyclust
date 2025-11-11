@@ -26,5 +26,5 @@ body:json {
 }
 
 script:post-response {
-  bru.setEnvVar("workspaceId", res.body.data.workspace.id);
+  bru.setEnvVar("workspaceId", res.body.data.id);
 }

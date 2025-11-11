@@ -10,7 +10,6 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
-	"go.uber.org/zap"
 )
 
 const (
@@ -108,10 +107,10 @@ func (s *Service) generateDefaultRoleARN(ctx context.Context, cfg aws.Config, ro
 	roleARN := fmt.Sprintf("arn:aws:iam::%s:role/%s", accountID, roleName)
 
 	if s.logger != nil {
-		s.logger.Info("Auto-generated Role ARN",
-			zap.String("role_arn", roleARN),
-			zap.String("account_id", accountID),
-			zap.String("role_name", roleName))
+		s.logger.Info(ctx, "Auto-generated Role ARN",
+			domain.NewLogField("role_arn", roleARN),
+			domain.NewLogField("account_id", accountID),
+			domain.NewLogField("role_name", roleName))
 	}
 
 	return roleARN, nil

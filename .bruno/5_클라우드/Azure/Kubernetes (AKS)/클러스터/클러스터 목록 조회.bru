@@ -20,13 +20,14 @@ auth:bearer {
 }
 
 script:post-response {
-  if (res.body.data && res.body.data.clusters && res.body.data.clusters.length > 0) {
-    bru.setEnvVar("aksClusterName", res.body.data.clusters[0].name);
-    bru.setEnvVar("aksResourceGroup", res.body.data.clusters[0].resource_group);
-    bru.setEnvVar("aksLocation", res.body.data.clusters[0].location);
+  const dataArray = Array.isArray(res.body.data) ? res.body.data : [];
+  if (dataArray.length > 0) {
+    bru.setEnvVar("aksClusterName", dataArray[0].name);
+    bru.setEnvVar("aksResourceGroup", dataArray[0].resource_group);
+    bru.setEnvVar("aksLocation", dataArray[0].location);
   }
   
-  const rowData = res.body.data.clusters;
+  const rowData = dataArray;
   
   const columnDefinitions = [
     { field: "id", filter: true, floatingFilter: true },
@@ -66,24 +67,22 @@ docs {
   ```json
   {
     "success": true,
-    "data": {
-      "clusters": [
-        {
-          "id": "/subscriptions/xxx/resourceGroups/skyclust-rg/providers/Microsoft.ContainerService/managedClusters/skyclust-aks-cluster",
-          "name": "skyclust-aks-cluster",
-          "version": "1.28",
-          "status": "Succeeded",
-          "location": "eastus",
-          "resource_group": "skyclust-rg",
-          "endpoint": "https://skyclust-aks-cluster-xxx.eastus.azmk8s.io",
-          "created_at": "2025-10-21T17:00:00Z",
-          "tags": {
-            "Environment": "development",
-            "ManagedBy": "skyclust"
-          }
+    "data": [
+      {
+        "id": "/subscriptions/xxx/resourceGroups/skyclust-rg/providers/Microsoft.ContainerService/managedClusters/skyclust-aks-cluster",
+        "name": "skyclust-aks-cluster",
+        "version": "1.28",
+        "status": "Succeeded",
+        "location": "eastus",
+        "resource_group": "skyclust-rg",
+        "endpoint": "https://skyclust-aks-cluster-xxx.eastus.azmk8s.io",
+        "created_at": "2025-10-21T17:00:00Z",
+        "tags": {
+          "Environment": "development",
+          "ManagedBy": "skyclust"
         }
-      ]
-    },
+      }
+    ],
     "message": "Clusters retrieved successfully",
     "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
     "timestamp": "2025-10-23T10:29:22.606589+09:00"

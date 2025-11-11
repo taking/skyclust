@@ -18,6 +18,7 @@ export interface VPC {
   gateway?: GatewayInfo;
   creation_timestamp?: string;
   tags?: Record<string, string>;
+  subnets?: Subnet[]; // Direct array: subnets[]
 }
 
 export interface GatewayInfo {

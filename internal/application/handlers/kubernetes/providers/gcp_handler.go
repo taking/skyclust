@@ -32,14 +32,14 @@ func (h *GCPHandler) CreateCluster(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), req.CredentialID, domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "create_cluster")
 		return
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	cluster, err := h.k8sService.CreateGCPGKECluster(ctx, credential, req)
+	cluster, err := h.GetK8sService().CreateGCPGKECluster(ctx, credential, req)
 	if err != nil {
 		h.HandleError(c, err, "create_cluster")
 		return
@@ -50,7 +50,7 @@ func (h *GCPHandler) CreateCluster(c *gin.Context) {
 
 // ListClusters handles listing GKE clusters
 func (h *GCPHandler) ListClusters(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "list_clusters")
 		return
@@ -62,7 +62,7 @@ func (h *GCPHandler) ListClusters(c *gin.Context) {
 		return
 	}
 
-	clusters, err := h.k8sService.ListEKSClusters(c.Request.Context(), credential, region)
+	clusters, err := h.GetK8sService().ListEKSClusters(c.Request.Context(), credential, region)
 	if err != nil {
 		h.HandleError(c, err, "list_clusters")
 		return
@@ -77,12 +77,12 @@ func (h *GCPHandler) ListClusters(c *gin.Context) {
 		clusters.Clusters = []kubernetesservice.ClusterInfo{}
 	}
 
-	h.OK(c, clusters, "GKE clusters retrieved successfully")
+	h.OK(c, clusters.Clusters, "GKE clusters retrieved successfully")
 }
 
 // GetCluster handles getting GKE cluster details
 func (h *GCPHandler) GetCluster(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "get_cluster")
 		return
@@ -95,7 +95,7 @@ func (h *GCPHandler) GetCluster(c *gin.Context) {
 		return
 	}
 
-	cluster, err := h.k8sService.GetEKSCluster(c.Request.Context(), credential, clusterName, region)
+	cluster, err := h.GetK8sService().GetEKSCluster(c.Request.Context(), credential, clusterName, region)
 	if err != nil {
 		h.HandleError(c, err, "get_cluster")
 		return
@@ -106,7 +106,7 @@ func (h *GCPHandler) GetCluster(c *gin.Context) {
 
 // DeleteCluster handles GKE cluster deletion
 func (h *GCPHandler) DeleteCluster(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "delete_cluster")
 		return
@@ -120,7 +120,7 @@ func (h *GCPHandler) DeleteCluster(c *gin.Context) {
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	if err := h.k8sService.DeleteEKSCluster(ctx, credential, clusterName, region); err != nil {
+	if err := h.GetK8sService().DeleteEKSCluster(ctx, credential, clusterName, region); err != nil {
 		h.HandleError(c, err, "delete_cluster")
 		return
 	}
@@ -130,7 +130,7 @@ func (h *GCPHandler) DeleteCluster(c *gin.Context) {
 
 // GetKubeconfig handles getting kubeconfig for GKE cluster
 func (h *GCPHandler) GetKubeconfig(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "get_kubeconfig")
 		return
@@ -143,7 +143,7 @@ func (h *GCPHandler) GetKubeconfig(c *gin.Context) {
 		return
 	}
 
-	kubeconfig, err := h.k8sService.GetEKSKubeconfig(c.Request.Context(), credential, clusterName, region)
+	kubeconfig, err := h.GetK8sService().GetEKSKubeconfig(c.Request.Context(), credential, clusterName, region)
 	if err != nil {
 		h.HandleError(c, err, "get_kubeconfig")
 		return
@@ -168,14 +168,14 @@ func (h *GCPHandler) CreateNodePool(c *gin.Context) {
 	}
 	req.ClusterName = clusterName
 
-	credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), req.CredentialID, domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "create_node_pool")
 		return
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	nodePool, err := h.k8sService.CreateEKSNodePool(ctx, credential, req)
+	nodePool, err := h.GetK8sService().CreateEKSNodePool(ctx, credential, req)
 	if err != nil {
 		h.HandleError(c, err, "create_node_pool")
 		return
@@ -186,7 +186,7 @@ func (h *GCPHandler) CreateNodePool(c *gin.Context) {
 
 // ListNodePools handles listing node pools for a GKE cluster
 func (h *GCPHandler) ListNodePools(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "list_node_pools")
 		return
@@ -205,18 +205,18 @@ func (h *GCPHandler) ListNodePools(c *gin.Context) {
 		Region:       region,
 	}
 
-	nodePoolsResponse, err := h.k8sService.ListNodeGroups(c.Request.Context(), credential, req)
+	nodePoolsResponse, err := h.GetK8sService().ListNodeGroups(c.Request.Context(), credential, req)
 	if err != nil {
 		h.HandleError(c, err, "list_node_pools")
 		return
 	}
 
-	h.OK(c, nodePoolsResponse, "GKE node pools retrieved successfully")
+	h.OK(c, nodePoolsResponse.NodeGroups, "GKE node pools retrieved successfully")
 }
 
 // GetNodePool handles getting node pool details
 func (h *GCPHandler) GetNodePool(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "get_node_pool")
 		return
@@ -237,7 +237,7 @@ func (h *GCPHandler) GetNodePool(c *gin.Context) {
 		Region:        region,
 	}
 
-	nodePool, err := h.k8sService.GetNodeGroup(c.Request.Context(), credential, req)
+	nodePool, err := h.GetK8sService().GetNodeGroup(c.Request.Context(), credential, req)
 	if err != nil {
 		h.HandleError(c, err, "get_node_pool")
 		return
@@ -265,7 +265,7 @@ func (h *GCPHandler) DeleteNodePool(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), req.CredentialID, domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "delete_node_pool")
 		return
@@ -279,7 +279,7 @@ func (h *GCPHandler) DeleteNodePool(c *gin.Context) {
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	if err := h.k8sService.DeleteNodeGroup(ctx, credential, deleteReq); err != nil {
+	if err := h.GetK8sService().DeleteNodeGroup(ctx, credential, deleteReq); err != nil {
 		h.HandleError(c, err, "delete_node_pool")
 		return
 	}
@@ -307,7 +307,7 @@ func (h *GCPHandler) ScaleNodePool(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), req.CredentialID, domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "scale_node_pool")
 		return
@@ -321,7 +321,7 @@ func (h *GCPHandler) ScaleNodePool(c *gin.Context) {
 		DesiredSize:  req.DesiredSize,
 	}
 
-	_, err = h.k8sService.CreateEKSNodePool(c.Request.Context(), credential, scaleReq)
+	_, err = h.GetK8sService().CreateEKSNodePool(c.Request.Context(), credential, scaleReq)
 	if err != nil {
 		h.HandleError(c, err, "scale_node_pool")
 		return

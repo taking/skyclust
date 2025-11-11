@@ -32,7 +32,7 @@ func NewGCPHandler(
 
 // ListVPCs handles VPC listing requests for GCP
 func (h *GCPHandler) ListVPCs(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "list_vpcs")
 		return
@@ -43,13 +43,23 @@ func (h *GCPHandler) ListVPCs(c *gin.Context) {
 		Region:       "", // VPC is Global, no region needed
 	}
 
-	vpcs, err := h.networkService.ListVPCs(c.Request.Context(), credential, serviceReq)
+	vpcs, err := h.GetNetworkService().ListVPCs(c.Request.Context(), credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "list_vpcs")
 		return
 	}
 
-	h.OK(c, vpcs, "GCP VPCs retrieved successfully")
+	// Direct array: data[] (not data.vpcs[])
+	if vpcs != nil && vpcs.Total > 0 {
+		page, limit := h.ParsePageLimitParams(c)
+		h.OKWithPagination(c, vpcs.VPCs, "GCP VPCs retrieved successfully", page, limit, vpcs.Total)
+	} else {
+		vpcList := []networkservice.VPCInfo{}
+		if vpcs != nil {
+			vpcList = vpcs.VPCs
+		}
+		h.OK(c, vpcList, "GCP VPCs retrieved successfully")
+	}
 }
 
 // CreateVPC handles VPC creation requests for GCP
@@ -71,7 +81,7 @@ func (h *GCPHandler) CreateVPC(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromBody(c, h.credentialService, credentialID, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), credentialID, domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "create_vpc")
 		return
@@ -80,7 +90,7 @@ func (h *GCPHandler) CreateVPC(c *gin.Context) {
 	req.CredentialID = credential.ID.String()
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	vpc, err := h.networkService.CreateVPC(ctx, credential, req)
+	vpc, err := h.GetNetworkService().CreateVPC(ctx, credential, req)
 	if err != nil {
 		h.HandleError(c, err, "create_vpc")
 		return
@@ -91,7 +101,7 @@ func (h *GCPHandler) CreateVPC(c *gin.Context) {
 
 // GetVPC handles VPC detail requests for GCP
 func (h *GCPHandler) GetVPC(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "get_vpc")
 		return
@@ -111,7 +121,7 @@ func (h *GCPHandler) GetVPC(c *gin.Context) {
 		Region:       region,
 	}
 
-	vpc, err := h.networkService.GetVPC(c.Request.Context(), credential, serviceReq)
+	vpc, err := h.GetNetworkService().GetVPC(c.Request.Context(), credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "get_vpc")
 		return
@@ -122,7 +132,7 @@ func (h *GCPHandler) GetVPC(c *gin.Context) {
 
 // UpdateVPC handles VPC update requests for GCP
 func (h *GCPHandler) UpdateVPC(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "update_vpc")
 		return
@@ -143,7 +153,7 @@ func (h *GCPHandler) UpdateVPC(c *gin.Context) {
 	region := c.Query("region")
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	vpc, err := h.networkService.UpdateVPC(ctx, credential, req, vpcName, region)
+	vpc, err := h.GetNetworkService().UpdateVPC(ctx, credential, req, vpcName, region)
 	if err != nil {
 		h.HandleError(c, err, "update_vpc")
 		return
@@ -154,7 +164,7 @@ func (h *GCPHandler) UpdateVPC(c *gin.Context) {
 
 // DeleteVPC handles VPC deletion requests for GCP
 func (h *GCPHandler) DeleteVPC(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "delete_vpc")
 		return
@@ -175,7 +185,7 @@ func (h *GCPHandler) DeleteVPC(c *gin.Context) {
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	err = h.networkService.DeleteVPC(ctx, credential, serviceReq)
+	err = h.GetNetworkService().DeleteVPC(ctx, credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "delete_vpc")
 		return
@@ -186,7 +196,7 @@ func (h *GCPHandler) DeleteVPC(c *gin.Context) {
 
 // ListSubnets handles subnet listing requests for GCP
 func (h *GCPHandler) ListSubnets(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "list_subnets")
 		return
@@ -206,13 +216,23 @@ func (h *GCPHandler) ListSubnets(c *gin.Context) {
 		Region:       region,
 	}
 
-	subnets, err := h.networkService.ListSubnets(c.Request.Context(), credential, serviceReq)
+	subnets, err := h.GetNetworkService().ListSubnets(c.Request.Context(), credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "list_subnets")
 		return
 	}
 
-	h.OK(c, subnets, "GCP subnets retrieved successfully")
+	// Direct array: data[] (not data.subnets[])
+	if subnets != nil && subnets.Total > 0 {
+		page, limit := h.ParsePageLimitParams(c)
+		h.OKWithPagination(c, subnets.Subnets, "GCP subnets retrieved successfully", page, limit, subnets.Total)
+	} else {
+		subnetList := []networkservice.SubnetInfo{}
+		if subnets != nil {
+			subnetList = subnets.Subnets
+		}
+		h.OK(c, subnetList, "GCP subnets retrieved successfully")
+	}
 }
 
 // CreateSubnet handles subnet creation requests for GCP
@@ -234,7 +254,7 @@ func (h *GCPHandler) CreateSubnet(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromBody(c, h.credentialService, credentialID, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), credentialID, domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "create_subnet")
 		return
@@ -243,7 +263,7 @@ func (h *GCPHandler) CreateSubnet(c *gin.Context) {
 	req.CredentialID = credential.ID.String()
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	subnet, err := h.networkService.CreateSubnet(ctx, credential, req)
+	subnet, err := h.GetNetworkService().CreateSubnet(ctx, credential, req)
 	if err != nil {
 		h.HandleError(c, err, "create_subnet")
 		return
@@ -254,7 +274,7 @@ func (h *GCPHandler) CreateSubnet(c *gin.Context) {
 
 // GetSubnet handles subnet detail requests for GCP
 func (h *GCPHandler) GetSubnet(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "get_subnet")
 		return
@@ -274,7 +294,7 @@ func (h *GCPHandler) GetSubnet(c *gin.Context) {
 		Region:       region,
 	}
 
-	subnet, err := h.networkService.GetSubnet(c.Request.Context(), credential, serviceReq)
+	subnet, err := h.GetNetworkService().GetSubnet(c.Request.Context(), credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "get_subnet")
 		return
@@ -285,7 +305,7 @@ func (h *GCPHandler) GetSubnet(c *gin.Context) {
 
 // UpdateSubnet handles subnet update requests for GCP
 func (h *GCPHandler) UpdateSubnet(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "update_subnet")
 		return
@@ -306,7 +326,7 @@ func (h *GCPHandler) UpdateSubnet(c *gin.Context) {
 	region := c.Query("region")
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	subnet, err := h.networkService.UpdateSubnet(ctx, credential, req, subnetID, region)
+	subnet, err := h.GetNetworkService().UpdateSubnet(ctx, credential, req, subnetID, region)
 	if err != nil {
 		h.HandleError(c, err, "update_subnet")
 		return
@@ -317,7 +337,7 @@ func (h *GCPHandler) UpdateSubnet(c *gin.Context) {
 
 // DeleteSubnet handles subnet deletion requests for GCP
 func (h *GCPHandler) DeleteSubnet(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "delete_subnet")
 		return
@@ -338,7 +358,7 @@ func (h *GCPHandler) DeleteSubnet(c *gin.Context) {
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	err = h.networkService.DeleteSubnet(ctx, credential, serviceReq)
+	err = h.GetNetworkService().DeleteSubnet(ctx, credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "delete_subnet")
 		return
@@ -349,7 +369,7 @@ func (h *GCPHandler) DeleteSubnet(c *gin.Context) {
 
 // ListSecurityGroups handles security group listing requests for GCP
 func (h *GCPHandler) ListSecurityGroups(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "list_security_groups")
 		return
@@ -369,13 +389,23 @@ func (h *GCPHandler) ListSecurityGroups(c *gin.Context) {
 		Region:       region,
 	}
 
-	securityGroups, err := h.networkService.ListSecurityGroups(c.Request.Context(), credential, serviceReq)
+	securityGroups, err := h.GetNetworkService().ListSecurityGroups(c.Request.Context(), credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "list_security_groups")
 		return
 	}
 
-	h.OK(c, securityGroups, "GCP security groups retrieved successfully")
+	// Direct array: data[] (not data.security_groups[])
+	if securityGroups != nil && securityGroups.Total > 0 {
+		page, limit := h.ParsePageLimitParams(c)
+		h.OKWithPagination(c, securityGroups.SecurityGroups, "GCP security groups retrieved successfully", page, limit, securityGroups.Total)
+	} else {
+		sgList := []networkservice.SecurityGroupInfo{}
+		if securityGroups != nil {
+			sgList = securityGroups.SecurityGroups
+		}
+		h.OK(c, sgList, "GCP security groups retrieved successfully")
+	}
 }
 
 // CreateSecurityGroup handles security group creation requests for GCP
@@ -397,7 +427,7 @@ func (h *GCPHandler) CreateSecurityGroup(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromBody(c, h.credentialService, credentialID, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), credentialID, domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "create_security_group")
 		return
@@ -406,7 +436,7 @@ func (h *GCPHandler) CreateSecurityGroup(c *gin.Context) {
 	req.CredentialID = credential.ID.String()
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	securityGroup, err := h.networkService.CreateSecurityGroup(ctx, credential, req)
+	securityGroup, err := h.GetNetworkService().CreateSecurityGroup(ctx, credential, req)
 	if err != nil {
 		h.HandleError(c, err, "create_security_group")
 		return
@@ -417,7 +447,7 @@ func (h *GCPHandler) CreateSecurityGroup(c *gin.Context) {
 
 // GetSecurityGroup handles security group detail requests for GCP
 func (h *GCPHandler) GetSecurityGroup(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "get_security_group")
 		return
@@ -437,7 +467,7 @@ func (h *GCPHandler) GetSecurityGroup(c *gin.Context) {
 		Region:          region,
 	}
 
-	securityGroup, err := h.networkService.GetSecurityGroup(c.Request.Context(), credential, serviceReq)
+	securityGroup, err := h.GetNetworkService().GetSecurityGroup(c.Request.Context(), credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "get_security_group")
 		return
@@ -448,7 +478,7 @@ func (h *GCPHandler) GetSecurityGroup(c *gin.Context) {
 
 // UpdateSecurityGroup handles security group update requests for GCP
 func (h *GCPHandler) UpdateSecurityGroup(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "update_security_group")
 		return
@@ -469,7 +499,7 @@ func (h *GCPHandler) UpdateSecurityGroup(c *gin.Context) {
 	region := c.Query("region")
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	securityGroup, err := h.networkService.UpdateSecurityGroup(ctx, credential, req, securityGroupID, region)
+	securityGroup, err := h.GetNetworkService().UpdateSecurityGroup(ctx, credential, req, securityGroupID, region)
 	if err != nil {
 		h.HandleError(c, err, "update_security_group")
 		return
@@ -480,7 +510,7 @@ func (h *GCPHandler) UpdateSecurityGroup(c *gin.Context) {
 
 // DeleteSecurityGroup handles security group deletion requests for GCP
 func (h *GCPHandler) DeleteSecurityGroup(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "delete_security_group")
 		return
@@ -501,7 +531,7 @@ func (h *GCPHandler) DeleteSecurityGroup(c *gin.Context) {
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	err = h.networkService.DeleteSecurityGroup(ctx, credential, serviceReq)
+	err = h.GetNetworkService().DeleteSecurityGroup(ctx, credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "delete_security_group")
 		return
@@ -518,7 +548,7 @@ func (h *GCPHandler) AddSecurityGroupRule(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "add_security_group_rule")
 		return
@@ -526,7 +556,7 @@ func (h *GCPHandler) AddSecurityGroupRule(c *gin.Context) {
 
 	req.CredentialID = credential.ID.String()
 
-	result, err := h.networkService.AddSecurityGroupRule(c.Request.Context(), credential, req)
+	result, err := h.GetNetworkService().AddSecurityGroupRule(c.Request.Context(), credential, req)
 	if err != nil {
 		h.HandleError(c, err, "add_security_group_rule")
 		return
@@ -543,7 +573,7 @@ func (h *GCPHandler) RemoveSecurityGroupRule(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "remove_security_group_rule")
 		return
@@ -551,7 +581,7 @@ func (h *GCPHandler) RemoveSecurityGroupRule(c *gin.Context) {
 
 	req.CredentialID = credential.ID.String()
 
-	result, err := h.networkService.RemoveSecurityGroupRule(c.Request.Context(), credential, req)
+	result, err := h.GetNetworkService().RemoveSecurityGroupRule(c.Request.Context(), credential, req)
 	if err != nil {
 		h.HandleError(c, err, "remove_security_group_rule")
 		return
@@ -568,7 +598,7 @@ func (h *GCPHandler) UpdateSecurityGroupRules(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "update_security_group_rules")
 		return
@@ -576,7 +606,7 @@ func (h *GCPHandler) UpdateSecurityGroupRules(c *gin.Context) {
 
 	req.CredentialID = credential.ID.String()
 
-	result, err := h.networkService.UpdateSecurityGroupRules(c.Request.Context(), credential, req)
+	result, err := h.GetNetworkService().UpdateSecurityGroupRules(c.Request.Context(), credential, req)
 	if err != nil {
 		h.HandleError(c, err, "update_security_group_rules")
 		return

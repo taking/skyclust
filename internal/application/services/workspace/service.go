@@ -6,48 +6,55 @@ import (
 	"skyclust/internal/application/services/common"
 	"skyclust/internal/domain"
 	"skyclust/internal/infrastructure/messaging"
+	"skyclust/internal/shared/logging"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 	"skyclust/pkg/logger"
 )
 
 // Service: Workspace 서비스 인터페이스 구현체
 // 워크스페이스 관련 비즈니스 로직을 처리합니다
 type Service struct {
-	workspaceRepo  domain.WorkspaceRepository // 워크스페이스 저장소
-	userRepo       domain.UserRepository      // 사용자 저장소
-	eventService   domain.EventService        // 이벤트 서비스
-	auditLogRepo   domain.AuditLogRepository  // 감사 로그 저장소
-	eventPublisher *messaging.Publisher       // 이벤트 발행자
+	workspaceRepo          domain.WorkspaceRepository     // 워크스페이스 저장소
+	workspaceDomainService *domain.WorkspaceDomainService // 워크스페이스 도메인 서비스
+	userRepo               domain.UserRepository          // 사용자 저장소
+	eventService           domain.EventService            // 이벤트 서비스
+	auditLogRepo           domain.AuditLogRepository      // 감사 로그 저장소
+	eventPublisher         *messaging.Publisher           // 이벤트 발행자
+	logger                 *zap.Logger                    // 구조화된 로거
 }
 
 // NewService: 새로운 Workspace 서비스 인스턴스를 생성합니다
-func NewService(workspaceRepo domain.WorkspaceRepository, userRepo domain.UserRepository, eventService domain.EventService, auditLogRepo domain.AuditLogRepository, eventPublisher *messaging.Publisher) *Service {
+func NewService(workspaceRepo domain.WorkspaceRepository, workspaceDomainService *domain.WorkspaceDomainService, userRepo domain.UserRepository, eventService domain.EventService, auditLogRepo domain.AuditLogRepository, eventPublisher *messaging.Publisher) *Service {
 	return &Service{
-		workspaceRepo:  workspaceRepo,
-		userRepo:       userRepo,
-		eventService:   eventService,
-		auditLogRepo:   auditLogRepo,
-		eventPublisher: eventPublisher,
+		workspaceRepo:          workspaceRepo,
+		workspaceDomainService: workspaceDomainService,
+		userRepo:               userRepo,
+		eventService:           eventService,
+		auditLogRepo:           auditLogRepo,
+		eventPublisher:         eventPublisher,
+		logger:                 logger.DefaultLogger.GetLogger(),
 	}
 }
 
 // CreateWorkspace: 새로운 워크스페이스를 생성합니다
 func (s *Service) CreateWorkspace(ctx context.Context, req domain.CreateWorkspaceRequest) (*domain.Workspace, error) {
-	// 요청 유효성 검사
-	if err := req.Validate(); err != nil {
-		return nil, err
-	}
-
 	// 소유자 ID 파싱 및 검증
 	ownerID, err := uuid.Parse(req.OwnerID)
 	if err != nil {
 		return nil, domain.NewDomainError(domain.ErrCodeBadRequest, "invalid owner ID format", 400)
 	}
 
-	// 소유자 존재 여부 확인
+	// Use domain service to validate business rules and create workspace entity
+	workspace, err := s.workspaceDomainService.CreateWorkspace(ctx, req, ownerID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get owner for audit logging (application-level concern)
 	owner, err := s.userRepo.GetByID(ownerID)
 	if err != nil {
 		return nil, domain.NewDomainError(domain.ErrCodeInternalError, "failed to get owner", 500)
@@ -56,31 +63,14 @@ func (s *Service) CreateWorkspace(ctx context.Context, req domain.CreateWorkspac
 		return nil, domain.ErrUserNotFound
 	}
 
-	// 동일한 소유자의 워크스페이스 이름 중복 확인
-	existingWorkspaces, err := s.workspaceRepo.GetByOwnerID(ctx, req.OwnerID)
-	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeInternalError, "failed to check existing workspaces", 500)
-	}
-	for _, ws := range existingWorkspaces {
-		if ws.Name == req.Name {
-			return nil, domain.NewDomainError(domain.ErrCodeAlreadyExists, "workspace name already exists", 409)
-		}
-	}
-
-	// 워크스페이스 엔티티 생성
-	workspace := &domain.Workspace{
-		ID:          uuid.New().String(),
-		Name:        req.Name,
-		Description: req.Description,
-		OwnerID:     req.OwnerID,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
-		Active:      true,
-	}
-
 	// 데이터베이스에 워크스페이스 저장
 	if err := s.workspaceRepo.Create(ctx, workspace); err != nil {
-		logger.Error(fmt.Sprintf("Failed to create workspace: %v - workspace: %+v", err, workspace))
+		s.logger.Error("Failed to create workspace",
+			logging.WithOperation("create_workspace"),
+			logging.WithError(err),
+			logging.WithWorkspaceID(workspace.ID),
+			logging.WithUserID(req.OwnerID),
+		)
 
 		// 고유 제약 조건 위반 확인 (이미 존재하는 이름)
 		errStr := err.Error()
@@ -93,7 +83,12 @@ func (s *Service) CreateWorkspace(ctx context.Context, req domain.CreateWorkspac
 
 	// 소유자를 workspace_users 테이블에 admin 역할로 추가
 	if err := s.workspaceRepo.AddUserToWorkspace(ctx, req.OwnerID, workspace.ID, "admin"); err != nil {
-		logger.Error(fmt.Sprintf("Failed to add owner to workspace_users table: %v - workspace: %s, owner: %s", err, workspace.ID, req.OwnerID))
+		s.logger.Error("Failed to add owner to workspace_users table",
+			logging.WithOperation("add_workspace_owner"),
+			logging.WithError(err),
+			logging.WithWorkspaceID(workspace.ID),
+			logging.WithUserID(req.OwnerID),
+		)
 		return nil, domain.NewDomainError(
 			domain.ErrCodeInternalError,
 			fmt.Sprintf("workspace created but failed to add owner to workspace_users: %v", err),
@@ -185,7 +180,11 @@ func (s *Service) UpdateWorkspace(ctx context.Context, id string, req domain.Upd
 	workspace.UpdatedAt = time.Now()
 
 	if err := s.workspaceRepo.Update(ctx, workspace); err != nil {
-		logger.Error(fmt.Sprintf("Failed to update workspace: %v - workspace: %+v", err, workspace))
+		s.logger.Error("Failed to update workspace",
+			logging.WithOperation("update_workspace"),
+			logging.WithError(err),
+			logging.WithWorkspaceID(id),
+		)
 
 		// 고유 제약 조건 위반 확인
 		errStr := err.Error()
@@ -220,7 +219,10 @@ func (s *Service) UpdateWorkspace(ctx context.Context, id string, req domain.Upd
 		_ = s.eventPublisher.PublishWorkspaceEvent(ctx, workspace.ID, "updated", workspaceData)
 	}
 
-	logger.Info(fmt.Sprintf("Workspace updated successfully: %s", workspace.ID))
+	s.logger.Info("Workspace updated successfully",
+		logging.WithOperation("update_workspace"),
+		logging.WithWorkspaceID(workspace.ID),
+	)
 	return workspace, nil
 }
 
@@ -368,7 +370,12 @@ func (s *Service) addUserToWorkspaceWithRole(ctx context.Context, workspaceID, u
 		if strings.Contains(err.Error(), "already a member") {
 			return domain.NewDomainError(domain.ErrCodeAlreadyExists, "user is already a member of this workspace", 409)
 		}
-		logger.Error(fmt.Sprintf("Failed to add user to workspace: %v", err))
+		s.logger.Error("Failed to add user to workspace",
+			logging.WithOperation("add_workspace_member"),
+			logging.WithError(err),
+			logging.WithWorkspaceID(workspaceID),
+			logging.WithUserID(userID),
+		)
 		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to add user to workspace: %v", err), 500)
 	}
 
@@ -393,7 +400,12 @@ func (s *Service) addUserToWorkspaceWithRole(ctx context.Context, workspaceID, u
 		_ = s.eventPublisher.PublishWorkspaceEvent(ctx, workspaceID, "member_added", memberData)
 	}
 
-	logger.Info(fmt.Sprintf("User %s added to workspace %s with role %s", userID, workspaceID, role))
+	s.logger.Info("User added to workspace",
+		logging.WithOperation("add_workspace_member"),
+		logging.WithWorkspaceID(workspaceID),
+		logging.WithUserID(userID),
+		zap.String("role", role),
+	)
 	return nil
 }
 
@@ -425,7 +437,12 @@ func (s *Service) RemoveUserFromWorkspace(ctx context.Context, workspaceID, user
 	// 저장소를 통해 사용자 제거
 	err = s.workspaceRepo.RemoveUserFromWorkspace(ctx, userID, workspaceID)
 	if err != nil {
-		logger.Error(fmt.Sprintf("Failed to remove user from workspace: %v", err))
+		s.logger.Error("Failed to remove user from workspace",
+			logging.WithOperation("remove_workspace_member"),
+			logging.WithError(err),
+			logging.WithWorkspaceID(workspaceID),
+			logging.WithUserID(userID),
+		)
 		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to remove user from workspace: %v", err), 500)
 	}
 
@@ -448,7 +465,11 @@ func (s *Service) RemoveUserFromWorkspace(ctx context.Context, workspaceID, user
 		_ = s.eventPublisher.PublishWorkspaceEvent(ctx, workspaceID, "member_removed", memberData)
 	}
 
-	logger.Info(fmt.Sprintf("User removed from workspace: %s -> %s", workspaceID, userID))
+	s.logger.Info("User removed from workspace",
+		logging.WithOperation("remove_workspace_member"),
+		logging.WithWorkspaceID(workspaceID),
+		logging.WithUserID(userID),
+	)
 	return nil
 }
 
@@ -577,6 +598,11 @@ func (s *Service) UpdateMemberRole(ctx context.Context, workspaceID, userID, rol
 		_ = s.eventPublisher.PublishWorkspaceEvent(ctx, workspaceID, "member_role_updated", memberData)
 	}
 
-	logger.Info(fmt.Sprintf("User %s role updated to %s in workspace %s", userID, role, workspaceID))
+	s.logger.Info("User role updated in workspace",
+		logging.WithOperation("update_workspace_member_role"),
+		logging.WithWorkspaceID(workspaceID),
+		logging.WithUserID(userID),
+		zap.String("role", role),
+	)
 	return nil
 }

@@ -5,7 +5,7 @@ meta {
 }
 
 put {
-  url: {{baseUrl}}/api/{{apiVersion}}/azure/kubernetes/clusters/{{aksClusterName}}/nodepools/nodepool1/scale?credential_id={{azure_credentialsId}}&region={{aksLocation}}
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/kubernetes/clusters/{{aksClusterName}}/node-pools/nodepool1/scale?credential_id={{azure_credentialsId}}&region={{aksLocation}}
   body: json
   auth: bearer
 }

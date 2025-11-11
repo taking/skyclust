@@ -30,10 +30,8 @@ func NewHandler(workspaceService domain.WorkspaceService, userService domain.Use
 
 // CreateWorkspace: 워크스페이스 생성 요청을 처리합니다
 func (h *Handler) CreateWorkspace(c *gin.Context) {
-	var req domain.CreateWorkspaceRequest
-
 	handler := h.Compose(
-		h.createWorkspaceHandler(req),
+		h.createWorkspaceHandler(),
 		h.StandardCRUDDecorators("create_workspace")...,
 	)
 
@@ -41,7 +39,7 @@ func (h *Handler) CreateWorkspace(c *gin.Context) {
 }
 
 // createWorkspaceHandler: 워크스페이스 생성의 핵심 비즈니스 로직
-func (h *Handler) createWorkspaceHandler(req domain.CreateWorkspaceRequest) handlers.HandlerFunc {
+func (h *Handler) createWorkspaceHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := h.EnrichContextWithRequestMetadata(c)
 		span := telemetry.SpanFromContext(ctx)
@@ -51,26 +49,29 @@ func (h *Handler) createWorkspaceHandler(req domain.CreateWorkspaceRequest) hand
 			return
 		}
 
-		// 요청 본문에서 데이터 추출 (검증 없이 JSON 바인딩만 수행)
-		// OwnerID는 인증된 사용자로부터 설정되며, 클라이언트 입력이 아님
-		var req domain.CreateWorkspaceRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			h.HandleError(c, domain.NewDomainError(domain.ErrCodeValidationFailed, "Invalid request body", 400), "create_workspace")
-			return
-		}
-
-		// 인증된 사용자로부터 OwnerID 설정 (핸들러 책임, 클라이언트 입력 아님)
-		req.OwnerID = userID.String()
-
-		// OwnerID가 설정된 상태에서 유효성 검사 수행
-		if err := req.Validate(); err != nil {
+		// Handler layer DTO 사용 (owner_id 없음)
+		var handlerReq CreateWorkspaceRequest
+		if err := h.ValidateRequest(c, &handlerReq); err != nil {
 			h.HandleError(c, err, "create_workspace")
 			return
 		}
 
-		h.logWorkspaceCreationAttempt(c, userID, req)
+		// Domain layer DTO로 변환 (owner_id 설정)
+		domainReq := domain.CreateWorkspaceRequest{
+			Name:        handlerReq.Name,
+			Description: handlerReq.Description,
+			OwnerID:     userID.String(),
+		}
 
-		workspace, err := h.workspaceService.CreateWorkspace(ctx, req)
+		// Domain validation 수행
+		if err := domainReq.Validate(); err != nil {
+			h.HandleError(c, err, "create_workspace")
+			return
+		}
+
+		h.logWorkspaceCreationAttempt(c, userID, domainReq)
+
+		workspace, err := h.workspaceService.CreateWorkspace(ctx, domainReq)
 		if err != nil {
 			h.HandleError(c, err, "create_workspace")
 			return
@@ -114,15 +115,11 @@ func (h *Handler) getWorkspacesHandler() handlers.HandlerFunc {
 			return
 		}
 
-		// 표준화된 페이지네이션 메타데이터 사용
+		// 표준화된 페이지네이션 응답 사용 (직접 배열: data[])
 		total := int64(len(workspaces))
-		paginationMeta := h.CalculatePaginationMeta(total, page, limit)
 
 		h.setTelemetryAttributes(span, userID, "", "", "get_workspaces")
-		h.OK(c, gin.H{
-			"workspaces": workspaces,
-			"pagination": paginationMeta,
-		}, "Workspaces retrieved successfully")
+		h.BuildPaginatedResponse(c, workspaces, page, limit, total, "Workspaces retrieved successfully")
 	}
 }
 
@@ -167,10 +164,8 @@ func (h *Handler) getWorkspaceHandler() handlers.HandlerFunc {
 
 // UpdateWorkspace: 워크스페이스 업데이트 요청을 처리합니다
 func (h *Handler) UpdateWorkspace(c *gin.Context) {
-	var req domain.UpdateWorkspaceRequest
-
 	handler := h.Compose(
-		h.updateWorkspaceHandler(req),
+		h.updateWorkspaceHandler(),
 		h.StandardCRUDDecorators("update_workspace")...,
 	)
 
@@ -178,7 +173,7 @@ func (h *Handler) UpdateWorkspace(c *gin.Context) {
 }
 
 // updateWorkspaceHandler: 워크스페이스 업데이트의 핵심 비즈니스 로직
-func (h *Handler) updateWorkspaceHandler(req domain.UpdateWorkspaceRequest) handlers.HandlerFunc {
+func (h *Handler) updateWorkspaceHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		span := telemetry.SpanFromContext(ctx)
@@ -187,10 +182,21 @@ func (h *Handler) updateWorkspaceHandler(req domain.UpdateWorkspaceRequest) hand
 			h.HandleError(c, err, "update_workspace")
 			return
 		}
-		var req domain.UpdateWorkspaceRequest
-		if err := h.ExtractValidatedRequest(c, &req); err != nil {
+
+		// Handler layer DTO 사용
+		var handlerReq UpdateWorkspaceRequest
+		if err := h.ValidateRequest(c, &handlerReq); err != nil {
 			h.HandleError(c, err, "update_workspace")
 			return
+		}
+
+		// Domain layer DTO로 변환
+		var domainReq domain.UpdateWorkspaceRequest
+		if handlerReq.Name != nil {
+			domainReq.Name = handlerReq.Name
+		}
+		if handlerReq.Description != nil {
+			domainReq.Description = handlerReq.Description
 		}
 		userID, err := h.ExtractUserIDFromContext(c)
 		if err != nil {
@@ -227,7 +233,7 @@ func (h *Handler) updateWorkspaceHandler(req domain.UpdateWorkspaceRequest) hand
 		h.logWorkspaceUpdateAttempt(c, userID, workspaceID)
 
 		// 워크스페이스 업데이트 (owner_id는 변경되지 않음)
-		updatedWorkspace, err := h.workspaceService.UpdateWorkspace(ctx, workspaceID.String(), req)
+		updatedWorkspace, err := h.workspaceService.UpdateWorkspace(ctx, workspaceID.String(), domainReq)
 		if err != nil {
 			h.HandleError(c, err, "update_workspace")
 			return
@@ -494,9 +500,7 @@ func (h *Handler) getMembersHandler() handlers.HandlerFunc {
 		}
 
 		h.setTelemetryAttributes(span, userID, workspaceID.String(), workspace.Name, "get_workspace_members")
-		h.OK(c, gin.H{
-			"members": responses,
-		}, "Workspace members retrieved successfully")
+		h.OK(c, responses, "Workspace members retrieved successfully")
 	}
 }
 
@@ -527,7 +531,7 @@ func (h *Handler) addMemberHandler() handlers.HandlerFunc {
 		}
 
 		var req AddMemberRequest
-		if err := h.ExtractValidatedRequest(c, &req); err != nil {
+		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "add_workspace_member")
 			return
 		}
@@ -681,7 +685,7 @@ func (h *Handler) updateMemberRoleHandler() handlers.HandlerFunc {
 		}
 
 		var req UpdateMemberRoleRequest
-		if err := h.ExtractValidatedRequest(c, &req); err != nil {
+		if err := h.ValidateRequest(c, &req); err != nil {
 			h.HandleError(c, err, "update_workspace_member_role")
 			return
 		}

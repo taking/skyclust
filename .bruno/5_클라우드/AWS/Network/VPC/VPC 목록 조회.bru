@@ -24,9 +24,12 @@ auth:bearer {
 }
 
 script:post-response {
-  bru.setEnvVar("vpcId", res.body.data.vpcs[0].id);
+  const dataArray = Array.isArray(res.body.data) ? res.body.data : [];
+  if (dataArray.length > 0) {
+    bru.setEnvVar("vpcId", dataArray[0].id);
+  }
   
-  const rowData = res.body.data.vpcs;
+  const rowData = dataArray;
   
   const columnDefinitions = [
     { field: "id", filter: true, floatingFilter: true },
@@ -54,11 +57,11 @@ tests {
   });
   
   test("Response has vpcs array", function() {
-    expect(res.getBody().data.vpcs).to.be.an('array');
+    expect(res.getBody().data).to.be.an('array');
   });
   
   test("VPC has required fields", function() {
-    const vpcs = res.getBody().data.vpcs;
+    const vpcs = res.getBody().data;
     if (vpcs.length > 0) {
       const vpc = vpcs[0];
       expect(vpc).to.have.property('id');
@@ -86,21 +89,19 @@ docs {
   ```json
   {
     "success": true,
-    "data": {
-      "vpcs": [
-        {
-          "id": "vpc-0c146cad2fe3181bb",
-          "name": "Default VPC",
-          "cidr_block": "172.31.0.0/16",
-          "state": "available",
-          "is_default": true,
-          "region": "ap-northeast-3",
-          "tags": {
-            "Name": "Default VPC"
-          }
+    "data": [
+      {
+        "id": "vpc-0c146cad2fe3181bb",
+        "name": "Default VPC",
+        "cidr_block": "172.31.0.0/16",
+        "state": "available",
+        "is_default": true,
+        "region": "ap-northeast-3",
+        "tags": {
+          "Name": "Default VPC"
         }
-      ]
-    },
+      }
+    ],
     "message": "VPCs retrieved successfully"
   }
   ```

@@ -30,14 +30,14 @@ func (h *AzureHandler) CreateCluster(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, domain.ProviderAzure)
+	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), req.CredentialID, domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "create_cluster")
 		return
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	cluster, err := h.k8sService.CreateAKSCluster(ctx, credential, req)
+	cluster, err := h.GetK8sService().CreateAKSCluster(ctx, credential, req)
 	if err != nil {
 		h.HandleError(c, err, "create_cluster")
 		return
@@ -48,7 +48,7 @@ func (h *AzureHandler) CreateCluster(c *gin.Context) {
 
 // ListClusters: AKS 클러스터 목록 조회를 처리합니다
 func (h *AzureHandler) ListClusters(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "list_clusters")
 		return
@@ -59,7 +59,7 @@ func (h *AzureHandler) ListClusters(c *gin.Context) {
 		location = c.Query("location") // Azure uses "location" instead of "region"
 	}
 
-	clusters, err := h.k8sService.ListEKSClusters(c.Request.Context(), credential, location)
+	clusters, err := h.GetK8sService().ListEKSClusters(c.Request.Context(), credential, location)
 	if err != nil {
 		h.HandleError(c, err, "list_clusters")
 		return
@@ -72,12 +72,12 @@ func (h *AzureHandler) ListClusters(c *gin.Context) {
 		clusters.Clusters = []kubernetesservice.ClusterInfo{}
 	}
 
-	h.OK(c, clusters, "AKS clusters retrieved successfully")
+	h.OK(c, clusters.Clusters, "AKS clusters retrieved successfully")
 }
 
 // GetCluster: AKS 클러스터 상세 정보 조회를 처리합니다
 func (h *AzureHandler) GetCluster(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "get_cluster")
 		return
@@ -90,7 +90,7 @@ func (h *AzureHandler) GetCluster(c *gin.Context) {
 		return
 	}
 
-	cluster, err := h.k8sService.GetEKSCluster(c.Request.Context(), credential, clusterName, location)
+	cluster, err := h.GetK8sService().GetEKSCluster(c.Request.Context(), credential, clusterName, location)
 	if err != nil {
 		h.HandleError(c, err, "get_cluster")
 		return
@@ -101,7 +101,7 @@ func (h *AzureHandler) GetCluster(c *gin.Context) {
 
 // DeleteCluster: AKS 클러스터 삭제를 처리합니다
 func (h *AzureHandler) DeleteCluster(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "delete_cluster")
 		return
@@ -114,7 +114,7 @@ func (h *AzureHandler) DeleteCluster(c *gin.Context) {
 		return
 	}
 
-	err = h.k8sService.DeleteEKSCluster(c.Request.Context(), credential, clusterName, location)
+	err = h.GetK8sService().DeleteEKSCluster(c.Request.Context(), credential, clusterName, location)
 	if err != nil {
 		h.HandleError(c, err, "delete_cluster")
 		return
@@ -125,7 +125,7 @@ func (h *AzureHandler) DeleteCluster(c *gin.Context) {
 
 // GetKubeconfig: AKS 클러스터의 kubeconfig 조회를 처리합니다
 func (h *AzureHandler) GetKubeconfig(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "get_kubeconfig")
 		return
@@ -138,7 +138,7 @@ func (h *AzureHandler) GetKubeconfig(c *gin.Context) {
 		return
 	}
 
-	kubeconfig, err := h.k8sService.GetEKSKubeconfig(c.Request.Context(), credential, clusterName, location)
+	kubeconfig, err := h.GetK8sService().GetEKSKubeconfig(c.Request.Context(), credential, clusterName, location)
 	if err != nil {
 		h.HandleError(c, err, "get_kubeconfig")
 		return
@@ -149,7 +149,7 @@ func (h *AzureHandler) GetKubeconfig(c *gin.Context) {
 
 // ListNodeGroups: 노드 그룹 목록 조회를 처리합니다
 func (h *AzureHandler) ListNodeGroups(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "list_node_groups")
 		return
@@ -167,18 +167,18 @@ func (h *AzureHandler) ListNodeGroups(c *gin.Context) {
 		Region:      location,
 	}
 
-	nodeGroups, err := h.k8sService.ListNodeGroups(c.Request.Context(), credential, req)
+	nodeGroups, err := h.GetK8sService().ListNodeGroups(c.Request.Context(), credential, req)
 	if err != nil {
 		h.HandleError(c, err, "list_node_groups")
 		return
 	}
 
-	h.OK(c, nodeGroups, "Node groups retrieved successfully")
+	h.OK(c, nodeGroups.NodeGroups, "Node groups retrieved successfully")
 }
 
 // GetNodeGroup: 노드 그룹 상세 정보 조회를 처리합니다
 func (h *AzureHandler) GetNodeGroup(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "get_node_group")
 		return
@@ -194,12 +194,12 @@ func (h *AzureHandler) GetNodeGroup(c *gin.Context) {
 	}
 
 	req := kubernetesservice.GetNodeGroupRequest{
-		ClusterName:  clusterName,
+		ClusterName:   clusterName,
 		NodeGroupName: nodeGroupName,
-		Region:       location,
+		Region:        location,
 	}
 
-	nodeGroup, err := h.k8sService.GetNodeGroup(c.Request.Context(), credential, req)
+	nodeGroup, err := h.GetK8sService().GetNodeGroup(c.Request.Context(), credential, req)
 	if err != nil {
 		h.HandleError(c, err, "get_node_group")
 		return

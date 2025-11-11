@@ -12,19 +12,20 @@ import (
 
 // VPCInfoResponse represents VPC information in HTTP responses
 type VPCInfoResponse struct {
-	ID                string               `json:"id"`
-	Name              string               `json:"name"`
-	State             string               `json:"state"`
-	IsDefault         bool                 `json:"is_default"`
-	NetworkMode       string               `json:"network_mode,omitempty"`
-	RoutingMode       string               `json:"routing_mode,omitempty"`
-	MTU               int64                `json:"mtu,omitempty"`
-	AutoSubnets       bool                 `json:"auto_subnets,omitempty"`
-	Description       string               `json:"description,omitempty"`
-	FirewallRuleCount int                  `json:"firewall_rule_count,omitempty"`
-	Gateway           *GatewayInfoResponse `json:"gateway,omitempty"`
-	CreationTimestamp string               `json:"creation_timestamp,omitempty"`
-	Tags              map[string]string    `json:"tags,omitempty"`
+	ID                string                `json:"id"`
+	Name              string                `json:"name"`
+	State             string                `json:"state"`
+	IsDefault         bool                  `json:"is_default"`
+	NetworkMode       string                `json:"network_mode,omitempty"`
+	RoutingMode       string                `json:"routing_mode,omitempty"`
+	MTU               int64                 `json:"mtu,omitempty"`
+	AutoSubnets       bool                  `json:"auto_subnets,omitempty"`
+	Description       string                `json:"description,omitempty"`
+	FirewallRuleCount int                   `json:"firewall_rule_count,omitempty"`
+	Gateway           *GatewayInfoResponse  `json:"gateway,omitempty"`
+	CreationTimestamp string                `json:"creation_timestamp,omitempty"`
+	Tags              map[string]string     `json:"tags,omitempty"`
+	Subnets           []SubnetInfoResponse  `json:"subnets,omitempty"` // Direct array: subnets[]
 }
 
 // GatewayInfoResponse represents gateway information in HTTP responses
@@ -79,8 +80,13 @@ type SecurityGroupRuleInfoResponse struct {
 
 // ListVPCsRequest represents a request to list VPCs (HTTP layer)
 type ListVPCsRequest struct {
-	Region string `form:"region" json:"region,omitempty"`
-	VPCID  string `form:"vpc_id" json:"vpc_id,omitempty"`
+	Region    string `form:"region" json:"region,omitempty"`
+	VPCID     string `form:"vpc_id" json:"vpc_id,omitempty"`
+	Page      int    `form:"page" json:"page,omitempty"`
+	Limit     int    `form:"limit" json:"limit,omitempty"`
+	SortBy    string `form:"sort_by" json:"sort_by,omitempty"`
+	SortOrder string `form:"sort_order" json:"sort_order,omitempty"`
+	Search    string `form:"search" json:"search,omitempty"`
 }
 
 // ListVPCsResponse represents the response after listing VPCs (HTTP layer)
@@ -90,9 +96,14 @@ type ListVPCsResponse struct {
 
 // ListSubnetsRequest represents a request to list subnets (HTTP layer)
 type ListSubnetsRequest struct {
-	VPCID    string `form:"vpc_id" json:"vpc_id,omitempty"`
-	Region   string `form:"region" json:"region,omitempty"`
-	SubnetID string `form:"subnet_id" json:"subnet_id,omitempty"`
+	VPCID     string `form:"vpc_id" json:"vpc_id,omitempty"`
+	Region    string `form:"region" json:"region,omitempty"`
+	SubnetID  string `form:"subnet_id" json:"subnet_id,omitempty"`
+	Page      int    `form:"page" json:"page,omitempty"`
+	Limit     int    `form:"limit" json:"limit,omitempty"`
+	SortBy    string `form:"sort_by" json:"sort_by,omitempty"`
+	SortOrder string `form:"sort_order" json:"sort_order,omitempty"`
+	Search    string `form:"search" json:"search,omitempty"`
 }
 
 // ListSubnetsResponse represents the response after listing subnets (HTTP layer)
@@ -105,6 +116,11 @@ type ListSecurityGroupsRequest struct {
 	VPCID           string `form:"vpc_id" json:"vpc_id,omitempty"`
 	Region          string `form:"region" json:"region,omitempty"`
 	SecurityGroupID string `form:"security_group_id" json:"security_group_id,omitempty"`
+	Page            int    `form:"page" json:"page,omitempty"`
+	Limit           int    `form:"limit" json:"limit,omitempty"`
+	SortBy          string `form:"sort_by" json:"sort_by,omitempty"`
+	SortOrder       string `form:"sort_order" json:"sort_order,omitempty"`
+	Search          string `form:"search" json:"search,omitempty"`
 }
 
 // ListSecurityGroupsResponse represents the response after listing security groups (HTTP layer)
@@ -296,6 +312,11 @@ func ToServiceListVPCsRequest(req ListVPCsRequest, credentialID string) networks
 		CredentialID: credentialID,
 		Region:       req.Region,
 		VPCID:        req.VPCID,
+		Page:         req.Page,
+		Limit:        req.Limit,
+		SortBy:       req.SortBy,
+		SortOrder:    req.SortOrder,
+		Search:       req.Search,
 	}
 }
 
@@ -306,6 +327,11 @@ func ToServiceListSubnetsRequest(req ListSubnetsRequest, credentialID string) ne
 		VPCID:        req.VPCID,
 		Region:       req.Region,
 		SubnetID:     req.SubnetID,
+		Page:         req.Page,
+		Limit:        req.Limit,
+		SortBy:       req.SortBy,
+		SortOrder:    req.SortOrder,
+		Search:       req.Search,
 	}
 }
 
@@ -316,6 +342,11 @@ func ToServiceListSecurityGroupsRequest(req ListSecurityGroupsRequest, credentia
 		VPCID:           req.VPCID,
 		Region:          req.Region,
 		SecurityGroupID: req.SecurityGroupID,
+		Page:            req.Page,
+		Limit:           req.Limit,
+		SortBy:          req.SortBy,
+		SortOrder:       req.SortOrder,
+		Search:          req.Search,
 	}
 }
 

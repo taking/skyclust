@@ -18,10 +18,10 @@ export class VPCRepository extends BaseRepository implements IVPCRepository {
   }
 
   async list(provider: CloudProvider, credentialId: string, region?: string): Promise<VPC[]> {
-    const data = await this.get<{ vpcs: VPC[] }>(
+    const data = await this.get<VPC[]>(
       API_ENDPOINTS.network.vpcs.list(provider, credentialId, region)
     );
-    return data.vpcs || [];
+    return Array.isArray(data) ? data : [];
   }
 
   async getById(provider: CloudProvider, vpcId: string, credentialId: string, region: string): Promise<VPC> {

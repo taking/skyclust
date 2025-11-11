@@ -21,7 +21,7 @@ auth:bearer {
 }
 
 script:post-response {
-  const rowData = res.body.data.subnets;
+  const rowData = Array.isArray(res.body.data) ? res.body.data : [];
   
   const columnDefinitions = [
     { field: "id", filter: true, floatingFilter: true },
@@ -60,22 +60,25 @@ docs {
   ```json
   {
     "success": true,
-    "data": {
-      "subnets": [
-        {
-          "id": "/subscriptions/xxx/resourceGroups/skyclust-rg/providers/Microsoft.Network/virtualNetworks/skyclust-vnet/subnets/skyclust-subnet",
-          "name": "skyclust-subnet",
-          "vpc_id": "/subscriptions/xxx/resourceGroups/skyclust-rg/providers/Microsoft.Network/virtualNetworks/skyclust-vnet",
-          "cidr_block": "10.0.1.0/24",
-          "availability_zone": "eastus",
-          "state": "Succeeded",
-          "is_public": false,
-          "region": "eastus",
-          "tags": {
-            "Environment": "development"
-          }
+    "data": [
+      {
+        "id": "/subscriptions/xxx/resourceGroups/skyclust-rg/providers/Microsoft.Network/virtualNetworks/skyclust-vnet/subnets/skyclust-subnet",
+        "name": "skyclust-subnet",
+        "vpc_id": "/subscriptions/xxx/resourceGroups/skyclust-rg/providers/Microsoft.Network/virtualNetworks/skyclust-vnet",
+        "cidr_block": "10.0.1.0/24",
+        "availability_zone": "eastus",
+        "state": "Succeeded",
+        "is_public": false,
+        "region": "eastus",
+        "tags": {
+          "Environment": "development"
         }
-      ]
+      }
+    ],
+    "meta": {
+      "page": 1,
+      "limit": 10,
+      "total": 1
     },
     "message": "Subnets retrieved successfully"
   }

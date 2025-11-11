@@ -152,14 +152,7 @@ func (h *Handler) GetAuditLogs(c *gin.Context) {
 		zap.Int("logs_count", len(logs)),
 		zap.Int64("total", total))
 
-	h.OK(c, gin.H{
-		"logs": logs,
-		"pagination": gin.H{
-			"total":  total,
-			"limit":  limit,
-			"offset": offset,
-		},
-	}, "Audit logs retrieved successfully")
+	h.OK(c, logs, "Audit logs retrieved successfully")
 }
 
 // GetAuditLog retrieves a specific audit log

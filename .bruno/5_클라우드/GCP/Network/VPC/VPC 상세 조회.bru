@@ -74,6 +74,18 @@ docs {
       "mtu": 1460,
       "auto_subnets": false,
       "description": "Custom VPC for SkyClust GKE cluster",
+      "subnets": [
+        {
+          "id": "projects/my-project/regions/us-central1/subnetworks/subnet-1",
+          "name": "subnet-1",
+          "vpc_id": "projects/my-project/global/networks/skyclust-vpc-1234567890",
+          "cidr_block": "10.0.1.0/24",
+          "availability_zone": "us-central1-a",
+          "state": "available",
+          "is_public": false,
+          "region": "us-central1"
+        }
+      ],
       "tags": {
         "Environment": "development",
         "Project": "skyclust"

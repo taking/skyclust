@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"skyclust/internal/domain"
+	"skyclust/internal/shared/logging"
 	"strings"
 	"time"
 
@@ -16,60 +17,46 @@ import (
 
 // Service: 사용자 서비스 인터페이스 구현체
 type Service struct {
-	userRepo     domain.UserRepository
-	hasher       security.PasswordHasher
-	auditLogRepo domain.AuditLogRepository
-	logger       *zap.Logger
+	userRepo          domain.UserRepository
+	userDomainService *domain.UserDomainService
+	hasher            security.PasswordHasher
+	auditLogRepo      domain.AuditLogRepository
+	logger            *zap.Logger
 }
 
 // NewService: 새로운 사용자 서비스를 생성합니다
-func NewService(userRepo domain.UserRepository, hasher security.PasswordHasher, auditLogRepo domain.AuditLogRepository) *Service {
+func NewService(userRepo domain.UserRepository, userDomainService *domain.UserDomainService, hasher security.PasswordHasher, auditLogRepo domain.AuditLogRepository) *Service {
 	return &Service{
-		userRepo:     userRepo,
-		hasher:       hasher,
-		auditLogRepo: auditLogRepo,
-		logger:       logger.DefaultLogger.GetLogger(),
+		userRepo:          userRepo,
+		userDomainService: userDomainService,
+		hasher:            hasher,
+		auditLogRepo:      auditLogRepo,
+		logger:            logger.DefaultLogger.GetLogger(),
 	}
 }
 
 // CreateUser: 새로운 사용자를 생성합니다
 func (s *Service) CreateUser(ctx context.Context, req domain.CreateUserRequest) (*domain.User, error) {
-	// Validate request
-	if err := req.Validate(); err != nil {
-		return nil, err // req.Validate() already returns domain.NewDomainError
+	// Use domain service to validate business rules and create user entity
+	user, err := s.userDomainService.CreateUser(ctx, req)
+	if err != nil {
+		return nil, err
 	}
 
-	// Check if user already exists
-	existingUser, err := s.userRepo.GetByEmail(req.Email)
-	if err == nil && existingUser != nil {
-		return nil, domain.ErrUserAlreadyExists
-	}
-
-	// Check username availability
-	existingUser, err = s.userRepo.GetByUsername(req.Username)
-	if err == nil && existingUser != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeAlreadyExists, "username already exists", 409)
-	}
-
-	// Hash password
+	// Hash password (application-level concern)
 	hashedPassword, err := s.hasher.HashPassword(req.Password)
 	if err != nil {
 		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to hash password: %v", err), 500)
 	}
+	user.PasswordHash = hashedPassword
 
-	// Create user
-	user := &domain.User{
-		ID:           uuid.New(),
-		Username:     req.Username,
-		Email:        req.Email,
-		PasswordHash: hashedPassword,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
-		Active:       true,
-	}
-
+	// Persist to repository (application-level concern)
 	if err := s.userRepo.Create(user); err != nil {
-		s.logger.Error("Failed to create user", zap.Error(err))
+		s.logger.Error("Failed to create user",
+			logging.WithOperation("create_user"),
+			logging.WithError(err),
+			logging.WithUserID(user.ID.String()),
+		)
 		// Check for unique constraint violation
 		errStr := err.Error()
 		if strings.Contains(errStr, "duplicate key") || strings.Contains(errStr, "unique constraint") {
@@ -83,7 +70,11 @@ func (s *Service) CreateUser(ctx context.Context, req domain.CreateUserRequest) 
 		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to create user: %v", err), 500)
 	}
 
-	s.logger.Info("User created successfully", zap.String("user_id", user.ID.String()), zap.String("username", user.Username))
+	s.logger.Info("User created successfully",
+		logging.WithOperation("create_user"),
+		logging.WithUserID(user.ID.String()),
+		logging.WithUsername(user.Username),
+	)
 	return user, nil
 }
 
@@ -111,7 +102,12 @@ func (s *Service) GetUsers(ctx context.Context, limit, offset int, filters map[s
 		return nil, 0, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to get users: %v", err), 500)
 	}
 
-	s.logger.Debug("Users retrieved", zap.Int("count", len(users)), zap.Int("limit", limit), zap.Int("offset", offset))
+	s.logger.Debug("Users retrieved",
+		logging.WithOperation("list_users"),
+		logging.WithCount(len(users)),
+		logging.WithLimit(limit),
+		logging.WithOffset(offset),
+	)
 	return users, total, nil
 }
 
@@ -162,7 +158,11 @@ func (s *Service) UpdateUser(ctx context.Context, id string, req domain.UpdateUs
 	user.UpdatedAt = time.Now()
 
 	if err := s.userRepo.Update(user); err != nil {
-		s.logger.Error("Failed to update user", zap.Error(err), zap.String("user_id", user.ID.String()))
+		s.logger.Error("Failed to update user",
+			logging.WithOperation("update_user"),
+			logging.WithError(err),
+			logging.WithUserID(user.ID.String()),
+		)
 		// Check for unique constraint violation
 		errStr := err.Error()
 		if strings.Contains(errStr, "duplicate key") || strings.Contains(errStr, "unique constraint") {
@@ -176,7 +176,10 @@ func (s *Service) UpdateUser(ctx context.Context, id string, req domain.UpdateUs
 		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to update user: %v", err), 500)
 	}
 
-	s.logger.Info("User updated successfully", zap.String("user_id", user.ID.String()))
+	s.logger.Info("User updated successfully",
+		logging.WithOperation("update_user"),
+		logging.WithUserID(user.ID.String()),
+	)
 	return user, nil
 }
 
@@ -197,11 +200,18 @@ func (s *Service) DeleteUser(ctx context.Context, id string) error {
 	}
 
 	if err := s.userRepo.Delete(userID); err != nil {
-		s.logger.Error("Failed to delete user", zap.Error(err), zap.String("user_id", id))
+		s.logger.Error("Failed to delete user",
+			logging.WithOperation("delete_user"),
+			logging.WithError(err),
+			logging.WithUserID(id),
+		)
 		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to delete user: %v", err), 500)
 	}
 
-	s.logger.Info("User deleted successfully", zap.String("user_id", id))
+	s.logger.Info("User deleted successfully",
+		logging.WithOperation("delete_user"),
+		logging.WithUserID(id),
+	)
 	return nil
 }
 
@@ -224,7 +234,11 @@ func (s *Service) Authenticate(ctx context.Context, email, password string) (*do
 		return nil, domain.ErrInvalidCredentials
 	}
 
-	s.logger.Info("User authenticated successfully", zap.String("user_id", user.ID.String()), zap.String("email", user.Email))
+	s.logger.Info("User authenticated successfully",
+		logging.WithOperation("authenticate_user"),
+		logging.WithUserID(user.ID.String()),
+		logging.WithEmail(user.Email),
+	)
 	return user, nil
 }
 
@@ -260,11 +274,18 @@ func (s *Service) ChangePassword(ctx context.Context, userID, oldPassword, newPa
 	user.UpdatedAt = time.Now()
 
 	if err := s.userRepo.Update(user); err != nil {
-		s.logger.Error("Failed to update password", zap.Error(err), zap.String("user_id", userID))
+		s.logger.Error("Failed to update password",
+			logging.WithOperation("change_password"),
+			logging.WithError(err),
+			logging.WithUserID(userID),
+		)
 		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to update password: %v", err), 500)
 	}
 
-	s.logger.Info("Password changed successfully", zap.String("user_id", userID))
+	s.logger.Info("Password changed successfully",
+		logging.WithOperation("change_password"),
+		logging.WithUserID(userID),
+	)
 	return nil
 }
 
@@ -364,11 +385,18 @@ func (s *Service) DeleteUserByID(id uuid.UUID) error {
 	}
 
 	if err := s.userRepo.Delete(id); err != nil {
-		s.logger.Error("Failed to delete user", zap.Error(err), zap.String("user_id", id.String()))
+		s.logger.Error("Failed to delete user",
+			logging.WithOperation("delete_user_by_id"),
+			logging.WithError(err),
+			logging.WithUserID(id.String()),
+		)
 		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to delete user: %v", err), 500)
 	}
 
-	s.logger.Info("User deleted successfully", zap.String("user_id", id.String()))
+	s.logger.Info("User deleted successfully",
+		logging.WithOperation("delete_user_by_id"),
+		logging.WithUserID(id.String()),
+	)
 	return nil
 }
 

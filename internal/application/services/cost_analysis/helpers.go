@@ -10,31 +10,6 @@ import (
 	"skyclust/pkg/logger"
 )
 
-// getFromCache retrieves value from cache if available
-func (s *Service) getFromCache(ctx context.Context, cacheKey string, result interface{}) (bool, error) {
-	if s.cache == nil {
-		return false, nil
-	}
-
-	err := s.cache.Get(ctx, cacheKey, result)
-	if err == nil {
-		return true, nil
-	}
-
-	return false, nil
-}
-
-// setCache sets value to cache (non-blocking)
-func (s *Service) setCache(ctx context.Context, cacheKey string, value interface{}, ttl time.Duration) {
-	if s.cache == nil {
-		return
-	}
-
-	if err := s.cache.Set(ctx, cacheKey, value, ttl); err != nil {
-		logger.Warnf("Failed to cache %s: %v", cacheKey, err)
-	}
-}
-
 // prefetchCredentialsByProvider prefetches and groups credentials by provider for efficient lookup
 // Returns credentials grouped by provider, or error if workspace ID is invalid
 func (s *Service) prefetchCredentialsByProvider(ctx context.Context, workspaceID string) (map[string][]*domain.Credential, error) {
@@ -86,4 +61,10 @@ func (s *Service) calculateClusterCostsWithHandling(ctx context.Context, workspa
 		}
 	}
 	return clusterCosts, clusterWarnings, CostWarning{}
+}
+
+func parseFloat(s string) (float64, error) {
+	var result float64
+	_, err := fmt.Sscanf(s, "%f", &result)
+	return result, err
 }

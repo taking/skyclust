@@ -71,12 +71,9 @@ func (h *Handler) getNotificationsHandler() handlers.HandlerFunc {
 		if filters.Offset == 0 {
 			page = 1
 		}
-		paginationMeta := h.CalculatePaginationMeta(int64(total), page, filters.Limit)
 
-		h.OK(c, gin.H{
-			"notifications": responses,
-			"pagination":    paginationMeta,
-		}, "Notifications retrieved successfully")
+		// Use standardized paginated response (direct array: data[])
+		h.BuildPaginatedResponse(c, responses, page, filters.Limit, int64(total), "Notifications retrieved successfully")
 	}
 }
 
@@ -454,10 +451,8 @@ func (h *Handler) getNotificationPreferencesHandler() handlers.HandlerFunc {
 
 // UpdateNotificationPreferences: 알림 설정을 업데이트합니다 (데코레이터 패턴 사용)
 func (h *Handler) UpdateNotificationPreferences(c *gin.Context) {
-	var req domain.UpdateNotificationPreferencesRequest
-
 	handler := h.Compose(
-		h.updateNotificationPreferencesHandler(req),
+		h.updateNotificationPreferencesHandler(),
 		h.StandardCRUDDecorators("update_notification_preferences")...,
 	)
 
@@ -465,12 +460,32 @@ func (h *Handler) UpdateNotificationPreferences(c *gin.Context) {
 }
 
 // updateNotificationPreferencesHandler: 알림 설정 업데이트의 핵심 비즈니스 로직을 처리합니다
-func (h *Handler) updateNotificationPreferencesHandler(req domain.UpdateNotificationPreferencesRequest) handlers.HandlerFunc {
+func (h *Handler) updateNotificationPreferencesHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		var req domain.UpdateNotificationPreferencesRequest
-		if err := h.ExtractValidatedRequest(c, &req); err != nil {
+		// Handler layer DTO 사용
+		var handlerReq UpdatePreferencesRequest
+		if err := h.ValidateRequest(c, &handlerReq); err != nil {
 			h.HandleError(c, err, "update_notification_preferences")
 			return
+		}
+
+		// Domain layer DTO로 변환
+		domainReq := domain.UpdateNotificationPreferencesRequest{
+			EmailEnabled:          handlerReq.EmailEnabled,
+			PushEnabled:           handlerReq.PushEnabled,
+			BrowserEnabled:        handlerReq.BrowserEnabled,
+			InAppEnabled:          nil, // Handler layer에 없으면 nil
+			SystemNotifications:   handlerReq.SystemUpdates,
+			VMNotifications:       nil,
+			CostNotifications:     nil,
+			SecurityNotifications: handlerReq.SecurityAlerts,
+			LowPriorityEnabled:    nil,
+			MediumPriorityEnabled: nil,
+			HighPriorityEnabled:   nil,
+			UrgentPriorityEnabled: nil,
+			QuietHoursStart:       "",
+			QuietHoursEnd:         "",
+			Timezone:              "",
 		}
 
 		userID, err := h.ExtractUserIDFromContext(c)
@@ -479,7 +494,7 @@ func (h *Handler) updateNotificationPreferencesHandler(req domain.UpdateNotifica
 			return
 		}
 
-		h.logPreferencesUpdateAttempt(c, userID, req)
+		h.logPreferencesUpdateAttempt(c, userID, domainReq)
 
 		// Get existing preferences or create new ones
 		preferences, err := h.notificationService.GetNotificationPreferences(
@@ -507,50 +522,50 @@ func (h *Handler) updateNotificationPreferencesHandler(req domain.UpdateNotifica
 		}
 
 		// Update preferences with request data
-		if req.EmailEnabled != nil {
-			preferences.EmailEnabled = *req.EmailEnabled
+		if domainReq.EmailEnabled != nil {
+			preferences.EmailEnabled = *domainReq.EmailEnabled
 		}
-		if req.PushEnabled != nil {
-			preferences.PushEnabled = *req.PushEnabled
+		if domainReq.PushEnabled != nil {
+			preferences.PushEnabled = *domainReq.PushEnabled
 		}
-		if req.BrowserEnabled != nil {
-			preferences.BrowserEnabled = *req.BrowserEnabled
+		if domainReq.BrowserEnabled != nil {
+			preferences.BrowserEnabled = *domainReq.BrowserEnabled
 		}
-		if req.InAppEnabled != nil {
-			preferences.InAppEnabled = *req.InAppEnabled
+		if domainReq.InAppEnabled != nil {
+			preferences.InAppEnabled = *domainReq.InAppEnabled
 		}
-		if req.SystemNotifications != nil {
-			preferences.SystemNotifications = *req.SystemNotifications
+		if domainReq.SystemNotifications != nil {
+			preferences.SystemNotifications = *domainReq.SystemNotifications
 		}
-		if req.VMNotifications != nil {
-			preferences.VMNotifications = *req.VMNotifications
+		if domainReq.VMNotifications != nil {
+			preferences.VMNotifications = *domainReq.VMNotifications
 		}
-		if req.CostNotifications != nil {
-			preferences.CostNotifications = *req.CostNotifications
+		if domainReq.CostNotifications != nil {
+			preferences.CostNotifications = *domainReq.CostNotifications
 		}
-		if req.SecurityNotifications != nil {
-			preferences.SecurityNotifications = *req.SecurityNotifications
+		if domainReq.SecurityNotifications != nil {
+			preferences.SecurityNotifications = *domainReq.SecurityNotifications
 		}
-		if req.LowPriorityEnabled != nil {
-			preferences.LowPriorityEnabled = *req.LowPriorityEnabled
+		if domainReq.LowPriorityEnabled != nil {
+			preferences.LowPriorityEnabled = *domainReq.LowPriorityEnabled
 		}
-		if req.MediumPriorityEnabled != nil {
-			preferences.MediumPriorityEnabled = *req.MediumPriorityEnabled
+		if domainReq.MediumPriorityEnabled != nil {
+			preferences.MediumPriorityEnabled = *domainReq.MediumPriorityEnabled
 		}
-		if req.HighPriorityEnabled != nil {
-			preferences.HighPriorityEnabled = *req.HighPriorityEnabled
+		if domainReq.HighPriorityEnabled != nil {
+			preferences.HighPriorityEnabled = *domainReq.HighPriorityEnabled
 		}
-		if req.UrgentPriorityEnabled != nil {
-			preferences.UrgentPriorityEnabled = *req.UrgentPriorityEnabled
+		if domainReq.UrgentPriorityEnabled != nil {
+			preferences.UrgentPriorityEnabled = *domainReq.UrgentPriorityEnabled
 		}
-		if req.QuietHoursStart != "" {
-			preferences.QuietHoursStart = req.QuietHoursStart
+		if domainReq.QuietHoursStart != "" {
+			preferences.QuietHoursStart = domainReq.QuietHoursStart
 		}
-		if req.QuietHoursEnd != "" {
-			preferences.QuietHoursEnd = req.QuietHoursEnd
+		if domainReq.QuietHoursEnd != "" {
+			preferences.QuietHoursEnd = domainReq.QuietHoursEnd
 		}
-		if req.Timezone != "" {
-			preferences.Timezone = req.Timezone
+		if domainReq.Timezone != "" {
+			preferences.Timezone = domainReq.Timezone
 		}
 
 		err = h.notificationService.UpdateNotificationPreferences(
@@ -563,7 +578,7 @@ func (h *Handler) updateNotificationPreferencesHandler(req domain.UpdateNotifica
 			return
 		}
 
-		h.logPreferencesUpdateSuccess(c, userID, req)
+		h.logPreferencesUpdateSuccess(c, userID, domainReq)
 		h.OK(c, preferences, "Notification preferences updated successfully")
 	}
 }

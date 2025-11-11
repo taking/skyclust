@@ -27,7 +27,7 @@ func NewAWSHandler(
 
 // ListVPCs handles VPC listing requests
 func (h *AWSHandler) ListVPCs(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
 	if err != nil {
 		h.HandleError(c, err, "list_vpcs")
 		return
@@ -43,13 +43,23 @@ func (h *AWSHandler) ListVPCs(c *gin.Context) {
 		Region:       region,
 	}
 
-	vpcs, err := h.networkService.ListVPCs(c.Request.Context(), credential, serviceReq)
+	vpcs, err := h.GetNetworkService().ListVPCs(c.Request.Context(), credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "list_vpcs")
 		return
 	}
 
-	h.OK(c, vpcs, "VPCs retrieved successfully")
+	// Direct array: data[] (not data.vpcs[])
+	if vpcs != nil && vpcs.Total > 0 {
+		page, limit := h.ParsePageLimitParams(c)
+		h.OKWithPagination(c, vpcs.VPCs, "VPCs retrieved successfully", page, limit, vpcs.Total)
+	} else {
+		vpcList := []networkservice.VPCInfo{}
+		if vpcs != nil {
+			vpcList = vpcs.VPCs
+		}
+		h.OK(c, vpcList, "VPCs retrieved successfully")
+	}
 }
 
 // CreateVPC handles VPC creation
@@ -71,7 +81,7 @@ func (h *AWSHandler) CreateVPC(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromBody(c, h.credentialService, credentialID, domain.ProviderAWS)
+	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), credentialID, domain.ProviderAWS)
 	if err != nil {
 		h.HandleError(c, err, "create_vpc")
 		return
@@ -80,7 +90,7 @@ func (h *AWSHandler) CreateVPC(c *gin.Context) {
 	req.CredentialID = credential.ID.String()
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	vpc, err := h.networkService.CreateVPC(ctx, credential, req)
+	vpc, err := h.GetNetworkService().CreateVPC(ctx, credential, req)
 	if err != nil {
 		h.HandleError(c, err, "create_vpc")
 		return
@@ -91,7 +101,7 @@ func (h *AWSHandler) CreateVPC(c *gin.Context) {
 
 // GetVPC handles VPC detail requests
 func (h *AWSHandler) GetVPC(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
 	if err != nil {
 		h.HandleError(c, err, "get_vpc")
 		return
@@ -114,7 +124,7 @@ func (h *AWSHandler) GetVPC(c *gin.Context) {
 		Region:       region,
 	}
 
-	vpc, err := h.networkService.GetVPC(c.Request.Context(), credential, serviceReq)
+	vpc, err := h.GetNetworkService().GetVPC(c.Request.Context(), credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "get_vpc")
 		return
@@ -125,7 +135,7 @@ func (h *AWSHandler) GetVPC(c *gin.Context) {
 
 // UpdateVPC handles VPC update requests
 func (h *AWSHandler) UpdateVPC(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
 	if err != nil {
 		h.HandleError(c, err, "update_vpc")
 		return
@@ -149,7 +159,7 @@ func (h *AWSHandler) UpdateVPC(c *gin.Context) {
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	vpc, err := h.networkService.UpdateVPC(ctx, credential, req, vpcID, region)
+	vpc, err := h.GetNetworkService().UpdateVPC(ctx, credential, req, vpcID, region)
 	if err != nil {
 		h.HandleError(c, err, "update_vpc")
 		return
@@ -160,7 +170,7 @@ func (h *AWSHandler) UpdateVPC(c *gin.Context) {
 
 // DeleteVPC handles VPC deletion requests
 func (h *AWSHandler) DeleteVPC(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
 	if err != nil {
 		h.HandleError(c, err, "delete_vpc")
 		return
@@ -184,7 +194,7 @@ func (h *AWSHandler) DeleteVPC(c *gin.Context) {
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	err = h.networkService.DeleteVPC(ctx, credential, serviceReq)
+	err = h.GetNetworkService().DeleteVPC(ctx, credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "delete_vpc")
 		return
@@ -195,7 +205,7 @@ func (h *AWSHandler) DeleteVPC(c *gin.Context) {
 
 // ListSubnets handles subnet listing requests
 func (h *AWSHandler) ListSubnets(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
 	if err != nil {
 		h.HandleError(c, err, "list_subnets")
 		return
@@ -214,13 +224,23 @@ func (h *AWSHandler) ListSubnets(c *gin.Context) {
 		Region:       region,
 	}
 
-	subnets, err := h.networkService.ListSubnets(c.Request.Context(), credential, serviceReq)
+	subnets, err := h.GetNetworkService().ListSubnets(c.Request.Context(), credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "list_subnets")
 		return
 	}
 
-	h.OK(c, subnets, "Subnets retrieved successfully")
+	// Direct array: data[] (not data.subnets[])
+	if subnets != nil && subnets.Total > 0 {
+		page, limit := h.ParsePageLimitParams(c)
+		h.OKWithPagination(c, subnets.Subnets, "Subnets retrieved successfully", page, limit, subnets.Total)
+	} else {
+		subnetList := []networkservice.SubnetInfo{}
+		if subnets != nil {
+			subnetList = subnets.Subnets
+		}
+		h.OK(c, subnetList, "Subnets retrieved successfully")
+	}
 }
 
 // CreateSubnet handles subnet creation
@@ -242,7 +262,7 @@ func (h *AWSHandler) CreateSubnet(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromBody(c, h.credentialService, credentialID, domain.ProviderAWS)
+	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), credentialID, domain.ProviderAWS)
 	if err != nil {
 		h.HandleError(c, err, "create_subnet")
 		return
@@ -251,7 +271,7 @@ func (h *AWSHandler) CreateSubnet(c *gin.Context) {
 	req.CredentialID = credential.ID.String()
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	subnet, err := h.networkService.CreateSubnet(ctx, credential, req)
+	subnet, err := h.GetNetworkService().CreateSubnet(ctx, credential, req)
 	if err != nil {
 		h.HandleError(c, err, "create_subnet")
 		return
@@ -262,7 +282,7 @@ func (h *AWSHandler) CreateSubnet(c *gin.Context) {
 
 // GetSubnet handles subnet detail requests
 func (h *AWSHandler) GetSubnet(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
 	if err != nil {
 		h.HandleError(c, err, "get_subnet")
 		return
@@ -281,7 +301,7 @@ func (h *AWSHandler) GetSubnet(c *gin.Context) {
 		Region:       region,
 	}
 
-	subnet, err := h.networkService.GetSubnet(c.Request.Context(), credential, serviceReq)
+	subnet, err := h.GetNetworkService().GetSubnet(c.Request.Context(), credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "get_subnet")
 		return
@@ -292,7 +312,7 @@ func (h *AWSHandler) GetSubnet(c *gin.Context) {
 
 // UpdateSubnet handles subnet update requests
 func (h *AWSHandler) UpdateSubnet(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
 	if err != nil {
 		h.HandleError(c, err, "update_subnet")
 		return
@@ -312,7 +332,7 @@ func (h *AWSHandler) UpdateSubnet(c *gin.Context) {
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	subnet, err := h.networkService.UpdateSubnet(ctx, credential, req, subnetID, region)
+	subnet, err := h.GetNetworkService().UpdateSubnet(ctx, credential, req, subnetID, region)
 	if err != nil {
 		h.HandleError(c, err, "update_subnet")
 		return
@@ -323,7 +343,7 @@ func (h *AWSHandler) UpdateSubnet(c *gin.Context) {
 
 // DeleteSubnet handles subnet deletion requests
 func (h *AWSHandler) DeleteSubnet(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
 	if err != nil {
 		h.HandleError(c, err, "delete_subnet")
 		return
@@ -343,7 +363,7 @@ func (h *AWSHandler) DeleteSubnet(c *gin.Context) {
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	err = h.networkService.DeleteSubnet(ctx, credential, serviceReq)
+	err = h.GetNetworkService().DeleteSubnet(ctx, credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "delete_subnet")
 		return
@@ -354,7 +374,7 @@ func (h *AWSHandler) DeleteSubnet(c *gin.Context) {
 
 // ListSecurityGroups handles security group listing requests
 func (h *AWSHandler) ListSecurityGroups(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
 	if err != nil {
 		h.HandleError(c, err, "list_security_groups")
 		return
@@ -386,13 +406,23 @@ func (h *AWSHandler) ListSecurityGroups(c *gin.Context) {
 		Region:       region,
 	}
 
-	securityGroups, err := h.networkService.ListSecurityGroups(c.Request.Context(), credential, serviceReq)
+	securityGroups, err := h.GetNetworkService().ListSecurityGroups(c.Request.Context(), credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "list_security_groups")
 		return
 	}
 
-	h.OK(c, securityGroups, "Security groups retrieved successfully")
+	// Direct array: data[] (not data.security_groups[])
+	if securityGroups != nil && securityGroups.Total > 0 {
+		page, limit := h.ParsePageLimitParams(c)
+		h.OKWithPagination(c, securityGroups.SecurityGroups, "Security groups retrieved successfully", page, limit, securityGroups.Total)
+	} else {
+		sgList := []networkservice.SecurityGroupInfo{}
+		if securityGroups != nil {
+			sgList = securityGroups.SecurityGroups
+		}
+		h.OK(c, sgList, "Security groups retrieved successfully")
+	}
 }
 
 // CreateSecurityGroup handles security group creation
@@ -414,7 +444,7 @@ func (h *AWSHandler) CreateSecurityGroup(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromBody(c, h.credentialService, credentialID, domain.ProviderAWS)
+	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), credentialID, domain.ProviderAWS)
 	if err != nil {
 		h.HandleError(c, err, "create_security_group")
 		return
@@ -429,7 +459,7 @@ func (h *AWSHandler) CreateSecurityGroup(c *gin.Context) {
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	securityGroup, err := h.networkService.CreateSecurityGroup(ctx, credential, req)
+	securityGroup, err := h.GetNetworkService().CreateSecurityGroup(ctx, credential, req)
 	if err != nil {
 		h.HandleError(c, err, "create_security_group")
 		return
@@ -450,7 +480,7 @@ func (h *AWSHandler) UpdateSecurityGroup(c *gin.Context) {
 
 // DeleteSecurityGroup handles security group deletion requests
 func (h *AWSHandler) DeleteSecurityGroup(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
 	if err != nil {
 		h.HandleError(c, err, "delete_security_group")
 		return
@@ -475,7 +505,7 @@ func (h *AWSHandler) DeleteSecurityGroup(c *gin.Context) {
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	err = h.networkService.DeleteSecurityGroup(ctx, credential, serviceReq)
+	err = h.GetNetworkService().DeleteSecurityGroup(ctx, credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "delete_security_group")
 		return

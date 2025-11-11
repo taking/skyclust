@@ -37,12 +37,11 @@ class NetworkService extends BaseService {
     credentialId: string,
     region?: string
   ): Promise<VPC[]> {
-    // 1. API 호출하여 VPC 목록 가져오기
-    const data = await this.get<{ vpcs: VPC[] }>(
+    // API 호출하여 VPC 목록 가져오기
+    const data = await this.get<VPC[]>(
       API_ENDPOINTS.network.vpcs.list(provider, credentialId, region)
     );
-    // 2. 응답 데이터에서 vpcs 배열 추출 (없으면 빈 배열)
-    return data.vpcs || [];
+    return Array.isArray(data) ? data : [];
   }
 
   /**
@@ -128,10 +127,10 @@ class NetworkService extends BaseService {
     vpcId: string,
     region: string
   ): Promise<Subnet[]> {
-    const data = await this.get<{ subnets: Subnet[] }>(
+    const data = await this.get<Subnet[]>(
       API_ENDPOINTS.network.subnets.list(provider, credentialId, vpcId, region)
     );
-    return data.subnets || [];
+    return Array.isArray(data) ? data : [];
   }
 
   async getSubnet(
@@ -186,10 +185,10 @@ class NetworkService extends BaseService {
     vpcId: string,
     region: string
   ): Promise<SecurityGroup[]> {
-    const data = await this.get<{ security_groups: SecurityGroup[] }>(
+    const data = await this.get<SecurityGroup[]>(
       API_ENDPOINTS.network.securityGroups.list(provider, credentialId, vpcId, region)
     );
-    return data.security_groups || [];
+    return Array.isArray(data) ? data : [];
   }
 
   async getSecurityGroup(

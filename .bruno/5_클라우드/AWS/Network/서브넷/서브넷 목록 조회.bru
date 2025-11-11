@@ -25,9 +25,12 @@ auth:bearer {
 }
 
 script:post-response {
-  bru.setEnvVar("subnetId", res.body.data.subnets[0].id);
+  const dataArray = Array.isArray(res.body.data) ? res.body.data : [];
+  if (dataArray.length > 0) {
+    bru.setEnvVar("subnetId", dataArray[0].id);
+  }
   
-  const rowData = res.body.data.subnets;
+  const rowData = dataArray;
   
   const columnDefinitions = [
     { field: "id", filter: true, floatingFilter: true },
@@ -57,11 +60,11 @@ tests {
   });
   
   test("Response has subnets array", function() {
-    expect(res.getBody().data.subnets).to.be.an('array');
+    expect(res.getBody().data).to.be.an('array');
   });
   
   test("Subnet has required fields", function() {
-    const subnets = res.getBody().data.subnets;
+    const subnets = res.getBody().data;
     if (subnets.length > 0) {
       const subnet = subnets[0];
       expect(subnet).to.have.property('id');

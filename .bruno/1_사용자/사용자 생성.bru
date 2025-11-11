@@ -27,7 +27,7 @@ body:json {
 }
 
 script:post-response {
-  bru.setEnvVar("userId", res.body.data.user.id);
+  bru.setEnvVar("userId", res.body.data.id);
 }
 
 tests {

@@ -25,13 +25,11 @@ tests {
   
   test("Response contains providers array", function() {
     const body = res.getBody();
-    expect(body.data).to.have.property('providers');
-    expect(body.data.providers).to.be.an('array');
-    expect(body.data).to.have.property('total');
+    expect(body.data).to.be.an('array');
   });
   
   test("Providers have valid structure", function() {
-    const providers = res.getBody().data.providers;
+    const providers = res.getBody().data;
     if (providers.length > 0) {
       expect(providers[0]).to.have.property('id');
       expect(providers[0]).to.have.property('name');
@@ -40,10 +38,6 @@ tests {
     }
   });
   
-  test("Total matches providers count", function() {
-    const body = res.getBody();
-    expect(body.data.total).to.equal(body.data.providers.length);
-  });
 }
 
 docs {
@@ -79,8 +73,6 @@ docs {
     - `created_at` (string): 생성 시간
     - `updated_at` (string): 수정 시간
   
-  ### total (number)
-  - 등록된 프로바이더 총 개수
   
   ## 사용 예시
   
@@ -92,20 +84,17 @@ docs {
   ```json
   {
     "success": true,
-    "data": {
-      "providers": [
-        {
-          "id": "123e4567-e89b-12d3-a456-426614174000",
-          "name": "My Google Account",
-          "provider_type": "google",
-          "redirect_url": "http://localhost:8080/api/v1/auth/oidc/google/callback",
-          "enabled": true,
-          "created_at": "2025-01-01T00:00:00Z",
-          "updated_at": "2025-01-01T00:00:00Z"
-        }
-      ],
-      "total": 1
-    },
+    "data": [
+      {
+        "id": "123e4567-e89b-12d3-a456-426614174000",
+        "name": "My Google Account",
+        "provider_type": "google",
+        "redirect_url": "http://localhost:8080/api/v1/auth/oidc/google/callback",
+        "enabled": true,
+        "created_at": "2025-01-01T00:00:00Z",
+        "updated_at": "2025-01-01T00:00:00Z"
+      }
+    ],
     "message": "OIDC providers retrieved successfully"
   }
   ```

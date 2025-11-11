@@ -75,11 +75,20 @@ type ListVPCsRequest struct {
 	CredentialID string `json:"credential_id" validate:"required,uuid"`
 	Region       string `json:"region,omitempty"`
 	VPCID        string `json:"vpc_id,omitempty"`
+	// Pagination parameters
+	Page  int `json:"page,omitempty" form:"page" validate:"omitempty,min=1"`
+	Limit int `json:"limit,omitempty" form:"limit" validate:"omitempty,min=1,max=100"`
+	// Sorting parameters
+	SortBy    string `json:"sort_by,omitempty" form:"sort_by"`                          // name, state, created_at
+	SortOrder string `json:"sort_order,omitempty" form:"sort_order" validate:"omitempty,oneof=asc desc"`
+	// Filtering parameters
+	Search string `json:"search,omitempty" form:"search"` // Search in name, description
 }
 
 // ListVPCsResponse represents the response after listing VPCs
 type ListVPCsResponse struct {
 	VPCs []VPCInfo `json:"vpcs"`
+	Total int64    `json:"total,omitempty"` // Total count after filtering (before pagination)
 }
 
 // ListSubnetsRequest represents a request to list subnets
@@ -88,11 +97,20 @@ type ListSubnetsRequest struct {
 	VPCID        string `json:"vpc_id,omitempty"`
 	Region       string `json:"region,omitempty"`
 	SubnetID     string `json:"subnet_id,omitempty"`
+	// Pagination parameters
+	Page  int `json:"page,omitempty" form:"page" validate:"omitempty,min=1"`
+	Limit int `json:"limit,omitempty" form:"limit" validate:"omitempty,min=1,max=100"`
+	// Sorting parameters
+	SortBy    string `json:"sort_by,omitempty" form:"sort_by"`                          // name, state, cidr_block, created_at
+	SortOrder string `json:"sort_order,omitempty" form:"sort_order" validate:"omitempty,oneof=asc desc"`
+	// Filtering parameters
+	Search string `json:"search,omitempty" form:"search"` // Search in name, description, cidr_block
 }
 
 // ListSubnetsResponse represents the response after listing subnets
 type ListSubnetsResponse struct {
 	Subnets []SubnetInfo `json:"subnets"`
+	Total   int64        `json:"total,omitempty"` // Total count after filtering (before pagination)
 }
 
 // ListSecurityGroupsRequest represents a request to list security groups
@@ -101,11 +119,20 @@ type ListSecurityGroupsRequest struct {
 	VPCID           string `json:"vpc_id,omitempty"`
 	Region          string `json:"region,omitempty"`
 	SecurityGroupID string `json:"security_group_id,omitempty"`
+	// Pagination parameters
+	Page  int `json:"page,omitempty" form:"page" validate:"omitempty,min=1"`
+	Limit int `json:"limit,omitempty" form:"limit" validate:"omitempty,min=1,max=100"`
+	// Sorting parameters
+	SortBy    string `json:"sort_by,omitempty" form:"sort_by"`                          // name, created_at
+	SortOrder string `json:"sort_order,omitempty" form:"sort_order" validate:"omitempty,oneof=asc desc"`
+	// Filtering parameters
+	Search string `json:"search,omitempty" form:"search"` // Search in name, description
 }
 
 // ListSecurityGroupsResponse represents the response after listing security groups
 type ListSecurityGroupsResponse struct {
 	SecurityGroups []SecurityGroupInfo `json:"security_groups"`
+	Total          int64               `json:"total,omitempty"` // Total count after filtering (before pagination)
 }
 
 // Network CRUD DTOs

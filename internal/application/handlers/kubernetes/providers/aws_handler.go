@@ -52,14 +52,14 @@ func (h *AWSHandler) createClusterHandler() handlers.HandlerFunc {
 
 		h.logClusterCreationAttempt(c, userID, req)
 
-		credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, domain.ProviderAWS)
+		credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), req.CredentialID, domain.ProviderAWS)
 		if err != nil {
 			h.HandleError(c, err, "create_cluster")
 			return
 		}
 
 		ctx := h.EnrichContextWithRequestMetadata(c)
-		cluster, err := h.k8sService.CreateEKSCluster(ctx, credential, req)
+		cluster, err := h.GetK8sService().CreateEKSCluster(ctx, credential, req)
 		if err != nil {
 			h.HandleError(c, err, "create_cluster")
 			return
@@ -82,7 +82,7 @@ func (h *AWSHandler) ListClusters(c *gin.Context) {
 
 func (h *AWSHandler) listClustersHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
 		if err != nil {
 			h.HandleError(c, err, "list_clusters")
 			return
@@ -98,7 +98,7 @@ func (h *AWSHandler) listClustersHandler() handlers.HandlerFunc {
 
 		h.logClusterListAttempt(c, userID, credential.ID, region)
 
-		clusters, err := h.k8sService.ListEKSClusters(c.Request.Context(), credential, region)
+		clusters, err := h.GetK8sService().ListEKSClusters(c.Request.Context(), credential, region)
 		if err != nil {
 			h.HandleError(c, err, "list_clusters")
 			return
@@ -121,7 +121,7 @@ func (h *AWSHandler) GetCluster(c *gin.Context) {
 
 func (h *AWSHandler) getClusterHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
 		if err != nil {
 			h.HandleError(c, err, "get_cluster")
 			return
@@ -142,7 +142,7 @@ func (h *AWSHandler) getClusterHandler() handlers.HandlerFunc {
 
 		h.logClusterGetAttempt(c, userID, clusterName, credential.ID, region)
 
-		cluster, err := h.k8sService.GetEKSCluster(c.Request.Context(), credential, clusterName, region)
+		cluster, err := h.GetK8sService().GetEKSCluster(c.Request.Context(), credential, clusterName, region)
 		if err != nil {
 			h.HandleError(c, err, "get_cluster")
 			return
@@ -165,7 +165,7 @@ func (h *AWSHandler) DeleteCluster(c *gin.Context) {
 
 func (h *AWSHandler) deleteClusterHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
 		if err != nil {
 			h.HandleError(c, err, "delete_cluster")
 			return
@@ -187,7 +187,7 @@ func (h *AWSHandler) deleteClusterHandler() handlers.HandlerFunc {
 		h.logClusterDeletionAttempt(c, userID, clusterName, credential.ID, region)
 
 		ctx := h.EnrichContextWithRequestMetadata(c)
-		if err := h.k8sService.DeleteEKSCluster(ctx, credential, clusterName, region); err != nil {
+		if err := h.GetK8sService().DeleteEKSCluster(ctx, credential, clusterName, region); err != nil {
 			h.HandleError(c, err, "delete_cluster")
 			return
 		}
@@ -209,7 +209,7 @@ func (h *AWSHandler) GetKubeconfig(c *gin.Context) {
 
 func (h *AWSHandler) getKubeconfigHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
 		if err != nil {
 			h.HandleError(c, err, "get_kubeconfig")
 			return
@@ -230,7 +230,7 @@ func (h *AWSHandler) getKubeconfigHandler() handlers.HandlerFunc {
 
 		h.logKubeconfigGetAttempt(c, userID, clusterName, credential.ID, region)
 
-		kubeconfig, err := h.k8sService.GetEKSKubeconfig(c.Request.Context(), credential, clusterName, region)
+		kubeconfig, err := h.GetK8sService().GetEKSKubeconfig(c.Request.Context(), credential, clusterName, region)
 		if err != nil {
 			h.HandleError(c, err, "get_kubeconfig")
 			return
@@ -277,14 +277,14 @@ func (h *AWSHandler) createNodePoolHandler() handlers.HandlerFunc {
 
 		h.logNodePoolCreationAttempt(c, userID, clusterName, req)
 
-		credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, domain.ProviderAWS)
+		credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), req.CredentialID, domain.ProviderAWS)
 		if err != nil {
 			h.HandleError(c, err, "create_node_pool")
 			return
 		}
 
 		ctx := h.EnrichContextWithRequestMetadata(c)
-		nodePool, err := h.k8sService.CreateEKSNodePool(ctx, credential, req)
+		nodePool, err := h.GetK8sService().CreateEKSNodePool(ctx, credential, req)
 		if err != nil {
 			h.HandleError(c, err, "create_node_pool")
 			return
@@ -348,14 +348,14 @@ func (h *AWSHandler) createNodeGroupHandler() handlers.HandlerFunc {
 
 		h.logNodeGroupCreationAttempt(c, userID, clusterName, req)
 
-		credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, domain.ProviderAWS)
+		credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), req.CredentialID, domain.ProviderAWS)
 		if err != nil {
 			h.HandleError(c, err, "create_node_group")
 			return
 		}
 
 		ctx := h.EnrichContextWithRequestMetadata(c)
-		nodeGroup, err := h.k8sService.CreateEKSNodeGroup(ctx, credential, req)
+		nodeGroup, err := h.GetK8sService().CreateEKSNodeGroup(ctx, credential, req)
 		if err != nil {
 			h.HandleError(c, err, "create_node_group")
 			return
@@ -378,7 +378,7 @@ func (h *AWSHandler) ListNodeGroups(c *gin.Context) {
 
 func (h *AWSHandler) listNodeGroupsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
 		if err != nil {
 			h.HandleError(c, err, "list_node_groups")
 			return
@@ -405,20 +405,20 @@ func (h *AWSHandler) listNodeGroupsHandler() handlers.HandlerFunc {
 			Region:       region,
 		}
 
-		nodeGroupsResponse, err := h.k8sService.ListNodeGroups(c.Request.Context(), credential, req)
+		nodeGroupsResponse, err := h.GetK8sService().ListNodeGroups(c.Request.Context(), credential, req)
 		if err != nil {
 			h.HandleError(c, err, "list_node_groups")
 			return
 		}
 
 		h.logNodeGroupsListSuccess(c, userID, clusterName, len(nodeGroupsResponse.NodeGroups))
-		h.OK(c, nodeGroupsResponse, "Node groups retrieved successfully")
+		h.OK(c, nodeGroupsResponse.NodeGroups, "Node groups retrieved successfully")
 	}
 }
 
 // GetNodeGroup handles getting node group details
 func (h *AWSHandler) GetNodeGroup(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
 	if err != nil {
 		h.HandleError(c, err, "get_node_group")
 		return
@@ -445,7 +445,7 @@ func (h *AWSHandler) GetNodeGroup(c *gin.Context) {
 		Region:        region,
 	}
 
-	nodeGroup, err := h.k8sService.GetNodeGroup(c.Request.Context(), credential, req)
+	nodeGroup, err := h.GetK8sService().GetNodeGroup(c.Request.Context(), credential, req)
 	if err != nil {
 		h.HandleError(c, err, "get_node_group")
 		return
@@ -474,7 +474,7 @@ func (h *AWSHandler) DeleteNodeGroup(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromBody(c, h.credentialService, req.CredentialID, domain.ProviderAWS)
+	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), req.CredentialID, domain.ProviderAWS)
 	if err != nil {
 		h.HandleError(c, err, "delete_node_group")
 		return
@@ -488,7 +488,7 @@ func (h *AWSHandler) DeleteNodeGroup(c *gin.Context) {
 	}
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
-	if err := h.k8sService.DeleteNodeGroup(ctx, credential, deleteReq); err != nil {
+	if err := h.GetK8sService().DeleteNodeGroup(ctx, credential, deleteReq); err != nil {
 		h.HandleError(c, err, "delete_node_group")
 		return
 	}
@@ -684,7 +684,7 @@ func (h *AWSHandler) GetEKSVersions(c *gin.Context) {
 
 func (h *AWSHandler) getEKSVersionsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
 		if err != nil {
 			h.HandleError(c, err, "get_eks_versions")
 			return
@@ -704,7 +704,7 @@ func (h *AWSHandler) getEKSVersionsHandler() handlers.HandlerFunc {
 
 		h.logEKSVersionsGetAttempt(c, userID, credential.ID, region)
 
-		versions, err := h.k8sService.GetEKSVersions(c.Request.Context(), credential, region)
+		versions, err := h.GetK8sService().GetEKSVersions(c.Request.Context(), credential, region)
 		if err != nil {
 			h.HandleError(c, err, "get_eks_versions")
 			return
@@ -728,7 +728,7 @@ func (h *AWSHandler) GetAWSRegions(c *gin.Context) {
 
 func (h *AWSHandler) getAWSRegionsHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
 		if err != nil {
 			h.HandleError(c, err, "get_aws_regions")
 			return
@@ -742,7 +742,7 @@ func (h *AWSHandler) getAWSRegionsHandler() handlers.HandlerFunc {
 
 		h.logAWSRegionsGetAttempt(c, userID, credential.ID)
 
-		regions, err := h.k8sService.GetAWSRegions(c.Request.Context(), credential)
+		regions, err := h.GetK8sService().GetAWSRegions(c.Request.Context(), credential)
 		if err != nil {
 			h.HandleError(c, err, "get_aws_regions")
 			return
@@ -766,7 +766,7 @@ func (h *AWSHandler) GetAvailabilityZones(c *gin.Context) {
 
 func (h *AWSHandler) getAvailabilityZonesHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
 		if err != nil {
 			h.HandleError(c, err, "get_availability_zones")
 			return
@@ -786,7 +786,7 @@ func (h *AWSHandler) getAvailabilityZonesHandler() handlers.HandlerFunc {
 
 		h.logAvailabilityZonesGetAttempt(c, userID, credential.ID, region)
 
-		zones, err := h.k8sService.GetAvailabilityZones(c.Request.Context(), credential, region)
+		zones, err := h.GetK8sService().GetAvailabilityZones(c.Request.Context(), credential, region)
 		if err != nil {
 			h.HandleError(c, err, "get_availability_zones")
 			return

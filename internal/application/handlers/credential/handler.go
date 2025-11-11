@@ -33,10 +33,8 @@ func NewHandler(credentialService domain.CredentialService) *Handler {
 
 // CreateCredential: 자격증명 생성 요청을 처리합니다 (데코레이터 패턴 사용)
 func (h *Handler) CreateCredential(c *gin.Context) {
-	var req domain.CreateCredentialRequest
-
 	handler := h.Compose(
-		h.createCredentialHandler(req),
+		h.createCredentialHandler(),
 		h.StandardCRUDDecorators("create_credential")...,
 	)
 
@@ -44,10 +42,11 @@ func (h *Handler) CreateCredential(c *gin.Context) {
 }
 
 // createCredentialHandler: 자격증명 생성의 핵심 비즈니스 로직을 처리합니다
-func (h *Handler) createCredentialHandler(req domain.CreateCredentialRequest) handlers.HandlerFunc {
+func (h *Handler) createCredentialHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
-		var req domain.CreateCredentialRequest
-		if err := h.ExtractValidatedRequest(c, &req); err != nil {
+		// Handler layer DTO 사용
+		var handlerReq CreateCredentialRequest
+		if err := h.ValidateRequest(c, &handlerReq); err != nil {
 			h.HandleError(c, err, "create_credential")
 			return
 		}
@@ -59,16 +58,24 @@ func (h *Handler) createCredentialHandler(req domain.CreateCredentialRequest) ha
 		}
 
 		// Parse workspace ID from request
-		workspaceID, err := uuid.Parse(req.WorkspaceID)
+		workspaceID, err := uuid.Parse(handlerReq.WorkspaceID)
 		if err != nil {
 			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid workspace ID format", 400), "create_credential")
 			return
 		}
 
-		h.logCredentialCreationAttempt(c, userID, req)
+		// Domain layer DTO로 변환
+		domainReq := domain.CreateCredentialRequest{
+			WorkspaceID: handlerReq.WorkspaceID,
+			Provider:    handlerReq.Provider,
+			Name:        handlerReq.Name,
+			Data:        handlerReq.Data,
+		}
+
+		h.logCredentialCreationAttempt(c, userID, domainReq)
 
 		ctx := h.EnrichContextWithRequestMetadata(c)
-		credential, err := h.credentialService.CreateCredential(ctx, workspaceID, userID, req)
+		credential, err := h.credentialService.CreateCredential(ctx, workspaceID, userID, domainReq)
 		if err != nil {
 			h.HandleError(c, err, "create_credential")
 			return
@@ -125,7 +132,7 @@ func (h *Handler) getCredentialsHandler() handlers.HandlerFunc {
 			credentials = h.filterCredentialsByProvider(credentials, providerFilter)
 		}
 
-		h.OK(c, gin.H{"credentials": credentials}, "Credentials retrieved successfully")
+		h.OK(c, credentials, "Credentials retrieved successfully")
 	}
 }
 
@@ -181,10 +188,8 @@ func (h *Handler) getCredentialHandler() handlers.HandlerFunc {
 
 // UpdateCredential: 자격증명 업데이트 요청을 처리합니다 (데코레이터 패턴 사용)
 func (h *Handler) UpdateCredential(c *gin.Context) {
-	var req domain.UpdateCredentialRequest
-
 	handler := h.Compose(
-		h.updateCredentialHandler(req),
+		h.updateCredentialHandler(),
 		h.StandardCRUDDecorators("update_credential")...,
 	)
 
@@ -192,7 +197,7 @@ func (h *Handler) UpdateCredential(c *gin.Context) {
 }
 
 // updateCredentialHandler: 자격증명 업데이트의 핵심 비즈니스 로직을 처리합니다
-func (h *Handler) updateCredentialHandler(req domain.UpdateCredentialRequest) handlers.HandlerFunc {
+func (h *Handler) updateCredentialHandler() handlers.HandlerFunc {
 	return func(c *gin.Context) {
 		credentialID, err := h.ExtractPathParam(c, "id")
 		if err != nil {
@@ -200,10 +205,20 @@ func (h *Handler) updateCredentialHandler(req domain.UpdateCredentialRequest) ha
 			return
 		}
 
-		var req domain.UpdateCredentialRequest
-		if err := h.ExtractValidatedRequest(c, &req); err != nil {
+		// Handler layer DTO 사용
+		var handlerReq UpdateCredentialRequest
+		if err := h.ValidateRequest(c, &handlerReq); err != nil {
 			h.HandleError(c, err, "update_credential")
 			return
+		}
+
+		// Domain layer DTO로 변환
+		var domainReq domain.UpdateCredentialRequest
+		if handlerReq.Name != nil {
+			domainReq.Name = handlerReq.Name
+		}
+		if handlerReq.Data != nil {
+			domainReq.Data = handlerReq.Data
 		}
 
 		userID, err := h.ExtractUserIDFromContext(c)
@@ -228,7 +243,7 @@ func (h *Handler) updateCredentialHandler(req domain.UpdateCredentialRequest) ha
 		h.logCredentialUpdateAttempt(c, userID, credentialID)
 
 		ctx := h.EnrichContextWithRequestMetadata(c)
-		credential, err := h.credentialService.UpdateCredential(ctx, workspaceID, credentialID, req)
+		credential, err := h.credentialService.UpdateCredential(ctx, workspaceID, credentialID, domainReq)
 		if err != nil {
 			h.HandleError(c, err, "update_credential")
 			return

@@ -44,4 +44,8 @@ tests {
   test("VPC ID matches request", function() {
     expect(res.getBody().data.id).to.equal(req.getPathParam('vpc_id'));
   });
+  
+  test("VPC has subnets array", function() {
+    expect(res.getBody().data.subnets).to.be.an('array');
+  });
 }

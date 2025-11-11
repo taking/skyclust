@@ -16,7 +16,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2Types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
-	"go.uber.org/zap"
 )
 
 // GetEKSVersions returns available Kubernetes versions for EKS in the specified region
@@ -26,13 +25,15 @@ func (s *Service) GetEKSVersions(ctx context.Context, credential *domain.Credent
 	cacheKey := fmt.Sprintf("eks:versions:%s:%s", credentialID, region)
 
 	// 캐시에서 조회 시도 (버전 목록은 자주 변하지 않으므로 긴 TTL 사용)
-	if s.cache != nil {
-		var cachedVersions []string
-		if err := s.cache.Get(ctx, cacheKey, &cachedVersions); err == nil {
-			s.logger.Debug("EKS versions retrieved from cache",
-				zap.String("credential_id", credentialID),
-				zap.String("region", region))
-			return cachedVersions, nil
+	if s.cacheService != nil {
+		cachedValue, err := s.cacheService.Get(ctx, cacheKey)
+		if err == nil && cachedValue != nil {
+			if cachedVersions, ok := cachedValue.([]string); ok {
+				s.logger.Debug(ctx, "EKS versions retrieved from cache",
+					domain.NewLogField("credential_id", credentialID),
+					domain.NewLogField("region", region))
+				return cachedVersions, nil
+			}
 		}
 	}
 
@@ -85,20 +86,20 @@ func (s *Service) GetEKSVersions(ctx context.Context, credential *domain.Credent
 	// versions는 이미 빈 슬라이스로 초기화되어 있으므로 nil 체크 불필요
 
 	// 캐시에 저장 (버전 목록은 자주 변하지 않으므로 긴 TTL 사용 - 1시간)
-	if s.cache != nil && len(versions) > 0 {
+	if s.cacheService != nil && len(versions) > 0 {
 		ttl := 1 * time.Hour
-		if err := s.cache.Set(ctx, cacheKey, versions, ttl); err != nil {
-			s.logger.Warn("Failed to cache EKS versions",
-				zap.String("credential_id", credentialID),
-				zap.String("region", region),
-				zap.Error(err))
+		if err := s.cacheService.Set(ctx, cacheKey, versions, ttl); err != nil {
+			s.logger.Warn(ctx, "Failed to cache EKS versions",
+				domain.NewLogField("credential_id", credentialID),
+				domain.NewLogField("region", region),
+				domain.NewLogField("error", err))
 		}
 	}
 
-	s.logger.Info("EKS versions retrieved",
-		zap.String("credential_id", credentialID),
-		zap.String("region", region),
-		zap.Int("version_count", len(versions)))
+	s.logger.Info(ctx, "EKS versions retrieved",
+		domain.NewLogField("credential_id", credentialID),
+		domain.NewLogField("region", region),
+		domain.NewLogField("version_count", len(versions)))
 
 	return versions, nil
 }
@@ -110,12 +111,14 @@ func (s *Service) GetAWSRegions(ctx context.Context, credential *domain.Credenti
 	cacheKey := fmt.Sprintf("aws:regions:%s", credentialID)
 
 	// 캐시에서 조회 시도 (Region 목록은 매우 자주 변하지 않으므로 긴 TTL 사용)
-	if s.cache != nil {
-		var cachedRegions []string
-		if err := s.cache.Get(ctx, cacheKey, &cachedRegions); err == nil {
-			s.logger.Debug("AWS regions retrieved from cache",
-				zap.String("credential_id", credentialID))
-			return cachedRegions, nil
+	if s.cacheService != nil {
+		cachedValue, err := s.cacheService.Get(ctx, cacheKey)
+		if err == nil && cachedValue != nil {
+			if cachedRegions, ok := cachedValue.([]string); ok {
+				s.logger.Debug(ctx, "AWS regions retrieved from cache",
+					domain.NewLogField("credential_id", credentialID))
+				return cachedRegions, nil
+			}
 		}
 	}
 
@@ -138,7 +141,7 @@ func (s *Service) GetAWSRegions(ctx context.Context, credential *domain.Credenti
 		AllRegions: aws.Bool(false), // 활성화된 리전만 반환
 	})
 	if err != nil {
-		err = s.handleAWSError(err, "get AWS regions")
+		err = s.providerErrorConverter.ConvertAWSError(err, "get AWS regions")
 		if err != nil {
 			return nil, err
 		}
@@ -160,18 +163,18 @@ func (s *Service) GetAWSRegions(ctx context.Context, credential *domain.Credenti
 	}
 
 	// 캐시에 저장 (Region 목록은 매우 자주 변하지 않으므로 긴 TTL 사용 - 24시간)
-	if s.cache != nil && len(regions) > 0 {
+	if s.cacheService != nil && len(regions) > 0 {
 		ttl := 24 * time.Hour
-		if err := s.cache.Set(ctx, cacheKey, regions, ttl); err != nil {
-			s.logger.Warn("Failed to cache AWS regions",
-				zap.String("credential_id", credentialID),
-				zap.Error(err))
+		if err := s.cacheService.Set(ctx, cacheKey, regions, ttl); err != nil {
+			s.logger.Warn(ctx, "Failed to cache AWS regions",
+				domain.NewLogField("credential_id", credentialID),
+				domain.NewLogField("error", err))
 		}
 	}
 
-	s.logger.Info("AWS regions retrieved",
-		zap.String("credential_id", credentialID),
-		zap.Int("region_count", len(regions)))
+	s.logger.Info(ctx, "AWS regions retrieved",
+		domain.NewLogField("credential_id", credentialID),
+		domain.NewLogField("region_count", len(regions)))
 
 	return regions, nil
 }
@@ -183,13 +186,15 @@ func (s *Service) GetAvailabilityZones(ctx context.Context, credential *domain.C
 	cacheKey := fmt.Sprintf("aws:availability-zones:%s:%s", credentialID, region)
 
 	// 캐시에서 조회 시도
-	if s.cache != nil {
-		var cachedZones []string
-		if err := s.cache.Get(ctx, cacheKey, &cachedZones); err == nil {
-			s.logger.Debug("Availability zones retrieved from cache",
-				zap.String("credential_id", credentialID),
-				zap.String("region", region))
-			return cachedZones, nil
+	if s.cacheService != nil {
+		cachedValue, err := s.cacheService.Get(ctx, cacheKey)
+		if err == nil && cachedValue != nil {
+			if cachedZones, ok := cachedValue.([]string); ok {
+				s.logger.Debug(ctx, "Availability zones retrieved from cache",
+					domain.NewLogField("credential_id", credentialID),
+					domain.NewLogField("region", region))
+				return cachedZones, nil
+			}
 		}
 	}
 
@@ -216,7 +221,7 @@ func (s *Service) GetAvailabilityZones(ctx context.Context, credential *domain.C
 		},
 	})
 	if err != nil {
-		err = s.handleAWSError(err, "get availability zones")
+		err = s.providerErrorConverter.ConvertAWSError(err, "get availability zones")
 		if err != nil {
 			return nil, err
 		}
@@ -238,20 +243,20 @@ func (s *Service) GetAvailabilityZones(ctx context.Context, credential *domain.C
 	}
 
 	// 캐시에 저장 (Zone 목록은 자주 변하지 않으므로 긴 TTL 사용 - 1시간)
-	if s.cache != nil && len(zones) > 0 {
+	if s.cacheService != nil && len(zones) > 0 {
 		ttl := 1 * time.Hour
-		if err := s.cache.Set(ctx, cacheKey, zones, ttl); err != nil {
-			s.logger.Warn("Failed to cache availability zones",
-				zap.String("credential_id", credentialID),
-				zap.String("region", region),
-				zap.Error(err))
+		if err := s.cacheService.Set(ctx, cacheKey, zones, ttl); err != nil {
+			s.logger.Warn(ctx, "Failed to cache availability zones",
+				domain.NewLogField("credential_id", credentialID),
+				domain.NewLogField("region", region),
+				domain.NewLogField("error", err))
 		}
 	}
 
-	s.logger.Info("Availability zones retrieved",
-		zap.String("credential_id", credentialID),
-		zap.String("region", region),
-		zap.Int("zone_count", len(zones)))
+	s.logger.Info(ctx, "Availability zones retrieved",
+		domain.NewLogField("credential_id", credentialID),
+		domain.NewLogField("region", region),
+		domain.NewLogField("zone_count", len(zones)))
 
 	return zones, nil
 }

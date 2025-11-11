@@ -4,18 +4,14 @@ import (
 	networkservice "skyclust/internal/application/services/network"
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
-	"skyclust/internal/shared/readability"
 
 	"github.com/gin-gonic/gin"
 )
 
 // BaseHandler provides common functionality for all provider network handlers
+// It embeds ProviderBaseHandler to provide standardized provider handler functionality
 type BaseHandler struct {
-	*handlers.BaseHandler
-	networkService    *networkservice.Service
-	credentialService domain.CredentialService
-	provider          string
-	readabilityHelper *readability.ReadabilityHelper
+	*handlers.ProviderBaseHandler[*networkservice.Service]
 }
 
 // NewBaseHandler creates a new base handler with common dependencies
@@ -26,47 +22,36 @@ func NewBaseHandler(
 	handlerName string,
 ) *BaseHandler {
 	return &BaseHandler{
-		BaseHandler:       handlers.NewBaseHandler(handlerName),
-		networkService:    networkService,
-		credentialService: credentialService,
-		provider:          provider,
-		readabilityHelper: readability.NewReadabilityHelper(),
+		ProviderBaseHandler: handlers.NewProviderBaseHandler(
+			networkService,
+			credentialService,
+			provider,
+			handlerName,
+		),
 	}
 }
 
 // Helper methods for parsing request parameters
+// These methods delegate to ProviderBaseHandler methods for consistency
 
 func (h *BaseHandler) parseRegion(c *gin.Context) string {
-	region := c.Query("region")
-	if region == "" {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region is required", 400), "parse_region")
-		return ""
-	}
-	return region
+	return h.ParseRegion(c)
 }
 
 func (h *BaseHandler) parseVPCID(c *gin.Context) string {
-	vpcID := c.Query("vpc_id")
-	if vpcID == "" {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "vpc_id is required", 400), "parse_vpc_id")
-		return ""
-	}
-	return vpcID
+	return h.ParseVPCID(c)
 }
 
 func (h *BaseHandler) parseSubnetID(c *gin.Context) string {
-	subnetID := c.Query("subnet_id")
-	if subnetID == "" {
-		subnetID = c.Param("subnet_id")
-	}
-	if subnetID == "" {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "subnet_id is required", 400), "parse_subnet_id")
-		return ""
-	}
-	return subnetID
+	return h.ParseSubnetID(c)
 }
 
-// NotImplemented handles unimplemented endpoints
-func (h *BaseHandler) NotImplemented(c *gin.Context, operation string) {
-	h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotImplemented, operation+" not yet implemented", 501), operation)
+// GetNetworkService returns the network service instance
+func (h *BaseHandler) GetNetworkService() *networkservice.Service {
+	return h.GetService()
+}
+
+// GetCredentialService returns the credential service instance
+func (h *BaseHandler) GetCredentialService() domain.CredentialService {
+	return h.ProviderBaseHandler.GetCredentialService()
 }

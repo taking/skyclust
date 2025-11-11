@@ -20,7 +20,7 @@ auth:bearer {
 }
 
 script:post-response {
-  const rowData = res.body.data.vpcs;
+  const rowData = Array.isArray(res.body.data) ? res.body.data : [];
   
   const columnDefinitions = [
     { field: "id", filter: true, floatingFilter: true },

@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/gcp/kubernetes/clusters/{{clusterName}}/nodepools/{{nodePoolName}}?credential_id={{gcp_credentialsId}}&region=asia-northeast3
+  url: {{baseUrl}}/api/{{apiVersion}}/gcp/kubernetes/clusters/{{clusterName}}/node-pools/{{nodePoolName}}?credential_id={{gcp_credentialsId}}&region=asia-northeast3
   body: none
   auth: bearer
 }
@@ -81,7 +81,7 @@ docs {
   ## 사용 예시
   
   ```bash
-  GET /api/v1/gcp/kubernetes/clusters/skyclust-gke-1234567890/nodepools/skyclust-nodepool-1234567890?credential_id=123&region=us-central1
+  GET /api/v1/gcp/kubernetes/clusters/skyclust-gke-1234567890/node-pools/skyclust-nodepool-1234567890?credential_id=123&region=us-central1
   Authorization: Bearer your-jwt-token
   ```
   

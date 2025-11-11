@@ -43,6 +43,7 @@ type UserResponse struct {
 type UpdateUserRequest struct {
 	Username *string `json:"username,omitempty" validate:"omitempty,min=3,max=50"`
 	Email    *string `json:"email,omitempty" validate:"omitempty,email"`
+	Password *string `json:"password,omitempty" validate:"omitempty,min=8"`
 	IsActive *bool   `json:"is_active,omitempty"`
 }
 

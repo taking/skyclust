@@ -4,9 +4,10 @@ import "time"
 
 // CreateCredentialRequest represents a credential creation request
 type CreateCredentialRequest struct {
-	Provider string                 `json:"provider" validate:"required,oneof=aws gcp openstack azure"`
-	Name     string                 `json:"name" validate:"required,min=1,max=100"`
-	Data     map[string]interface{} `json:"data" validate:"required"`
+	WorkspaceID string                 `json:"workspace_id" validate:"required,uuid"`
+	Provider    string                 `json:"provider" validate:"required,oneof=aws gcp openstack azure"`
+	Name        string                 `json:"name" validate:"required,min=1,max=100"`
+	Data        map[string]interface{} `json:"data" validate:"required"`
 }
 
 // UpdateCredentialRequest represents a credential update request

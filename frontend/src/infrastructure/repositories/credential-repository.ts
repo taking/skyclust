@@ -31,19 +31,11 @@ export class CredentialRepository extends BaseRepository implements ICredentialR
   }
 
   async list(workspaceId: string): Promise<Credential[]> {
-    const data = await this.get<{ credentials: Credential[] } | Credential[]>(
+    const data = await this.get<Credential[]>(
       API_ENDPOINTS.credentials.list(workspaceId)
     );
     
-    if (Array.isArray(data)) {
-      return data;
-    }
-    
-    if (data && typeof data === 'object' && 'credentials' in data) {
-      return (data as { credentials: Credential[] }).credentials || [];
-    }
-    
-    return [];
+    return Array.isArray(data) ? data : [];
   }
 
   async create(data: CreateCredentialForm & { workspace_id: string; name?: string }): Promise<Credential> {

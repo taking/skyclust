@@ -5,7 +5,7 @@ meta {
 }
 
 delete {
-  url: {{baseUrl}}/api/{{apiVersion}}/azure/kubernetes/clusters/{{aksClusterName}}/nodepools/nodepool1?credential_id={{azure_credentialsId}}&region={{aksLocation}}
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/kubernetes/clusters/{{aksClusterName}}/node-pools/nodepool1?credential_id={{azure_credentialsId}}&region={{aksLocation}}
   body: none
   auth: bearer
 }

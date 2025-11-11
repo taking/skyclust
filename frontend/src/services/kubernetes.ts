@@ -37,12 +37,11 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region?: string
   ): Promise<KubernetesCluster[]> {
-    // 1. API 호출하여 클러스터 목록 가져오기
-    const data = await this.get<{ clusters: KubernetesCluster[] }>(
+    // API 호출하여 클러스터 목록 가져오기
+    const data = await this.get<KubernetesCluster[]>(
       API_ENDPOINTS.kubernetes.clusters.list(provider, credentialId, region)
     );
-    // 2. 응답 데이터에서 clusters 배열 추출 (없으면 빈 배열)
-    return data.clusters || [];
+    return Array.isArray(data) ? data : [];
   }
 
   /**
@@ -185,10 +184,10 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<NodePool[]> {
-    const data = await this.get<{ node_pools: NodePool[] }>(
+    const data = await this.get<NodePool[]>(
       API_ENDPOINTS.kubernetes.nodePools.list(provider, clusterName, credentialId, region)
     );
-    return data.node_pools || [];
+    return Array.isArray(data) ? data : [];
   }
 
   async getNodePool(
@@ -247,10 +246,10 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<NodeGroup[]> {
-    const data = await this.get<{ node_groups: NodeGroup[] }>(
+    const data = await this.get<NodeGroup[]>(
       API_ENDPOINTS.kubernetes.nodeGroups.list(provider, clusterName, credentialId, region)
     );
-    return data.node_groups || [];
+    return Array.isArray(data) ? data : [];
   }
 
   async getNodeGroup(

@@ -2,9 +2,9 @@ package admin
 
 import (
 	"net/http"
-	"strconv"
 	"time"
 
+	"skyclust/internal/application/handlers/auth"
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
 	"skyclust/internal/shared/readability"
@@ -58,13 +58,8 @@ func (h *Handler) getUsersHandler() handlers.HandlerFunc {
 			return
 		}
 
-		// Use standardized pagination metadata
-		paginationMeta := h.CalculatePaginationMeta(total, filters.Page, filters.Limit)
-
-		h.OK(c, gin.H{
-			"users":      users,
-			"pagination": paginationMeta,
-		}, "Users retrieved successfully")
+		// Use standardized paginated response (direct array: data[])
+		h.BuildPaginatedResponse(c, users, filters.Page, filters.Limit, total, "Users retrieved successfully")
 	}
 }
 
@@ -103,8 +98,9 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	var req domain.UpdateUserRequest
-	if err := h.ValidateRequest(c, &req); err != nil {
+	// Handler layer DTO 사용 (auth 패키지의 타입 재사용)
+	var handlerReq auth.UpdateUserRequest
+	if err := h.ValidateRequest(c, &handlerReq); err != nil {
 		h.HandleError(c, err, "update_user")
 		return
 	}
@@ -117,23 +113,23 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 	}
 
 	// Update user fields
-	if req.Username != nil && *req.Username != "" {
-		user.Username = *req.Username
+	if handlerReq.Username != nil && *handlerReq.Username != "" {
+		user.Username = *handlerReq.Username
 	}
-	if req.Email != nil && *req.Email != "" {
-		user.Email = *req.Email
+	if handlerReq.Email != nil && *handlerReq.Email != "" {
+		user.Email = *handlerReq.Email
 	}
-	if req.Password != nil && *req.Password != "" {
+	if handlerReq.Password != nil && *handlerReq.Password != "" {
 		// Hash new password
-		hashedPassword, err := h.userService.HashPassword(*req.Password)
+		hashedPassword, err := h.userService.HashPassword(*handlerReq.Password)
 		if err != nil {
 			h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, "failed to hash password", 500), "update_user")
 			return
 		}
 		user.PasswordHash = hashedPassword
 	}
-	if req.IsActive != nil {
-		user.Active = *req.IsActive
+	if handlerReq.IsActive != nil {
+		user.Active = *handlerReq.IsActive
 	}
 
 	// Update user
@@ -236,26 +232,29 @@ func (h *Handler) checkAdminPermission(c *gin.Context) bool {
 
 // parseUserFilters: 쿼리 파라미터로부터 사용자 필터를 파싱합니다
 func (h *Handler) parseUserFilters(c *gin.Context) domain.UserFilters {
-	limitStr := c.DefaultQuery("limit", "10")
-	pageStr := c.DefaultQuery("page", "1")
-	search := c.Query("search")
+	// Use standardized query params parsing
+	params := h.ParseStandardQueryParams(c)
+
+	// Extract specific filters
 	role := c.Query("role")
 	status := c.Query("status")
 
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil || limit < 1 {
-		limit = 10
+	// Also check filter_ prefix for role and status
+	if role == "" {
+		if roleFilter, ok := params.Filters["role"].(string); ok {
+			role = roleFilter
+		}
 	}
-
-	page, err := strconv.Atoi(pageStr)
-	if err != nil || page < 1 {
-		page = 1
+	if status == "" {
+		if statusFilter, ok := params.Filters["status"].(string); ok {
+			status = statusFilter
+		}
 	}
 
 	return domain.UserFilters{
-		Limit:  limit,
-		Page:   page,
-		Search: search,
+		Limit:  params.Limit,
+		Page:   params.Page,
+		Search: params.Search,
 		Role:   role,
 		Status: status,
 	}

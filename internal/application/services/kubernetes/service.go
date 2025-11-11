@@ -2,8 +2,6 @@ package kubernetes
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -11,8 +9,7 @@ import (
 
 	"skyclust/internal/application/services/common"
 	"skyclust/internal/domain"
-	"skyclust/internal/infrastructure/messaging"
-	"skyclust/pkg/cache"
+	providererrors "skyclust/internal/shared/errors"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v5"
@@ -20,80 +17,36 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/eks/types"
-	"github.com/aws/smithy-go"
-	"go.uber.org/zap"
-	"google.golang.org/api/container/v1"
-	"google.golang.org/api/option"
 )
-
-// handleAWSError: AWS SDK 에러를 적절한 도메인 에러로 변환합니다
-func (s *Service) handleAWSError(err error, operation string) error {
-	if err == nil {
-		return nil
-	}
-
-	// Check if it's an AWS API error
-	var apiErr *smithy.OperationError
-	if errors.As(err, &apiErr) {
-		// Check for specific AWS error codes
-		switch {
-		case strings.Contains(err.Error(), "UnrecognizedClientException"):
-			return domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid AWS credentials", 400)
-		case strings.Contains(err.Error(), "InvalidUserID.NotFound"):
-			return domain.NewDomainError(domain.ErrCodeBadRequest, "AWS user not found", 400)
-		case strings.Contains(err.Error(), "AccessDenied") || strings.Contains(err.Error(), "UnauthorizedOperation"):
-			// Extract the specific action and user from the error message for better context
-			errorMsg := err.Error()
-			if strings.Contains(errorMsg, "not authorized to perform") {
-				// Extract action name if available
-				if strings.Contains(errorMsg, "ec2:DescribeRegions") {
-					return domain.NewDomainError(domain.ErrCodeForbidden, "AWS IAM permission required: The credential does not have permission to list AWS regions. Please add 'ec2:DescribeRegions' permission to the IAM user or role.", 403)
-				}
-				if strings.Contains(errorMsg, "eks:") {
-					return domain.NewDomainError(domain.ErrCodeForbidden, "AWS IAM permission required: The credential does not have permission to access EKS. Please add the required EKS permissions to the IAM user or role.", 403)
-				}
-				return domain.NewDomainError(domain.ErrCodeForbidden, "AWS IAM permission required: The credential does not have the required permissions. Please check your IAM policy.", 403)
-			}
-			return domain.NewDomainError(domain.ErrCodeForbidden, "Access denied to AWS resources", 403)
-		case strings.Contains(err.Error(), "NoSuchEntity"):
-			return domain.NewDomainError(domain.ErrCodeNotFound, "AWS resource not found", 404)
-		case strings.Contains(err.Error(), "InvalidParameterValue"):
-			return domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid AWS parameter", 400)
-		case strings.Contains(err.Error(), "ThrottlingException"):
-			return domain.NewDomainError(domain.ErrCodeProviderQuota, "AWS API rate limit exceeded", 429)
-		default:
-			return domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("AWS API error: %s", err.Error()), 400)
-		}
-	}
-
-	// For other errors, return as internal server error
-	return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("Failed to %s: %v", operation, err), 500)
-}
 
 // Service: Kubernetes 서비스 구현체
 type Service struct {
-	credentialService domain.CredentialService
-	cache             cache.Cache
-	keyBuilder        *cache.CacheKeyBuilder
-	invalidator       *cache.Invalidator
-	eventPublisher    *messaging.Publisher
-	auditLogRepo      domain.AuditLogRepository
-	logger            *zap.Logger
+	credentialService      domain.CredentialService
+	cacheService           domain.CacheService
+	eventService           domain.EventService
+	auditLogRepo           domain.AuditLogRepository
+	logger                 domain.LoggerService
+	providerErrorConverter *providererrors.ProviderErrorConverter
 }
 
 // NewService: 새로운 Kubernetes 서비스를 생성합니다
-func NewService(credentialService domain.CredentialService, cacheService cache.Cache, eventBus messaging.Bus, auditLogRepo domain.AuditLogRepository, logger *zap.Logger) *Service {
-	eventPublisher := messaging.NewPublisher(eventBus, logger)
+func NewService(
+	credentialService domain.CredentialService,
+	cacheService domain.CacheService,
+	eventService domain.EventService,
+	auditLogRepo domain.AuditLogRepository,
+	logger domain.LoggerService,
+) *Service {
 	return &Service{
-		credentialService: credentialService,
-		cache:             cacheService,
-		keyBuilder:        cache.NewCacheKeyBuilder(),
-		invalidator:       cache.NewInvalidatorWithEvents(cacheService, eventPublisher),
-		eventPublisher:    eventPublisher,
-		auditLogRepo:      auditLogRepo,
-		logger:            logger,
+		credentialService:      credentialService,
+		cacheService:           cacheService,
+		eventService:           eventService,
+		auditLogRepo:           auditLogRepo,
+		logger:                 logger,
+		providerErrorConverter: providererrors.NewProviderErrorConverter(),
 	}
 }
 
@@ -110,287 +63,6 @@ func (s *Service) CreateGCPGKECluster(ctx context.Context, credential *domain.Cr
 // CreateAKSCluster: Azure AKS 클러스터를 생성합니다
 func (s *Service) CreateAKSCluster(ctx context.Context, credential *domain.Credential, req CreateAKSClusterRequest) (*CreateClusterResponse, error) {
 	return s.createAzureAKSCluster(ctx, credential, req)
-}
-
-// createGCPGKEClusterWithAdvanced: 고급 설정으로 GCP GKE 클러스터를 생성합니다
-func (s *Service) createGCPGKEClusterWithAdvanced(ctx context.Context, credential *domain.Credential, req CreateGKEClusterRequest) (*CreateClusterResponse, error) {
-	// Decrypt credential data
-	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
-	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
-	}
-
-	// Convert credential data to JSON
-	jsonData, err := json.Marshal(credData)
-	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to marshal credential data: %v", err), 500)
-	}
-
-	// Create GCP Container service
-	containerService, err := container.NewService(ctx, option.WithCredentialsJSON(jsonData))
-	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create GCP container service: %v", err), 502)
-	}
-
-	// Determine cluster type
-	clusterType := "standard" // Default to standard
-	if req.ClusterMode != nil && req.ClusterMode.Type == "autopilot" {
-		clusterType = "autopilot"
-	}
-
-	// Build cluster configuration
-	clusterConfig := &container.Cluster{
-		Name:                  req.Name,
-		InitialClusterVersion: req.Version,
-	}
-
-	// Network configuration
-	if req.Network != nil {
-		clusterConfig.Network = req.Network.VPCID
-		clusterConfig.Subnetwork = req.Network.SubnetID
-		// Note: Network configuration details will be set through IP allocation policy
-		if req.Network.PodCIDR != "" || req.Network.ServiceCIDR != "" {
-			clusterConfig.IpAllocationPolicy = &container.IPAllocationPolicy{
-				ClusterIpv4CidrBlock:  req.Network.PodCIDR,
-				ServicesIpv4CidrBlock: req.Network.ServiceCIDR,
-				UseIpAliases:          true,
-			}
-		}
-		if req.Network.PrivateNodes || req.Network.PrivateEndpoint {
-			clusterConfig.PrivateClusterConfig = &container.PrivateClusterConfig{
-				EnablePrivateNodes:    req.Network.PrivateNodes,
-				EnablePrivateEndpoint: req.Network.PrivateEndpoint,
-			}
-		}
-		if len(req.Network.MasterAuthorizedNetworks) > 0 {
-			var cidrBlocks []*container.CidrBlock
-			for _, network := range req.Network.MasterAuthorizedNetworks {
-				cidrBlocks = append(cidrBlocks, &container.CidrBlock{
-					CidrBlock: network,
-				})
-			}
-			clusterConfig.MasterAuthorizedNetworksConfig = &container.MasterAuthorizedNetworksConfig{
-				Enabled:    true,
-				CidrBlocks: cidrBlocks,
-			}
-		}
-	} else {
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "network configuration is required", 400)
-	}
-
-	// Node pool configuration for standard clusters
-	if clusterType == "standard" {
-		if req.NodePool == nil {
-			return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "node pool configuration is required for standard clusters", 400)
-		}
-		clusterConfig.NodePools = []*container.NodePool{
-			s.buildNodePoolConfig(req.NodePool),
-		}
-	}
-
-	// Security configuration
-	if req.Security != nil {
-		clusterConfig.WorkloadIdentityConfig = &container.WorkloadIdentityConfig{
-			WorkloadPool: fmt.Sprintf("%s.svc.id.goog", req.ProjectID),
-		}
-		clusterConfig.NetworkPolicy = &container.NetworkPolicy{
-			Enabled: req.Security.NetworkPolicy,
-		}
-		clusterConfig.BinaryAuthorization = &container.BinaryAuthorization{
-			Enabled: req.Security.BinaryAuthorization,
-		}
-	}
-
-	// Add tags (convert to GCP format)
-	if len(req.Tags) > 0 {
-		gcpTags := make(map[string]string)
-		for key, value := range req.Tags {
-			gcpKey := convertToGCPTagKey(key)
-			gcpTags[gcpKey] = value
-		}
-		clusterConfig.ResourceLabels = gcpTags
-	}
-
-	// Create cluster request
-	createRequest := &container.CreateClusterRequest{
-		Cluster: clusterConfig,
-	}
-
-	// Determine location (zone or region)
-	location := req.Region
-	if req.Zone != "" {
-		location = req.Zone
-	}
-
-	// Create cluster
-	_, err = containerService.Projects.Locations.Clusters.Create(
-		fmt.Sprintf("projects/%s/locations/%s", req.ProjectID, location),
-		createRequest,
-	).Context(ctx).Do()
-
-	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create GCP GKE cluster: %v", err), 502)
-	}
-
-	s.logger.Info("GCP GKE cluster creation initiated",
-		zap.String("cluster_name", req.Name),
-		zap.String("project_id", req.ProjectID),
-		zap.String("location", location),
-		zap.String("cluster_type", clusterType))
-
-	// Build response
-	response := &CreateClusterResponse{
-		ClusterID: fmt.Sprintf("projects/%s/locations/%s/clusters/%s", req.ProjectID, location, req.Name),
-		Name:      req.Name,
-		Version:   req.Version,
-		Region:    req.Region,
-		Zone:      req.Zone,
-		Status:    "creating",
-		ProjectID: req.ProjectID,
-		Tags:      req.Tags,
-		CreatedAt: time.Now().Format(time.RFC3339),
-	}
-
-	// 캐시 무효화: 클러스터 목록 캐시 삭제
-	credentialID := credential.ID.String()
-	if err := s.invalidator.InvalidateKubernetesClusterList(ctx, credential.Provider, credentialID, req.Region); err != nil {
-		s.logger.Warn("Failed to invalidate Kubernetes cluster list cache",
-			zap.String("provider", credential.Provider),
-			zap.String("credential_id", credentialID),
-			zap.String("region", req.Region),
-			zap.Error(err))
-	}
-
-	// 이벤트 발행: 클러스터 생성 이벤트
-	clusterData := map[string]interface{}{
-		"cluster_id": response.ClusterID,
-		"name":       response.Name,
-		"version":    response.Version,
-		"status":     response.Status,
-		"region":     response.Region,
-	}
-	if err := s.eventPublisher.PublishKubernetesClusterEvent(ctx, credential.Provider, credentialID, req.Region, "created", clusterData); err != nil {
-		s.logger.Warn("Failed to publish Kubernetes cluster created event",
-			zap.String("provider", credential.Provider),
-			zap.String("credential_id", credentialID),
-			zap.String("cluster_name", req.Name),
-			zap.Error(err))
-	}
-
-	// 감사로그 기록
-	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionKubernetesClusterCreate,
-		fmt.Sprintf("POST /api/v1/%s/kubernetes/clusters", credential.Provider),
-		map[string]interface{}{
-			"cluster_id":    response.ClusterID,
-			"cluster_name":  response.Name,
-			"provider":      credential.Provider,
-			"credential_id": credentialID,
-			"region":        response.Region,
-			"version":       response.Version,
-		},
-	)
-
-	return response, nil
-}
-
-// buildNodePoolConfig: GCP 노드 풀 구성을 생성합니다
-func (s *Service) buildNodePoolConfig(nodePool *GKENodePoolConfig) *container.NodePool {
-	if nodePool == nil {
-		return nil
-	}
-
-	config := &container.NodePool{
-		Name: nodePool.Name,
-		Config: &container.NodeConfig{
-			MachineType: nodePool.MachineType,
-			DiskSizeGb:  int64(nodePool.DiskSizeGB),
-			DiskType:    nodePool.DiskType,
-			Labels:      nodePool.Labels,
-		},
-		InitialNodeCount: int64(nodePool.NodeCount),
-	}
-
-	// Add auto scaling configuration
-	if nodePool.AutoScaling != nil && nodePool.AutoScaling.Enabled {
-		config.Autoscaling = &container.NodePoolAutoscaling{
-			Enabled:      true,
-			MinNodeCount: int64(nodePool.AutoScaling.MinNodeCount),
-			MaxNodeCount: int64(nodePool.AutoScaling.MaxNodeCount),
-		}
-	}
-
-	// Add preemptible/spot configuration
-	if nodePool.Preemptible {
-		config.Config.Preemptible = true
-	}
-	if nodePool.Spot {
-		config.Config.Spot = true
-	}
-
-	return config
-}
-
-// convertToGCPTagKey: 태그 키를 GCP 호환 형식으로 변환합니다
-func convertToGCPTagKey(key string) string {
-	if key == "" {
-		return key
-	}
-
-	// Convert to lowercase and replace invalid characters
-	result := strings.ToLower(key)
-
-	// Replace spaces and other invalid characters with underscores
-	result = strings.ReplaceAll(result, " ", "_")
-	result = strings.ReplaceAll(result, ".", "_")
-	result = strings.ReplaceAll(result, "/", "_")
-	result = strings.ReplaceAll(result, "\\", "_")
-	result = strings.ReplaceAll(result, ":", "_")
-	result = strings.ReplaceAll(result, ";", "_")
-	result = strings.ReplaceAll(result, "=", "_")
-	result = strings.ReplaceAll(result, "+", "_")
-	result = strings.ReplaceAll(result, "*", "_")
-	result = strings.ReplaceAll(result, "?", "_")
-	result = strings.ReplaceAll(result, "!", "_")
-	result = strings.ReplaceAll(result, "@", "_")
-	result = strings.ReplaceAll(result, "#", "_")
-	result = strings.ReplaceAll(result, "$", "_")
-	result = strings.ReplaceAll(result, "%", "_")
-	result = strings.ReplaceAll(result, "^", "_")
-	result = strings.ReplaceAll(result, "&", "_")
-	result = strings.ReplaceAll(result, "(", "_")
-	result = strings.ReplaceAll(result, ")", "_")
-	result = strings.ReplaceAll(result, "[", "_")
-	result = strings.ReplaceAll(result, "]", "_")
-	result = strings.ReplaceAll(result, "{", "_")
-	result = strings.ReplaceAll(result, "}", "_")
-	result = strings.ReplaceAll(result, "|", "_")
-	result = strings.ReplaceAll(result, "~", "_")
-	result = strings.ReplaceAll(result, "`", "_")
-
-	// Ensure it starts with a letter
-	if len(result) > 0 && !isLetter(result[0]) {
-		result = "tag_" + result
-	}
-
-	// Remove consecutive underscores
-	for strings.Contains(result, "__") {
-		result = strings.ReplaceAll(result, "__", "_")
-	}
-
-	// Remove leading/trailing underscores
-	result = strings.Trim(result, "_")
-
-	// Ensure it's not empty
-	if result == "" {
-		result = "tag"
-	}
-
-	return result
-}
-
-// isLetter: 문자가 알파벳인지 확인합니다
-func isLetter(c byte) bool {
-	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
 // createAWSEKSCluster: AWS EKS 클러스터를 생성합니다
@@ -461,13 +133,7 @@ func (s *Service) createAWSEKSCluster(ctx context.Context, credential *domain.Cr
 	// Role ARN 자동 생성 (role_arn이 없을 경우)
 	roleARN := req.RoleARN
 	if roleARN == "" {
-		// 환경 변수로 기본 Role 이름 커스터마이징 가능 (기본값: EKSClusterRole)
-		defaultRoleName := os.Getenv("AWS_EKS_DEFAULT_CLUSTER_ROLE_NAME")
-		if defaultRoleName == "" {
-			defaultRoleName = "EKSClusterRole"
-		}
-
-		generatedARN, err := s.generateDefaultRoleARN(ctx, cfg, defaultRoleName)
+		generatedARN, err := s.generateDefaultRoleARN(ctx, cfg, s.getDefaultRoleName())
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate default role ARN: %w", err)
 		}
@@ -513,7 +179,7 @@ func (s *Service) createAWSEKSCluster(ctx context.Context, credential *domain.Cr
 	// Create cluster
 	output, err := eksClient.CreateCluster(ctx, input)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create EKS cluster: %v", err), 502)
+		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create EKS cluster: %v", err), HTTPStatusBadGateway)
 	}
 
 	// Convert to response
@@ -534,19 +200,22 @@ func (s *Service) createAWSEKSCluster(ctx context.Context, credential *domain.Cr
 		response.CreatedAt = output.Cluster.CreatedAt.String()
 	}
 
-	s.logger.Info("EKS cluster creation initiated",
-		zap.String("cluster_name", req.Name),
-		zap.String("region", req.Region),
-		zap.String("version", req.Version))
+	s.logger.Info(ctx, "EKS cluster creation initiated",
+		domain.NewLogField("cluster_name", req.Name),
+		domain.NewLogField("region", req.Region),
+		domain.NewLogField("version", req.Version))
 
 	// 캐시 무효화: 클러스터 목록 캐시 삭제
 	credentialID := credential.ID.String()
-	if err := s.invalidator.InvalidateKubernetesClusterList(ctx, credential.Provider, credentialID, req.Region); err != nil {
-		s.logger.Warn("Failed to invalidate Kubernetes cluster list cache",
-			zap.String("provider", credential.Provider),
-			zap.String("credential_id", credentialID),
-			zap.String("region", req.Region),
-			zap.Error(err))
+	if s.cacheService != nil {
+		cacheKey := buildKubernetesClusterListKey(credential.Provider, credentialID, req.Region)
+		if err := s.cacheService.Delete(ctx, cacheKey); err != nil {
+			s.logger.Warn(ctx, "Failed to invalidate Kubernetes cluster list cache",
+				domain.NewLogField("provider", credential.Provider),
+				domain.NewLogField("credential_id", credentialID),
+				domain.NewLogField("region", req.Region),
+				domain.NewLogField("error", err))
+		}
 	}
 
 	return response, nil
@@ -556,17 +225,25 @@ func (s *Service) createAWSEKSCluster(ctx context.Context, credential *domain.Cr
 func (s *Service) ListEKSClusters(ctx context.Context, credential *domain.Credential, region string) (*ListClustersResponse, error) {
 	// 캐시 키 생성
 	credentialID := credential.ID.String()
-	cacheKey := s.keyBuilder.BuildKubernetesClusterListKey(credential.Provider, credentialID, region)
+	cacheKey := buildKubernetesClusterListKey(credential.Provider, credentialID, region)
 
 	// 캐시에서 조회 시도
-	if s.cache != nil {
-		var cachedResponse ListClustersResponse
-		if err := s.cache.Get(ctx, cacheKey, &cachedResponse); err == nil {
-			s.logger.Debug("Kubernetes clusters retrieved from cache",
-				zap.String("provider", credential.Provider),
-				zap.String("credential_id", credentialID),
-				zap.String("region", region))
-			return &cachedResponse, nil
+	if s.cacheService != nil {
+		cachedValue, err := s.cacheService.Get(ctx, cacheKey)
+		if err == nil && cachedValue != nil {
+			if cachedResponse, ok := cachedValue.(*ListClustersResponse); ok {
+				s.logger.Debug(ctx, "Kubernetes clusters retrieved from cache",
+					domain.NewLogField("provider", credential.Provider),
+					domain.NewLogField("credential_id", credentialID),
+					domain.NewLogField("region", region))
+				return cachedResponse, nil
+			} else if cachedResponse, ok := cachedValue.(ListClustersResponse); ok {
+				s.logger.Debug(ctx, "Kubernetes clusters retrieved from cache",
+					domain.NewLogField("provider", credential.Provider),
+					domain.NewLogField("credential_id", credentialID),
+					domain.NewLogField("region", region))
+				return &cachedResponse, nil
+			}
 		}
 	}
 
@@ -585,7 +262,7 @@ func (s *Service) ListEKSClusters(ctx context.Context, credential *domain.Creden
 		// TODO: Implement NCP NKS cluster listing
 		response = &ListClustersResponse{Clusters: []ClusterInfo{}}
 	default:
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported provider: %s", credential.Provider), 400)
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported provider: %s", credential.Provider), HTTPStatusBadRequest)
 	}
 
 	if err != nil {
@@ -593,14 +270,13 @@ func (s *Service) ListEKSClusters(ctx context.Context, credential *domain.Creden
 	}
 
 	// 응답을 캐시에 저장 (캐시 실패해도 계속 진행)
-	if s.cache != nil && response != nil {
-		ttl := cache.GetDefaultTTL(cache.ResourceKubernetes)
-		if err := s.cache.Set(ctx, cacheKey, response, ttl); err != nil {
-			s.logger.Warn("Failed to cache Kubernetes clusters, continuing without cache",
-				zap.String("provider", credential.Provider),
-				zap.String("credential_id", credentialID),
-				zap.String("region", region),
-				zap.Error(err))
+	if s.cacheService != nil && response != nil {
+		if err := s.cacheService.Set(ctx, cacheKey, response, defaultK8sTTL); err != nil {
+			s.logger.Warn(ctx, "Failed to cache Kubernetes clusters, continuing without cache",
+				domain.NewLogField("provider", credential.Provider),
+				domain.NewLogField("credential_id", credentialID),
+				domain.NewLogField("region", region),
+				domain.NewLogField("error", err))
 			// 캐시 실패는 치명적이지 않으므로 계속 진행
 		}
 	}
@@ -615,11 +291,11 @@ func (s *Service) listAWSEKSClusters(ctx context.Context, credential *domain.Cre
 		return nil, err
 	}
 
-	s.logger.Debug("AWS credentials extracted",
-		zap.String("access_key_prefix", creds.AccessKey[:min(10, len(creds.AccessKey))]),
-		zap.Int("access_key_length", len(creds.AccessKey)),
-		zap.Int("secret_key_length", len(creds.SecretKey)),
-		zap.String("region", creds.Region))
+	s.logger.Debug(ctx, "AWS credentials extracted",
+		domain.NewLogField("access_key_prefix", creds.AccessKey[:min(10, len(creds.AccessKey))]),
+		domain.NewLogField("access_key_length", len(creds.AccessKey)),
+		domain.NewLogField("secret_key_length", len(creds.SecretKey)),
+		domain.NewLogField("region", creds.Region))
 
 	cfg, err := s.createAWSConfig(ctx, creds)
 	if err != nil {
@@ -632,7 +308,7 @@ func (s *Service) listAWSEKSClusters(ctx context.Context, credential *domain.Cre
 	// List clusters
 	output, err := eksClient.ListClusters(ctx, &eks.ListClustersInput{})
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to list EKS clusters: %v", err), 502)
+		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to list EKS clusters: %v", err), HTTPStatusBadGateway)
 	}
 
 	// Get detailed information for each cluster
@@ -643,9 +319,9 @@ func (s *Service) listAWSEKSClusters(ctx context.Context, credential *domain.Cre
 			Name: aws.String(clusterName),
 		})
 		if err != nil {
-			s.logger.Warn("Failed to describe cluster",
-				zap.String("cluster_name", clusterName),
-				zap.Error(err))
+			s.logger.Warn(ctx, "Failed to describe cluster",
+				domain.NewLogField("cluster_name", clusterName),
+				domain.NewLogField("error", err))
 			continue
 		}
 
@@ -681,53 +357,28 @@ func (s *Service) listAWSEKSClusters(ctx context.Context, credential *domain.Cre
 
 // GetEKSCluster: 이름으로 EKS 클러스터 상세 정보를 조회합니다
 func (s *Service) GetEKSCluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (*ClusterInfo, error) {
-	// 캐시 키 생성
 	credentialID := credential.ID.String()
-	cacheKey := s.keyBuilder.BuildKubernetesClusterItemKey(credential.Provider, credentialID, clusterName)
+	cacheKey := buildKubernetesClusterItemKey(credential.Provider, credentialID, clusterName)
 
-	// 캐시에서 조회 시도
-	if s.cache != nil {
-		var cachedCluster ClusterInfo
-		if err := s.cache.Get(ctx, cacheKey, &cachedCluster); err == nil {
-			s.logger.Debug("Kubernetes cluster retrieved from cache",
-				zap.String("provider", credential.Provider),
-				zap.String("credential_id", credentialID),
-				zap.String("cluster_name", clusterName))
-			return &cachedCluster, nil
-		}
+	// 캐시에서 조회 시도 (Early return)
+	if cachedCluster := s.getClusterFromCache(ctx, cacheKey, credential.Provider, credentialID, clusterName); cachedCluster != nil {
+		return cachedCluster, nil
 	}
 
 	// 캐시 미스 시 실제 API 호출
-	var cluster *ClusterInfo
-	var err error
-
-	switch credential.Provider {
-	case "aws":
-		cluster, err = s.getAWSEKSCluster(ctx, credential, clusterName, region)
-	case "gcp":
-		cluster, err = s.getGCPGKECluster(ctx, credential, clusterName, region)
-	case "azure":
-		cluster, err = s.getAzureAKSCluster(ctx, credential, clusterName, region)
-	case "ncp":
-		// TODO: Implement NCP NKS cluster retrieval
-		return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP NKS cluster retrieval not implemented yet", 501)
-	default:
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported provider: %s", credential.Provider), 400)
-	}
-
+	cluster, err := s.getClusterFromProvider(ctx, credential, clusterName, region)
 	if err != nil {
 		return nil, err
 	}
 
 	// 응답을 캐시에 저장
-	if s.cache != nil && cluster != nil {
-		ttl := cache.GetDefaultTTL(cache.ResourceKubernetes)
-		if err := s.cache.Set(ctx, cacheKey, cluster, ttl); err != nil {
-			s.logger.Warn("Failed to cache Kubernetes cluster",
-				zap.String("provider", credential.Provider),
-				zap.String("credential_id", credentialID),
-				zap.String("cluster_name", clusterName),
-				zap.Error(err))
+	if s.cacheService != nil && cluster != nil {
+		if err := s.cacheService.Set(ctx, cacheKey, cluster, defaultK8sTTL); err != nil {
+			s.logger.Warn(ctx, "Failed to cache Kubernetes cluster",
+				domain.NewLogField("provider", credential.Provider),
+				domain.NewLogField("credential_id", credentialID),
+				domain.NewLogField("cluster_name", clusterName),
+				domain.NewLogField("error", err))
 		}
 	}
 
@@ -754,7 +405,7 @@ func (s *Service) getAWSEKSCluster(ctx context.Context, credential *domain.Crede
 		Name: aws.String(clusterName),
 	})
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to describe EKS cluster: %v", err), 502)
+		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to describe EKS cluster: %v", err), HTTPStatusBadGateway)
 	}
 
 	// Convert to ClusterInfo
@@ -790,9 +441,9 @@ func (s *Service) DeleteEKSCluster(ctx context.Context, credential *domain.Crede
 		return s.deleteAzureAKSCluster(ctx, credential, clusterName, region)
 	case "ncp":
 		// TODO: Implement NCP NKS cluster deletion
-		return domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP NKS cluster deletion not implemented yet", 501)
+		return domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP NKS cluster deletion not implemented yet", HTTPStatusNotImplemented)
 	default:
-		return domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported provider: %s", credential.Provider), 400)
+		return domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported provider: %s", credential.Provider), HTTPStatusBadRequest)
 	}
 }
 
@@ -816,41 +467,50 @@ func (s *Service) deleteAWSEKSCluster(ctx context.Context, credential *domain.Cr
 		Name: aws.String(clusterName),
 	})
 	if err != nil {
-		return domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to delete EKS cluster: %v", err), 502)
+		return domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to delete EKS cluster: %v", err), HTTPStatusBadGateway)
 	}
 
-	s.logger.Info("EKS cluster deletion initiated",
-		zap.String("cluster_name", clusterName),
-		zap.String("region", region))
+	s.logger.Info(ctx, "EKS cluster deletion initiated",
+		domain.NewLogField("cluster_name", clusterName),
+		domain.NewLogField("region", region))
 
 	// 캐시 무효화: 클러스터 목록 및 개별 클러스터 캐시 삭제
 	credentialID := credential.ID.String()
-	if err := s.invalidator.InvalidateKubernetesClusterList(ctx, credential.Provider, credentialID, region); err != nil {
-		s.logger.Warn("Failed to invalidate Kubernetes cluster list cache",
-			zap.String("provider", credential.Provider),
-			zap.String("credential_id", credentialID),
-			zap.String("region", region),
-			zap.Error(err))
-	}
-	if err := s.invalidator.InvalidateKubernetesClusterItem(ctx, credential.Provider, credentialID, clusterName); err != nil {
-		s.logger.Warn("Failed to invalidate Kubernetes cluster item cache",
-			zap.String("provider", credential.Provider),
-			zap.String("credential_id", credentialID),
-			zap.String("cluster_name", clusterName),
-			zap.Error(err))
+	if s.cacheService != nil {
+		listKey := buildKubernetesClusterListKey(credential.Provider, credentialID, region)
+		if err := s.cacheService.Delete(ctx, listKey); err != nil {
+			s.logger.Warn(ctx, "Failed to invalidate Kubernetes cluster list cache",
+				domain.NewLogField("provider", credential.Provider),
+				domain.NewLogField("credential_id", credentialID),
+				domain.NewLogField("region", region),
+				domain.NewLogField("error", err))
+		}
+		itemKey := buildKubernetesClusterItemKey(credential.Provider, credentialID, clusterName)
+		if err := s.cacheService.Delete(ctx, itemKey); err != nil {
+			s.logger.Warn(ctx, "Failed to invalidate Kubernetes cluster item cache",
+				domain.NewLogField("provider", credential.Provider),
+				domain.NewLogField("credential_id", credentialID),
+				domain.NewLogField("cluster_name", clusterName),
+				domain.NewLogField("error", err))
+		}
 	}
 
 	// 이벤트 발행: 클러스터 삭제 이벤트
-	clusterData := map[string]interface{}{
-		"cluster_name": clusterName,
-		"region":       region,
-	}
-	if err := s.eventPublisher.PublishKubernetesClusterEvent(ctx, credential.Provider, credentialID, region, "deleted", clusterData); err != nil {
-		s.logger.Warn("Failed to publish Kubernetes cluster deleted event",
-			zap.String("provider", credential.Provider),
-			zap.String("credential_id", credentialID),
-			zap.String("cluster_name", clusterName),
-			zap.Error(err))
+	if s.eventService != nil {
+		clusterData := map[string]interface{}{
+			"cluster_name":  clusterName,
+			"region":        region,
+			"provider":      credential.Provider,
+			"credential_id": credentialID,
+		}
+		eventType := fmt.Sprintf("kubernetes.cluster.%s.deleted", credential.Provider)
+		if err := s.eventService.Publish(ctx, eventType, clusterData); err != nil {
+			s.logger.Warn(ctx, "Failed to publish Kubernetes cluster deleted event",
+				domain.NewLogField("provider", credential.Provider),
+				domain.NewLogField("credential_id", credentialID),
+				domain.NewLogField("cluster_name", clusterName),
+				domain.NewLogField("error", err))
+		}
 	}
 
 	// 감사로그 기록
@@ -879,9 +539,9 @@ func (s *Service) GetEKSKubeconfig(ctx context.Context, credential *domain.Crede
 		return s.getAzureAKSKubeconfig(ctx, credential, clusterName, region)
 	case "ncp":
 		// TODO: Implement NCP NKS kubeconfig generation
-		return "", domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP NKS kubeconfig generation not implemented yet", 501)
+		return "", domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP NKS kubeconfig generation not implemented yet", HTTPStatusNotImplemented)
 	default:
-		return "", domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported provider: %s", credential.Provider), 400)
+		return "", domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported provider: %s", credential.Provider), HTTPStatusBadRequest)
 	}
 }
 
@@ -905,7 +565,7 @@ func (s *Service) getAWSEKSKubeconfig(ctx context.Context, credential *domain.Cr
 		Name: aws.String(clusterName),
 	})
 	if err != nil {
-		return "", domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to describe EKS cluster: %v", err), 502)
+		return "", domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to describe EKS cluster: %v", err), HTTPStatusBadGateway)
 	}
 
 	// Generate kubeconfig
@@ -963,18 +623,18 @@ func (s *Service) CreateEKSNodePool(ctx context.Context, credential *domain.Cred
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), HTTPStatusInternalServerError)
 	}
 
 	// Extract AWS credentials
 	accessKey, ok := credData["access_key"].(string)
 	if !ok {
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "access_key not found in credential", 400)
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "access_key not found in credential", HTTPStatusBadRequest)
 	}
 
 	secretKey, ok := credData["secret_key"].(string)
 	if !ok {
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "secret_key not found in credential", 400)
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "secret_key not found in credential", HTTPStatusBadRequest)
 	}
 
 	// Create AWS config
@@ -987,7 +647,7 @@ func (s *Service) CreateEKSNodePool(ctx context.Context, credential *domain.Cred
 		)),
 	)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to load AWS config: %v", err), 502)
+		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to load AWS config: %v", err), HTTPStatusBadGateway)
 	}
 
 	// Create EKS client
@@ -1018,7 +678,7 @@ func (s *Service) CreateEKSNodePool(ctx context.Context, credential *domain.Cred
 	// Create node group
 	output, err := eksClient.CreateNodegroup(ctx, input)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create node group: %v", err), 502)
+		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create node group: %v", err), HTTPStatusBadGateway)
 	}
 
 	// Convert to map
@@ -1034,10 +694,10 @@ func (s *Service) CreateEKSNodePool(ctx context.Context, credential *domain.Cred
 		result["created_at"] = output.Nodegroup.CreatedAt.String()
 	}
 
-	s.logger.Info("EKS node group creation initiated",
-		zap.String("cluster_name", req.ClusterName),
-		zap.String("nodegroup_name", req.NodePoolName),
-		zap.String("region", req.Region))
+	s.logger.Info(ctx, "EKS node group creation initiated",
+		domain.NewLogField("cluster_name", req.ClusterName),
+		domain.NewLogField("nodegroup_name", req.NodePoolName),
+		domain.NewLogField("region", req.Region))
 
 	// 감사로그 기록
 	credentialID := credential.ID.String()
@@ -1052,8 +712,8 @@ func (s *Service) CreateEKSNodePool(ctx context.Context, credential *domain.Cred
 		},
 	)
 
-	// NATS 이벤트 발행
-	if s.eventPublisher != nil {
+	// 이벤트 발행
+	if s.eventService != nil {
 		nodePoolData := map[string]interface{}{
 			"nodegroup_name": req.NodePoolName,
 			"cluster_name":   req.ClusterName,
@@ -1061,7 +721,8 @@ func (s *Service) CreateEKSNodePool(ctx context.Context, credential *domain.Cred
 			"credential_id":  credentialID,
 			"region":         req.Region,
 		}
-		_ = s.eventPublisher.PublishKubernetesNodePoolEvent(ctx, credential.Provider, credentialID, req.ClusterName, "created", nodePoolData)
+		eventType := fmt.Sprintf("kubernetes.nodepool.%s.created", credential.Provider)
+		_ = s.eventService.Publish(ctx, eventType, nodePoolData)
 	}
 
 	return result, nil
@@ -1132,7 +793,7 @@ func (s *Service) CreateEKSNodeGroup(ctx context.Context, credential *domain.Cre
 	// Create node group
 	output, err := eksClient.CreateNodegroup(ctx, input)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create node group: %v", err), 502)
+		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create node group: %v", err), HTTPStatusBadGateway)
 	}
 
 	// Convert to response
@@ -1153,20 +814,20 @@ func (s *Service) CreateEKSNodeGroup(ctx context.Context, credential *domain.Cre
 		response.CreatedAt = output.Nodegroup.CreatedAt.String()
 	}
 
-	s.logger.Info("EKS node group creation initiated",
-		zap.String("cluster_name", req.ClusterName),
-		zap.String("nodegroup_name", req.NodeGroupName),
-		zap.String("region", req.Region))
+	s.logger.Info(ctx, "EKS node group creation initiated",
+		domain.NewLogField("cluster_name", req.ClusterName),
+		domain.NewLogField("nodegroup_name", req.NodeGroupName),
+		domain.NewLogField("region", req.Region))
 
 	return response, nil
 }
 
 // ListNodeGroups: 클러스터의 노드 그룹 목록을 조회합니다
 func (s *Service) ListNodeGroups(ctx context.Context, credential *domain.Credential, req ListNodeGroupsRequest) (*ListNodeGroupsResponse, error) {
-	s.logger.Info("ListNodeGroups called",
-		zap.String("provider", credential.Provider),
-		zap.String("cluster_name", req.ClusterName),
-		zap.String("region", req.Region))
+	s.logger.Info(ctx, "ListNodeGroups called",
+		domain.NewLogField("provider", credential.Provider),
+		domain.NewLogField("cluster_name", req.ClusterName),
+		domain.NewLogField("region", req.Region))
 
 	switch credential.Provider {
 	case "aws":
@@ -1176,9 +837,9 @@ func (s *Service) ListNodeGroups(ctx context.Context, credential *domain.Credent
 	case "azure":
 		return s.listAzureNodePools(ctx, credential, req)
 	case "ncp":
-		return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP node groups not implemented yet", 501)
+		return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP node groups not implemented yet", HTTPStatusNotImplemented)
 	default:
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported provider: %s", credential.Provider), 400)
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported provider: %s", credential.Provider), HTTPStatusBadRequest)
 	}
 }
 
@@ -1187,18 +848,18 @@ func (s *Service) listAWSEKSNodeGroups(ctx context.Context, credential *domain.C
 	// Decrypt credential data
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), HTTPStatusInternalServerError)
 	}
 
 	// Extract AWS credentials
 	accessKey, ok := credData["access_key"].(string)
 	if !ok {
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "access_key not found in credential", 400)
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "access_key not found in credential", HTTPStatusBadRequest)
 	}
 
 	secretKey, ok := credData["secret_key"].(string)
 	if !ok {
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "secret_key not found in credential", 400)
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "secret_key not found in credential", HTTPStatusBadRequest)
 	}
 
 	// Create AWS config
@@ -1211,7 +872,7 @@ func (s *Service) listAWSEKSNodeGroups(ctx context.Context, credential *domain.C
 		)),
 	)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to load AWS config: %v", err), 502)
+		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to load AWS config: %v", err), HTTPStatusBadGateway)
 	}
 
 	// Create EKS client
@@ -1222,7 +883,7 @@ func (s *Service) listAWSEKSNodeGroups(ctx context.Context, credential *domain.C
 		ClusterName: aws.String(req.ClusterName),
 	})
 	if err != nil {
-		return nil, s.handleAWSError(err, "list node groups")
+		return nil, s.providerErrorConverter.ConvertAWSError(err, "list node groups")
 	}
 
 	// Get detailed information for each node group
@@ -1233,10 +894,10 @@ func (s *Service) listAWSEKSNodeGroups(ctx context.Context, credential *domain.C
 			NodegroupName: aws.String(nodeGroupName),
 		})
 		if err != nil {
-			s.logger.Warn("Failed to describe node group",
-				zap.String("cluster_name", req.ClusterName),
-				zap.String("nodegroup_name", nodeGroupName),
-				zap.Error(err))
+			s.logger.Warn(ctx, "Failed to describe node group",
+				domain.NewLogField("cluster_name", req.ClusterName),
+				domain.NewLogField("nodegroup_name", nodeGroupName),
+				domain.NewLogField("error", err))
 			continue
 		}
 
@@ -1296,71 +957,13 @@ func (s *Service) listAWSEKSNodeGroups(ctx context.Context, credential *domain.C
 	}, nil
 }
 
-// listGCPGKENodePools: 클러스터의 GCP GKE 노드 풀 목록을 조회합니다
-func (s *Service) listGCPGKENodePools(ctx context.Context, credential *domain.Credential, req ListNodeGroupsRequest) (*ListNodeGroupsResponse, error) {
-	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
-	if err != nil {
-		return nil, err
-	}
-
-	// Find the cluster first to determine its actual location
-	locations := s.getGCPLocations(req.Region)
-
-	var nodePools *container.ListNodePoolsResponse
-	var clusterLocation string
-
-	// Search for the cluster in all possible locations
-	for _, location := range locations {
-		clusterPath := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", projectID, location, req.ClusterName)
-		_, err := containerService.Projects.Locations.Clusters.Get(clusterPath).Context(ctx).Do()
-		if err != nil {
-			// Log debug but continue with other locations
-			s.logger.Debug("Failed to find cluster in location",
-				zap.String("location", location),
-				zap.String("cluster_name", req.ClusterName),
-				zap.Error(err))
-			continue
-		}
-
-		// Found the cluster, now get its node pools
-		clusterLocation = location
-		nodePools, err = containerService.Projects.Locations.Clusters.NodePools.List(clusterPath).Context(ctx).Do()
-		if err != nil {
-			return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to list GKE node pools for cluster %s in location %s: %v", req.ClusterName, location, err), 502)
-		}
-		break
-	}
-
-	if nodePools == nil {
-		return nil, domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("failed to find GKE cluster %s in region %s or any of its zones", req.ClusterName, req.Region), 404)
-	}
-
-	// Convert to NodeGroupInfo format
-	var nodeGroups []NodeGroupInfo
-	for _, nodePool := range nodePools.NodePools {
-		nodeGroup := s.convertGCPNodePoolToNodeGroupInfo(nodePool, req.ClusterName, req.Region)
-		nodeGroups = append(nodeGroups, nodeGroup)
-	}
-
-	s.logger.Info("GKE node pools listed successfully",
-		zap.String("cluster_name", req.ClusterName),
-		zap.String("region", req.Region),
-		zap.String("cluster_location", clusterLocation),
-		zap.Int("node_pool_count", len(nodeGroups)))
-
-	return &ListNodeGroupsResponse{
-		NodeGroups: nodeGroups,
-		Total:      len(nodeGroups),
-	}, nil
-}
-
-// GetNodeGroup: 노드 그룹 상세 정보를 조회합니다
+// GetNodeGroup: 클러스터의 노드 그룹 상세 정보를 조회합니다
 func (s *Service) GetNodeGroup(ctx context.Context, credential *domain.Credential, req GetNodeGroupRequest) (*NodeGroupInfo, error) {
-	s.logger.Info("GetNodeGroup called",
-		zap.String("provider", credential.Provider),
-		zap.String("cluster_name", req.ClusterName),
-		zap.String("node_group_name", req.NodeGroupName),
-		zap.String("region", req.Region))
+	s.logger.Info(ctx, "GetNodeGroup called",
+		domain.NewLogField("provider", credential.Provider),
+		domain.NewLogField("cluster_name", req.ClusterName),
+		domain.NewLogField("node_group_name", req.NodeGroupName),
+		domain.NewLogField("region", req.Region))
 
 	switch credential.Provider {
 	case "aws":
@@ -1370,192 +973,226 @@ func (s *Service) GetNodeGroup(ctx context.Context, credential *domain.Credentia
 	case "azure":
 		return s.getAzureNodePool(ctx, credential, req)
 	case "ncp":
-		return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP node groups not implemented yet", 501)
+		return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP node groups not implemented yet", HTTPStatusNotImplemented)
 	default:
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported provider: %s", credential.Provider), 400)
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported provider: %s", credential.Provider), HTTPStatusBadRequest)
 	}
 }
 
 // getAWSEKSNodeGroup: AWS EKS 노드 그룹 상세 정보를 조회합니다
 func (s *Service) getAWSEKSNodeGroup(ctx context.Context, credential *domain.Credential, req GetNodeGroupRequest) (*NodeGroupInfo, error) {
-	// Decrypt credential data
-	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	creds, err := s.extractAWSCredentials(ctx, credential, req.Region)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
+		return nil, err
 	}
 
-	// Extract AWS credentials
-	accessKey, ok := credData["access_key"].(string)
-	if !ok {
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "access_key not found in credential", 400)
-	}
-
-	secretKey, ok := credData["secret_key"].(string)
-	if !ok {
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "secret_key not found in credential", 400)
-	}
-
-	// Create AWS config
-	cfg, err := awsconfig.LoadDefaultConfig(ctx,
-		awsconfig.WithRegion(req.Region),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-			accessKey,
-			secretKey,
-			"",
-		)),
-	)
+	cfg, err := s.createAWSConfig(ctx, creds)
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to load AWS config: %v", err), 502)
+		return nil, err
 	}
 
 	// Create EKS client
 	eksClient := eks.NewFromConfig(cfg)
 
 	// Describe node group
-	output, err := eksClient.DescribeNodegroup(ctx, &eks.DescribeNodegroupInput{
+	describeOutput, err := eksClient.DescribeNodegroup(ctx, &eks.DescribeNodegroupInput{
 		ClusterName:   aws.String(req.ClusterName),
 		NodegroupName: aws.String(req.NodeGroupName),
 	})
 	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to describe node group: %v", err), 502)
+		return nil, s.providerErrorConverter.ConvertAWSError(err, "get EKS node group")
 	}
 
-	// Convert to NodeGroupInfo
+	if describeOutput.Nodegroup == nil {
+		return nil, domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("node group %s not found in cluster %s", req.NodeGroupName, req.ClusterName), HTTPStatusNotFound)
+	}
+
 	nodeGroup := NodeGroupInfo{
-		ID:          aws.ToString(output.Nodegroup.NodegroupArn),
-		Name:        aws.ToString(output.Nodegroup.NodegroupName),
-		Status:      string(output.Nodegroup.Status),
-		ClusterName: aws.ToString(output.Nodegroup.ClusterName),
+		ID:          aws.ToString(describeOutput.Nodegroup.NodegroupArn),
+		Name:        aws.ToString(describeOutput.Nodegroup.NodegroupName),
+		Status:      string(describeOutput.Nodegroup.Status),
+		ClusterName: aws.ToString(describeOutput.Nodegroup.ClusterName),
 		Region:      req.Region,
-		Tags:        output.Nodegroup.Tags,
+		Tags:        describeOutput.Nodegroup.Tags,
 	}
 
 	// Add version if available
-	if output.Nodegroup.Version != nil {
-		nodeGroup.Version = aws.ToString(output.Nodegroup.Version)
+	if describeOutput.Nodegroup.Version != nil {
+		nodeGroup.Version = aws.ToString(describeOutput.Nodegroup.Version)
 	}
 
 	// Add instance types
-	if output.Nodegroup.InstanceTypes != nil {
-		nodeGroup.InstanceTypes = output.Nodegroup.InstanceTypes
+	if describeOutput.Nodegroup.InstanceTypes != nil {
+		nodeGroup.InstanceTypes = describeOutput.Nodegroup.InstanceTypes
 	}
 
 	// Add scaling config
-	if output.Nodegroup.ScalingConfig != nil {
+	if describeOutput.Nodegroup.ScalingConfig != nil {
 		nodeGroup.ScalingConfig = NodeGroupScalingConfig{
-			MinSize:     aws.ToInt32(output.Nodegroup.ScalingConfig.MinSize),
-			MaxSize:     aws.ToInt32(output.Nodegroup.ScalingConfig.MaxSize),
-			DesiredSize: aws.ToInt32(output.Nodegroup.ScalingConfig.DesiredSize),
+			MinSize:     aws.ToInt32(describeOutput.Nodegroup.ScalingConfig.MinSize),
+			MaxSize:     aws.ToInt32(describeOutput.Nodegroup.ScalingConfig.MaxSize),
+			DesiredSize: aws.ToInt32(describeOutput.Nodegroup.ScalingConfig.DesiredSize),
 		}
 	}
 
 	// Add capacity type
-	if output.Nodegroup.CapacityType != "" {
-		nodeGroup.CapacityType = string(output.Nodegroup.CapacityType)
+	if describeOutput.Nodegroup.CapacityType != "" {
+		nodeGroup.CapacityType = string(describeOutput.Nodegroup.CapacityType)
 	}
 
 	// Add disk size
-	if output.Nodegroup.DiskSize != nil {
-		nodeGroup.DiskSize = aws.ToInt32(output.Nodegroup.DiskSize)
+	if describeOutput.Nodegroup.DiskSize != nil {
+		nodeGroup.DiskSize = aws.ToInt32(describeOutput.Nodegroup.DiskSize)
 	}
 
 	// Add timestamps
-	if output.Nodegroup.CreatedAt != nil {
-		nodeGroup.CreatedAt = output.Nodegroup.CreatedAt.String()
+	if describeOutput.Nodegroup.CreatedAt != nil {
+		nodeGroup.CreatedAt = describeOutput.Nodegroup.CreatedAt.String()
 	}
 
-	if output.Nodegroup.ModifiedAt != nil {
-		nodeGroup.UpdatedAt = output.Nodegroup.ModifiedAt.String()
+	if describeOutput.Nodegroup.ModifiedAt != nil {
+		nodeGroup.UpdatedAt = describeOutput.Nodegroup.ModifiedAt.String()
 	}
-
-	s.logger.Info("EKS node group retrieved successfully",
-		zap.String("cluster_name", req.ClusterName),
-		zap.String("node_group_name", req.NodeGroupName),
-		zap.String("region", req.Region))
 
 	return &nodeGroup, nil
 }
 
-// getGCPGKENodePool: GCP GKE 노드 풀 상세 정보를 조회합니다
-func (s *Service) getGCPGKENodePool(ctx context.Context, credential *domain.Credential, req GetNodeGroupRequest) (*NodeGroupInfo, error) {
-	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
+// validateEKSSubnetAZs EKS 서브넷이 최소 2개의 다른 AZ에 있는지 검증합니다
+func (s *Service) validateEKSSubnetAZs(ctx context.Context, cfg aws.Config, subnetIDs []string) error {
+	ec2Client := ec2.NewFromConfig(cfg)
+
+	describeSubnetsOutput, err := ec2Client.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
+		SubnetIds: subnetIDs,
+	})
 	if err != nil {
-		return nil, err
+		return domain.NewDomainError(
+			domain.ErrCodeProviderError,
+			fmt.Sprintf("failed to describe subnets for validation: %v", err),
+			HTTPStatusBadGateway,
+		)
 	}
 
-	// Find the cluster first to determine its actual location
-	locations := s.getGCPLocations(req.Region)
+	uniqueAZs := s.extractUniqueAZs(describeSubnetsOutput.Subnets)
+	if len(uniqueAZs) < MinEKSSubnetAZs {
+		return domain.NewDomainError(
+			domain.ErrCodeValidationFailed,
+			fmt.Sprintf("AWS EKS requires subnets from at least %d different availability zones. Currently selected subnets are in %d zone(s): %v. Please select subnets from at least %d different availability zones.", MinEKSSubnetAZs, len(uniqueAZs), s.azMapToSlice(uniqueAZs), MinEKSSubnetAZs),
+			HTTPStatusBadRequest,
+		)
+	}
 
-	var nodePool *container.NodePool
-	var clusterLocation string
+	return nil
+}
 
-	// Search for the cluster and specific node pool in all possible locations
-	for _, location := range locations {
-		nodePoolPath := fmt.Sprintf("projects/%s/locations/%s/clusters/%s/nodePools/%s", projectID, location, req.ClusterName, req.NodeGroupName)
-
-		// Try to get the specific node pool
-		nodePoolResp, err := containerService.Projects.Locations.Clusters.NodePools.Get(nodePoolPath).Context(ctx).Do()
-		if err != nil {
-			// Log debug but continue with other locations
-			s.logger.Debug("Failed to find node pool in location",
-				zap.String("location", location),
-				zap.String("cluster_name", req.ClusterName),
-				zap.String("node_pool_name", req.NodeGroupName),
-				zap.Error(err))
-			continue
+// extractUniqueAZs 서브넷 목록에서 고유한 Availability Zone을 추출합니다
+func (s *Service) extractUniqueAZs(subnets []ec2types.Subnet) map[string]bool {
+	uniqueAZs := make(map[string]bool)
+	for _, subnet := range subnets {
+		if subnet.AvailabilityZone != nil {
+			uniqueAZs[*subnet.AvailabilityZone] = true
 		}
-
-		nodePool = nodePoolResp
-		clusterLocation = location
-		break
 	}
-
-	if nodePool == nil {
-		return nil, domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("failed to find GKE node pool %s in cluster %s in region %s or any of its zones", req.NodeGroupName, req.ClusterName, req.Region), 404)
-	}
-
-	// Convert to NodeGroupInfo format (reusing common conversion function)
-	nodeGroup := s.convertGCPNodePoolToNodeGroupInfo(nodePool, req.ClusterName, req.Region)
-
-	s.logger.Info("GKE node pool retrieved successfully",
-		zap.String("cluster_name", req.ClusterName),
-		zap.String("node_pool_name", req.NodeGroupName),
-		zap.String("region", req.Region),
-		zap.String("cluster_location", clusterLocation))
-
-	return &nodeGroup, nil
+	return uniqueAZs
 }
 
-// DeleteNodeGroup: 노드 그룹을 삭제합니다
+// azMapToSlice AZ 맵을 슬라이스로 변환합니다
+func (s *Service) azMapToSlice(azMap map[string]bool) []string {
+	azList := make([]string, 0, len(azMap))
+	for az := range azMap {
+		azList = append(azList, az)
+	}
+	return azList
+}
+
+// getDefaultRoleName 기본 Role 이름을 반환합니다
+func (s *Service) getDefaultRoleName() string {
+	defaultRoleName := os.Getenv("AWS_EKS_DEFAULT_CLUSTER_ROLE_NAME")
+	if defaultRoleName == "" {
+		return "EKSClusterRole"
+	}
+	return defaultRoleName
+}
+
+// getClusterFromCache 캐시에서 클러스터 정보를 조회합니다
+func (s *Service) getClusterFromCache(ctx context.Context, cacheKey, provider, credentialID, clusterName string) *ClusterInfo {
+	if s.cacheService == nil {
+		return nil
+	}
+
+	cachedValue, err := s.cacheService.Get(ctx, cacheKey)
+	if err != nil || cachedValue == nil {
+		return nil
+	}
+
+	// 타입 단언 시도 (*ClusterInfo)
+	if cachedCluster, ok := cachedValue.(*ClusterInfo); ok {
+		s.logger.Debug(ctx, "Kubernetes cluster retrieved from cache",
+			domain.NewLogField("provider", provider),
+			domain.NewLogField("credential_id", credentialID),
+			domain.NewLogField("cluster_name", clusterName))
+		return cachedCluster
+	}
+
+	// 타입 단언 시도 (ClusterInfo)
+	if cachedCluster, ok := cachedValue.(ClusterInfo); ok {
+		s.logger.Debug(ctx, "Kubernetes cluster retrieved from cache",
+			domain.NewLogField("provider", provider),
+			domain.NewLogField("credential_id", credentialID),
+			domain.NewLogField("cluster_name", clusterName))
+		return &cachedCluster
+	}
+
+	return nil
+}
+
+// getClusterFromProvider 프로바이더별로 클러스터 정보를 조회합니다
+func (s *Service) getClusterFromProvider(ctx context.Context, credential *domain.Credential, clusterName, region string) (*ClusterInfo, error) {
+	switch credential.Provider {
+	case "aws":
+		return s.getAWSEKSCluster(ctx, credential, clusterName, region)
+	case "gcp":
+		return s.getGCPGKECluster(ctx, credential, clusterName, region)
+	case "azure":
+		return s.getAzureAKSCluster(ctx, credential, clusterName, region)
+	case "ncp":
+		return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP NKS cluster retrieval not implemented yet", HTTPStatusNotImplemented)
+	default:
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported provider: %s", credential.Provider), HTTPStatusBadRequest)
+	}
+}
+
+// DeleteNodeGroup: 클러스터의 노드 그룹을 삭제합니다
 func (s *Service) DeleteNodeGroup(ctx context.Context, credential *domain.Credential, req DeleteNodeGroupRequest) error {
-	// Decrypt credential data
-	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	s.logger.Info(ctx, "DeleteNodeGroup called",
+		domain.NewLogField("provider", credential.Provider),
+		domain.NewLogField("cluster_name", req.ClusterName),
+		domain.NewLogField("node_group_name", req.NodeGroupName),
+		domain.NewLogField("region", req.Region))
+
+	switch credential.Provider {
+	case "aws":
+		return s.deleteAWSEKSNodeGroup(ctx, credential, req)
+	case "gcp":
+		return s.deleteGCPGKENodePool(ctx, credential, req)
+	case "azure":
+		return s.deleteAzureNodePool(ctx, credential, req)
+	case "ncp":
+		return domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP node groups not implemented yet", HTTPStatusNotImplemented)
+	default:
+		return domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported provider: %s", credential.Provider), HTTPStatusBadRequest)
+	}
+}
+
+// deleteAWSEKSNodeGroup: AWS EKS 노드 그룹을 삭제합니다
+func (s *Service) deleteAWSEKSNodeGroup(ctx context.Context, credential *domain.Credential, req DeleteNodeGroupRequest) error {
+	creds, err := s.extractAWSCredentials(ctx, credential, req.Region)
 	if err != nil {
-		return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
+		return err
 	}
 
-	// Extract AWS credentials
-	accessKey, ok := credData["access_key"].(string)
-	if !ok {
-		return domain.NewDomainError(domain.ErrCodeValidationFailed, "access_key not found in credential", 400)
-	}
-
-	secretKey, ok := credData["secret_key"].(string)
-	if !ok {
-		return domain.NewDomainError(domain.ErrCodeValidationFailed, "secret_key not found in credential", 400)
-	}
-
-	// Create AWS config
-	cfg, err := awsconfig.LoadDefaultConfig(ctx,
-		awsconfig.WithRegion(req.Region),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-			accessKey,
-			secretKey,
-			"",
-		)),
-	)
+	cfg, err := s.createAWSConfig(ctx, creds)
 	if err != nil {
-		return domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to load AWS config: %v", err), 502)
+		return err
 	}
 
 	// Create EKS client
@@ -1567,585 +1204,122 @@ func (s *Service) DeleteNodeGroup(ctx context.Context, credential *domain.Creden
 		NodegroupName: aws.String(req.NodeGroupName),
 	})
 	if err != nil {
-		return domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to delete node group: %v", err), 502)
+		return s.providerErrorConverter.ConvertAWSError(err, "delete EKS node group")
 	}
 
-	s.logger.Info("EKS node group deletion initiated",
-		zap.String("cluster_name", req.ClusterName),
-		zap.String("nodegroup_name", req.NodeGroupName),
-		zap.String("region", req.Region))
-
-	// 감사로그 기록
-	credentialID := credential.ID.String()
-	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionKubernetesNodeGroupDelete,
-		fmt.Sprintf("DELETE /api/v1/%s/kubernetes/clusters/%s/node-groups/%s", credential.Provider, req.ClusterName, req.NodeGroupName),
-		map[string]interface{}{
-			"nodegroup_name": req.NodeGroupName,
-			"cluster_name":   req.ClusterName,
-			"provider":       credential.Provider,
-			"credential_id":  credentialID,
-			"region":         req.Region,
-		},
-	)
-
-	// NATS 이벤트 발행
-	if s.eventPublisher != nil {
-		nodePoolData := map[string]interface{}{
-			"nodegroup_name": req.NodeGroupName,
-			"cluster_name":   req.ClusterName,
-			"provider":       credential.Provider,
-			"credential_id":  credentialID,
-			"region":         req.Region,
-		}
-		_ = s.eventPublisher.PublishKubernetesNodePoolEvent(ctx, credential.Provider, credentialID, req.ClusterName, "deleted", nodePoolData)
-	}
+	s.logger.Info(ctx, "EKS node group deletion initiated",
+		domain.NewLogField("cluster_name", req.ClusterName),
+		domain.NewLogField("nodegroup_name", req.NodeGroupName),
+		domain.NewLogField("region", req.Region))
 
 	return nil
 }
 
-// listGCPGKEClusters: GCP GKE 클러스터 목록을 조회합니다
-func (s *Service) listGCPGKEClusters(ctx context.Context, credential *domain.Credential, region string) (*ListClustersResponse, error) {
-	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
-	if err != nil {
-		return nil, err
-	}
-
-	// List clusters in the region and all zones of the specified region
-	locations := s.getGCPLocations(region)
-
-	var allClusters []ClusterInfo
-
-	for _, location := range locations {
-		// List clusters in each location (region or zone)
-		clustersResp, err := containerService.Projects.Locations.Clusters.List(
-			fmt.Sprintf("projects/%s/locations/%s", projectID, location),
-		).Context(ctx).Do()
-		if err != nil {
-			// Log warning but continue with other locations
-			s.logger.Warn("Failed to list clusters in location",
-				zap.String("location", location),
-				zap.Error(err))
-			continue
-		}
-
-		// Convert to ClusterInfo
-		// clustersResp.Clusters가 nil인 경우 처리
-		if clustersResp.Clusters == nil {
-			s.logger.Debug("No clusters found in location",
-				zap.String("location", location))
-			continue
-		}
-
-		for _, cluster := range clustersResp.Clusters {
-			// Determine if this is a region or zone
-			var clusterZone string
-			if location == region {
-				// Region level cluster - extract zone from cluster location
-				clusterZone = extractZoneFromLocation(cluster.Location)
-			} else {
-				// Zone level cluster - use the location as zone
-				clusterZone = location
-			}
-
-			// Debug logging
-			s.logger.Debug("Processing GKE cluster",
-				zap.String("cluster_name", cluster.Name),
-				zap.String("cluster_location", cluster.Location),
-				zap.String("query_location", location),
-				zap.String("zone", clusterZone))
-
-			// Build detailed cluster information
-			clusterInfo := ClusterInfo{
-				ID:        cluster.Name,
-				Name:      cluster.Name,
-				Version:   cluster.CurrentMasterVersion,
-				Status:    cluster.Status,
-				Region:    region,
-				Zone:      clusterZone,
-				Endpoint:  cluster.Endpoint,
-				CreatedAt: cluster.CreateTime,
-				UpdatedAt: "", // UpdateTime field doesn't exist in GCP SDK
-				Tags:      cluster.ResourceLabels,
-			}
-
-			// Add network configuration (simplified)
-			if cluster.NetworkConfig != nil {
-				clusterInfo.NetworkConfig = &NetworkConfigInfo{
-					VPCID:           cluster.NetworkConfig.Network,
-					SubnetID:        cluster.NetworkConfig.Subnetwork,
-					PodCIDR:         "",    // Will be populated if available
-					ServiceCIDR:     "",    // Will be populated if available
-					PrivateNodes:    false, // Will be populated if available
-					PrivateEndpoint: false, // Will be populated if available
-				}
-			}
-
-			// Add node pool summary
-			if len(cluster.NodePools) > 0 {
-				var totalNodes, minNodes, maxNodes int32
-				for _, nodePool := range cluster.NodePools {
-					totalNodes += int32(nodePool.InitialNodeCount)
-					if nodePool.Autoscaling != nil {
-						minNodes += int32(nodePool.Autoscaling.MinNodeCount)
-						maxNodes += int32(nodePool.Autoscaling.MaxNodeCount)
-					}
-				}
-
-				clusterInfo.NodePoolInfo = &NodePoolSummaryInfo{
-					TotalNodePools: int32(len(cluster.NodePools)),
-					TotalNodes:     totalNodes,
-					MinNodes:       minNodes,
-					MaxNodes:       maxNodes,
-				}
-			}
-
-			// Add security configuration
-			if cluster.WorkloadIdentityConfig != nil || cluster.BinaryAuthorization != nil || cluster.NetworkPolicy != nil {
-				clusterInfo.SecurityConfig = &SecurityConfigInfo{
-					WorkloadIdentity:    cluster.WorkloadIdentityConfig != nil,
-					BinaryAuthorization: cluster.BinaryAuthorization != nil,
-					NetworkPolicy:       cluster.NetworkPolicy != nil,
-					PodSecurityPolicy:   false, // Deprecated in newer versions
-				}
-			}
-
-			allClusters = append(allClusters, clusterInfo)
-		}
-	}
-
-	s.logger.Info("GCP GKE clusters listed successfully",
-		zap.String("project_id", projectID),
-		zap.String("region", region),
-		zap.Int("count", len(allClusters)))
-
-	// 빈 배열인 경우에도 nil이 아닌 빈 슬라이스 반환 보장
-	if allClusters == nil {
-		allClusters = []ClusterInfo{}
-	}
-
-	return &ListClustersResponse{Clusters: allClusters}, nil
-}
-
-// getGCPGKECluster: GCP GKE 클러스터 상세 정보를 조회합니다
-func (s *Service) getGCPGKECluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (*ClusterInfo, error) {
-	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
-	if err != nil {
-		return nil, err
-	}
-
-	// Get cluster details
-	clusterPath := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", projectID, region, clusterName)
-	cluster, err := containerService.Projects.Locations.Clusters.Get(clusterPath).Context(ctx).Do()
-	if err != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to get GKE cluster: %v", err), 502)
-	}
-
-	// Convert to ClusterInfo
-	clusterZone := extractZoneFromLocation(cluster.Location)
-
-	// Build detailed cluster information
-	clusterInfo := ClusterInfo{
-		ID:        cluster.Name,
-		Name:      cluster.Name,
-		Version:   cluster.CurrentMasterVersion,
-		Status:    cluster.Status,
-		Region:    region,
-		Zone:      clusterZone,
-		Endpoint:  cluster.Endpoint,
-		CreatedAt: cluster.CreateTime,
-		UpdatedAt: "", // UpdateTime field doesn't exist in GCP SDK
-		Tags:      cluster.ResourceLabels,
-	}
-
-	// Add network configuration (simplified)
-	if cluster.NetworkConfig != nil {
-		clusterInfo.NetworkConfig = &NetworkConfigInfo{
-			VPCID:           cluster.NetworkConfig.Network,
-			SubnetID:        cluster.NetworkConfig.Subnetwork,
-			PodCIDR:         "",    // Will be populated if available
-			ServiceCIDR:     "",    // Will be populated if available
-			PrivateNodes:    false, // Will be populated if available
-			PrivateEndpoint: false, // Will be populated if available
-		}
-	}
-
-	// Add node pool summary
-	if len(cluster.NodePools) > 0 {
-		var totalNodes, minNodes, maxNodes int32
-		for _, nodePool := range cluster.NodePools {
-			totalNodes += int32(nodePool.InitialNodeCount)
-			if nodePool.Autoscaling != nil {
-				minNodes += int32(nodePool.Autoscaling.MinNodeCount)
-				maxNodes += int32(nodePool.Autoscaling.MaxNodeCount)
-			}
-		}
-
-		clusterInfo.NodePoolInfo = &NodePoolSummaryInfo{
-			TotalNodePools: int32(len(cluster.NodePools)),
-			TotalNodes:     totalNodes,
-			MinNodes:       minNodes,
-			MaxNodes:       maxNodes,
-		}
-	}
-
-	// Add security configuration
-	if cluster.WorkloadIdentityConfig != nil || cluster.BinaryAuthorization != nil || cluster.NetworkPolicy != nil {
-		clusterInfo.SecurityConfig = &SecurityConfigInfo{
-			WorkloadIdentity:    cluster.WorkloadIdentityConfig != nil,
-			BinaryAuthorization: cluster.BinaryAuthorization != nil,
-			NetworkPolicy:       cluster.NetworkPolicy != nil,
-			PodSecurityPolicy:   false, // Deprecated in newer versions
-		}
-	}
-
-	s.logger.Info("GCP GKE cluster retrieved successfully",
-		zap.String("project_id", projectID),
-		zap.String("cluster_name", clusterName),
-		zap.String("region", region))
-
-	return &clusterInfo, nil
-}
-
-// extractZoneFromLocation: 위치 문자열에서 존 이름을 추출합니다
-func extractZoneFromLocation(location string) string {
-	if location == "" {
-		return ""
-	}
-
-	// Split by "/" and get the last part
-	parts := strings.Split(location, "/")
-	if len(parts) < 2 {
-		return ""
-	}
-
-	locationPart := parts[len(parts)-1]
-
-	// If it's a zone (contains a letter at the end), return it
-	// If it's a region (no letter at the end), return empty string
-	if len(locationPart) > 0 && isLetter(locationPart[len(locationPart)-1]) {
-		return locationPart
-	}
-
-	// If it's a region, we need to find the actual zone from the cluster
-	// For now, return empty string for regions
-	return ""
-}
-
-// getGCPLocations: GCP 리전의 모든 위치(리전 및 존) 목록을 반환합니다
-func (s *Service) getGCPLocations(region string) []string {
-	return []string{
-		region,                      // Region level (e.g., asia-northeast3)
-		fmt.Sprintf("%s-a", region), // Zone level (e.g., asia-northeast3-a)
-		fmt.Sprintf("%s-b", region), // Zone level (e.g., asia-northeast3-b)
-		fmt.Sprintf("%s-c", region), // Zone level (e.g., asia-northeast3-c)
-	}
-}
-
-// getGCPContainerServiceAndProjectID: 자격 증명으로부터 GCP Container 서비스 클라이언트와 프로젝트 ID를 조회합니다
-func (s *Service) getGCPContainerServiceAndProjectID(ctx context.Context, credential *domain.Credential) (*container.Service, string, error) {
-	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
-	if err != nil {
-		return nil, "", domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
-	}
-
-	jsonData, err := json.Marshal(credData)
-	if err != nil {
-		return nil, "", domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to marshal credential data: %v", err), 500)
-	}
-
-	containerService, err := container.NewService(ctx, option.WithCredentialsJSON(jsonData))
-	if err != nil {
-		return nil, "", domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create GCP container service: %v", err), 502)
-	}
-
-	projectID, ok := credData["project_id"].(string)
-	if !ok {
-		return nil, "", domain.NewDomainError(domain.ErrCodeValidationFailed, "project_id not found in credential", 400)
-	}
-
-	return containerService, projectID, nil
-}
-
-// convertGCPNodePoolToNodeGroupInfo: GCP NodePool을 NodeGroupInfo로 변환합니다
-func (s *Service) convertGCPNodePoolToNodeGroupInfo(nodePool *container.NodePool, clusterName, region string) NodeGroupInfo {
-	s.logger.Debug("Processing GCP NodePool",
-		zap.String("name", nodePool.Name),
-		zap.String("status", nodePool.Status),
-		zap.String("version", nodePool.Version),
-		zap.Bool("has_config", nodePool.Config != nil),
-		zap.Bool("has_autoscaling", nodePool.Autoscaling != nil),
-		zap.Bool("has_management", nodePool.Management != nil),
-		zap.Bool("has_upgrade_settings", nodePool.UpgradeSettings != nil))
-
-	nodeGroup := NodeGroupInfo{
-		ID:          nodePool.Name,
-		Name:        nodePool.Name,
-		Status:      nodePool.Status,
-		ClusterName: clusterName,
-		Region:      region,
-	}
-
-	if nodePool.Version != "" {
-		nodeGroup.Version = nodePool.Version
-	}
-
-	if nodePool.Config != nil {
-		s.logger.Info("NodePool Config details",
-			zap.String("name", nodePool.Name),
-			zap.String("machine_type", nodePool.Config.MachineType),
-			zap.Int64("disk_size_gb", nodePool.Config.DiskSizeGb),
-			zap.String("disk_type", nodePool.Config.DiskType),
-			zap.String("image_type", nodePool.Config.ImageType),
-			zap.Bool("preemptible", nodePool.Config.Preemptible),
-			zap.Bool("spot", nodePool.Config.Spot),
-			zap.String("service_account", nodePool.Config.ServiceAccount),
-			zap.Int("oauth_scopes_count", len(nodePool.Config.OauthScopes)),
-			zap.Int("tags_count", len(nodePool.Config.Tags)),
-			zap.Int("labels_count", len(nodePool.Config.Labels)),
-			zap.Int("taints_count", len(nodePool.Config.Taints)))
-
-		s.populateNodeGroupFromConfig(&nodeGroup, nodePool.Config)
-	}
-
-	if nodePool.Autoscaling != nil {
-		nodeGroup.ScalingConfig = NodeGroupScalingConfig{
-			MinSize:     int32(nodePool.Autoscaling.MinNodeCount),
-			MaxSize:     int32(nodePool.Autoscaling.MaxNodeCount),
-			DesiredSize: int32(nodePool.InitialNodeCount),
-		}
-	} else {
-		nodeGroup.ScalingConfig = NodeGroupScalingConfig{
-			DesiredSize: int32(nodePool.InitialNodeCount),
-		}
-	}
-
-	if nodePool.Config != nil && nodePool.Config.WorkloadMetadataConfig != nil {
-		nodeGroup.NetworkConfig = &NodeNetworkConfig{
-			EnablePrivateNodes: nodePool.Config.WorkloadMetadataConfig.Mode == "GKE_METADATA",
-		}
-	}
-
-	if nodePool.Management != nil {
-		nodeGroup.Management = &NodeManagement{
-			AutoRepair:  nodePool.Management.AutoRepair,
-			AutoUpgrade: nodePool.Management.AutoUpgrade,
-		}
-	}
-
-	if nodePool.UpgradeSettings != nil {
-		nodeGroup.UpgradeSettings = &UpgradeSettings{
-			MaxSurge:       int32(nodePool.UpgradeSettings.MaxSurge),
-			MaxUnavailable: int32(nodePool.UpgradeSettings.MaxUnavailable),
-			Strategy:       nodePool.UpgradeSettings.Strategy,
-		}
-	}
-
-	nodeGroup.CreatedAt = ""
-	nodeGroup.UpdatedAt = ""
-
-	return nodeGroup
-}
-
-// populateNodeGroupFromConfig: GCP NodePool Config로부터 NodeGroupInfo를 채웁니다
-func (s *Service) populateNodeGroupFromConfig(nodeGroup *NodeGroupInfo, config *container.NodeConfig) {
-	if config.MachineType != "" {
-		nodeGroup.InstanceTypes = []string{config.MachineType}
-	}
-	if config.DiskSizeGb > 0 {
-		nodeGroup.DiskSize = int32(config.DiskSizeGb)
-	}
-	if config.DiskType != "" {
-		nodeGroup.DiskType = config.DiskType
-	}
-	if config.ImageType != "" {
-		nodeGroup.ImageType = config.ImageType
-	}
-	if config.Preemptible {
-		nodeGroup.Preemptible = true
-	}
-	if config.Spot {
-		nodeGroup.Spot = true
-	}
-	if config.ServiceAccount != "" {
-		nodeGroup.ServiceAccount = config.ServiceAccount
-	}
-	if len(config.OauthScopes) > 0 {
-		nodeGroup.OAuthScopes = config.OauthScopes
-	}
-	if len(config.Tags) > 0 {
-		tags := make(map[string]string)
-		for _, tag := range config.Tags {
-			tags[tag] = ""
-		}
-		nodeGroup.Tags = tags
-	}
-	if len(config.Labels) > 0 {
-		nodeGroup.Labels = config.Labels
-	}
-	if len(config.Taints) > 0 {
-		var taints []NodeTaint
-		for _, taint := range config.Taints {
-			taints = append(taints, NodeTaint{
-				Key:    taint.Key,
-				Value:  taint.Value,
-				Effect: taint.Effect,
-			})
-		}
-		nodeGroup.Taints = taints
-	}
-}
-
-// getGCPGKEKubeconfig: GCP GKE 클러스터의 kubeconfig를 생성합니다
-func (s *Service) getGCPGKEKubeconfig(ctx context.Context, credential *domain.Credential, clusterName, region string) (string, error) {
-	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
-	if err != nil {
-		return "", err
-	}
-
-	// Get cluster details - search in region and all zones
-	locations := s.getGCPLocations(region)
-
-	var cluster *container.Cluster
-
-	for _, location := range locations {
-		clusterPath := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", projectID, location, clusterName)
-		clusterResp, err := containerService.Projects.Locations.Clusters.Get(clusterPath).Context(ctx).Do()
-		if err != nil {
-			// Log warning but continue with other locations
-			s.logger.Debug("Failed to get cluster in location",
-				zap.String("location", location),
-				zap.Error(err))
-			continue
-		}
-
-		// Found the cluster
-		cluster = clusterResp
-		break
-	}
-
-	if cluster == nil {
-		return "", domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("failed to find GKE cluster %s in region %s or any of its zones", clusterName, region), 404)
-	}
-
-	// Generate kubeconfig for GCP GKE using Google's standard format
-	// Format: gke_PROJECT_ID_LOCATION_CLUSTER_NAME
-	clusterContextName := fmt.Sprintf("gke_%s_%s_%s", projectID, region, clusterName)
-	kubeconfig := fmt.Sprintf(`apiVersion: v1
-clusters:
-- cluster:
-    certificate-authority-data: %s
-    server: https://%s
-  name: %s
-contexts:
-- context:
-    cluster: %s
-    user: %s
-  name: %s
-current-context: %s
-kind: Config
-preferences: {}
-users:
-- name: %s
-  user:
-    exec:
-      apiVersion: client.authentication.k8s.io/v1beta1
-      command: gke-gcloud-auth-plugin
-      installHint: Install gke-gcloud-auth-plugin for use with kubectl by following
-        https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl#install_plugin
-      provideClusterInfo: true
-`,
-		cluster.MasterAuth.ClusterCaCertificate,
-		cluster.Endpoint,
-		clusterContextName,
-		clusterContextName,
-		clusterContextName,
-		clusterContextName,
-		clusterContextName,
-		clusterContextName,
-	)
-
-	s.logger.Info("GCP GKE kubeconfig generated successfully",
-		zap.String("project_id", projectID),
-		zap.String("cluster_name", clusterName),
-		zap.String("region", region))
-
-	return kubeconfig, nil
-}
-
-// deleteGCPGKECluster: GCP GKE 클러스터를 삭제합니다
-func (s *Service) deleteGCPGKECluster(ctx context.Context, credential *domain.Credential, clusterName, region string) error {
-	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
+// deleteGCPGKENodePool: GCP GKE 노드 풀을 삭제합니다
+func (s *Service) deleteGCPGKENodePool(ctx context.Context, credential *domain.Credential, req DeleteNodeGroupRequest) error {
+	containerService, projectID, err := s.setupGCPContainerService(ctx, credential)
 	if err != nil {
 		return err
 	}
 
-	// Find cluster location - search in region and all zones
-	locations := s.getGCPLocations(region)
+	// Find the cluster first to determine its actual location
+	locations := s.getGCPLocations(req.Region)
 
 	var clusterLocation string
+	var deleted bool
 
+	// Search for the cluster and node pool in all possible locations
 	for _, location := range locations {
-		clusterPath := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", projectID, location, clusterName)
-		_, err := containerService.Projects.Locations.Clusters.Get(clusterPath).Context(ctx).Do()
+		nodePoolPath := fmt.Sprintf("projects/%s/locations/%s/clusters/%s/nodePools/%s", projectID, location, req.ClusterName, req.NodeGroupName)
+
+		// Try to delete the node pool
+		_, err := containerService.Projects.Locations.Clusters.NodePools.Delete(nodePoolPath).Context(ctx).Do()
 		if err != nil {
-			// Log warning but continue with other locations
-			s.logger.Debug("Failed to find cluster in location",
-				zap.String("location", location),
-				zap.Error(err))
+			// Log debug but continue with other locations
+			s.logger.Debug(ctx, "Failed to delete node pool in location",
+				domain.NewLogField("location", location),
+				domain.NewLogField("cluster_name", req.ClusterName),
+				domain.NewLogField("node_pool_name", req.NodeGroupName),
+				domain.NewLogField("error", err))
 			continue
 		}
 
-		// Found the cluster
 		clusterLocation = location
+		deleted = true
 		break
 	}
 
-	if clusterLocation == "" {
-		return domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("failed to find GKE cluster %s in region %s or any of its zones", clusterName, region), 404)
+	if !deleted {
+		return domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("failed to find and delete GKE node pool %s in cluster %s in region %s or any of its zones", req.NodeGroupName, req.ClusterName, req.Region), HTTPStatusNotFound)
 	}
 
-	// Delete cluster
-	clusterPath := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", projectID, clusterLocation, clusterName)
-	operation, err := containerService.Projects.Locations.Clusters.Delete(clusterPath).Context(ctx).Do()
+	s.logger.Info(ctx, "GKE node pool deletion initiated",
+		domain.NewLogField("cluster_name", req.ClusterName),
+		domain.NewLogField("node_pool_name", req.NodeGroupName),
+		domain.NewLogField("region", req.Region),
+		domain.NewLogField("cluster_location", clusterLocation))
+
+	return nil
+}
+
+// deleteAzureNodePool: Azure AKS 노드 풀을 삭제합니다
+func (s *Service) deleteAzureNodePool(ctx context.Context, credential *domain.Credential, req DeleteNodeGroupRequest) error {
+	creds, err := s.extractAzureCredentials(ctx, credential)
 	if err != nil {
-		return domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to delete GKE cluster: %v", err), 502)
+		return err
 	}
 
-	s.logger.Info("GCP GKE cluster deletion initiated",
-		zap.String("project_id", projectID),
-		zap.String("cluster_name", clusterName),
-		zap.String("location", clusterLocation),
-		zap.String("operation_name", operation.Name))
+	// Find resource group from cluster
+	if creds.ResourceGroup == "" {
+		clusters, err := s.listAzureAKSClusters(ctx, credential, req.Region)
+		if err != nil {
+			return err
+		}
 
-	// 캐시 무효화: 클러스터 목록 및 개별 클러스터 캐시 삭제
-	credentialID := credential.ID.String()
-	if err := s.invalidator.InvalidateKubernetesClusterList(ctx, credential.Provider, credentialID, region); err != nil {
-		s.logger.Warn("Failed to invalidate Kubernetes cluster list cache",
-			zap.String("provider", credential.Provider),
-			zap.String("credential_id", credentialID),
-			zap.String("region", region),
-			zap.Error(err))
-	}
-	if err := s.invalidator.InvalidateKubernetesClusterItem(ctx, credential.Provider, credentialID, clusterName); err != nil {
-		s.logger.Warn("Failed to invalidate Kubernetes cluster item cache",
-			zap.String("provider", credential.Provider),
-			zap.String("credential_id", credentialID),
-			zap.String("cluster_name", clusterName),
-			zap.Error(err))
+		for _, cluster := range clusters.Clusters {
+			if cluster.Name == req.ClusterName {
+				parts := strings.Split(cluster.ID, "/")
+				for i, part := range parts {
+					if part == "resourceGroups" && i+1 < len(parts) {
+						creds.ResourceGroup = parts[i+1]
+						break
+					}
+				}
+				break
+			}
+		}
+
+		if creds.ResourceGroup == "" {
+			return domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("AKS cluster %s not found", req.ClusterName), HTTPStatusNotFound)
+		}
 	}
 
-	// 이벤트 발행: 클러스터 삭제 이벤트
-	clusterData := map[string]interface{}{
-		"cluster_name": clusterName,
-		"region":       region,
+	// Create Azure Container Service client
+	clientFactory, err := s.createAzureContainerServiceClient(ctx, creds)
+	if err != nil {
+		return err
 	}
-	if err := s.eventPublisher.PublishKubernetesClusterEvent(ctx, credential.Provider, credentialID, region, "deleted", clusterData); err != nil {
-		s.logger.Warn("Failed to publish Kubernetes cluster deleted event",
-			zap.String("provider", credential.Provider),
-			zap.String("credential_id", credentialID),
-			zap.String("cluster_name", clusterName),
-			zap.Error(err))
+
+	// Get agent pools client
+	agentPoolsClient := clientFactory.NewAgentPoolsClient()
+
+	// Delete agent pool (BeginDelete returns a poller for async operations)
+	poller, err := agentPoolsClient.BeginDelete(ctx, creds.ResourceGroup, req.ClusterName, req.NodeGroupName, nil)
+	if err != nil {
+		return s.providerErrorConverter.ConvertAzureError(err, "delete AKS node pool")
 	}
+
+	// Wait for deletion to complete (optional, can be async)
+	_, err = poller.PollUntilDone(ctx, nil)
+	if err != nil {
+		return s.providerErrorConverter.ConvertAzureError(err, "wait for AKS node pool deletion")
+	}
+
+	s.logger.Info(ctx, "AKS node pool deletion initiated",
+		domain.NewLogField("cluster_name", req.ClusterName),
+		domain.NewLogField("node_pool_name", req.NodeGroupName),
+		domain.NewLogField("region", req.Region),
+		domain.NewLogField("resource_group", creds.ResourceGroup))
 
 	return nil
 }
@@ -2163,7 +1337,7 @@ func (s *Service) createAzureAKSCluster(ctx context.Context, credential *domain.
 		creds.ResourceGroup = req.ResourceGroup
 	}
 	if creds.ResourceGroup == "" {
-		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "resource_group is required for Azure AKS cluster", 400)
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, ErrMsgResourceGroupRequired, HTTPStatusBadRequest)
 	}
 
 	// Create Azure Container Service client
@@ -2213,8 +1387,6 @@ func (s *Service) createAzureAKSCluster(ctx context.Context, credential *domain.
 		if req.Network.DNSServiceIP != "" {
 			networkProfile.DNSServiceIP = to.Ptr(req.Network.DNSServiceIP)
 		}
-		// DockerBridgeCIDR is not directly supported in NetworkProfile
-		// It's typically set at the cluster level or through CNI configuration
 	}
 
 	// Build agent pool profile (node pool)
@@ -2380,16 +1552,16 @@ func (s *Service) createAzureAKSCluster(ctx context.Context, credential *domain.
 	// Create cluster
 	poller, err := managedClustersClient.BeginCreateOrUpdate(ctx, creds.ResourceGroup, req.Name, managedCluster, nil)
 	if err != nil {
-		return nil, s.handleAzureError(err, "create AKS cluster")
+		return nil, s.providerErrorConverter.ConvertAzureError(err, "create AKS cluster")
 	}
 
 	// Wait for the operation to complete (optional, can be async)
 	// For now, we'll return immediately and let the user poll for status
-	s.logger.Info("Azure AKS cluster creation initiated",
-		zap.String("cluster_name", req.Name),
-		zap.String("location", req.Location),
-		zap.String("resource_group", creds.ResourceGroup),
-		zap.String("version", req.Version))
+	s.logger.Info(ctx, "Azure AKS cluster creation initiated",
+		domain.NewLogField("cluster_name", req.Name),
+		domain.NewLogField("location", req.Location),
+		domain.NewLogField("resource_group", creds.ResourceGroup),
+		domain.NewLogField("version", req.Version))
 
 	// Build response
 	response := &CreateClusterResponse{
@@ -2404,27 +1576,35 @@ func (s *Service) createAzureAKSCluster(ctx context.Context, credential *domain.
 
 	// 캐시 무효화: 클러스터 목록 캐시 삭제
 	credentialID := credential.ID.String()
-	if err := s.invalidator.InvalidateKubernetesClusterList(ctx, credential.Provider, credentialID, req.Location); err != nil {
-		s.logger.Warn("Failed to invalidate Kubernetes cluster list cache",
-			zap.String("provider", credential.Provider),
-			zap.String("credential_id", credentialID),
-			zap.String("location", req.Location),
-			zap.Error(err))
+	if s.cacheService != nil {
+		cacheKey := buildKubernetesClusterListKey(credential.Provider, credentialID, req.Location)
+		if err := s.cacheService.Delete(ctx, cacheKey); err != nil {
+			s.logger.Warn(ctx, "Failed to invalidate Kubernetes cluster list cache",
+				domain.NewLogField("provider", credential.Provider),
+				domain.NewLogField("credential_id", credentialID),
+				domain.NewLogField("location", req.Location),
+				domain.NewLogField("error", err))
+		}
 	}
 
 	// 이벤트 발행: 클러스터 생성 이벤트
-	clusterData := map[string]interface{}{
-		"cluster_name":   req.Name,
-		"location":       req.Location,
-		"resource_group": creds.ResourceGroup,
-		"version":        req.Version,
-	}
-	if err := s.eventPublisher.PublishKubernetesClusterEvent(ctx, credential.Provider, credentialID, req.Location, "created", clusterData); err != nil {
-		s.logger.Warn("Failed to publish Kubernetes cluster created event",
-			zap.String("provider", credential.Provider),
-			zap.String("credential_id", credentialID),
-			zap.String("cluster_name", req.Name),
-			zap.Error(err))
+	if s.eventService != nil {
+		clusterData := map[string]interface{}{
+			"cluster_name":   req.Name,
+			"location":       req.Location,
+			"resource_group": creds.ResourceGroup,
+			"version":        req.Version,
+			"provider":       credential.Provider,
+			"credential_id":  credentialID,
+		}
+		eventType := fmt.Sprintf("kubernetes.cluster.%s.created", credential.Provider)
+		if err := s.eventService.Publish(ctx, eventType, clusterData); err != nil {
+			s.logger.Warn(ctx, "Failed to publish Kubernetes cluster created event",
+				domain.NewLogField("provider", credential.Provider),
+				domain.NewLogField("credential_id", credentialID),
+				domain.NewLogField("cluster_name", req.Name),
+				domain.NewLogField("error", err))
+		}
 	}
 
 	// 감사로그 기록
@@ -2471,7 +1651,7 @@ func (s *Service) listAzureAKSClusters(ctx context.Context, credential *domain.C
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			return nil, s.handleAzureError(err, "list AKS clusters")
+			return nil, s.providerErrorConverter.ConvertAzureError(err, "list AKS clusters")
 		}
 
 		for _, cluster := range page.Value {
@@ -2554,7 +1734,7 @@ func (s *Service) getAzureAKSCluster(ctx context.Context, credential *domain.Cre
 		}
 
 		if creds.ResourceGroup == "" {
-			return nil, domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("AKS cluster %s not found", clusterName), 404)
+			return nil, domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("AKS cluster %s not found", clusterName), HTTPStatusNotFound)
 		}
 	}
 
@@ -2570,7 +1750,7 @@ func (s *Service) getAzureAKSCluster(ctx context.Context, credential *domain.Cre
 	// Get cluster details
 	cluster, err := managedClustersClient.Get(ctx, creds.ResourceGroup, clusterName, nil)
 	if err != nil {
-		return nil, s.handleAzureError(err, "get AKS cluster")
+		return nil, s.providerErrorConverter.ConvertAzureError(err, "get AKS cluster")
 	}
 
 	clusterInfo := ClusterInfo{
@@ -2642,7 +1822,7 @@ func (s *Service) deleteAzureAKSCluster(ctx context.Context, credential *domain.
 		}
 
 		if creds.ResourceGroup == "" {
-			return domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("AKS cluster %s not found", clusterName), 404)
+			return domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("AKS cluster %s not found", clusterName), HTTPStatusNotFound)
 		}
 	}
 
@@ -2658,43 +1838,52 @@ func (s *Service) deleteAzureAKSCluster(ctx context.Context, credential *domain.
 	// Delete cluster
 	poller, err := managedClustersClient.BeginDelete(ctx, creds.ResourceGroup, clusterName, nil)
 	if err != nil {
-		return s.handleAzureError(err, "delete AKS cluster")
+		return s.providerErrorConverter.ConvertAzureError(err, "delete AKS cluster")
 	}
 
-	s.logger.Info("Azure AKS cluster deletion initiated",
-		zap.String("cluster_name", clusterName),
-		zap.String("location", location),
-		zap.String("resource_group", creds.ResourceGroup))
+	s.logger.Info(ctx, "Azure AKS cluster deletion initiated",
+		domain.NewLogField("cluster_name", clusterName),
+		domain.NewLogField("location", location),
+		domain.NewLogField("resource_group", creds.ResourceGroup))
 
 	// 캐시 무효화: 클러스터 목록 및 개별 클러스터 캐시 삭제
 	credentialID := credential.ID.String()
-	if err := s.invalidator.InvalidateKubernetesClusterList(ctx, credential.Provider, credentialID, location); err != nil {
-		s.logger.Warn("Failed to invalidate Kubernetes cluster list cache",
-			zap.String("provider", credential.Provider),
-			zap.String("credential_id", credentialID),
-			zap.String("location", location),
-			zap.Error(err))
-	}
-	if err := s.invalidator.InvalidateKubernetesClusterItem(ctx, credential.Provider, credentialID, clusterName); err != nil {
-		s.logger.Warn("Failed to invalidate Kubernetes cluster item cache",
-			zap.String("provider", credential.Provider),
-			zap.String("credential_id", credentialID),
-			zap.String("cluster_name", clusterName),
-			zap.Error(err))
+	if s.cacheService != nil {
+		listKey := buildKubernetesClusterListKey(credential.Provider, credentialID, location)
+		if err := s.cacheService.Delete(ctx, listKey); err != nil {
+			s.logger.Warn(ctx, "Failed to invalidate Kubernetes cluster list cache",
+				domain.NewLogField("provider", credential.Provider),
+				domain.NewLogField("credential_id", credentialID),
+				domain.NewLogField("location", location),
+				domain.NewLogField("error", err))
+		}
+		itemKey := buildKubernetesClusterItemKey(credential.Provider, credentialID, clusterName)
+		if err := s.cacheService.Delete(ctx, itemKey); err != nil {
+			s.logger.Warn(ctx, "Failed to invalidate Kubernetes cluster item cache",
+				domain.NewLogField("provider", credential.Provider),
+				domain.NewLogField("credential_id", credentialID),
+				domain.NewLogField("cluster_name", clusterName),
+				domain.NewLogField("error", err))
+		}
 	}
 
 	// 이벤트 발행: 클러스터 삭제 이벤트
-	clusterData := map[string]interface{}{
-		"cluster_name":   clusterName,
-		"location":       location,
-		"resource_group": creds.ResourceGroup,
-	}
-	if err := s.eventPublisher.PublishKubernetesClusterEvent(ctx, credential.Provider, credentialID, location, "deleted", clusterData); err != nil {
-		s.logger.Warn("Failed to publish Kubernetes cluster deleted event",
-			zap.String("provider", credential.Provider),
-			zap.String("credential_id", credentialID),
-			zap.String("cluster_name", clusterName),
-			zap.Error(err))
+	if s.eventService != nil {
+		clusterData := map[string]interface{}{
+			"cluster_name":   clusterName,
+			"location":       location,
+			"resource_group": creds.ResourceGroup,
+			"provider":       credential.Provider,
+			"credential_id":  credentialID,
+		}
+		eventType := fmt.Sprintf("kubernetes.cluster.%s.deleted", credential.Provider)
+		if err := s.eventService.Publish(ctx, eventType, clusterData); err != nil {
+			s.logger.Warn(ctx, "Failed to publish Kubernetes cluster deleted event",
+				domain.NewLogField("provider", credential.Provider),
+				domain.NewLogField("credential_id", credentialID),
+				domain.NewLogField("cluster_name", clusterName),
+				domain.NewLogField("error", err))
+		}
 	}
 
 	// 감사로그 기록
@@ -2746,7 +1935,7 @@ func (s *Service) getAzureAKSKubeconfig(ctx context.Context, credential *domain.
 		}
 
 		if creds.ResourceGroup == "" {
-			return "", domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("AKS cluster %s not found", clusterName), 404)
+			return "", domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("AKS cluster %s not found", clusterName), HTTPStatusNotFound)
 		}
 	}
 
@@ -2762,12 +1951,12 @@ func (s *Service) getAzureAKSKubeconfig(ctx context.Context, credential *domain.
 	// Get cluster credentials (kubeconfig)
 	credentialResult, err := managedClustersClient.ListClusterUserCredentials(ctx, creds.ResourceGroup, clusterName, nil)
 	if err != nil {
-		return "", s.handleAzureError(err, "get AKS kubeconfig")
+		return "", s.providerErrorConverter.ConvertAzureError(err, "get AKS kubeconfig")
 	}
 
 	// Extract kubeconfig from the credential result
 	if credentialResult.Kubeconfigs == nil || len(credentialResult.Kubeconfigs) == 0 {
-		return "", domain.NewDomainError(domain.ErrCodeInternalError, "no kubeconfig found in Azure response", 500)
+		return "", domain.NewDomainError(domain.ErrCodeInternalError, "no kubeconfig found in Azure response", HTTPStatusInternalServerError)
 	}
 
 	// Return the first kubeconfig (usually there's only one)
@@ -2803,7 +1992,7 @@ func (s *Service) listAzureNodePools(ctx context.Context, credential *domain.Cre
 		}
 
 		if creds.ResourceGroup == "" {
-			return nil, domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("AKS cluster %s not found", req.ClusterName), 404)
+			return nil, domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("AKS cluster %s not found", req.ClusterName), HTTPStatusNotFound)
 		}
 	}
 
@@ -2823,7 +2012,7 @@ func (s *Service) listAzureNodePools(ctx context.Context, credential *domain.Cre
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			return nil, s.handleAzureError(err, "list AKS node pools")
+			return nil, s.providerErrorConverter.ConvertAzureError(err, "list AKS node pools")
 		}
 
 		for _, agentPool := range page.Value {
@@ -2909,7 +2098,7 @@ func (s *Service) getAzureNodePool(ctx context.Context, credential *domain.Crede
 		}
 
 		if creds.ResourceGroup == "" {
-			return nil, domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("AKS cluster %s not found", req.ClusterName), 404)
+			return nil, domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("AKS cluster %s not found", req.ClusterName), HTTPStatusNotFound)
 		}
 	}
 
@@ -2925,7 +2114,7 @@ func (s *Service) getAzureNodePool(ctx context.Context, credential *domain.Crede
 	// Get agent pool details
 	agentPool, err := agentPoolsClient.Get(ctx, creds.ResourceGroup, req.ClusterName, req.NodeGroupName, nil)
 	if err != nil {
-		return nil, s.handleAzureError(err, "get AKS node pool")
+		return nil, s.providerErrorConverter.ConvertAzureError(err, "get AKS node pool")
 	}
 
 	nodeGroup := NodeGroupInfo{

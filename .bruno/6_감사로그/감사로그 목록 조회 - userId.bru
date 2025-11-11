@@ -19,7 +19,10 @@ auth:bearer {
 }
 
 script:post-response {
-  bru.setEnvVar("auditLogId", res.body.data.logs[0].id);
+  const dataArray = Array.isArray(res.body.data) ? res.body.data : [];
+  if (dataArray.length > 0) {
+    bru.setEnvVar("auditLogId", dataArray[0].id);
+  }
 }
 
 tests {
@@ -27,21 +30,12 @@ tests {
     expect(res.getStatus()).to.equal(200);
   });
   
-  test("Response contains logs array and pagination", function() {
-    expect(res.getBody()).to.have.property('logs');
-    expect(res.getBody().logs).to.be.an('array');
-    expect(res.getBody()).to.have.property('pagination');
-  });
-  
-  test("Pagination has required fields", function() {
-    const pagination = res.getBody().pagination;
-    expect(pagination).to.have.property('total');
-    expect(pagination).to.have.property('limit');
-    expect(pagination).to.have.property('offset');
+  test("Response contains logs array", function() {
+    expect(res.getBody().data).to.be.an('array');
   });
   
   test("Logs have required fields", function() {
-    const logs = res.getBody().logs;
+    const logs = res.getBody().data;
     if (logs.length > 0) {
       expect(logs[0]).to.have.property('id');
       expect(logs[0]).to.have.property('user_id');

@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/azure/kubernetes/clusters/{{aksClusterName}}/nodepools?credential_id={{azure_credentialsId}}&region={{aksLocation}}
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/kubernetes/clusters/{{aksClusterName}}/node-pools?credential_id={{azure_credentialsId}}&region={{aksLocation}}
   body: none
   auth: bearer
 }
@@ -20,7 +20,7 @@ auth:bearer {
 }
 
 script:post-response {
-  const rowData = res.body.data.node_pools || res.body.data.node_groups || [];
+  const rowData = Array.isArray(res.body.data) ? res.body.data : [];
   
   const columnDefinitions = [
     { field: "id", filter: true, floatingFilter: true },
@@ -63,23 +63,28 @@ docs {
   ```json
   {
     "success": true,
-    "data": {
-      "node_pools": [
-        {
-          "id": "nodepool1",
-          "name": "nodepool1",
-          "version": "1.28",
-          "status": "Succeeded",
-          "node_count": 3,
-          "min_nodes": 1,
-          "max_nodes": 10,
-          "instance_type": "Standard_D2s_v3",
-          "region": "eastus",
-          "auto_scaling": true,
-          "created_at": "2025-10-21T17:00:00Z"
-        }
-      ],
-      "total": 1
+    "data": [
+      {
+        "id": "nodepool1",
+        "name": "nodepool1",
+        "version": "1.28",
+        "status": "Succeeded",
+        "node_count": 3,
+        "min_nodes": 1,
+        "max_nodes": 10,
+        "instance_type": "Standard_D2s_v3",
+        "region": "eastus",
+        "auto_scaling": true,
+        "created_at": "2025-10-21T17:00:00Z"
+      }
+    ],
+    "meta": {
+      "page": 1,
+      "limit": 10,
+      "total": 1,
+      "total_pages": 1,
+      "has_next": false,
+      "has_prev": false
     },
     "message": "Node pools retrieved successfully"
   }

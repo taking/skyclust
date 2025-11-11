@@ -3,7 +3,6 @@ package kubernetes
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"skyclust/internal/domain"
 
@@ -81,38 +80,3 @@ func (s *Service) createAzureContainerServiceClient(ctx context.Context, creds *
 
 	return clientFactory, nil
 }
-
-// handleAzureError: Azure SDK 에러를 적절한 도메인 에러로 변환합니다
-func (s *Service) handleAzureError(err error, operation string) error {
-	if err == nil {
-		return nil
-	}
-
-	// Check if it's an Azure ResponseError
-	if strings.Contains(err.Error(), "ResponseError") {
-		// Try to extract error details
-		errorMsg := err.Error()
-
-		// Check for specific Azure error codes
-		switch {
-		case strings.Contains(errorMsg, "InvalidAuthenticationToken") || strings.Contains(errorMsg, "AuthenticationFailed"):
-			return domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid Azure credentials", 400)
-		case strings.Contains(errorMsg, "AuthorizationFailed") || strings.Contains(errorMsg, "Forbidden"):
-			return domain.NewDomainError(domain.ErrCodeForbidden, "Access denied to Azure resources. Please check your Azure RBAC permissions.", 403)
-		case strings.Contains(errorMsg, "ResourceNotFound") || strings.Contains(errorMsg, "NotFound"):
-			return domain.NewDomainError(domain.ErrCodeNotFound, "Azure resource not found", 404)
-		case strings.Contains(errorMsg, "InvalidParameter") || strings.Contains(errorMsg, "BadRequest"):
-			return domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("Invalid Azure parameter: %s", errorMsg), 400)
-		case strings.Contains(errorMsg, "TooManyRequests") || strings.Contains(errorMsg, "Throttled"):
-			return domain.NewDomainError(domain.ErrCodeProviderQuota, "Azure API rate limit exceeded", 429)
-		case strings.Contains(errorMsg, "Conflict"):
-			return domain.NewDomainError(domain.ErrCodeConflict, "Azure resource conflict", 409)
-		default:
-			return domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("Azure API error: %s", errorMsg), 400)
-		}
-	}
-
-	// For other errors, return as internal server error
-	return domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("Failed to %s: %v", operation, err), 500)
-}
-

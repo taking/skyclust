@@ -25,6 +25,7 @@ import (
 	kubernetesservice "skyclust/internal/application/services/kubernetes"
 	networkservice "skyclust/internal/application/services/network"
 	"skyclust/internal/di"
+	"skyclust/internal/shared/responses"
 	"skyclust/pkg/config"
 	"skyclust/pkg/middleware"
 )
@@ -66,10 +67,12 @@ func (rm *RouteManager) SetupAllRoutes(router *gin.Engine) {
 func (rm *RouteManager) setupPublicRoutes(router *gin.Engine) {
 	// Health check endpoint (public)
 	router.GET("/health", func(c *gin.Context) {
-		common.SuccessResponse(c, gin.H{
-			"status":  "healthy",
-			"message": "SkyClust API is running",
-		})
+		responses.NewResponseBuilder(c).
+			WithData(gin.H{
+				"status":  "healthy",
+				"message": "SkyClust API is running",
+			}).
+			SendOK()
 	})
 	// API v1 public routes
 	apiVersion := common.CurrentAPIVersion()
