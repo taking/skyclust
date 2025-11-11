@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useValidation } from '@/lib/validation';
@@ -20,6 +20,7 @@ import { useTranslation } from '@/hooks/use-translation';
 import { useSubnetActions } from '@/features/networks/hooks/use-subnet-actions';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query';
+import { useAvailabilityZones } from '@/features/kubernetes/hooks/use-kubernetes-metadata';
 
 interface CreateSubnetDialogProps {
   open: boolean;
@@ -52,6 +53,18 @@ export function CreateSubnetDialog({
   const queryClient = useQueryClient();
   const { schemas } = useValidation();
 
+  // Availability Zones 조회 (AWS의 경우)
+  const {
+    data: availabilityZones = [],
+    isLoading: isLoadingZones,
+  } = useAvailabilityZones({
+    provider: selectedProvider as CloudProvider,
+    credentialId: selectedCredentialId,
+    region: selectedRegion || '',
+  });
+
+  const canSelectZone = selectedProvider === 'aws' && !!selectedCredentialId && !!selectedRegion;
+
   // Subnet 생성 mutation
   const { createSubnetMutation } = useSubnetActions({
     selectedProvider,
@@ -74,10 +87,12 @@ export function CreateSubnetDialog({
   const form = useForm<CreateSubnetForm>({
     resolver: zodResolver(schemas.createSubnetSchema),
     defaultValues: {
+      name: '',
+      cidr_block: '',
       region: selectedRegion || '',
       availability_zone: selectedZone || '',
       vpc_id: selectedVPCId,
-      credential_id: selectedCredentialId, // credential_id를 defaultValues에 포함
+      credential_id: selectedCredentialId,
     },
   });
 
@@ -85,10 +100,12 @@ export function CreateSubnetDialog({
   React.useEffect(() => {
     if (open) {
       form.reset({
+        name: '',
+        cidr_block: '',
         region: selectedRegion || '',
         availability_zone: selectedZone || '',
         vpc_id: selectedVPCId,
-        credential_id: selectedCredentialId, // credential_id를 reset values에 포함
+        credential_id: selectedCredentialId,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -110,13 +127,16 @@ export function CreateSubnetDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, selectedRegion]);
 
-  // Update form when zone changes (only when dialog is open)
+  // Update form when zone changes (only when dialog opens, not when selectedZone changes while dialog is open)
+  // 사용자가 dialog에서 직접 선택한 값을 보존하기 위해 dialog가 열릴 때만 초기값 설정
   React.useEffect(() => {
-    if (open && selectedZone) {
+    if (open && selectedZone && !form.getValues('availability_zone')) {
+      // form에 값이 없을 때만 selectedZone을 초기값으로 설정
+      // 사용자가 이미 선택한 값이 있으면 덮어쓰지 않음
       form.setValue('availability_zone', selectedZone, { shouldValidate: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, selectedZone]);
+  }, [open]); // selectedZone을 dependency에서 제거하여 사용자 선택을 보존
 
   // Update form when credential_id changes (only when dialog is open)
   React.useEffect(() => {
@@ -131,9 +151,12 @@ export function CreateSubnetDialog({
       throw new Error('Provider not selected');
     }
     
-    // selectedRegion과 selectedZone이 있으면 항상 그 값을 사용
+    // Region: selectedRegion이 있으면 우선 사용, 없으면 form의 값 사용
     const finalRegion = selectedRegion || data.region;
-    const finalZone = selectedZone || data.availability_zone || data.zone;
+    
+    // Zone: form에서 사용자가 선택한 값을 우선 사용, 없으면 selectedZone 사용
+    // 사용자가 dialog에서 직접 선택한 값이 있으면 그것을 사용
+    const finalZone = data.availability_zone || data.zone || selectedZone;
     
     // credential_id 자동 추가
     const subnetData: CreateSubnetForm = {
@@ -183,10 +206,12 @@ export function CreateSubnetDialog({
     
     // Form reset
     form.reset({
+      name: '',
+      cidr_block: '',
       region: selectedRegion || '',
       availability_zone: selectedZone || '',
       vpc_id: selectedVPCId,
-      credential_id: selectedCredentialId, // credential_id를 reset values에 포함
+      credential_id: selectedCredentialId,
     });
   });
 
@@ -310,30 +335,76 @@ export function CreateSubnetDialog({
                 control={form.control}
                 name="availability_zone"
                 render={({ field }) => {
-                  // selectedZone이 있으면 항상 그 값을 사용하고 form에 등록
-                  const zoneValue = selectedZone || field.value || '';
-                  
-                  return (
-                    <FormItem>
-                      <FormLabel>Availability Zone *</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          placeholder="ap-northeast-2a"
-                          value={zoneValue}
-                          disabled={true}
-                          readOnly
-                          className="bg-muted cursor-not-allowed"
-                        />
-                      </FormControl>
-                      {selectedZone && (
-                        <p className="text-sm text-muted-foreground">
-                          Fixed from Basic Configuration
-                        </p>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  );
+                  // AWS의 경우 Select로 표시, 그 외는 Input으로 표시
+                  if (canSelectZone) {
+                    // AWS: Select로 표시 (선택 가능)
+                    const zoneValue = field.value || selectedZone || '';
+                    
+                    return (
+                      <FormItem>
+                        <FormLabel>Availability Zone *</FormLabel>
+                        <FormControl>
+                          <Select
+                            value={zoneValue}
+                            onValueChange={(value) => {
+                              field.onChange(value);
+                            }}
+                            disabled={isLoadingZones || !selectedRegion}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={isLoadingZones ? 'Loading zones...' : 'Select availability zone'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availabilityZones.length === 0 && !isLoadingZones ? (
+                                <div className="p-2 text-sm text-muted-foreground">No zones available</div>
+                              ) : (
+                                availabilityZones.map((zone) => (
+                                  <SelectItem key={zone} value={zone}>
+                                    {zone}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </FormControl>
+                        <FormDescription>
+                          Select an availability zone for the subnet
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  } else {
+                    // AWS가 아닌 경우 또는 zone을 선택할 수 없는 경우: Input으로 표시
+                    const zoneValue = selectedZone || field.value || '';
+                    const isReadOnly = !!selectedZone;
+                    
+                    return (
+                      <FormItem>
+                        <FormLabel>Availability Zone *</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="ap-northeast-2a"
+                            value={zoneValue}
+                            disabled={isReadOnly}
+                            readOnly={isReadOnly}
+                            className={isReadOnly ? 'bg-muted cursor-not-allowed' : ''}
+                            onChange={(e) => {
+                              if (!isReadOnly) {
+                                field.onChange(e.target.value);
+                              }
+                            }}
+                          />
+                        </FormControl>
+                        {selectedZone && (
+                          <p className="text-sm text-muted-foreground">
+                            Fixed from Basic Configuration
+                          </p>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }
                 }}
               />
             </div>

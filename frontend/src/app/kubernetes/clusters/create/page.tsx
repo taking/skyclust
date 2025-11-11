@@ -14,7 +14,6 @@ import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Stepper, StepContent } from '@/components/ui/stepper';
-import { useToast } from '@/hooks/use-toast';
 import { useErrorHandler } from '@/hooks/use-error-handler';
 import { useTranslation } from '@/hooks/use-translation';
 import { useValidation } from '@/lib/validation';
@@ -83,7 +82,6 @@ const STEPS = [
 function CreateClusterPageContent() {
   const router = useRouter();
   const { t } = useTranslation();
-  const { success } = useToast();
   const { handleError } = useErrorHandler();
   const { selectedCredentialId, selectedRegion } = useCredentialContext();
   const { currentWorkspace } = useWorkspaceStore();
@@ -184,6 +182,33 @@ function CreateClusterPageContent() {
           handleError(new Error('Please select a VPC first'), { operation: 'validateStep2' });
           return;
         }
+        
+        // AWS EKS: 서브넷이 최소 2개의 다른 AZ에 있는지 검증
+        if (selectedProvider === 'aws' && formData.subnet_ids && formData.subnet_ids.length > 0) {
+          const selectedSubnets = formData.subnet_ids
+            .map(id => subnets.find(s => s.id === id))
+            .filter(Boolean);
+          
+          const uniqueAZs = new Set(
+            selectedSubnets
+              .map(s => s?.availability_zone)
+              .filter(Boolean)
+          );
+          
+          if (uniqueAZs.size < VALIDATION.ARRAY.MIN_AZ_COUNT_FOR_AWS_EKS) {
+            const azList = Array.from(uniqueAZs).join(', ') || 'unknown';
+            form.setError('subnet_ids', {
+              type: 'manual',
+              message: `AWS EKS requires subnets from at least two different availability zones for high availability. Current subnets are in ${uniqueAZs.size} zone(s): ${azList}. Please select subnets from at least 2 different availability zones.`,
+            });
+            return;
+          }
+          
+          // 검증 통과 시 에러 제거
+          if (form.formState.errors.subnet_ids) {
+            form.clearErrors('subnet_ids');
+          }
+        }
         break;
       case 3:
         // Step 3는 모두 optional이므로 검증 불필요
@@ -202,7 +227,7 @@ function CreateClusterPageContent() {
     if (currentStep < STEPS.length) {
       setCurrentStep(prev => prev + 1);
     }
-  }, [currentStep, form, handleError]);
+  }, [currentStep, form, handleError, formData.vpc_id, formData.subnet_ids, selectedProvider, subnets]);
 
   const handleBack = useCallback(() => {
     if (currentStep > 1) {
@@ -273,7 +298,6 @@ function CreateClusterPageContent() {
         { provider: selectedProvider, data: azureData },
         {
           onSuccess: () => {
-            success('Cluster creation initiated');
             router.push('/kubernetes/clusters');
           },
           onError: (error: unknown) => {
@@ -290,7 +314,7 @@ function CreateClusterPageContent() {
         { provider: selectedProvider, data: apiData },
         {
           onSuccess: () => {
-            success('Cluster creation initiated');
+            // useStandardMutation에서 이미 success toast를 호출하므로 여기서는 호출하지 않음
             router.push('/kubernetes/clusters');
           },
           onError: (error: unknown) => {
@@ -299,7 +323,7 @@ function CreateClusterPageContent() {
         }
       );
     }
-  };
+  }, [selectedProvider, form, handleError, subnets, createClusterMutation, router, t]);
 
   const handleCancel = useCallback(() => {
     if (confirm(UI_MESSAGES.CONFIRM_CANCEL)) {

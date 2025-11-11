@@ -46,6 +46,11 @@ import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { ScreenReaderOnly } from '@/components/accessibility/screen-reader-only';
 import { getActionAriaLabel } from '@/lib/accessibility';
 import { Breadcrumb } from '@/components/common/breadcrumb';
+import { SSEStatusBadge } from '@/components/sse/sse-status-badge';
+import { SSEStatusTooltip } from '@/components/sse/sse-status-tooltip';
+import { SSEStatusDialog } from '@/components/sse/sse-status-dialog';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { useState } from 'react';
 import { getRegionsByProvider, supportsRegionSelection, getDefaultRegionForProvider } from '@/lib/regions';
 import type { CloudProvider } from '@/lib/types/kubernetes';
 import { useTranslation } from '@/hooks/use-translation';
@@ -59,6 +64,7 @@ function HeaderComponent() {
   const { currentWorkspace } = useWorkspaceStore();
   const { selectedCredentialId, selectedRegion, setSelectedCredential, setSelectedRegion } = useCredentialContextStore();
   const { t, locale, setLocale } = useTranslation();
+  const [sseDialogOpen, setSSEDialogOpen] = useState(false);
 
   // 자격 증명/리전 선택기를 표시할 경로인지 확인 (URL 동기화용)
   const shouldShowSelectors = React.useMemo(() => {
@@ -297,6 +303,24 @@ function HeaderComponent() {
 
           <div className="flex items-center space-x-1 sm:space-x-2 md:space-x-4 flex-shrink-0">
 
+            {/* SSE Status Badge */}
+            {user && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setSSEDialogOpen(true)}
+                    className="focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-md"
+                    aria-label={t('sse.connectionStatus') || 'SSE Connection Status'}
+                  >
+                    <SSEStatusBadge />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs">
+                  <SSEStatusTooltip />
+                </TooltipContent>
+              </Tooltip>
+            )}
+
             {/* Language Selector */}
             <Select
               value={locale}
@@ -382,6 +406,11 @@ function HeaderComponent() {
           </div>
         </div>
       </div>
+
+      {/* SSE Status Dialog */}
+      {user && (
+        <SSEStatusDialog open={sseDialogOpen} onOpenChange={setSSEDialogOpen} />
+      )}
     </header>
   );
 }

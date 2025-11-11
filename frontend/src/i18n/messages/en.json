@@ -328,6 +328,8 @@
     "selectRegionToFilterVPCs": "Select region to filter VPCs",
     "regionSelectionHandledInHeader": "Region selection is now handled in Header",
     "searchVPCsPlaceholder": "Search VPCs by name, ID, or state...",
+    "searchSubnetsPlaceholder": "Search subnets by name, ID, or CIDR block...",
+    "searchSecurityGroupsPlaceholder": "Search security groups by name, ID, or description...",
     "selectVPCToViewSubnets": "Select VPC to view subnets",
     "selectVPCToViewSecurityGroups": "Select VPC to view security groups",
     "selectRegionAndVPCToViewSubnets": "Select region and VPC to view subnets"
@@ -445,6 +447,28 @@
     "errorProcessingRequest": "An error occurred while processing your request.",
     "noInternetConnection": "No internet connection. Please check your network.",
     "errorOccurredTryAgain": "An error occurred. Please try again."
+  },
+  "sse": {
+    "realTime": "Real-time",
+    "offline": "Offline",
+    "connecting": "Connecting...",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "closed": "Closed",
+    "unknown": "Unknown",
+    "connectionStatus": "SSE Connection Status",
+    "connectionStatusDescription": "Real-time update connection status and statistics",
+    "status": "Status",
+    "connectedFor": "Connected for",
+    "connectedAt": "Connected at",
+    "lastUpdate": "Last update",
+    "eventsPerMinute": "Events/min",
+    "eventsLastMinute": "Events (last minute)",
+    "eventsLast5Minutes": "Events (last 5 minutes)",
+    "readyState": "Ready State",
+    "subscribedEvents": "Subscribed Events",
+    "eventStatistics": "Event Statistics",
+    "reconnect": "Reconnect"
   },
   "dashboard": {
     "title": "Dashboard",

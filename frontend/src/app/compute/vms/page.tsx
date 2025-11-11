@@ -13,7 +13,6 @@ import * as React from 'react';
 import dynamic from 'next/dynamic';
 import { ResourceListPage } from '@/components/common/resource-list-page';
 import { BulkActionsToolbar } from '@/components/common/bulk-actions-toolbar';
-import { useToast } from '@/hooks/use-toast';
 import { useErrorHandler } from '@/hooks/use-error-handler';
 import { EVENTS } from '@/lib/constants';
 import { useWorkspaceStore } from '@/store/workspace';
@@ -45,7 +44,6 @@ const VMTable = dynamic(
 );
 
 function VMsPageContent() {
-  const { success: showSuccess } = useToast();
   const { handleError } = useErrorHandler();
   const { t } = useTranslation();
 
@@ -175,7 +173,6 @@ function VMsPageContent() {
     deleteMutation: deleteVMMutation,
     startMutation: startVMMutation,
     stopMutation: stopVMMutation,
-    onSuccess: showSuccess,
     onError: (error: unknown) => handleError(error, { operation: 'vmAction', resource: 'VM' }),
   });
 
@@ -208,14 +205,13 @@ function VMsPageContent() {
       {
         onSuccess: () => {
           setIsCreateDialogOpen(false);
-          showSuccess(t('vm.creationInitiated'));
         },
         onError: (error: unknown) => {
           handleError(error, { operation: 'createVM', resource: 'VM' });
         },
       }
     );
-  }, [currentWorkspace, createVMMutation, setIsCreateDialogOpen, showSuccess, t, handleError]);
+  }, [currentWorkspace, createVMMutation, setIsCreateDialogOpen, handleError]);
 
   const handlePageSizeChange = useCallback((newSize: number) => {
     setPageSize(newSize);
