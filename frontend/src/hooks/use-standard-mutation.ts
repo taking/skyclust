@@ -36,9 +36,9 @@ export interface UseStandardMutationOptions<TData, TVariables, TContext = unknow
   invalidateQueries?: readonly QueryKey[];
 
   /**
-   * 성공 메시지
+   * 성공 메시지 (문자열 또는 함수)
    */
-  successMessage: string;
+  successMessage: string | ((data: TData, variables: TVariables) => string);
 
   /**
    * 에러 컨텍스트 정보 (operation, resource 등)
@@ -95,7 +95,10 @@ export function useStandardMutation<TData, TVariables, TContext = unknown>({
       }
 
       // Success message
-      success(successMessage);
+      const message = typeof successMessage === 'function' 
+        ? successMessage(data, variables)
+        : successMessage;
+      success(message);
 
       // Custom success callback
       onSuccess?.(data, variables);

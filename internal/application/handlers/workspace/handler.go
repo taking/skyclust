@@ -500,7 +500,11 @@ func (h *Handler) getMembersHandler() handlers.HandlerFunc {
 		}
 
 		h.setTelemetryAttributes(span, userID, workspaceID.String(), workspace.Name, "get_workspace_members")
-		h.OK(c, responses, "Workspace members retrieved successfully")
+
+		// Always include meta information for consistency (direct array: data[])
+		page, limit := h.ParsePageLimitParams(c)
+		total := int64(len(responses))
+		h.BuildPaginatedResponse(c, responses, page, limit, total, "Workspace members retrieved successfully")
 	}
 }
 

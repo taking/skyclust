@@ -5,7 +5,8 @@
 
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useCallback } from 'react';
+import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -23,8 +24,7 @@ import { useWorkspaceStore } from '@/store/workspace';
 import { ArrowLeft } from 'lucide-react';
 import { useKubernetesClusters } from '@/features/kubernetes';
 import type { CreateClusterForm, CloudProvider } from '@/lib/types';
-import { useVPCs } from '@/features/networks/hooks/use-vpcs';
-import { useSubnets } from '@/features/networks/hooks/use-subnets';
+import { useNetworkResources } from '@/features/networks/hooks/use-network-resources';
 import { UI_MESSAGES, VALIDATION } from '@/lib/constants';
 import { TableSkeleton } from '@/components/ui/table-skeleton';
 
@@ -125,10 +125,10 @@ function CreateClusterPageContent() {
   const selectedProvider = selectedCredential?.provider as CloudProvider | undefined;
 
   // Step 2에서 VPC와 Subnet 정보를 가져오기 위해 사용
-  const { vpcs } = useVPCs();
+  const { vpcs } = useNetworkResources({ resourceType: 'vpcs' });
   
   // Subnets는 vpc_id가 있을 때만 가져오기
-  const { subnets, setSelectedVPCId: setSubnetVPCId } = useSubnets();
+  const { subnets = [], setSelectedVPCId: setSubnetVPCId = () => {} } = useNetworkResources({ resourceType: 'subnets', requireVPC: true });
   
   // formData.vpc_id가 변경되면 subnets hook의 selectedVPCId 업데이트
   useEffect(() => {
@@ -165,11 +165,11 @@ function CreateClusterPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // 빈 의존성 배열로 초기 마운트 시에만 실행
 
-  const updateFormData = (data: Partial<CreateClusterForm>) => {
+  const updateFormData = useCallback((data: Partial<CreateClusterForm>) => {
     setFormData(prev => ({ ...prev, ...data }));
-  };
+  }, []);
 
-  const handleNext = async () => {
+  const handleNext = useCallback(async () => {
     // Step별 필수 필드 검증
     let fieldsToValidate: (keyof CreateClusterForm)[] = [];
     
@@ -202,15 +202,15 @@ function CreateClusterPageContent() {
     if (currentStep < STEPS.length) {
       setCurrentStep(prev => prev + 1);
     }
-  };
+  }, [currentStep, form, handleError]);
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     if (currentStep > 1) {
       setCurrentStep(prev => prev - 1);
     }
-  };
+  }, [currentStep]);
 
-  const handleCreateCluster = async () => {
+  const handleCreateCluster = useCallback(async () => {
     if (!selectedProvider) {
       handleError(new Error('Provider not selected'), { operation: 'createCluster' });
       return;
@@ -301,11 +301,11 @@ function CreateClusterPageContent() {
     }
   };
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     if (confirm(UI_MESSAGES.CONFIRM_CANCEL)) {
       router.push('/kubernetes/clusters');
     }
-  };
+  }, [router]);
 
   const renderStepContent = () => {
     switch (currentStep) {
@@ -479,6 +479,8 @@ function CreateClusterPageContent() {
   );
 }
 
+const MemoizedCreateClusterPageContent = React.memo(CreateClusterPageContent);
+
 export default function CreateClusterPage() {
   return (
     <Suspense fallback={
@@ -489,7 +491,7 @@ export default function CreateClusterPage() {
         </div>
       </div>
     }>
-      <CreateClusterPageContent />
+      <MemoizedCreateClusterPageContent />
     </Suspense>
   );
 }

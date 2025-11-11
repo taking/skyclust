@@ -97,12 +97,12 @@ func (h *Handler) listVPCsHandler() handlers.HandlerFunc {
 		handlerResp := FromServiceListVPCsResponse(vpcs)
 		h.logVPCsListSuccess(c, userID, len(handlerResp.VPCs))
 
-		// Use OKWithPagination if total count is available (direct array: data[])
-		if vpcs != nil && vpcs.Total > 0 {
-			h.OKWithPagination(c, handlerResp.VPCs, "VPCs retrieved successfully", handlerReq.Page, handlerReq.Limit, vpcs.Total)
-		} else {
-			h.OK(c, handlerResp.VPCs, "VPCs retrieved successfully")
+		// Always include meta information for consistency (direct array: data[])
+		total := int64(0)
+		if vpcs != nil {
+			total = vpcs.Total
 		}
+		h.OKWithPagination(c, handlerResp.VPCs, "VPCs retrieved successfully", handlerReq.Page, handlerReq.Limit, total)
 	}
 }
 
@@ -171,12 +171,12 @@ func (h *Handler) listSubnetsHandler() handlers.HandlerFunc {
 		handlerResp := FromServiceListSubnetsResponse(subnets)
 		h.logSubnetsListSuccess(c, userID, vpcID, len(handlerResp.Subnets))
 
-		// Use OKWithPagination if total count is available (direct array: data[])
-		if subnets != nil && subnets.Total > 0 {
-			h.OKWithPagination(c, handlerResp.Subnets, "Subnets retrieved successfully", handlerReq.Page, handlerReq.Limit, subnets.Total)
-		} else {
-			h.OK(c, handlerResp.Subnets, "Subnets retrieved successfully")
+		// Always include meta information for consistency (direct array: data[])
+		total := int64(0)
+		if subnets != nil {
+			total = subnets.Total
 		}
+		h.OKWithPagination(c, handlerResp.Subnets, "Subnets retrieved successfully", handlerReq.Page, handlerReq.Limit, total)
 	}
 }
 
@@ -245,12 +245,12 @@ func (h *Handler) listSecurityGroupsHandler() handlers.HandlerFunc {
 		handlerResp := FromServiceListSecurityGroupsResponse(securityGroups)
 		h.logSecurityGroupsListSuccess(c, userID, vpcID, len(handlerResp.SecurityGroups))
 
-		// Use OKWithPagination if total count is available (direct array: data[])
-		if securityGroups != nil && securityGroups.Total > 0 {
-			h.OKWithPagination(c, handlerResp.SecurityGroups, "Security groups retrieved successfully", handlerReq.Page, handlerReq.Limit, securityGroups.Total)
-		} else {
-			h.OK(c, handlerResp.SecurityGroups, "Security groups retrieved successfully")
+		// Always include meta information for consistency (direct array: data[])
+		total := int64(0)
+		if securityGroups != nil {
+			total = securityGroups.Total
 		}
+		h.OKWithPagination(c, handlerResp.SecurityGroups, "Security groups retrieved successfully", handlerReq.Page, handlerReq.Limit, total)
 	}
 }
 

@@ -4,7 +4,7 @@
  */
 
 import { NetworkError, ServerError } from './types';
-import { getErrorLogger } from './logger';
+import { logger } from '../logging/logger';
 
 /**
  * BaseErrorHandler 클래스
@@ -114,7 +114,6 @@ export class BaseErrorHandler {
    * 에러 로깅
    */
   static logError(error: unknown, context?: Record<string, unknown>): void {
-    const logger = getErrorLogger();
     const message = this.extractMessage(error);
     const errorInfo: Record<string, unknown> = {
       message,
@@ -122,56 +121,27 @@ export class BaseErrorHandler {
       ...context,
     };
 
-    // ErrorLogger는 log() 메서드만 제공
     const errorObj = error instanceof Error ? error : new Error(message);
     
     if (error instanceof NetworkError) {
-      logger.log(errorObj, {
+      logger.logError(errorObj, {
         ...errorInfo,
         level: 'warn',
         errorType: 'NetworkError',
       });
     } else if (error instanceof ServerError) {
-      logger.log(errorObj, {
+      logger.logError(errorObj, {
         ...errorInfo,
         level: 'error',
         errorType: 'ServerError',
       });
     } else {
-      logger.log(errorObj, {
+      logger.logError(errorObj, {
         ...errorInfo,
         level: 'error',
         errorType: 'UnknownError',
       });
     }
   }
-}
-
-/**
- * @deprecated Use BaseErrorHandler.extractMessage() instead
- */
-export function extractErrorMessage(error: unknown): string {
-  return BaseErrorHandler.extractMessage(error);
-}
-
-/**
- * @deprecated Use BaseErrorHandler.getUserFriendlyMessage() instead
- */
-export function getUserFriendlyErrorMessage(error: unknown): string {
-  return BaseErrorHandler.getUserFriendlyMessage(error);
-}
-
-/**
- * @deprecated Use BaseErrorHandler.isRetryable() instead
- */
-export function isRetryableError(error: unknown): boolean {
-  return BaseErrorHandler.isRetryable(error);
-}
-
-/**
- * @deprecated Use BaseErrorHandler.isOffline() instead
- */
-export function isOffline(): boolean {
-  return BaseErrorHandler.isOffline();
 }
 

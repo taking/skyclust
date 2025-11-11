@@ -7,6 +7,7 @@
 
 import { Suspense } from 'react';
 import { useState, useMemo, useCallback } from 'react';
+import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { ResourceListPage } from '@/components/common/resource-list-page';
@@ -21,7 +22,7 @@ import { Label } from '@/components/ui/label';
 import { FilterConfig, FilterValue } from '@/components/ui/filter-panel';
 import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { CredentialRequiredState } from '@/components/common/credential-required-state';
-import { ResourceEmptyState } from '@/components/common/resource-empty-state';
+import { useEmptyState } from '@/hooks/use-empty-state';
 import { useCredentialAutoSelect } from '@/hooks/use-credential-auto-select';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useTranslation } from '@/hooks/use-translation';
@@ -29,10 +30,10 @@ import { DataProcessor } from '@/lib/data';
 import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
 import { useResourceListState } from '@/hooks/use-resource-list-state';
 import {
-  useVPCs,
   useVPCActions,
   VPCsPageHeader,
 } from '@/features/networks';
+import { useNetworkResources } from '@/features/networks/hooks/use-network-resources';
 import type { CreateVPCForm, VPC } from '@/lib/types';
 
 const VPCTable = dynamic(
@@ -55,7 +56,7 @@ function VPCsPageContent() {
     selectedProvider,
     selectedCredentialId,
     selectedRegion,
-  } = useVPCs();
+  } = useNetworkResources({ resourceType: 'vpcs' });
   
   // Auto-select credential if not selected
   useCredentialAutoSelect({
@@ -91,22 +92,22 @@ function VPCsPageContent() {
     selectedRegion,
   });
 
-  const handleCreateVPC = () => {
+  const handleCreateVPC = useCallback(() => {
     router.push('/networks/vpcs/create');
-  };
+  }, [router]);
 
-  const handleDeleteVPC = (vpcId: string, region?: string) => {
+  const handleDeleteVPC = useCallback((vpcId: string, region?: string) => {
     if (!region) return;
     const vpc = vpcs.find(v => v.id === vpcId);
     openDeleteDialog(vpcId, region, vpc?.name || vpc?.id);
-  };
+  }, [vpcs, openDeleteDialog]);
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = useCallback(() => {
     if (deleteDialogState.id && deleteDialogState.region) {
       executeDeleteVPC(deleteDialogState.id, deleteDialogState.region);
       closeDeleteDialog();
     }
-  };
+  }, [deleteDialogState.id, deleteDialogState.region, executeDeleteVPC, closeDeleteDialog]);
 
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -136,6 +137,10 @@ function VPCsPageContent() {
 
   const clearSearch = useCallback(() => {
     setSearchQuery('');
+  }, []);
+
+  const handleToggleFilters = useCallback(() => {
+    setShowFilters(prev => !prev);
   }, []);
 
   // Pagination
@@ -188,28 +193,19 @@ function VPCsPageContent() {
     },
   ], [t]);
 
-  // Determine empty state
-  const isEmpty = !selectedProvider || !selectedCredentialId || filteredVPCs.length === 0;
-
-  // Empty state component
-  const emptyStateComponent = credentials.length === 0 ? (
-    <CredentialRequiredState serviceName={t('network.title')} />
-  ) : !selectedProvider || !selectedCredentialId ? (
-    <CredentialRequiredState
-      title={t('credential.selectCredential')}
-      description={t('credential.selectCredential')}
-      serviceName={t('network.title')}
-    />
-  ) : filteredVPCs.length === 0 ? (
-      <ResourceEmptyState
-        resourceName={t('network.vpcs')}
-        icon={Network}
-        onCreateClick={handleCreateVPC}
-        isSearching={isSearching}
-      searchQuery={searchQuery}
-      withCard={true}
-    />
-  ) : null;
+  // Empty state
+  const { isEmpty, emptyStateComponent } = useEmptyState({
+    credentials,
+    selectedProvider,
+    selectedCredentialId,
+    filteredItems: filteredVPCs,
+    resourceName: t('network.vpcs'),
+    serviceName: t('network.title'),
+    onCreateClick: handleCreateVPC,
+    icon: Network,
+    isSearching,
+    searchQuery,
+  });
 
   return (
     <>
@@ -231,7 +227,7 @@ function VPCsPageContent() {
         onFiltersChange={setFilters}
         onFiltersClear={() => setFilters({})}
         showFilters={showFilters}
-        onToggleFilters={() => setShowFilters(!showFilters)}
+        onToggleFilters={handleToggleFilters}
         filterCount={Object.keys(filters).length}
         toolbar={
           selectedProvider && selectedCredentialId && filteredVPCs.length > 0 ? (
@@ -257,7 +253,7 @@ function VPCsPageContent() {
               {vpcs.length > 0 && (
                 <Button
                   variant="outline"
-                  onClick={() => setShowFilters(!showFilters)}
+                  onClick={handleToggleFilters}
                   className="flex items-center"
                 >
                   <Filter className="mr-2 h-4 w-4" />
@@ -324,6 +320,8 @@ function VPCsPageContent() {
   );
 }
 
+const MemoizedVPCsPageContent = React.memo(VPCsPageContent);
+
 export default function VPCsPage() {
   return (
     <Suspense fallback={
@@ -334,7 +332,7 @@ export default function VPCsPage() {
         </div>
       </div>
     }>
-      <VPCsPageContent />
+      <MemoizedVPCsPageContent />
     </Suspense>
   );
 }

@@ -152,7 +152,13 @@ func (h *Handler) GetAuditLogs(c *gin.Context) {
 		zap.Int("logs_count", len(logs)),
 		zap.Int64("total", total))
 
-	h.OK(c, logs, "Audit logs retrieved successfully")
+	// Always include meta information for consistency (direct array: data[])
+	// Calculate page from offset for pagination metadata
+	page := (offset / limit) + 1
+	if offset == 0 {
+		page = 1
+	}
+	h.BuildPaginatedResponse(c, logs, page, limit, total, "Audit logs retrieved successfully")
 }
 
 // GetAuditLog retrieves a specific audit log

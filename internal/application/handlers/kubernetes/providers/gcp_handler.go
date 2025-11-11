@@ -77,7 +77,10 @@ func (h *GCPHandler) ListClusters(c *gin.Context) {
 		clusters.Clusters = []kubernetesservice.ClusterInfo{}
 	}
 
-	h.OK(c, clusters.Clusters, "GKE clusters retrieved successfully")
+	// Always include meta information for consistency (direct array: data[])
+	page, limit := h.ParsePageLimitParams(c)
+	total := int64(len(clusters.Clusters))
+	h.BuildPaginatedResponse(c, clusters.Clusters, page, limit, total, "GKE clusters retrieved successfully")
 }
 
 // GetCluster handles getting GKE cluster details
@@ -211,7 +214,10 @@ func (h *GCPHandler) ListNodePools(c *gin.Context) {
 		return
 	}
 
-	h.OK(c, nodePoolsResponse.NodeGroups, "GKE node pools retrieved successfully")
+	// Always include meta information for consistency (direct array: data[])
+	page, limit := h.ParsePageLimitParams(c)
+	total := int64(len(nodePoolsResponse.NodeGroups))
+	h.BuildPaginatedResponse(c, nodePoolsResponse.NodeGroups, page, limit, total, "GKE node pools retrieved successfully")
 }
 
 // GetNodePool handles getting node pool details

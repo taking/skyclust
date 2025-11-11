@@ -12,7 +12,7 @@ import {
 } from '@/lib/sse/widget-events';
 import type { WidgetData } from '@/lib/widgets';
 import { log } from '@/lib/logging';
-import { getErrorLogger } from '@/lib/error-handling';
+import { logger } from '@/lib/logging/logger';
 import { queryKeys } from '@/lib/query';
 import type {
   KubernetesClusterEventData,
@@ -109,7 +109,7 @@ export function useDashboardSSE({
           filters,
         });
       } catch (error) {
-        getErrorLogger().log(error, {
+        logger.logError(error, {
           service: 'SSE',
           action: 'syncDashboardSubscriptions',
           widgets: widgets.map((w) => w.type),

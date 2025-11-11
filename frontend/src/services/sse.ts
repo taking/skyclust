@@ -6,7 +6,7 @@
 import type { SSECallbacks, SSEErrorInfo } from '@/lib/types/sse';
 import { API_CONFIG, API_ENDPOINTS, api, getApiUrl } from '@/lib/api';
 import { CONNECTION, STORAGE_KEYS } from '@/lib/constants';
-import { getErrorLogger } from '@/lib/error-handling';
+import { logger } from '@/lib/logging/logger';
 import { parseSSEMessage } from '@/lib/sse';
 import { log } from '@/lib/logging';
 
@@ -150,7 +150,7 @@ class SSEService {
       
       return { data: parsedData, isCompressed };
     } catch (error) {
-      getErrorLogger().log(error, { service: 'SSE', action: 'parseEvent' });
+      logger.logError(error, { service: 'SSE', action: 'parseEvent' });
       // 파싱 실패 시 원본 데이터 반환 시도
       try {
         return { data: JSON.parse(event.data), isCompressed: false };
@@ -205,7 +205,7 @@ class SSEService {
         });
         this.callbacks.onConnected?.(data);
       } catch (error) {
-        getErrorLogger().log(error, { service: 'SSE', action: 'connected' });
+        logger.logError(error, { service: 'SSE', action: 'connected' });
         // Fallback: 기존 방식으로 파싱 시도
         try {
           const data = JSON.parse(event.data);
@@ -217,7 +217,7 @@ class SSEService {
           });
           this.callbacks.onConnected?.(data);
         } catch (fallbackError) {
-          getErrorLogger().log(fallbackError, { service: 'SSE', action: 'connected-fallback' });
+          logger.logError(fallbackError, { service: 'SSE', action: 'connected-fallback' });
           this.isConnecting = false;
         }
       }
@@ -255,13 +255,13 @@ class SSEService {
           const data = this.extractEventData(parsedData);
           callback?.(data);
         } catch (error) {
-          getErrorLogger().log(error, { service: 'SSE', action: eventType });
+          logger.logError(error, { service: 'SSE', action: eventType });
           // Fallback: 기존 방식으로 파싱 시도
           try {
             const data = JSON.parse(event.data);
             callback?.(data);
           } catch (fallbackError) {
-            getErrorLogger().log(fallbackError, { service: 'SSE', action: `${eventType}-fallback` });
+            logger.logError(fallbackError, { service: 'SSE', action: `${eventType}-fallback` });
           }
         }
       };
@@ -383,7 +383,7 @@ class SSEService {
       (error as Error & { readyState?: number; url?: string }).url = maskedUrl;
       error.name = 'SSEError';
       
-      getErrorLogger().log(error, { 
+      logger.logError(error, { 
         type: 'SSE', 
         readyState, 
         url: maskedUrl,
@@ -499,7 +499,7 @@ class SSEService {
       this.subscribedEvents.add(eventType);
       log.debug('Subscribed to event', { eventType, filters });
     } catch (error) {
-      getErrorLogger().log(error, {
+      logger.logError(error, {
         service: 'SSE',
         action: 'subscribeToEvent',
         eventType,
@@ -527,7 +527,7 @@ class SSEService {
       this.subscribedEvents.delete(eventType);
       log.debug('Unsubscribed from event', { eventType });
     } catch (error) {
-      getErrorLogger().log(error, {
+      logger.logError(error, {
         service: 'SSE',
         action: 'unsubscribeFromEvent',
         eventType,
@@ -671,7 +671,7 @@ class SSEService {
         }
       }
     } catch (error) {
-      getErrorLogger().log(error, { service: 'SSE', action: 'loadLastEventId' });
+      logger.logError(error, { service: 'SSE', action: 'loadLastEventId' });
     }
   }
 
@@ -688,7 +688,7 @@ class SSEService {
         });
       }
     } catch (error) {
-      getErrorLogger().log(error, { service: 'SSE', action: 'saveLastEventId' });
+      logger.logError(error, { service: 'SSE', action: 'saveLastEventId' });
     }
   }
 

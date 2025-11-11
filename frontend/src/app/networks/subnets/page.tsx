@@ -30,10 +30,10 @@ import { useTranslation } from '@/hooks/use-translation';
 import { DataProcessor } from '@/lib/data';
 import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
 import {
-  useSubnets,
   useSubnetActions,
   SubnetsPageHeader,
 } from '@/features/networks';
+import { useNetworkResources } from '@/features/networks/hooks/use-network-resources';
 import type { CreateSubnetForm, Subnet } from '@/lib/types';
 
 const SubnetTable = dynamic(
@@ -51,16 +51,16 @@ function SubnetsPageContent() {
   const { currentWorkspace } = useWorkspaceStore();
 
   const {
-    subnets,
-    isLoadingSubnets,
+    subnets = [],
+    isLoadingSubnets = false,
     vpcs,
-    selectedVPCId,
-    setSelectedVPCId,
+    selectedVPCId = '',
+    setSelectedVPCId = () => {},
     credentials,
     selectedProvider,
     selectedCredentialId,
     selectedRegion,
-  } = useSubnets();
+  } = useNetworkResources({ resourceType: 'subnets', requireVPC: true });
   
   // Auto-select credential if not selected
   useCredentialAutoSelect({
@@ -102,13 +102,13 @@ function SubnetsPageContent() {
     selectedCredentialId,
   });
 
-  const handleCreateSubnet = () => {
+  const handleCreateSubnet = useCallback(() => {
     const params = new URLSearchParams();
     if (selectedVPCId) {
       params.set('vpc_id', selectedVPCId);
     }
     router.push(`/networks/subnets/create${params.toString() ? `?${params.toString()}` : ''}`);
-  };
+  }, [router, selectedVPCId]);
 
   const [deleteDialogState, setDeleteDialogState] = useState<{
     open: boolean;
@@ -122,17 +122,17 @@ function SubnetsPageContent() {
     subnetName: undefined,
   });
 
-  const handleDeleteSubnet = (subnetId: string, region: string) => {
+  const handleDeleteSubnet = useCallback((subnetId: string, region: string) => {
     const subnet = subnets.find(s => s.id === subnetId);
     setDeleteDialogState({ open: true, subnetId, region, subnetName: subnet?.name || subnet?.id });
-  };
+  }, [subnets]);
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = useCallback(() => {
     if (deleteDialogState.subnetId && deleteDialogState.region) {
       executeDeleteSubnet(deleteDialogState.subnetId, deleteDialogState.region);
       setDeleteDialogState({ open: false, subnetId: null, region: null, subnetName: undefined });
     }
-  };
+  }, [deleteDialogState.subnetId, deleteDialogState.region, executeDeleteSubnet]);
 
   // Search functionality
   const [searchQuery, setSearchQuery] = useState('');
@@ -361,6 +361,8 @@ function SubnetsPageContent() {
   );
 }
 
+const MemoizedSubnetsPageContent = React.memo(SubnetsPageContent);
+
 export default function SubnetsPage() {
   return (
     <Suspense fallback={
@@ -371,7 +373,7 @@ export default function SubnetsPage() {
         </div>
       </div>
     }>
-      <SubnetsPageContent />
+      <MemoizedSubnetsPageContent />
     </Suspense>
   );
 }

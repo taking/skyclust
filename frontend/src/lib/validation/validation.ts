@@ -2,12 +2,12 @@
  * Validation
  * 모든 검증 로직을 통합한 단일 인터페이스
  * 
- * schemas.ts의 createValidationSchemas, ValidationUtils, use-form-with-validation을 통합
+ * schemas.ts의 createValidationSchemas, use-form-with-validation을 통합
+ * ValidationUtils의 모든 기능이 이 클래스로 통합되었습니다.
  */
 
 import * as z from 'zod';
 import { createValidationSchemas, type TranslationFunction } from './schemas';
-import { ValidationUtils } from './index';
 
 /**
  * Validation 결과
@@ -125,21 +125,32 @@ export class Validation {
    * 이메일 검증
    */
   validateEmail(email: string): boolean {
-    return ValidationUtils.isValidEmail(email);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
   }
 
   /**
    * UUID 검증
    */
   validateUUID(uuid: string): boolean {
-    return ValidationUtils.isValidUUID(uuid);
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(uuid);
   }
 
   /**
    * CIDR 검증
    */
   validateCIDR(cidr: string): boolean {
-    return ValidationUtils.isValidCIDR(cidr);
+    const cidrRegex = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/;
+    if (!cidrRegex.test(cidr)) return false;
+    
+    const [ip, prefix] = cidr.split('/');
+    const prefixNum = parseInt(prefix, 10);
+    
+    if (prefixNum < 0 || prefixNum > 32) return false;
+    
+    const parts = ip.split('.').map(Number);
+    return parts.every(part => part >= 0 && part <= 255);
   }
 
   /**
@@ -149,7 +160,28 @@ export class Validation {
     isValid: boolean;
     errors: string[];
   } {
-    return ValidationUtils.validatePasswordStrength(password);
+    const errors: string[] = [];
+    
+    if (password.length < 8) {
+      errors.push('Password must be at least 8 characters long');
+    }
+    if (!/[A-Z]/.test(password)) {
+      errors.push('Password must contain at least one uppercase letter');
+    }
+    if (!/[a-z]/.test(password)) {
+      errors.push('Password must contain at least one lowercase letter');
+    }
+    if (!/[0-9]/.test(password)) {
+      errors.push('Password must contain at least one number');
+    }
+    if (!/[^A-Za-z0-9]/.test(password)) {
+      errors.push('Password must contain at least one special character');
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors,
+    };
   }
 
   /**

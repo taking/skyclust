@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import type { CreateSecurityGroupForm, CloudProvider } from '@/lib/types';
 import { useTranslation } from '@/hooks/use-translation';
-import { useVPCs } from '@/features/networks/hooks/use-vpcs';
+import { useNetworkResources } from '@/features/networks/hooks/use-network-resources';
 
 interface ReviewSecurityGroupStepProps {
   formData: CreateSecurityGroupForm;
@@ -31,7 +31,7 @@ export function ReviewSecurityGroupStep({
   selectedProvider,
 }: ReviewSecurityGroupStepProps) {
   const { t } = useTranslation();
-  const { vpcs } = useVPCs();
+  const { vpcs } = useNetworkResources({ resourceType: 'vpcs' });
   const selectedVPC = vpcs.find(v => v.id === formData.vpc_id);
 
   // Provider별 색상 설정

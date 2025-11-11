@@ -1,15 +1,5 @@
-import { useState, useMemo } from 'react';
-import Fuse from 'fuse.js';
-
-interface SearchOptions {
-  keys: string[];
-  threshold?: number;
-  includeScore?: boolean;
-  includeMatches?: boolean;
-  minMatchCharLength?: number;
-  shouldSort?: boolean;
-  sortFn?: (a: unknown, b: unknown) => number;
-}
+import { useState, useMemo, useCallback } from 'react';
+import { DataProcessor, type SearchOptions } from '@/lib/data';
 
 interface UseSearchResult<T> {
   query: string;
@@ -19,36 +9,33 @@ interface UseSearchResult<T> {
   clearSearch: () => void;
 }
 
+/**
+ * useSearch Hook
+ * DataProcessor를 내부적으로 사용하여 검색 기능을 제공하는 훅
+ * 
+ * @example
+ * ```tsx
+ * const { query, setQuery, results, isSearching, clearSearch } = useSearch(items, {
+ *   keys: ['name', 'description'],
+ *   threshold: 0.3,
+ * });
+ * ```
+ */
 export function useSearch<T>(
   data: T[],
   options: SearchOptions
 ): UseSearchResult<T> {
   const [query, setQuery] = useState('');
 
-  const fuse = useMemo(() => {
-    return new Fuse(data, {
-      keys: options.keys,
-      threshold: options.threshold ?? 0.3,
-      includeScore: options.includeScore ?? true,
-      includeMatches: options.includeMatches ?? false,
-      minMatchCharLength: options.minMatchCharLength ?? 1,
-      shouldSort: options.shouldSort ?? true,
-      sortFn: options.sortFn,
-    });
-  }, [data, options]);
-
   const results = useMemo(() => {
-    if (!query.trim()) {
-      return data;
-    }
-    return fuse.search(query).map(result => result.item);
-  }, [fuse, query, data]);
+    return DataProcessor.search(data, query, options);
+  }, [data, query, options]);
 
   const isSearching = query.length > 0;
 
-  const clearSearch = () => {
+  const clearSearch = useCallback(() => {
     setQuery('');
-  };
+  }, []);
 
   return {
     query,

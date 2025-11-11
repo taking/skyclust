@@ -3,25 +3,20 @@
  * 데이터 내보내기 관련 React Query 훅
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { exportService } from '@/services/export';
 import type { ExportRequest, ExportResult } from '@/lib/types/export';
-import { toast } from 'react-hot-toast';
 import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
+import { useStandardMutation } from './use-standard-mutation';
 
 export const useExportData = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useStandardMutation<ExportResult, Omit<ExportRequest, 'user_id'>>({
     mutationFn: (request: Omit<ExportRequest, 'user_id'>) => exportService.exportData(request),
-    onSuccess: (data: ExportResult) => {
-      toast.success(`내보내기가 시작되었습니다. (ID: ${data.id})`);
-      queryClient.invalidateQueries({ queryKey: queryKeys.exports.history() });
-    },
-    onError: (error: unknown) => {
-      const message = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || '내보내기 요청에 실패했습니다.';
-      toast.error(message);
-    },
+    invalidateQueries: [
+      queryKeys.exports.history(),
+    ],
+    successMessage: (data: ExportResult) => `내보내기가 시작되었습니다. (ID: ${data.id})`,
+    errorContext: { operation: 'exportData', resource: 'Export' },
   });
 };
 
@@ -56,16 +51,14 @@ export const useSupportedFormats = () => {
 };
 
 export const useDownloadExport = () => {
-  return useMutation({
+  return useStandardMutation<Blob, string>({
     mutationFn: (exportId: string) => exportService.downloadExport(exportId),
+    invalidateQueries: [],
+    successMessage: '파일이 다운로드되었습니다.',
+    errorContext: { operation: 'downloadExport', resource: 'Export' },
     onSuccess: (blob: Blob, exportId: string) => {
       const filename = `export_${exportId}.${blob.type.split('/')[1]}`;
       exportService.downloadFile(blob, filename);
-      toast.success('파일이 다운로드되었습니다.');
-    },
-    onError: (error: unknown) => {
-      const message = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || '파일 다운로드에 실패했습니다.';
-      toast.error(message);
     },
   });
 };

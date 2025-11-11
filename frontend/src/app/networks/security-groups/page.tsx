@@ -7,6 +7,7 @@
 
 import { Suspense } from 'react';
 import { useState, useMemo, useCallback, useEffect } from 'react';
+import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { ResourceListPage } from '@/components/common/resource-list-page';
@@ -29,10 +30,10 @@ import { useTranslation } from '@/hooks/use-translation';
 import { DataProcessor } from '@/lib/data';
 import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
 import {
-  useSecurityGroups,
   useSecurityGroupActions,
   SecurityGroupsPageHeader,
 } from '@/features/networks';
+import { useNetworkResources } from '@/features/networks/hooks/use-network-resources';
 import type { CreateSecurityGroupForm, SecurityGroup } from '@/lib/types';
 
 const SecurityGroupTable = dynamic(
@@ -50,16 +51,16 @@ function SecurityGroupsPageContent() {
   const { currentWorkspace } = useWorkspaceStore();
 
   const {
-    securityGroups,
-    isLoadingSecurityGroups,
+    securityGroups = [],
+    isLoadingSecurityGroups = false,
     vpcs,
-    selectedVPCId,
-    setSelectedVPCId,
+    selectedVPCId = '',
+    setSelectedVPCId = () => {},
     credentials,
     selectedProvider,
     selectedCredentialId,
     selectedRegion,
-  } = useSecurityGroups();
+  } = useNetworkResources({ resourceType: 'securityGroups', requireVPC: true });
   
   // Auto-select credential if not selected
   useCredentialAutoSelect({
@@ -101,13 +102,13 @@ function SecurityGroupsPageContent() {
     selectedCredentialId,
   });
 
-  const handleCreateSecurityGroup = () => {
+  const handleCreateSecurityGroup = useCallback(() => {
     const params = new URLSearchParams();
     if (selectedVPCId) {
       params.set('vpc_id', selectedVPCId);
     }
     router.push(`/networks/security-groups/create${params.toString() ? `?${params.toString()}` : ''}`);
-  };
+  }, [router, selectedVPCId]);
 
   const [deleteDialogState, setDeleteDialogState] = useState<{
     open: boolean;
@@ -121,17 +122,17 @@ function SecurityGroupsPageContent() {
     securityGroupName: undefined,
   });
 
-  const handleDeleteSecurityGroup = (securityGroupId: string, region: string) => {
+  const handleDeleteSecurityGroup = useCallback((securityGroupId: string, region: string) => {
     const securityGroup = securityGroups.find(sg => sg.id === securityGroupId);
     setDeleteDialogState({ open: true, securityGroupId, region, securityGroupName: securityGroup?.name || securityGroup?.id });
-  };
+  }, [securityGroups]);
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = useCallback(() => {
     if (deleteDialogState.securityGroupId && deleteDialogState.region) {
       executeDeleteSecurityGroup(deleteDialogState.securityGroupId, deleteDialogState.region);
       setDeleteDialogState({ open: false, securityGroupId: null, region: null, securityGroupName: undefined });
     }
-  };
+  }, [deleteDialogState.securityGroupId, deleteDialogState.region, executeDeleteSecurityGroup]);
 
   // Search functionality
   const [searchQuery, setSearchQuery] = useState('');
@@ -189,6 +190,10 @@ function SecurityGroupsPageContent() {
 
   const handleVPCChange = useCallback((vpcId: string) => {
     setSelectedVPCId(vpcId);
+  }, []);
+
+  const handleToggleFilters = useCallback(() => {
+    setShowFilters(prev => !prev);
   }, []);
 
   // Filter configurations
@@ -259,7 +264,7 @@ function SecurityGroupsPageContent() {
         onFiltersChange={setFilters}
         onFiltersClear={() => setFilters({})}
         showFilters={showFilters}
-        onToggleFilters={() => setShowFilters(!showFilters)}
+        onToggleFilters={handleToggleFilters}
         filterCount={Object.keys(filters).length}
         toolbar={
           selectedProvider && selectedCredentialId && selectedVPCId && selectedRegion && filteredSecurityGroups.length > 0 ? (
@@ -286,7 +291,7 @@ function SecurityGroupsPageContent() {
               {securityGroups.length > 0 && (
                 <Button
                   variant="outline"
-                  onClick={() => setShowFilters(!showFilters)}
+                  onClick={handleToggleFilters}
                   className="flex items-center"
                 >
                   <Filter className="mr-2 h-4 w-4" />
@@ -349,6 +354,8 @@ function SecurityGroupsPageContent() {
   );
 }
 
+const MemoizedSecurityGroupsPageContent = React.memo(SecurityGroupsPageContent);
+
 export default function SecurityGroupsPage() {
   return (
     <Suspense fallback={
@@ -359,7 +366,7 @@ export default function SecurityGroupsPage() {
         </div>
       </div>
     }>
-      <SecurityGroupsPageContent />
+      <MemoizedSecurityGroupsPageContent />
     </Suspense>
   );
 }

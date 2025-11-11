@@ -10,22 +10,37 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { UseFormReturn } from 'react-hook-form';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useVPCs } from '@/features/networks/hooks/use-vpcs';
-import { useSubnets } from '@/features/networks/hooks/use-subnets';
-import { CreateVPCDialog } from '@/features/networks/components/create-vpc-dialog';
-import { CreateSubnetDialog } from '@/features/networks/components/create-subnet-dialog';
+import { useNetworkResources } from '@/features/networks/hooks/use-network-resources';
+import dynamic from 'next/dynamic';
 import { RefreshCw, Plus, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query';
 import type { CreateClusterForm, CloudProvider, CreateVPCForm, CreateSubnetForm } from '@/lib/types';
 import { useTranslation } from '@/hooks/use-translation';
+
+// Dynamic imports for Dialog components (lazy loading)
+const CreateVPCDialog = dynamic(
+  () => import('@/features/networks/components/create-vpc-dialog').then(mod => ({ default: mod.CreateVPCDialog })),
+  { 
+    ssr: false,
+    loading: () => null,
+  }
+);
+
+const CreateSubnetDialog = dynamic(
+  () => import('@/features/networks/components/create-subnet-dialog').then(mod => ({ default: mod.CreateSubnetDialog })),
+  { 
+    ssr: false,
+    loading: () => null,
+  }
+);
 
 interface NetworkConfigStepProps {
   form: UseFormReturn<CreateClusterForm>;
@@ -48,26 +63,26 @@ export function NetworkConfigStep({
   const [isCreateVPCDialogOpen, setIsCreateVPCDialogOpen] = useState(false);
   const [isCreateSubnetDialogOpen, setIsCreateSubnetDialogOpen] = useState(false);
 
-  const { vpcs, isLoadingVPCs } = useVPCs();
-  const { subnets, isLoadingSubnets, setSelectedVPCId: setSubnetVPCId } = useSubnets();
+  const { vpcs, isLoadingVPCs } = useNetworkResources({ resourceType: 'vpcs' });
+  const { subnets = [], isLoadingSubnets = false, setSelectedVPCId: setSubnetVPCId = () => {} } = useNetworkResources({ resourceType: 'subnets', requireVPC: true });
 
   // VPC 목록 새로고침
-  const handleRefreshVPCs = () => {
+  const handleRefreshVPCs = useCallback(() => {
     if (selectedProvider && selectedCredentialId) {
       queryClient.invalidateQueries({
         queryKey: queryKeys.vpcs.list(selectedProvider, selectedCredentialId, selectedRegion),
       });
     }
-  };
+  }, [selectedProvider, selectedCredentialId, selectedRegion, queryClient]);
 
   // Subnet 목록 새로고침
-  const handleRefreshSubnets = () => {
+  const handleRefreshSubnets = useCallback(() => {
     if (selectedProvider && selectedCredentialId && selectedVPCId) {
       queryClient.invalidateQueries({
         queryKey: queryKeys.subnets.list(selectedProvider, selectedCredentialId, selectedVPCId, selectedRegion),
       });
     }
-  };
+  }, [selectedProvider, selectedCredentialId, selectedVPCId, selectedRegion, queryClient]);
 
   // Subnet actions는 create-subnet-dialog에서 직접 처리
 
@@ -82,7 +97,7 @@ export function NetworkConfigStep({
   }, [formVPCId, selectedVPCId]);
 
   // VPC 선택 시 Subnet 목록 로드
-  const handleVPCChange = (vpcId: string) => {
+  const handleVPCChange = useCallback((vpcId: string) => {
     setSelectedVPCId(vpcId);
     setSubnetVPCId(vpcId);
     form.setValue('vpc_id', vpcId);
@@ -110,7 +125,7 @@ export function NetworkConfigStep({
     } else {
       onDataChange({ vpc_id: vpcId, subnet_ids: [] });
     }
-  };
+  }, [setSelectedVPCId, setSubnetVPCId, form, selectedProvider, onDataChange]);
 
   // VPC 생성 성공 핸들러 (모달에서 호출)
   const handleVPCCreated = (vpcId: string) => {

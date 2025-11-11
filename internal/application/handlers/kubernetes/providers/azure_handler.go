@@ -72,7 +72,10 @@ func (h *AzureHandler) ListClusters(c *gin.Context) {
 		clusters.Clusters = []kubernetesservice.ClusterInfo{}
 	}
 
-	h.OK(c, clusters.Clusters, "AKS clusters retrieved successfully")
+	// Always include meta information for consistency (direct array: data[])
+	page, limit := h.ParsePageLimitParams(c)
+	total := int64(len(clusters.Clusters))
+	h.BuildPaginatedResponse(c, clusters.Clusters, page, limit, total, "AKS clusters retrieved successfully")
 }
 
 // GetCluster: AKS 클러스터 상세 정보 조회를 처리합니다
@@ -173,7 +176,10 @@ func (h *AzureHandler) ListNodeGroups(c *gin.Context) {
 		return
 	}
 
-	h.OK(c, nodeGroups.NodeGroups, "Node groups retrieved successfully")
+	// Always include meta information for consistency (direct array: data[])
+	page, limit := h.ParsePageLimitParams(c)
+	total := int64(len(nodeGroups.NodeGroups))
+	h.BuildPaginatedResponse(c, nodeGroups.NodeGroups, page, limit, total, "Node groups retrieved successfully")
 }
 
 // GetNodeGroup: 노드 그룹 상세 정보 조회를 처리합니다

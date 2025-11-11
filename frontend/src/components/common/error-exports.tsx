@@ -18,13 +18,6 @@ export type {
   UnauthorizedProps,
 } from './error-components';
 
-export {
-  ErrorMessage,
-} from './error-message';
-export type {
-  ErrorMessageProps,
-} from './error-message';
-
 // ErrorBoundary exports
 export {
   AppErrorBoundary,

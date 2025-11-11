@@ -7,7 +7,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Form } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
@@ -88,7 +88,7 @@ export default function WorkspacesPage() {
     },
   });
 
-  const handleSelectWorkspace = (workspace: Workspace) => {
+  const handleSelectWorkspace = useCallback((workspace: Workspace) => {
     const previousWorkspaceId = currentWorkspace?.id;
     const isWorkspaceChanged = previousWorkspaceId !== workspace.id;
     
@@ -125,7 +125,7 @@ export default function WorkspacesPage() {
     }
     
     router.push('/dashboard');
-  };
+  }, [currentWorkspace?.id, setCurrentWorkspace, router, queryClient]);
 
   const handleDeleteWorkspace = (workspaceId: string) => {
     const workspace = workspaces.find(w => w.id === workspaceId);

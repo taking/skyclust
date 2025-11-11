@@ -30,11 +30,10 @@ export { AdvancedSecurityGroupConfigStep } from './components/create-security-gr
 export { ReviewSecurityGroupStep } from './components/create-security-group/review-security-group-step';
 
 // Hooks
-export { useVPCs } from './hooks/use-vpcs';
+export { useNetworkResources } from './hooks/use-network-resources';
+export type { NetworkResourceType, UseNetworkResourcesOptions, UseNetworkResourcesReturn } from './hooks/use-network-resources';
 export { useVPCActions } from './hooks/use-vpc-actions';
-export { useSubnets } from './hooks/use-subnets';
 export { useSubnetActions } from './hooks/use-subnet-actions';
-export { useSecurityGroups } from './hooks/use-security-groups';
 export { useSecurityGroupActions } from './hooks/use-security-group-actions';
 
 // Services

@@ -297,7 +297,10 @@ func (h *Handler) GetProviders(c *gin.Context) {
 	h.LogInfo(c, "System OIDC providers retrieved successfully",
 		zap.Int("count", len(providers)))
 
-	h.OK(c, providers, "System OIDC providers retrieved successfully")
+	// Always include meta information for consistency (direct array: data[])
+	page, limit := h.ParsePageLimitParams(c)
+	total := int64(len(providers))
+	h.BuildPaginatedResponse(c, providers, page, limit, total, "System OIDC providers retrieved successfully")
 }
 
 // CreateProvider creates a new OIDC provider for the user
@@ -402,7 +405,10 @@ func (h *Handler) GetUserProviders(c *gin.Context) {
 	h.LogInfo(c, "User OIDC providers retrieved successfully",
 		zap.Int("count", len(providers)))
 
-	h.OK(c, response, "OIDC providers retrieved successfully")
+	// Always include meta information for consistency (direct array: data[])
+	page, limit := h.ParsePageLimitParams(c)
+	total := int64(len(response))
+	h.BuildPaginatedResponse(c, response, page, limit, total, "OIDC providers retrieved successfully")
 }
 
 // GetProvider retrieves a specific OIDC provider

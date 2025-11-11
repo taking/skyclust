@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { CreateSecurityGroupForm, CloudProvider, VPC } from '@/lib/types';
 import { useTranslation } from '@/hooks/use-translation';
 import { useCredentialContext } from '@/hooks/use-credential-context';
-import { useVPCs } from '@/features/networks/hooks/use-vpcs';
+import { useNetworkResources } from '@/features/networks/hooks/use-network-resources';
 
 interface BasicSecurityGroupConfigStepProps {
   form: UseFormReturn<CreateSecurityGroupForm>;
@@ -27,7 +27,7 @@ export function BasicSecurityGroupConfigStep({
 }: BasicSecurityGroupConfigStepProps) {
   const { t } = useTranslation();
   const { selectedRegion } = useCredentialContext();
-  const { vpcs } = useVPCs();
+  const { vpcs } = useNetworkResources({ resourceType: 'vpcs' });
   const selectedVPCId = form.watch('vpc_id');
   const formRegion = form.watch('region');
   const activeRegion = selectedRegion || formRegion || '';

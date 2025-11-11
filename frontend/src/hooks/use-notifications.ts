@@ -3,11 +3,11 @@
  * 알림 관련 React Query 훅
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { notificationService } from '@/services/notification';
 import type { NotificationPreferences } from '@/lib/types/notification';
-import { toast } from 'react-hot-toast';
 import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
+import { useStandardMutation } from './use-standard-mutation';
 
 export const useNotifications = (
   limit: number = 20,
@@ -55,93 +55,67 @@ export const useNotificationStats = () => {
 };
 
 export const useMarkAsRead = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useStandardMutation({
     mutationFn: (notificationId: string) => notificationService.markAsRead(notificationId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.notifications.stats() });
-    },
-    onError: (error: unknown) => {
-      const message = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || '알림 읽음 처리에 실패했습니다.';
-      toast.error(message);
-    },
+    invalidateQueries: [
+      queryKeys.notifications.all,
+      queryKeys.notifications.stats(),
+    ],
+    successMessage: '알림을 읽음 처리했습니다.',
+    errorContext: { operation: 'markAsRead', resource: 'Notification' },
   });
 };
 
 export const useMarkAllAsRead = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useStandardMutation({
     mutationFn: () => notificationService.markAllAsRead(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications', 'stats'] });
-      toast.success('모든 알림을 읽음 처리했습니다.');
-    },
-    onError: (error: unknown) => {
-      const message = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || '알림 읽음 처리에 실패했습니다.';
-      toast.error(message);
-    },
+    invalidateQueries: [
+      queryKeys.notifications.all,
+      queryKeys.notifications.stats(),
+    ],
+    successMessage: '모든 알림을 읽음 처리했습니다.',
+    errorContext: { operation: 'markAllAsRead', resource: 'Notification' },
   });
 };
 
 export const useDeleteNotification = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useStandardMutation({
     mutationFn: (notificationId: string) => notificationService.deleteNotification(notificationId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications', 'stats'] });
-      toast.success('알림을 삭제했습니다.');
-    },
-    onError: (error: unknown) => {
-      const message = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || '알림 삭제에 실패했습니다.';
-      toast.error(message);
-    },
+    invalidateQueries: [
+      queryKeys.notifications.all,
+      queryKeys.notifications.stats(),
+    ],
+    successMessage: '알림을 삭제했습니다.',
+    errorContext: { operation: 'deleteNotification', resource: 'Notification' },
   });
 };
 
 export const useDeleteNotifications = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useStandardMutation({
     mutationFn: (notificationIds: string[]) => notificationService.deleteNotifications(notificationIds),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications', 'stats'] });
-      toast.success('선택한 알림을 삭제했습니다.');
-    },
-    onError: (error: unknown) => {
-      const message = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || '알림 삭제에 실패했습니다.';
-      toast.error(message);
-    },
+    invalidateQueries: [
+      queryKeys.notifications.all,
+      queryKeys.notifications.stats(),
+    ],
+    successMessage: '선택한 알림을 삭제했습니다.',
+    errorContext: { operation: 'deleteNotifications', resource: 'Notification' },
   });
 };
 
 export const useUpdateNotificationPreferences = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useStandardMutation({
     mutationFn: (preferences: Partial<NotificationPreferences>) => 
       notificationService.updateNotificationPreferences(preferences),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.notifications.preferences() });
-      toast.success('알림 설정을 업데이트했습니다.');
-    },
-    onError: (error: unknown) => {
-      const message = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || '알림 설정 업데이트에 실패했습니다.';
-      toast.error(message);
-    },
+    invalidateQueries: [
+      queryKeys.notifications.preferences(),
+    ],
+    successMessage: '알림 설정을 업데이트했습니다.',
+    errorContext: { operation: 'updateNotificationPreferences', resource: 'Notification' },
   });
 };
 
 export const useSendTestNotification = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+  return useStandardMutation({
     mutationFn: (data: {
       type: string;
       title: string;
@@ -149,15 +123,12 @@ export const useSendTestNotification = () => {
       category?: string;
       priority?: string;
     }) => notificationService.sendTestNotification(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications', 'stats'] });
-      toast.success('테스트 알림을 전송했습니다.');
-    },
-    onError: (error: unknown) => {
-      const message = (error as { response?: { data?: { error?: string } } })?.response?.data?.error || '테스트 알림 전송에 실패했습니다.';
-      toast.error(message);
-    },
+    invalidateQueries: [
+      queryKeys.notifications.all,
+      queryKeys.notifications.stats(),
+    ],
+    successMessage: '테스트 알림을 전송했습니다.',
+    errorContext: { operation: 'sendTestNotification', resource: 'Notification' },
   });
 };
 

@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { CreateSubnetForm, CloudProvider, VPC } from '@/lib/types';
 import { useTranslation } from '@/hooks/use-translation';
 import { useCredentialContext } from '@/hooks/use-credential-context';
-import { useVPCs } from '@/features/networks/hooks/use-vpcs';
+import { useNetworkResources } from '@/features/networks/hooks/use-network-resources';
 import { useAvailabilityZones } from '@/features/kubernetes/hooks/use-kubernetes-metadata';
 
 interface BasicSubnetConfigStepProps {
@@ -28,7 +28,7 @@ export function BasicSubnetConfigStep({
 }: BasicSubnetConfigStepProps) {
   const { t } = useTranslation();
   const { selectedRegion, selectedCredentialId } = useCredentialContext();
-  const { vpcs } = useVPCs();
+  const { vpcs } = useNetworkResources({ resourceType: 'vpcs' });
   const selectedVPCId = form.watch('vpc_id');
   const formRegion = form.watch('region');
   // Dashboard에서 선택된 Region이 있으면 우선 사용, 없으면 form의 region 사용

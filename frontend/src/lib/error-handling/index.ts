@@ -12,7 +12,8 @@ export { NetworkError, ServerError } from './types';
 // 핵심 클래스
 export { ErrorHandler, errorHandler } from './error-handler';
 export { BaseErrorHandler } from './base-handler';
-export { getErrorLogger, logError } from './logger';
+// Logger는 lib/logging/logger.ts로 이동
+export { logger } from '../logging/logger';
 
 // 번역 관련
 export { getErrorTranslationKey, getErrorCustomMessage } from './translations';
@@ -24,10 +25,3 @@ export {
   getVPCDeletionErrorMessage,
 } from './network-messages';
 
-// 하위 호환성: deprecated 함수들
-export {
-  extractErrorMessage,
-  getUserFriendlyErrorMessage,
-  isRetryableError,
-  isOffline,
-} from './base-handler';

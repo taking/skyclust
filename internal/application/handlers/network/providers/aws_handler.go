@@ -49,17 +49,15 @@ func (h *AWSHandler) ListVPCs(c *gin.Context) {
 		return
 	}
 
-	// Direct array: data[] (not data.vpcs[])
-	if vpcs != nil && vpcs.Total > 0 {
-		page, limit := h.ParsePageLimitParams(c)
-		h.OKWithPagination(c, vpcs.VPCs, "VPCs retrieved successfully", page, limit, vpcs.Total)
-	} else {
-		vpcList := []networkservice.VPCInfo{}
-		if vpcs != nil {
-			vpcList = vpcs.VPCs
-		}
-		h.OK(c, vpcList, "VPCs retrieved successfully")
+	// Always include meta information for consistency (direct array: data[])
+	page, limit := h.ParsePageLimitParams(c)
+	total := int64(0)
+	vpcList := []networkservice.VPCInfo{}
+	if vpcs != nil {
+		total = vpcs.Total
+		vpcList = vpcs.VPCs
 	}
+	h.OKWithPagination(c, vpcList, "VPCs retrieved successfully", page, limit, total)
 }
 
 // CreateVPC handles VPC creation
@@ -230,17 +228,15 @@ func (h *AWSHandler) ListSubnets(c *gin.Context) {
 		return
 	}
 
-	// Direct array: data[] (not data.subnets[])
-	if subnets != nil && subnets.Total > 0 {
-		page, limit := h.ParsePageLimitParams(c)
-		h.OKWithPagination(c, subnets.Subnets, "Subnets retrieved successfully", page, limit, subnets.Total)
-	} else {
-		subnetList := []networkservice.SubnetInfo{}
-		if subnets != nil {
-			subnetList = subnets.Subnets
-		}
-		h.OK(c, subnetList, "Subnets retrieved successfully")
+	// Always include meta information for consistency (direct array: data[])
+	page, limit := h.ParsePageLimitParams(c)
+	total := int64(0)
+	subnetList := []networkservice.SubnetInfo{}
+	if subnets != nil {
+		total = subnets.Total
+		subnetList = subnets.Subnets
 	}
+	h.OKWithPagination(c, subnetList, "Subnets retrieved successfully", page, limit, total)
 }
 
 // CreateSubnet handles subnet creation
@@ -412,17 +408,15 @@ func (h *AWSHandler) ListSecurityGroups(c *gin.Context) {
 		return
 	}
 
-	// Direct array: data[] (not data.security_groups[])
-	if securityGroups != nil && securityGroups.Total > 0 {
-		page, limit := h.ParsePageLimitParams(c)
-		h.OKWithPagination(c, securityGroups.SecurityGroups, "Security groups retrieved successfully", page, limit, securityGroups.Total)
-	} else {
-		sgList := []networkservice.SecurityGroupInfo{}
-		if securityGroups != nil {
-			sgList = securityGroups.SecurityGroups
-		}
-		h.OK(c, sgList, "Security groups retrieved successfully")
+	// Always include meta information for consistency (direct array: data[])
+	page, limit := h.ParsePageLimitParams(c)
+	total := int64(0)
+	sgList := []networkservice.SecurityGroupInfo{}
+	if securityGroups != nil {
+		total = securityGroups.Total
+		sgList = securityGroups.SecurityGroups
 	}
+	h.OKWithPagination(c, sgList, "Security groups retrieved successfully", page, limit, total)
 }
 
 // CreateSecurityGroup handles security group creation

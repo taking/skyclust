@@ -11,7 +11,7 @@ import { ErrorBoundary, ErrorBoundaryPropsWithFallback } from 'react-error-bound
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertTriangle, RefreshCw, Home, Bug, Mail } from 'lucide-react';
-import { getUserFriendlyErrorMessage, NetworkError, ServerError, ErrorHandler } from '@/lib/error-handling';
+import { ErrorHandler, NetworkError, ServerError } from '@/lib/error-handling';
 import { log } from '@/lib/logging';
 import { useState } from 'react';
 
@@ -40,7 +40,7 @@ export function ErrorFallback({
 }: ErrorFallbackProps) {
   const [showDetails, setShowDetails] = useState(false);
   
-  const friendlyMessage = getUserFriendlyErrorMessage(error);
+  const friendlyMessage = ErrorHandler.getUserFriendlyMessage(error);
   const isNetworkError = error instanceof NetworkError || errorType === 'network';
   const isServerError = error instanceof ServerError || errorType === 'server';
 

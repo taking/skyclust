@@ -25,8 +25,7 @@ import {
   Cloud,
   Layers
 } from 'lucide-react';
-import { useVPCs } from '@/features/networks/hooks/use-vpcs';
-import { useSubnets } from '@/features/networks/hooks/use-subnets';
+import { useNetworkResources } from '@/features/networks/hooks/use-network-resources';
 import type { CreateClusterForm, CloudProvider } from '@/lib/types';
 
 interface ReviewStepProps {
@@ -43,8 +42,8 @@ export function ReviewStep({
   isPending: _isPending,
 }: ReviewStepProps) {
   // VPC와 Subnet 정보를 가져오기 위해 사용
-  const { vpcs } = useVPCs();
-  const { subnets } = useSubnets();
+  const { vpcs } = useNetworkResources({ resourceType: 'vpcs' });
+  const { subnets = [] } = useNetworkResources({ resourceType: 'subnets', requireVPC: true });
 
   // 선택된 Subnet 정보 찾기
   const selectedSubnets = formData.subnet_ids

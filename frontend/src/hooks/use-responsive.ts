@@ -215,16 +215,6 @@ export function useResponsive(): UseResponsiveReturn {
   };
 }
 
-/**
- * useIsMobile Hook
- * 모바일 디바이스 여부만 확인하는 간단한 훅
- * 
- * @deprecated useResponsive 훅을 사용하세요
- */
-export function useIsMobile(): boolean {
-  const { isMobile } = useResponsive();
-  return isMobile;
-}
 
 /**
  * useBreakpoint Hook

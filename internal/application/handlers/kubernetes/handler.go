@@ -115,7 +115,11 @@ func (h *Handler) listClustersHandler() handlers.HandlerFunc {
 		}
 
 		h.logClusterListSuccess(c, userID, len(clusters.Clusters))
-		h.OK(c, clusters.Clusters, "Clusters retrieved successfully")
+		
+		// Always include meta information for consistency (direct array: data[])
+		page, limit := h.ParsePageLimitParams(c)
+		total := int64(len(clusters.Clusters))
+		h.BuildPaginatedResponse(c, clusters.Clusters, page, limit, total, "Clusters retrieved successfully")
 	}
 }
 

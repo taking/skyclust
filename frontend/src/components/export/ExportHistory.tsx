@@ -51,7 +51,7 @@ import { useExportHistory, useDownloadExport } from '@/hooks/use-export';
 import { log } from '@/lib/logging';
 import { exportService } from '@/services/export';
 import type { ExportResult } from '@/lib/types/export';
-import { toast } from 'react-hot-toast';
+import { useToast } from '@/hooks/use-toast';
 
 interface ExportHistoryProps {
   limit?: number;
@@ -62,10 +62,11 @@ export function ExportHistory({ limit = 20, showActions = true }: ExportHistoryP
   const [offset, setOffset] = useState(0);
   const { data: history, isLoading, error, refetch } = useExportHistory(limit, offset);
   const downloadMutation = useDownloadExport();
+  const { error: showErrorToast } = useToast();
 
   const handleDownload = async (exportItem: ExportResult) => {
     if (exportItem.status !== 'completed' || !exportItem.download_url) {
-      toast.error('다운로드할 수 없는 파일입니다.');
+      showErrorToast('다운로드할 수 없는 파일입니다.');
       return;
     }
 

@@ -132,7 +132,10 @@ func (h *Handler) getCredentialsHandler() handlers.HandlerFunc {
 			credentials = h.filterCredentialsByProvider(credentials, providerFilter)
 		}
 
-		h.OK(c, credentials, "Credentials retrieved successfully")
+		// Always include meta information for consistency (direct array: data[])
+		page, limit := h.ParsePageLimitParams(c)
+		total := int64(len(credentials))
+		h.BuildPaginatedResponse(c, credentials, page, limit, total, "Credentials retrieved successfully")
 	}
 }
 

@@ -5,7 +5,6 @@
 
 export {
   useResponsive,
-  useIsMobile,
   useBreakpoint,
   BREAKPOINTS,
 } from './use-responsive';

@@ -384,6 +384,8 @@ function VMsPageContent() {
   );
 }
 
+const MemoizedVMsPageContent = React.memo(VMsPageContent);
+
 export default function VMsPage() {
   return (
     <Suspense fallback={
@@ -394,7 +396,7 @@ export default function VMsPage() {
         </div>
       </div>
     }>
-      <VMsPageContent />
+      <MemoizedVMsPageContent />
     </Suspense>
   );
 }

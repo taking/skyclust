@@ -20,7 +20,7 @@ import {
   X,
   Home,
 } from 'lucide-react';
-import { getUserFriendlyErrorMessage, NetworkError, ServerError, isRetryableError } from '@/lib/error-handling';
+import { ErrorHandler, NetworkError, ServerError } from '@/lib/error-handling';
 import { cn } from '@/lib/utils';
 
 export interface InlineErrorProps {
@@ -80,10 +80,10 @@ export function InlineError({
   showIcon = true,
 }: InlineErrorProps) {
   // 1. 사용자 친화적인 에러 메시지 가져오기
-  const message = getUserFriendlyErrorMessage(error);
+  const message = ErrorHandler.getUserFriendlyMessage(error);
   
   // 2. 재시도 가능 여부 확인: onRetry 함수가 있고 에러가 재시도 가능한 타입인지 확인
-  const retryable = onRetry && isRetryableError(error);
+  const retryable = onRetry && ErrorHandler.isRetryable(error);
   
   // 3. 에러 타입 확인
   const isNetworkError = error instanceof NetworkError;
@@ -203,10 +203,10 @@ export function ErrorCard({
   className,
 }: ErrorCardProps) {
   // 1. 사용자 친화적인 에러 메시지 가져오기
-  const message = getUserFriendlyErrorMessage(error);
+  const message = ErrorHandler.getUserFriendlyMessage(error);
   
   // 2. 재시도 가능 여부 확인
-  const retryable = onRetry && isRetryableError(error);
+  const retryable = onRetry && ErrorHandler.isRetryable(error);
   
   // 3. 에러 타입 확인
   const isNetworkError = error instanceof NetworkError;
@@ -297,7 +297,7 @@ export function ErrorPage({
   actions,
   className,
 }: ErrorPageProps) {
-  const message = getUserFriendlyErrorMessage(error);
+  const message = ErrorHandler.getUserFriendlyMessage(error);
   const isNetworkError = error instanceof NetworkError;
   const isServerError = error instanceof ServerError;
 
