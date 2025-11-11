@@ -143,6 +143,11 @@ func (n *NATSService) Health(ctx context.Context) error {
 	return nil
 }
 
+// GetConnection returns the underlying NATS connection
+func (n *NATSService) GetConnection() *nats.Conn {
+	return n.conn
+}
+
 // PublishMessage publishes a message to a subject (legacy method)
 func (n *NATSService) PublishMessage(ctx context.Context, subject string, data interface{}) error {
 	message, err := json.Marshal(data)

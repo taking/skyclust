@@ -6,8 +6,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { networkService } from '@/services/network';
-import { queryKeys } from '@/lib/query-keys';
-import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
+import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
 import { useCredentials } from '@/hooks/use-credentials';
 import { useCredentialContext } from '@/hooks/use-credential-context';
 import { useWorkspaceStore } from '@/store/workspace';
@@ -35,7 +34,7 @@ export function useSecurityGroups() {
     enabled: !!selectedProvider && !!watchedCredentialId && !!currentWorkspace,
   });
 
-  // Fetch Security Groups
+  // Fetch Security Groups (SSE 이벤트로 실시간 업데이트)
   const { data: securityGroups = [], isLoading: isLoadingSecurityGroups } = useQuery({
     queryKey: queryKeys.securityGroups.list(selectedProvider, watchedCredentialId, selectedVPCId, watchedRegion),
     queryFn: async () => {
@@ -48,7 +47,7 @@ export function useSecurityGroups() {
     enabled: !!selectedProvider && !!watchedCredentialId && !!currentWorkspace && !!selectedVPCId && !!watchedRegion,
     staleTime: CACHE_TIMES.REALTIME,
     gcTime: GC_TIMES.SHORT,
-    refetchInterval: 30000,
+    // refetchInterval 제거: SSE 이벤트로 자동 업데이트
   });
 
   return {

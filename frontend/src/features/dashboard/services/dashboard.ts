@@ -3,7 +3,8 @@
  * 대시보드 관련 API 호출을 담당하는 서비스
  */
 
-import { BaseService } from '@/lib/service-base';
+import { BaseService } from '@/lib/api';
+import { API_ENDPOINTS } from '@/lib/api';
 import type { DashboardSummary } from '@/lib/types/dashboard';
 
 /**
@@ -23,18 +24,9 @@ class DashboardService extends BaseService {
     credentialId?: string,
     region?: string
   ): Promise<DashboardSummary> {
-    const params = new URLSearchParams();
-    params.set('workspace_id', workspaceId);
-    
-    if (credentialId) {
-      params.set('credential_id', credentialId);
-    }
-    
-    if (region) {
-      params.set('region', region);
-    }
-
-    return this.get<DashboardSummary>(`/dashboard/summary?${params.toString()}`);
+    return this.get<DashboardSummary>(
+      API_ENDPOINTS.dashboard.summary(workspaceId, credentialId, region)
+    );
   }
 }
 

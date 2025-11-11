@@ -10,7 +10,7 @@ import { SentryProvider } from '@/components/providers/sentry-provider';
 import { I18nProvider } from '@/components/providers/i18n-provider';
 // 개발 환경에서 Sentry 테스트 함수 로드
 if (process.env.NODE_ENV === 'development') {
-  import('@/lib/test-sentry');
+  import('@/lib/test');
 }
 
 const inter = Inter({ subsets: ['latin'] });

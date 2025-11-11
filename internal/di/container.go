@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"skyclust/internal/application/handlers/sse"
 	"skyclust/internal/domain"
 	"skyclust/internal/infrastructure/database"
+	"skyclust/internal/infrastructure/messaging"
 	"skyclust/pkg/cache"
 	"skyclust/pkg/config"
 	"skyclust/pkg/logger"
@@ -32,6 +34,10 @@ type Container struct {
 	db     *gorm.DB
 	cache  cache.Cache
 	logger *zap.Logger
+
+	// NATS and SSE
+	natsConn   interface{} // *nats.Conn
+	sseHandler interface{} // *sse.SSEHandler
 
 	// Initialization state
 	initialized bool
@@ -70,7 +76,42 @@ func (c *Container) Initialize(ctx context.Context, cfg *config.Config) error {
 	c.repositoryModule = NewRepositoryModule(c.db, redisClient)
 	logger.Info("Repository module initialized")
 
-	// Create service configuration with Redis client
+	// Initialize NATS connection first (before ServiceModule)
+	logger.Info("Initializing NATS connection...")
+	var compressionType messaging.CompressionType
+	switch cfg.NATS.CompressionType {
+	case "gzip":
+		compressionType = messaging.CompressionGzip
+	case "snappy":
+		compressionType = messaging.CompressionSnappy
+	default:
+		compressionType = messaging.CompressionNone
+	}
+
+	natsConfig := messaging.NATSConfig{
+		URL:                  cfg.NATS.URL,
+		Cluster:              cfg.NATS.Cluster,
+		CompressionType:      compressionType,
+		CompressionThreshold: cfg.NATS.CompressionThreshold,
+	}
+	if natsConfig.CompressionThreshold == 0 {
+		natsConfig.CompressionThreshold = 1024
+	}
+
+	var natsService *messaging.NATSService
+	var messagingBus messaging.Bus
+	natsService, err := messaging.NewNATSService(natsConfig)
+	if err != nil {
+		logger.Warnf("Failed to connect to NATS, using LocalBus: %v", err)
+		messagingBus = messaging.NewLocalBus()
+		c.natsConn = nil
+	} else {
+		c.natsConn = natsService.GetConnection()
+		messagingBus = natsService
+		logger.Info("NATS connection initialized")
+	}
+
+	// Create service configuration with Redis client and messaging bus
 	logger.Info("Creating service configuration...")
 
 	serviceConfig := ServiceConfig{
@@ -79,6 +120,7 @@ func (c *Container) Initialize(ctx context.Context, cfg *config.Config) error {
 		EncryptionKey: cfg.Security.EncryptionKey,
 		RedisClient:   redisClient, // Pass Redis client for TokenBlacklist
 		Cache:         c.cache,     // Pass cache for OIDC state storage
+		MessagingBus:  messagingBus, // Pass messaging bus (NATS or LocalBus)
 	}
 
 	logger.Info("Initializing service module...")
@@ -98,6 +140,18 @@ func (c *Container) Initialize(ctx context.Context, cfg *config.Config) error {
 	c.infrastructureModule.infrastructure.Cache = c.cache
 	c.infrastructureModule.infrastructure.Logger = c.logger
 	// TransactionManager is already set in NewInfrastructureModule
+
+	// Initialize SSE handler (NATS connection is already initialized above)
+	if c.natsConn != nil && natsService != nil {
+		logger.Info("Initializing SSE handler...")
+		eventBus := c.serviceModule.GetMessagingBus()
+		sseHandler := sse.NewSSEHandler(c.logger, natsService.GetConnection(), eventBus, c.cache)
+		c.sseHandler = sseHandler
+		logger.Info("SSE handler initialized")
+	} else {
+		logger.Warn("NATS connection not available, SSE will be disabled")
+		c.sseHandler = nil
+	}
 
 	c.initialized = true
 	return nil
@@ -397,6 +451,13 @@ func (c *Container) GetDashboardService() interface{} {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.serviceModule.GetContainer().DashboardService
+}
+
+// GetSSEHandler returns the SSE handler
+func (c *Container) GetSSEHandler() interface{} {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.sseHandler
 }
 
 // StartWorkers starts all background workers

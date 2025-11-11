@@ -33,7 +33,7 @@ import { useCredentials } from '@/hooks/use-credentials';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useTranslation } from '@/hooks/use-translation';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { getRegionsForProvider, supportsRegionSelection, getDefaultRegionForProvider } from '@/lib/regions';
+import { getRegionsByProvider, supportsRegionSelection, getDefaultRegionForProvider } from '@/lib/regions';
 import type { CloudProvider } from '@/lib/types/kubernetes';
 import {
   DropdownMenu,
@@ -63,7 +63,7 @@ export function CredentialSelector() {
     enabled: !!currentWorkspace && shouldShow,
   });
   
-  const regions = React.useMemo(() => getRegionsForProvider(selectedProvider), [selectedProvider]);
+  const regions = React.useMemo(() => getRegionsByProvider(selectedProvider), [selectedProvider]);
   const showRegionSelector = supportsRegionSelection(selectedProvider);
   
   /**
@@ -153,9 +153,9 @@ export function CredentialSelector() {
         <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-200/50 bg-yellow-50/50">
           <Key className="h-4 w-4 text-yellow-600 flex-shrink-0" />
           <div className="flex-1 min-w-0">
-            {/* <p className="text-xs text-yellow-800 truncate">
+            <p className="text-xs text-yellow-800 truncate">
               {t('components.credentialIndicator.noCredentials')}
-            </p> */}
+            </p>
           </div>
           <Button
             variant="outline"

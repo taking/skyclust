@@ -14,8 +14,7 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { credentialService } from '@/services/credential';
-import { queryKeys } from '@/lib/query-keys';
-import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
+import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
 import type { Credential, CloudProvider } from '@/lib/types';
 import { useMemo } from 'react';
 

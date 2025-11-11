@@ -1,15 +1,16 @@
 /**
  * Subnet Actions Hook
  * Subnet 관련 mutations 및 핸들러 통합 관리
+ * useResourceMutations 통합
  */
 
-import { useStandardMutation } from '@/hooks/use-standard-mutation';
+import { useCallback } from 'react';
+import { useResourceMutation } from '@/hooks/use-resource-mutation';
 import { networkService } from '@/services/network';
-import { queryKeys } from '@/lib/query-keys';
 import { useToast } from '@/hooks/use-toast';
 import { useErrorHandler } from '@/hooks/use-error-handler';
+import { ErrorHandler } from '@/lib/error-handling';
 import type { CreateSubnetForm, CloudProvider } from '@/lib/types';
-import { getSubnetCreationErrorMessage } from '@/lib/network-error-messages';
 
 export interface UseSubnetActionsOptions {
   selectedProvider: string | undefined;
@@ -25,69 +26,115 @@ export function useSubnetActions({
   const { success } = useToast();
   const { handleError } = useErrorHandler();
 
-  // Create Subnet mutation with enhanced error handling
-  const createSubnetMutation = useStandardMutation({
+  // Create mutation
+  const createSubnetMutation = useResourceMutation({
+    resourceType: 'subnets',
+    operation: 'create',
     mutationFn: (data: CreateSubnetForm) => {
       if (!selectedProvider) throw new Error('Provider not selected');
       return networkService.createSubnet(selectedProvider as CloudProvider, data);
     },
-    invalidateQueries: [queryKeys.subnets.all],
     successMessage: 'Subnet creation initiated',
     errorContext: { operation: 'createSubnet', resource: 'Subnet' },
     onSuccess,
     onError: (error) => {
-      // Enhanced error handling for Subnet creation
-      const errorMessage = getSubnetCreationErrorMessage(error, selectedProvider);
-      handleError(error, { 
-        operation: 'createSubnet', 
+      const errorMessage = ErrorHandler.getNetworkErrorMessage(
+        error,
+        'create',
+        'Subnet',
+        selectedProvider
+      );
+      handleError(error, {
+        operation: 'createSubnet',
         resource: 'Subnet',
         customMessage: errorMessage,
       });
     },
   });
 
-  // Delete Subnet mutation
-  const deleteSubnetMutation = useStandardMutation({
-    mutationFn: async ({ subnetId, credentialId, region }: { subnetId: string; credentialId: string; region: string }) => {
+  // Delete mutation (내부적으로 id 사용, 외부에서는 subnetId로 래핑)
+  const deleteSubnetMutationBase = useResourceMutation({
+    resourceType: 'subnets',
+    operation: 'delete',
+    mutationFn: ({ id, credentialId, region }: { id: string; credentialId: string; region: string }) => {
       if (!selectedProvider) throw new Error('Provider not selected');
-      return networkService.deleteSubnet(selectedProvider as CloudProvider, subnetId, credentialId, region);
+      return networkService.deleteSubnet(selectedProvider as CloudProvider, id, credentialId, region);
     },
-    invalidateQueries: [queryKeys.subnets.all],
     successMessage: 'Subnet deletion initiated',
     errorContext: { operation: 'deleteSubnet', resource: 'Subnet' },
+    onError: (error) => {
+      const errorMessage = ErrorHandler.getNetworkErrorMessage(
+        error,
+        'delete',
+        'Subnet',
+        selectedProvider
+      );
+      handleError(error, {
+        operation: 'deleteSubnet',
+        resource: 'Subnet',
+        customMessage: errorMessage,
+      });
+    },
   });
 
-  const handleBulkDeleteSubnets = async (subnetIds: string[], subnets: Array<{ id: string; region: string }>) => {
+  // Subnet 전용 delete mutation (subnetId 사용)
+  const deleteSubnetMutation = {
+    ...deleteSubnetMutationBase,
+    mutate: (params: { subnetId: string; credentialId: string; region: string }) => {
+      deleteSubnetMutationBase.mutate({
+        id: params.subnetId,
+        credentialId: params.credentialId,
+        region: params.region,
+      });
+    },
+    mutateAsync: (params: { subnetId: string; credentialId: string; region: string }) => {
+      return deleteSubnetMutationBase.mutateAsync({
+        id: params.subnetId,
+        credentialId: params.credentialId,
+        region: params.region,
+      });
+    },
+  };
+
+  // Subnet 전용 executeDelete (subnetId 사용)
+  const executeDeleteSubnet = useCallback((subnetId: string, region: string) => {
+    if (!selectedCredentialId) return;
+    deleteSubnetMutationBase.mutate({
+      id: subnetId,
+      credentialId: selectedCredentialId,
+      region,
+    });
+  }, [selectedCredentialId, deleteSubnetMutationBase]);
+
+  // Subnet 전용 bulk delete (subnetId 사용)
+  const handleBulkDeleteSubnets = useCallback(async (subnetIds: string[], subnets: Array<{ id: string; region: string }>) => {
     if (!selectedCredentialId || !selectedProvider) return;
     
-    const subnetsToDelete = subnets.filter(s => subnetIds.includes(s.id));
-    const deletePromises = subnetsToDelete.map(subnet =>
-      deleteSubnetMutation.mutateAsync({
-        subnetId: subnet.id,
+    const itemsToDelete = subnets.filter((item) => subnetIds.includes(item.id));
+    const deletePromises = itemsToDelete.map((item) =>
+      deleteSubnetMutationBase.mutateAsync({
+        id: item.id,
         credentialId: selectedCredentialId,
-        region: subnet.region,
+        region: item.region,
       })
     );
 
     try {
       await Promise.all(deletePromises);
-      success(`Successfully initiated deletion of ${subnetIds.length} subnet(s)`);
+      success(`Successfully initiated deletion of ${subnetIds.length} Subnet(s)`);
     } catch (error) {
-      handleError(error, { operation: 'bulkDeleteSubnets', resource: 'Subnet' });
+      handleError(error, {
+        operation: 'bulkDeleteSubnets',
+        resource: 'Subnet',
+      });
       throw error;
     }
-  };
+  }, [selectedCredentialId, selectedProvider, deleteSubnetMutationBase, success, handleError]);
 
   const handleDeleteSubnet = (subnetId: string, region: string) => {
     if (!selectedCredentialId) return;
     // 모달은 컴포넌트에서 관리하므로 여기서는 바로 삭제 실행
-    deleteSubnetMutation.mutate({ subnetId, credentialId: selectedCredentialId, region });
-  };
-
-  // 모달 없이 직접 삭제 실행하는 함수 (컴포넌트에서 모달 확인 후 호출)
-  const executeDeleteSubnet = (subnetId: string, region: string) => {
-    if (!selectedCredentialId) return;
-    deleteSubnetMutation.mutate({ subnetId, credentialId: selectedCredentialId, region });
+    executeDeleteSubnet(subnetId, region);
   };
 
   return {

@@ -8,7 +8,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { logger } from '@/lib/logger';
+import { log } from '@/lib/logging';
 
 export function SentryProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -16,9 +16,9 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined') {
       const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
       if (dsn) {
-        logger.info('[Sentry] Provider: Sentry is configured and ready');
+        log.info('[Sentry] Provider: Sentry is configured and ready');
       } else {
-        logger.warn('[Sentry] Provider: DSN not configured. Check your .env.local file.');
+        log.warn('[Sentry] Provider: DSN not configured. Check your .env.local file.');
       }
     }
   }, []);

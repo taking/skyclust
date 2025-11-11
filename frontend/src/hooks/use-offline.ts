@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { API_CONFIG } from '@/lib/api-config';
+import { API_CONFIG } from '@/lib/api';
 
 export interface UseOfflineReturn {
   /**

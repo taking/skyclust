@@ -3,11 +3,11 @@
  * Security Group 관련 mutations 및 핸들러 통합 관리
  */
 
-import { useStandardMutation } from '@/hooks/use-standard-mutation';
+import { useResourceMutation } from '@/hooks/use-resource-mutation';
 import { networkService } from '@/services/network';
-import { queryKeys } from '@/lib/query-keys';
 import { useToast } from '@/hooks/use-toast';
 import { useErrorHandler } from '@/hooks/use-error-handler';
+import { ErrorHandler } from '@/lib/error-handling';
 import type { CreateSecurityGroupForm, CloudProvider } from '@/lib/types';
 
 export interface UseSecurityGroupActionsOptions {
@@ -25,27 +25,74 @@ export function useSecurityGroupActions({
   const { handleError } = useErrorHandler();
 
   // Create Security Group mutation
-  const createSecurityGroupMutation = useStandardMutation({
+  const createSecurityGroupMutation = useResourceMutation({
+    resourceType: 'securityGroups',
+    operation: 'create',
     mutationFn: (data: CreateSecurityGroupForm) => {
       if (!selectedProvider) throw new Error('Provider not selected');
       return networkService.createSecurityGroup(selectedProvider as CloudProvider, data);
     },
-    invalidateQueries: [queryKeys.securityGroups.all],
     successMessage: 'Security group creation initiated',
     errorContext: { operation: 'createSecurityGroup', resource: 'SecurityGroup' },
     onSuccess,
+    onError: (error) => {
+      const errorMessage = ErrorHandler.getNetworkErrorMessage(
+        error,
+        'create',
+        'SecurityGroup',
+        selectedProvider
+      );
+      handleError(error, {
+        operation: 'createSecurityGroup',
+        resource: 'SecurityGroup',
+        customMessage: errorMessage,
+      });
+    },
   });
 
   // Delete Security Group mutation
-  const deleteSecurityGroupMutation = useStandardMutation({
-    mutationFn: async ({ securityGroupId, credentialId, region }: { securityGroupId: string; credentialId: string; region: string }) => {
+  const deleteSecurityGroupMutation = useResourceMutation({
+    resourceType: 'securityGroups',
+    operation: 'delete',
+    mutationFn: async ({ id, credentialId, region }: { id: string; credentialId: string; region: string }) => {
       if (!selectedProvider) throw new Error('Provider not selected');
-      return networkService.deleteSecurityGroup(selectedProvider as CloudProvider, securityGroupId, credentialId, region);
+      return networkService.deleteSecurityGroup(selectedProvider as CloudProvider, id, credentialId, region);
     },
-    invalidateQueries: [queryKeys.securityGroups.all],
     successMessage: 'Security group deletion initiated',
     errorContext: { operation: 'deleteSecurityGroup', resource: 'SecurityGroup' },
+    onError: (error) => {
+      const errorMessage = ErrorHandler.getNetworkErrorMessage(
+        error,
+        'delete',
+        'SecurityGroup',
+        selectedProvider
+      );
+      handleError(error, {
+        operation: 'deleteSecurityGroup',
+        resource: 'SecurityGroup',
+        customMessage: errorMessage,
+      });
+    },
   });
+
+  // Security Group 전용 delete mutation (securityGroupId 사용)
+  const deleteSecurityGroupMutationWrapped = {
+    ...deleteSecurityGroupMutation,
+    mutate: (params: { securityGroupId: string; credentialId: string; region: string }) => {
+      deleteSecurityGroupMutation.mutate({
+        id: params.securityGroupId,
+        credentialId: params.credentialId,
+        region: params.region,
+      });
+    },
+    mutateAsync: (params: { securityGroupId: string; credentialId: string; region: string }) => {
+      return deleteSecurityGroupMutation.mutateAsync({
+        id: params.securityGroupId,
+        credentialId: params.credentialId,
+        region: params.region,
+      });
+    },
+  };
 
   const handleBulkDeleteSecurityGroups = async (securityGroupIds: string[], securityGroups: Array<{ id: string; region: string }>) => {
     if (!selectedCredentialId || !selectedProvider) return;
@@ -53,7 +100,7 @@ export function useSecurityGroupActions({
     const securityGroupsToDelete = securityGroups.filter(sg => securityGroupIds.includes(sg.id));
     const deletePromises = securityGroupsToDelete.map(securityGroup =>
       deleteSecurityGroupMutation.mutateAsync({
-        securityGroupId: securityGroup.id,
+        id: securityGroup.id,
         credentialId: selectedCredentialId,
         region: securityGroup.region,
       })
@@ -71,18 +118,18 @@ export function useSecurityGroupActions({
   const handleDeleteSecurityGroup = (securityGroupId: string, region: string) => {
     if (!selectedCredentialId) return;
     // 모달은 컴포넌트에서 관리하므로 여기서는 바로 삭제 실행
-    deleteSecurityGroupMutation.mutate({ securityGroupId, credentialId: selectedCredentialId, region });
+    deleteSecurityGroupMutationWrapped.mutate({ securityGroupId, credentialId: selectedCredentialId, region });
   };
 
   // 모달 없이 직접 삭제 실행하는 함수 (컴포넌트에서 모달 확인 후 호출)
   const executeDeleteSecurityGroup = (securityGroupId: string, region: string) => {
     if (!selectedCredentialId) return;
-    deleteSecurityGroupMutation.mutate({ securityGroupId, credentialId: selectedCredentialId, region });
+    deleteSecurityGroupMutationWrapped.mutate({ securityGroupId, credentialId: selectedCredentialId, region });
   };
 
   return {
     createSecurityGroupMutation,
-    deleteSecurityGroupMutation,
+    deleteSecurityGroupMutation: deleteSecurityGroupMutationWrapped,
     handleBulkDeleteSecurityGroups,
     handleDeleteSecurityGroup,
     executeDeleteSecurityGroup,

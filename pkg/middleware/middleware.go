@@ -268,6 +268,7 @@ func (m *Middleware) RateLimitMiddleware() gin.HandlerFunc {
 }
 
 // AuthMiddleware provides authentication
+// Supports both Authorization header (Bearer token) and query parameter (for SSE)
 func (m *Middleware) AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if m.authService == nil {
@@ -275,40 +276,47 @@ func (m *Middleware) AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Get token from Authorization header
+		var token string
+
+		// 1. Try to get token from Authorization header (standard way)
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			m.unauthorizedResponse(c, "Authorization header required")
-			return
+		if authHeader != "" {
+			// Check if it's a Bearer token
+			if !strings.HasPrefix(authHeader, "Bearer ") {
+				m.unauthorizedResponse(c, "Invalid authorization header format")
+				return
+			}
+
+			// Extract token from header
+			token = strings.TrimPrefix(authHeader, "Bearer ")
 		}
 
-		// Check if it's a Bearer token
-		if !strings.HasPrefix(authHeader, "Bearer ") {
-			m.unauthorizedResponse(c, "Invalid authorization header format")
-			return
-		}
-
-		// Extract token
-		token := strings.TrimPrefix(authHeader, "Bearer ")
+		// 2. Fallback: Try to get token from query parameter (for SSE EventSource API)
+		// EventSource API cannot set custom headers, so we support query parameter
 		if token == "" {
-			m.unauthorizedResponse(c, "Token required")
+			token = c.Query("token")
+		}
+
+		// 3. Validate that we have a token
+		if token == "" {
+			m.unauthorizedResponse(c, "Token required (provide via Authorization header or token query parameter)")
 			return
 		}
 
-		// Validate token
+		// 4. Validate token
 		user, err := m.authService.ValidateToken(token)
 		if err != nil {
 			m.unauthorizedResponse(c, "Invalid token")
 			return
 		}
 
-		// Set user information in context
+		// 5. Set user information in context
 		c.Set("user", user)
 		if userID := m.extractUserID(user); userID != "" {
 			c.Set("user_id", userID)
 		}
 
-		// Get user roles from RBAC service and set primary role in context
+		// 6. Get user roles from RBAC service and set primary role in context
 		if m.rbacService != nil {
 			userRoles, err := m.rbacService.GetUserRoles(user.ID)
 			if err == nil && len(userRoles) > 0 {

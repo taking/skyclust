@@ -9,25 +9,57 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Stepper, StepContent } from '@/components/ui/stepper';
 import { useToast } from '@/hooks/use-toast';
 import { useErrorHandler } from '@/hooks/use-error-handler';
 import { useTranslation } from '@/hooks/use-translation';
-import { createValidationSchemas } from '@/lib/validations';
+import { useValidation } from '@/lib/validation';
 import { useCredentialContext } from '@/hooks/use-credential-context';
 import { useCredentialAutoSelect } from '@/hooks/use-credential-auto-select';
 import { useWorkspaceStore } from '@/store/workspace';
 import { ArrowLeft } from 'lucide-react';
 import { useKubernetesClusters } from '@/features/kubernetes';
 import type { CreateClusterForm, CloudProvider } from '@/lib/types';
-import { BasicClusterConfigStep } from '@/features/kubernetes/components/create-cluster/basic-config-step';
-import { NetworkConfigStep } from '@/features/kubernetes/components/create-cluster/network-config-step';
-import { AdvancedConfigStep } from '@/features/kubernetes/components/create-cluster/advanced-config-step';
-import { ReviewStep } from '@/features/kubernetes/components/create-cluster/review-step';
 import { useVPCs } from '@/features/networks/hooks/use-vpcs';
 import { useSubnets } from '@/features/networks/hooks/use-subnets';
+import { UI_MESSAGES, VALIDATION } from '@/lib/constants';
+import { TableSkeleton } from '@/components/ui/table-skeleton';
+
+// Dynamic imports for step components (lazy loading)
+const BasicClusterConfigStep = dynamic(
+  () => import('@/features/kubernetes/components/create-cluster/basic-config-step').then(mod => ({ default: mod.BasicClusterConfigStep })),
+  { 
+    ssr: false,
+    loading: () => <TableSkeleton columns={2} rows={5} />,
+  }
+);
+
+const NetworkConfigStep = dynamic(
+  () => import('@/features/kubernetes/components/create-cluster/network-config-step').then(mod => ({ default: mod.NetworkConfigStep })),
+  { 
+    ssr: false,
+    loading: () => <TableSkeleton columns={2} rows={5} />,
+  }
+);
+
+const AdvancedConfigStep = dynamic(
+  () => import('@/features/kubernetes/components/create-cluster/advanced-config-step').then(mod => ({ default: mod.AdvancedConfigStep })),
+  { 
+    ssr: false,
+    loading: () => <TableSkeleton columns={2} rows={5} />,
+  }
+);
+
+const ReviewStep = dynamic(
+  () => import('@/features/kubernetes/components/create-cluster/review-step').then(mod => ({ default: mod.ReviewStep })),
+  { 
+    ssr: false,
+    loading: () => <TableSkeleton columns={2} rows={5} />,
+  }
+);
 
 const STEPS = [
   {
@@ -55,7 +87,8 @@ function CreateClusterPageContent() {
   const { handleError } = useErrorHandler();
   const { selectedCredentialId, selectedRegion } = useCredentialContext();
   const { currentWorkspace } = useWorkspaceStore();
-  const { createClusterSchema } = createValidationSchemas(t);
+  const { schemas } = useValidation();
+  const createClusterSchema = schemas.createClusterSchema;
   
   // Auto-select credential if not selected
   useCredentialAutoSelect({
@@ -106,7 +139,7 @@ function CreateClusterPageContent() {
   }, [formData.vpc_id]);
 
   const form = useForm<CreateClusterForm>({
-    resolver: zodResolver(createClusterSchema),
+    resolver: zodResolver(createClusterSchema) as any, // Type compatibility workaround
     defaultValues: formData as CreateClusterForm,
     mode: 'onChange',
   });
@@ -203,7 +236,7 @@ function CreateClusterPageContent() {
           .filter(Boolean)
       );
       
-      if (uniqueAZs.size < 2) {
+      if (uniqueAZs.size < VALIDATION.ARRAY.MIN_AZ_COUNT_FOR_AWS_EKS) {
         handleError(
           new Error('AWS EKS requires subnets from at least two different availability zones for high availability.'),
           { operation: 'createCluster', resource: 'Cluster' }
@@ -218,8 +251,10 @@ function CreateClusterPageContent() {
         credential_id: finalData.credential_id,
         name: finalData.name,
         version: finalData.version,
+        region: finalData.region || finalData.location || '', // Required field
         location: finalData.location || finalData.region, // Azure uses 'location'
         resource_group: finalData.resource_group || '',
+        subnet_ids: finalData.subnet_ids || [finalData.network?.subnet_id || ''].filter(Boolean), // Required field
         network: finalData.network || {
           virtual_network_id: finalData.vpc_id || '',
           subnet_id: finalData.subnet_ids?.[0] || '',
@@ -267,7 +302,7 @@ function CreateClusterPageContent() {
   };
 
   const handleCancel = () => {
-    if (confirm('Are you sure you want to cancel? All entered data will be lost.')) {
+    if (confirm(UI_MESSAGES.CONFIRM_CANCEL)) {
       router.push('/kubernetes/clusters');
     }
   };

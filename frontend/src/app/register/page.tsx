@@ -17,7 +17,7 @@ import { RegisterForm } from '@/lib/types';
 import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
 import Link from 'next/link';
 import { useTranslation } from '@/hooks/use-translation';
-import { createValidationSchemas } from '@/lib/validations';
+import { createValidationSchemas } from '@/lib/validation';
 import { TIME } from '@/lib/constants';
 
 export default function RegisterPage() {

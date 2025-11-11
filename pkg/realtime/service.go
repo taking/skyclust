@@ -22,6 +22,7 @@ type Service interface {
 	HandleSSE(conn *SSEConnection)
 	RemoveConnection(connID string) error
 	GetConnection(connID string) (*SSEConnection, error)
+	GetConnectionByUserID(userID string) (*SSEConnection, error)
 	GetConnectionCount() int
 
 	// Event broadcasting
@@ -182,6 +183,21 @@ func (s *service) GetConnection(connID string) (*SSEConnection, error) {
 	}
 
 	return conn, nil
+}
+
+// GetConnectionByUserID retrieves the first active connection for a user
+// 사용자 ID로 활성 연결 조회
+func (s *service) GetConnectionByUserID(userID string) (*SSEConnection, error) {
+	s.connectionsMux.RLock()
+	defer s.connectionsMux.RUnlock()
+
+	for _, conn := range s.connections {
+		if conn.UserID == userID {
+			return conn, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no active connection found for user: %s", userID)
 }
 
 // GetConnectionCount returns the number of active connections

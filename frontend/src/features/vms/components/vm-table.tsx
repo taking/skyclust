@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Pagination } from '@/components/ui/pagination';
 import { ArrowUp, ArrowDown } from 'lucide-react';
 import { VMRow } from './vm-row';
-import { DataProcessor } from '@/lib/data-processor';
+import { DataProcessor } from '@/lib/data';
 import type { VM } from '@/lib/types';
 
 interface VMTableProps {

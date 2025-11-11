@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { logger } from '@/lib/logger';
+import { log } from '@/lib/logging';
 
 export interface FilterPreset {
   id: string;
@@ -47,7 +47,7 @@ export function useAdvancedFiltering<T>(
         setPresets(JSON.parse(savedPresets));
       }
     } catch (error) {
-      logger.error('Failed to load filter presets', error, { storageKey });
+      log.error('Failed to load filter presets', error, { storageKey });
     }
   }, [storageKey]);
 
@@ -69,7 +69,7 @@ export function useAdvancedFiltering<T>(
         onSortChange?.(parsed);
       }
     } catch (error) {
-      logger.error('Failed to load saved filters/sort', error, { storageKey });
+      log.error('Failed to load saved filters/sort', error, { storageKey });
     }
   }, [storageKey, onFiltersChange, onSortChange]);
 
@@ -79,7 +79,7 @@ export function useAdvancedFiltering<T>(
       localStorage.setItem(`${storageKey}-filters`, JSON.stringify(filters));
       onFiltersChange?.(filters);
     } catch (error) {
-      logger.error('Failed to save filters', error, { storageKey });
+      log.error('Failed to save filters', error, { storageKey });
     }
   }, [filters, storageKey, onFiltersChange]);
 
@@ -89,7 +89,7 @@ export function useAdvancedFiltering<T>(
       localStorage.setItem(`${storageKey}-sort`, JSON.stringify(sortConfig));
       onSortChange?.(sortConfig);
     } catch (error) {
-      logger.error('Failed to save sort', error, { storageKey });
+      log.error('Failed to save sort', error, { storageKey });
     }
   }, [sortConfig, storageKey, onSortChange]);
 
@@ -127,7 +127,7 @@ export function useAdvancedFiltering<T>(
     try {
       localStorage.setItem(`${storageKey}-presets`, JSON.stringify(newPresets));
     } catch (error) {
-      logger.error('Failed to save preset', error, { storageKey, preset });
+      log.error('Failed to save preset', error, { storageKey, preset });
     }
   }, [filters, presets, storageKey]);
 
@@ -145,7 +145,7 @@ export function useAdvancedFiltering<T>(
     try {
       localStorage.setItem(`${storageKey}-presets`, JSON.stringify(newPresets));
     } catch (error) {
-      logger.error('Failed to delete preset', error, { storageKey, presetId });
+      log.error('Failed to delete preset', error, { storageKey, presetId });
     }
   }, [presets, storageKey]);
 

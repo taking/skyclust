@@ -12,12 +12,13 @@ import { Server, Key, Users, Settings, RefreshCw, Container } from 'lucide-react
 import { workspaceService } from '@/features/workspaces';
 import { useQuery } from '@tanstack/react-query';
 import { WorkspaceRequired } from '@/components/common/workspace-required';
-import { queryKeys } from '@/lib/query-keys';
+import { queryKeys } from '@/lib/query';
 import { useTranslation } from '@/hooks/use-translation';
 import { API } from '@/lib/constants';
 import { useCredentialContext } from '@/hooks/use-credential-context';
 import { useCredentialAutoSelect } from '@/hooks/use-credential-auto-select';
 import { useDashboardSummary } from '@/features/dashboard/hooks/use-dashboard-summary';
+import { useDashboardSSE } from '@/hooks/use-dashboard-sse';
 
 import { Spinner } from '@/components/ui/loading-states';
 
@@ -92,6 +93,16 @@ function DashboardContent() {
     credentialId: selectedCredentialId || undefined, // VM, Cluster, Network 통계용
     region: selectedRegion || undefined, // VM, Cluster, Network 통계용
     enabled: !!currentWorkspace?.id, // 워크스페이스만 있으면 조회 (credential 선택 불필요)
+  });
+
+  // 대시보드 SSE 동적 구독 관리
+  // 위젯 목록과 필터에 따라 필요한 이벤트만 구독
+  useDashboardSSE({
+    widgets,
+    credentialId: selectedCredentialId || undefined,
+    region: selectedRegion || undefined,
+    includeSummary: true,
+    enabled: !!currentWorkspace?.id && widgets.length > 0,
   });
 
   // Fetch workspaces

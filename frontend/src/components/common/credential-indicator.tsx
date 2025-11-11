@@ -26,7 +26,7 @@ import { useTranslation } from '@/hooks/use-translation';
 import { cn } from '@/lib/utils';
 import type { Credential } from '@/lib/types/credential';
 import type { CloudProvider } from '@/lib/types/kubernetes';
-import { getRegionsForProvider, supportsRegionSelection } from '@/lib/regions';
+import { getRegionsByProvider, supportsRegionSelection } from '@/lib/regions';
 
 interface CredentialIndicatorProps {
   /**
@@ -55,7 +55,7 @@ export function CredentialIndicator({
     enabled: !!currentWorkspace,
   });
   
-  const regions = React.useMemo(() => getRegionsForProvider(selectedProvider), [selectedProvider]);
+  const regions = React.useMemo(() => getRegionsByProvider(selectedProvider), [selectedProvider]);
   const showRegionSelector = showRegion && supportsRegionSelection(selectedProvider);
   
   const handleCredentialChange = (credentialId: string) => {

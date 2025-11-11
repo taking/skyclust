@@ -20,7 +20,7 @@ import {
   X,
   Home,
 } from 'lucide-react';
-import { getUserFriendlyErrorMessage, NetworkError, ServerError, isRetryableError } from '@/lib/error-handler';
+import { getUserFriendlyErrorMessage, NetworkError, ServerError, isRetryableError } from '@/lib/error-handling';
 import { cn } from '@/lib/utils';
 
 export interface InlineErrorProps {

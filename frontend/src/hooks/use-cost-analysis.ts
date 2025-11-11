@@ -2,8 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { costAnalysisService } from '@/services/cost-analysis';
 // Cost analysis types are inferred from service responses
 import { useToast } from '@/hooks/use-toast';
-import { queryKeys } from '@/lib/query-keys';
-import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
+import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
 
 export function useCostSummary(workspaceId: string, period: string = '30d') {
   return useQuery({

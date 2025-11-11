@@ -16,7 +16,7 @@ import (
 	"skyclust/internal/application/handlers/notification"
 	"skyclust/internal/application/handlers/oidc"
 	"skyclust/internal/application/handlers/rbac"
-	"skyclust/internal/application/handlers/sse"
+	ssehandler "skyclust/internal/application/handlers/sse"
 	"skyclust/internal/application/handlers/system"
 	"skyclust/internal/application/handlers/workspace"
 	costanalysisservice "skyclust/internal/application/services/cost_analysis"
@@ -423,7 +423,17 @@ func (rm *RouteManager) setupRBACRoutes(router *gin.RouterGroup) {
 
 // setupSSERoutes sets up SSE routes
 func (rm *RouteManager) setupSSERoutes(router *gin.RouterGroup) {
-	sse.SetupRoutes(router)
+	sseHandler := rm.container.GetSSEHandler()
+	if sseHandler == nil {
+		rm.logger.Warn("SSE handler not available, SSE routes will not be set up")
+		return
+	}
+
+	if handler, ok := sseHandler.(*ssehandler.SSEHandler); ok {
+		ssehandler.SetupRoutes(router, handler)
+	} else {
+		rm.logger.Warn("SSE handler type assertion failed, SSE routes will not be set up")
+	}
 }
 
 // setupSystemRoutes sets up system monitoring routes

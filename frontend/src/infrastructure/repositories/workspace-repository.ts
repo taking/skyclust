@@ -4,7 +4,7 @@
  */
 
 import { BaseRepository } from './base-repository';
-import { API_ENDPOINTS } from '@/lib/api-endpoints';
+import { API_ENDPOINTS } from '@/lib/api';
 import type { IWorkspaceRepository } from '@/lib/types/repository';
 import type { Workspace, CreateWorkspaceForm, WorkspaceMember } from '@/lib/types';
 

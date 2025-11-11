@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { CreateClusterForm } from '@/lib/types';
 import { useTranslation } from '@/hooks/use-translation';
-import { getRegionsForProvider } from '@/lib/regions';
+import { getRegionsByProvider } from '@/lib/regions';
 
 export interface RegionZoneFieldsProps {
   /** React Hook Form 인스턴스 */
@@ -58,7 +58,7 @@ export function RegionZoneFields({
   const selectedRegion = form.watch('region');
 
   // Static regions for non-AWS providers
-  const staticRegions = provider ? getRegionsForProvider(provider) : [];
+  const staticRegions = provider ? getRegionsByProvider(provider) : [];
 
   // Use AWS regions if available, otherwise use static regions
   const regions = canLoadMetadata && awsRegions.length > 0 ? awsRegions : staticRegions;

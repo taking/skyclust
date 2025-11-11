@@ -52,7 +52,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { usePagination } from './use-pagination';
-import { DataProcessor } from '@/lib/data-processor';
+import { DataProcessor } from '@/lib/data';
 import type { FilterValue } from '@/components/ui/filter-panel';
 import type { FilterConfig } from '@/components/ui/filter-panel';
 import { UI } from '@/lib/constants';

@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import type { CreateClusterForm } from '@/lib/types';
 import { useTranslation } from '@/hooks/use-translation';
-import { getRegionsForProvider } from '@/lib/regions';
+import { getRegionsByProvider } from '@/lib/regions';
 import { useCredentialContext } from '@/hooks/use-credential-context';
 
 export interface RegionFieldProps {
@@ -74,7 +74,7 @@ export function RegionField({
   const currentRegion = formRegion || dashboardRegion || '';
   
   // Static regions for non-AWS providers
-  const staticRegions = provider ? getRegionsForProvider(provider) : [];
+  const staticRegions = provider ? getRegionsByProvider(provider) : [];
   
   // Use AWS regions if available, otherwise use static regions
   const regions = canLoadMetadata && awsRegions.length > 0 ? awsRegions : staticRegions;

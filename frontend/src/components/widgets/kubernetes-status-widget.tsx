@@ -8,8 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { kubernetesService } from '@/features/kubernetes';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useProviderStore } from '@/store/provider';
-import { queryKeys } from '@/lib/query-keys';
-import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
+import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
 import { useCredentials } from '@/hooks/use-credentials';
 
 interface KubernetesStatusWidgetProps {
@@ -39,7 +38,7 @@ function KubernetesStatusWidgetComponent({ credentialId, region, isLoading }: Ku
     enabled: !!selectedProvider && !!activeCredentialId && !!currentWorkspace,
     staleTime: CACHE_TIMES.REALTIME,
     gcTime: GC_TIMES.SHORT,
-    refetchInterval: 30000, // Poll every 30 seconds
+    // refetchInterval 제거: SSE 이벤트로 자동 업데이트
   });
 
   const isLoadingData = isLoading || isLoadingClusters;

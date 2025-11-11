@@ -7,8 +7,8 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { sseService } from '@/services/sse';
-import { queryKeys } from '@/lib/query-keys';
-import { logger } from '@/lib/logger';
+import { queryKeys } from '@/lib/query';
+import { log } from '@/lib/logging';
 import type { SSECallbacks } from '@/lib/types/sse';
 import type {
   KubernetesClusterEventData,
@@ -17,6 +17,23 @@ import type {
   NetworkSecurityGroupEventData,
   VMEventData,
 } from '@/lib/types/sse-events';
+import {
+  applyVMCreatedUpdate,
+  applyVMUpdatedUpdate,
+  applyVMDeletedUpdate,
+  applyKubernetesClusterCreatedUpdate,
+  applyKubernetesClusterUpdatedUpdate,
+  applyKubernetesClusterDeletedUpdate,
+  applyVPCCreatedUpdate,
+  applyVPCUpdatedUpdate,
+  applyVPCDeletedUpdate,
+  applySubnetCreatedUpdate,
+  applySubnetUpdatedUpdate,
+  applySubnetDeletedUpdate,
+  applySecurityGroupCreatedUpdate,
+  applySecurityGroupUpdatedUpdate,
+  applySecurityGroupDeletedUpdate,
+} from '@/lib/sse/query-updates';
 
 /**
  * SSE 이벤트를 구독하고 React Query와 통합하는 훅
@@ -30,84 +47,117 @@ export function useSSEEvents(token: string | null) {
     }
 
     const callbacks: SSECallbacks = {
-      onConnected: (data) => {
-        logger.debug('[SSE] Connected', { data });
+      onConnected: async (data) => {
+        log.debug('[SSE] Connected', { data });
+        
+        // 연결 후 기본 시스템 이벤트만 구독
+        // 리소스 관련 이벤트는 각 페이지에서 동적으로 구독하도록 변경
+        // 이를 통해 불필요한 이벤트 수신을 방지하고 네트워크 트래픽을 최적화
+        try {
+          // 시스템 이벤트만 기본 구독 (모든 페이지에서 필요)
+          await sseService.subscribeToEvent('system-notification');
+          await sseService.subscribeToEvent('system-alert');
+          log.debug('[SSE] Auto-subscribed to system events');
+        } catch (error) {
+          log.error('[SSE] Failed to subscribe to system events', error, {
+            service: 'SSE',
+            action: 'auto-subscribe',
+          });
+        }
       },
 
-      // Kubernetes 클러스터 이벤트
+      // Kubernetes 클러스터 이벤트 (실시간 업데이트)
       onKubernetesClusterCreated: (data) => {
-        logger.debug('[SSE] Kubernetes cluster created', { data });
-        // Backend 필드명과 일치: credentialId, clusterId (not credential_id, cluster_id)
+        log.debug('[SSE] Kubernetes cluster created', { data });
         const eventData = data as KubernetesClusterEventData;
-        const { provider, credentialId, region } = eventData;
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.kubernetesClusters.list(
-            undefined,
-            provider,
-            credentialId,
-            region
-          ),
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.clusters.list(provider, credentialId, region),
-        });
-        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
+        try {
+          // 실시간 업데이트 시도
+          applyKubernetesClusterCreatedUpdate(queryClient, eventData);
+        } catch (error) {
+          log.warn('[SSE] Failed to apply real-time cluster created update, falling back to invalidation', error);
+          // Fallback: 무효화
+          const { provider, credentialId, region } = eventData;
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.kubernetesClusters.list(
+              undefined,
+              provider,
+              credentialId,
+              region
+            ),
+          });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.clusters.list(provider, credentialId, region),
+          });
+        }
+        // 대시보드 무효화 (항상 수행)
         queryClient.invalidateQueries({
           queryKey: queryKeys.dashboard.all,
         });
       },
 
       onKubernetesClusterUpdated: (data) => {
-        logger.debug('[SSE] Kubernetes cluster updated', { data });
+        log.debug('[SSE] Kubernetes cluster updated', { data });
         const eventData = data as KubernetesClusterEventData;
-        const { provider, credentialId, region, clusterId } = eventData;
-        // 목록 쿼리 무효화
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.kubernetesClusters.list(
-            undefined,
-            provider,
-            credentialId,
-            region
-          ),
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.clusters.list(provider, credentialId, region),
-        });
-        // 개별 클러스터 쿼리 무효화
-        if (clusterId) {
+        try {
+          // 실시간 업데이트 시도
+          applyKubernetesClusterUpdatedUpdate(queryClient, eventData);
+        } catch (error) {
+          log.warn('[SSE] Failed to apply real-time cluster updated update, falling back to invalidation', error);
+          // Fallback: 무효화
+          const { provider, credentialId, region, clusterId } = eventData;
           queryClient.invalidateQueries({
-            queryKey: queryKeys.kubernetesClusters.detail(clusterId),
+            queryKey: queryKeys.kubernetesClusters.list(
+              undefined,
+              provider,
+              credentialId,
+              region
+            ),
+          });
+          if (clusterId) {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.kubernetesClusters.detail(clusterId),
+            });
+          }
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.clusters.list(provider, credentialId, region),
           });
         }
-        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
+        // 대시보드 무효화 (항상 수행)
         queryClient.invalidateQueries({
           queryKey: queryKeys.dashboard.all,
         });
       },
 
       onKubernetesClusterDeleted: (data) => {
-        logger.debug('[SSE] Kubernetes cluster deleted', { data });
+        log.debug('[SSE] Kubernetes cluster deleted', { data });
         const eventData = data as KubernetesClusterEventData;
-        const { provider, credentialId, region } = eventData;
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.kubernetesClusters.list(
-            undefined,
-            provider,
-            credentialId,
-            region
-          ),
-        });
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.clusters.list(provider, credentialId, region),
-        });
-        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
+        try {
+          // 실시간 업데이트 시도
+          applyKubernetesClusterDeletedUpdate(queryClient, eventData);
+        } catch (error) {
+          log.warn('[SSE] Failed to apply real-time cluster deleted update, falling back to invalidation', error);
+          // Fallback: 무효화
+          const { provider, credentialId, region } = eventData;
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.kubernetesClusters.list(
+              undefined,
+              provider,
+              credentialId,
+              region
+            ),
+          });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.clusters.list(provider, credentialId, region),
+          });
+        }
+        // 대시보드 무효화 (항상 수행)
         queryClient.invalidateQueries({
           queryKey: queryKeys.dashboard.all,
         });
       },
 
       onKubernetesClusterList: (data) => {
-        logger.debug('[SSE] Kubernetes cluster list updated', { data });
+        log.debug('[SSE] Kubernetes cluster list updated', { data });
         const eventData = data as KubernetesClusterEventData;
         const { provider, credentialId, region } = eventData;
         queryClient.invalidateQueries({
@@ -173,53 +223,74 @@ export function useSSEEvents(token: string | null) {
         });
       },
 
-      // Network VPC 이벤트
+      // Network VPC 이벤트 (실시간 업데이트)
       onNetworkVPCCreated: (data) => {
-        logger.debug('[SSE] Network VPC created', { data });
+        log.debug('[SSE] Network VPC created', { data });
         const eventData = data as NetworkVPCEventData;
-        const { provider, credentialId, region } = eventData;
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.vpcs.list(provider, credentialId, region),
-        });
-        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
+        try {
+          // 실시간 업데이트 시도
+          applyVPCCreatedUpdate(queryClient, eventData);
+        } catch (error) {
+          log.warn('[SSE] Failed to apply real-time VPC created update, falling back to invalidation', error);
+          // Fallback: 무효화
+          const { provider, credentialId, region } = eventData;
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.vpcs.list(provider, credentialId, region),
+          });
+        }
+        // 대시보드 무효화 (항상 수행)
         queryClient.invalidateQueries({
           queryKey: queryKeys.dashboard.all,
         });
       },
 
       onNetworkVPCUpdated: (data) => {
-        logger.debug('[SSE] Network VPC updated', { data });
+        log.debug('[SSE] Network VPC updated', { data });
         const eventData = data as NetworkVPCEventData;
-        const { provider, credentialId, region, vpcId } = eventData;
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.vpcs.list(provider, credentialId, region),
-        });
-        if (vpcId) {
+        try {
+          // 실시간 업데이트 시도
+          applyVPCUpdatedUpdate(queryClient, eventData);
+        } catch (error) {
+          log.warn('[SSE] Failed to apply real-time VPC updated update, falling back to invalidation', error);
+          // Fallback: 무효화
+          const { provider, credentialId, region, vpcId } = eventData;
           queryClient.invalidateQueries({
-            queryKey: queryKeys.vpcs.detail(vpcId),
+            queryKey: queryKeys.vpcs.list(provider, credentialId, region),
           });
+          if (vpcId) {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.vpcs.detail(vpcId),
+            });
+          }
         }
-        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
+        // 대시보드 무효화 (항상 수행)
         queryClient.invalidateQueries({
           queryKey: queryKeys.dashboard.all,
         });
       },
 
       onNetworkVPCDeleted: (data) => {
-        logger.debug('[SSE] Network VPC deleted', { data });
+        log.debug('[SSE] Network VPC deleted', { data });
         const eventData = data as NetworkVPCEventData;
-        const { provider, credentialId, region } = eventData;
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.vpcs.list(provider, credentialId, region),
-        });
-        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
+        try {
+          // 실시간 업데이트 시도
+          applyVPCDeletedUpdate(queryClient, eventData);
+        } catch (error) {
+          log.warn('[SSE] Failed to apply real-time VPC deleted update, falling back to invalidation', error);
+          // Fallback: 무효화
+          const { provider, credentialId, region } = eventData;
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.vpcs.list(provider, credentialId, region),
+          });
+        }
+        // 대시보드 무효화 (항상 수행)
         queryClient.invalidateQueries({
           queryKey: queryKeys.dashboard.all,
         });
       },
 
       onNetworkVPCList: (data) => {
-        logger.debug('[SSE] Network VPC list updated', { data });
+        log.debug('[SSE] Network VPC list updated', { data });
         const eventData = data as NetworkVPCEventData;
         const { provider, credentialId, region } = eventData;
         queryClient.invalidateQueries({
@@ -227,14 +298,21 @@ export function useSSEEvents(token: string | null) {
         });
       },
 
-      // Network Subnet 이벤트
+      // Network Subnet 이벤트 (실시간 업데이트)
       onNetworkSubnetCreated: (data) => {
         const eventData = data as NetworkSubnetEventData;
-        const { provider, credentialId, vpcId, region } = eventData;
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.subnets.list(provider, credentialId, vpcId, region),
-        });
-        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
+        try {
+          // 실시간 업데이트 시도
+          applySubnetCreatedUpdate(queryClient, eventData);
+        } catch (error) {
+          log.warn('[SSE] Failed to apply real-time subnet created update, falling back to invalidation', error);
+          // Fallback: 무효화
+          const { provider, credentialId, vpcId, region } = eventData;
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.subnets.list(provider, credentialId, vpcId, region),
+          });
+        }
+        // 대시보드 무효화 (항상 수행)
         queryClient.invalidateQueries({
           queryKey: queryKeys.dashboard.all,
         });
@@ -242,19 +320,33 @@ export function useSSEEvents(token: string | null) {
 
       onNetworkSubnetUpdated: (data) => {
         const eventData = data as NetworkSubnetEventData;
-        const { provider, credentialId, vpcId, region } = eventData;
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.subnets.list(provider, credentialId, vpcId, region),
-        });
+        try {
+          // 실시간 업데이트 시도
+          applySubnetUpdatedUpdate(queryClient, eventData);
+        } catch (error) {
+          log.warn('[SSE] Failed to apply real-time subnet updated update, falling back to invalidation', error);
+          // Fallback: 무효화
+          const { provider, credentialId, vpcId, region } = eventData;
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.subnets.list(provider, credentialId, vpcId, region),
+          });
+        }
       },
 
       onNetworkSubnetDeleted: (data) => {
         const eventData = data as NetworkSubnetEventData;
-        const { provider, credentialId, vpcId, region } = eventData;
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.subnets.list(provider, credentialId, vpcId, region),
-        });
-        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
+        try {
+          // 실시간 업데이트 시도
+          applySubnetDeletedUpdate(queryClient, eventData);
+        } catch (error) {
+          log.warn('[SSE] Failed to apply real-time subnet deleted update, falling back to invalidation', error);
+          // Fallback: 무효화
+          const { provider, credentialId, vpcId, region } = eventData;
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.subnets.list(provider, credentialId, vpcId, region),
+          });
+        }
+        // 대시보드 무효화 (항상 수행)
         queryClient.invalidateQueries({
           queryKey: queryKeys.dashboard.all,
         });
@@ -268,14 +360,21 @@ export function useSSEEvents(token: string | null) {
         });
       },
 
-      // Network Security Group 이벤트
+      // Network Security Group 이벤트 (실시간 업데이트)
       onNetworkSecurityGroupCreated: (data) => {
         const eventData = data as NetworkSecurityGroupEventData;
-        const { provider, credentialId, region } = eventData;
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.securityGroups.list(provider, credentialId, undefined, region),
-        });
-        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
+        try {
+          // 실시간 업데이트 시도
+          applySecurityGroupCreatedUpdate(queryClient, eventData);
+        } catch (error) {
+          log.warn('[SSE] Failed to apply real-time security group created update, falling back to invalidation', error);
+          // Fallback: 무효화
+          const { provider, credentialId, region } = eventData;
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.securityGroups.list(provider, credentialId, undefined, region),
+          });
+        }
+        // 대시보드 무효화 (항상 수행)
         queryClient.invalidateQueries({
           queryKey: queryKeys.dashboard.all,
         });
@@ -283,22 +382,32 @@ export function useSSEEvents(token: string | null) {
 
       onNetworkSecurityGroupUpdated: (data) => {
         const eventData = data as NetworkSecurityGroupEventData;
-        const { provider, credentialId, region } = eventData;
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.securityGroups.list(provider, credentialId, undefined, region),
-        });
+        try {
+          // 실시간 업데이트 시도
+          applySecurityGroupUpdatedUpdate(queryClient, eventData);
+        } catch (error) {
+          log.warn('[SSE] Failed to apply real-time security group updated update, falling back to invalidation', error);
+          // Fallback: 무효화
+          const { provider, credentialId, region } = eventData;
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.securityGroups.list(provider, credentialId, undefined, region),
+          });
+        }
       },
 
       onNetworkSecurityGroupDeleted: (data) => {
         const eventData = data as NetworkSecurityGroupEventData;
-        const { provider, credentialId, region } = eventData;
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.securityGroups.list(provider, credentialId, undefined, region),
-        });
-        // 대시보드 쿼리 무효화 (모든 workspaceId 조합)
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.dashboard.all,
-        });
+        try {
+          // 실시간 업데이트 시도
+          applySecurityGroupDeletedUpdate(queryClient, eventData);
+        } catch (error) {
+          log.warn('[SSE] Failed to apply real-time security group deleted update, falling back to invalidation', error);
+          // Fallback: 무효화
+          const { provider, credentialId, region } = eventData;
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.securityGroups.list(provider, credentialId, undefined, region),
+          });
+        }
       },
 
       onNetworkSecurityGroupList: (data) => {
@@ -309,71 +418,92 @@ export function useSSEEvents(token: string | null) {
         });
       },
 
-      // VM 이벤트
+      // VM 이벤트 (실시간 업데이트)
       onVMCreated: (data) => {
-        logger.debug('[SSE] VM created', { data });
+        log.debug('[SSE] VM created', { data });
         const eventData = data as VMEventData;
-        const { workspaceId } = eventData;
-        if (workspaceId) {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.vms.list(workspaceId),
-          });
-          // 대시보드 쿼리 무효화 (모든 credentialId/region 조합)
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.dashboard.all,
-          });
-        } else {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.vms.all,
-          });
+        try {
+          // 실시간 업데이트 시도
+          applyVMCreatedUpdate(queryClient, eventData);
+        } catch (error) {
+          log.warn('[SSE] Failed to apply real-time VM created update, falling back to invalidation', error);
+          // Fallback: 무효화
+          const { workspaceId } = eventData;
+          if (workspaceId) {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.vms.list(workspaceId),
+            });
+          } else {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.vms.all,
+            });
+          }
         }
+        // 대시보드 무효화 (항상 수행)
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.dashboard.all,
+        });
       },
 
       onVMUpdated: (data) => {
-        logger.debug('[SSE] VM updated', { data });
+        log.debug('[SSE] VM updated', { data });
         const eventData = data as VMEventData;
-        const { vmId, workspaceId } = eventData;
-        if (workspaceId) {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.vms.list(workspaceId),
-          });
-          // 대시보드 쿼리 무효화 (모든 credentialId/region 조합)
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.dashboard.all,
-          });
-        } else {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.vms.all,
-          });
+        try {
+          // 실시간 업데이트 시도
+          applyVMUpdatedUpdate(queryClient, eventData);
+        } catch (error) {
+          log.warn('[SSE] Failed to apply real-time VM updated update, falling back to invalidation', error);
+          // Fallback: 무효화
+          const { vmId, workspaceId } = eventData;
+          if (workspaceId) {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.vms.list(workspaceId),
+            });
+          } else {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.vms.all,
+            });
+          }
+          if (vmId) {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.vms.detail(vmId),
+            });
+          }
         }
-        if (vmId) {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.vms.detail(vmId),
-          });
-        }
+        // 대시보드 무효화 (항상 수행)
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.dashboard.all,
+        });
       },
 
       onVMDeleted: (data) => {
-        logger.debug('[SSE] VM deleted', { data });
+        log.debug('[SSE] VM deleted', { data });
         const eventData = data as VMEventData;
-        const { workspaceId } = eventData;
-        if (workspaceId) {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.vms.list(workspaceId),
-          });
-          // 대시보드 쿼리 무효화 (모든 credentialId/region 조합)
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.dashboard.all,
-          });
-        } else {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.vms.all,
-          });
+        try {
+          // 실시간 업데이트 시도
+          applyVMDeletedUpdate(queryClient, eventData);
+        } catch (error) {
+          log.warn('[SSE] Failed to apply real-time VM deleted update, falling back to invalidation', error);
+          // Fallback: 무효화
+          const { workspaceId } = eventData;
+          if (workspaceId) {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.vms.list(workspaceId),
+            });
+          } else {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.vms.all,
+            });
+          }
         }
+        // 대시보드 무효화 (항상 수행)
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.dashboard.all,
+        });
       },
 
       onVMList: (data) => {
-        logger.debug('[SSE] VM list updated', { data });
+        log.debug('[SSE] VM list updated', { data });
         const eventData = data as VMEventData;
         const { workspaceId } = eventData;
         if (workspaceId) {
@@ -404,7 +534,7 @@ export function useSSEEvents(token: string | null) {
           const error = new Error(errorMessage);
           error.name = 'SSEError';
           
-          logger.error('[SSE] Error', error, {
+          log.error('[SSE] Error', error, {
             type: errorInfo.type,
             readyState: errorInfo.readyState,
             readyStateText,
@@ -420,7 +550,7 @@ export function useSSEEvents(token: string | null) {
           const error = new Error('SSE connection error');
           error.name = 'SSEError';
           
-          logger.error('[SSE] Error', error, errorInfo);
+          log.error('[SSE] Error', error, errorInfo);
         }
       },
     };

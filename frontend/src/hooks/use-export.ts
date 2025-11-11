@@ -7,8 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { exportService } from '@/services/export';
 import type { ExportRequest, ExportResult } from '@/lib/types/export';
 import { toast } from 'react-hot-toast';
-import { queryKeys } from '@/lib/query-keys';
-import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
+import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
 
 export const useExportData = () => {
   const queryClient = useQueryClient();

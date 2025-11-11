@@ -46,6 +46,7 @@ type ContainerInterface interface {
 	GetCache() interface{}
 	GetMessaging() interface{}
 	GetLogger() interface{}
+	GetSSEHandler() interface{}
 
 	// Cleanup
 	Close() error

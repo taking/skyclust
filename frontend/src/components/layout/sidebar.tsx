@@ -30,12 +30,11 @@ import { cn } from '@/lib/utils';
 import { ScreenReaderOnly } from '@/components/accessibility/screen-reader-only';
 import { workspaceService } from '@/features/workspaces';
 import { useToast } from '@/hooks/use-toast';
-import { ErrorHandler } from '@/lib/error-handler';
+import { ErrorHandler } from '@/lib/error-handling';
 import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
 import { CreateWorkspaceForm } from '@/lib/types';
 import * as z from 'zod';
-import { queryKeys } from '@/lib/query-keys';
-import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
+import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
 import { useTranslation } from '@/hooks/use-translation';
 import { CredentialSelector } from './credential-selector';
 

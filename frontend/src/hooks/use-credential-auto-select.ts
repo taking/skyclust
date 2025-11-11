@@ -34,7 +34,7 @@ import { useEffect, useMemo } from 'react';
 import { useCredentialContext } from './use-credential-context';
 import { useCredentials } from './use-credentials';
 import { useWorkspaceStore } from '@/store/workspace';
-import { getRecommendedCredential, trackCredentialUsage } from '@/lib/credential-preference';
+import { getRecommendedCredential, trackCredentialUsage } from '@/lib/credential';
 import { getDefaultRegionForProvider, supportsRegionSelection } from '@/lib/regions';
 import type { CloudProvider } from '@/lib/types/kubernetes';
 

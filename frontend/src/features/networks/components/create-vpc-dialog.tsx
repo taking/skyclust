@@ -13,12 +13,12 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
 import { useToast } from '@/hooks/use-toast';
-import { createValidationSchemas } from '@/lib/validations';
+import { useValidation } from '@/lib/validation';
 import type { CreateVPCForm, CloudProvider } from '@/lib/types';
 import { useTranslation } from '@/hooks/use-translation';
 import { useVPCActions } from '@/features/networks/hooks/use-vpc-actions';
 import { useQueryClient } from '@tanstack/react-query';
-import { queryKeys } from '@/lib/query-keys';
+import { queryKeys } from '@/lib/query';
 
 interface CreateVPCDialogProps {
   open: boolean;
@@ -41,7 +41,7 @@ export function CreateVPCDialog({
 }: CreateVPCDialogProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const schemas = createValidationSchemas(t);
+  const { schemas } = useValidation();
 
   // VPC 생성 mutation
   const { createVPCMutation } = useVPCActions({
@@ -119,7 +119,7 @@ export function CreateVPCDialog({
         }
       }
       
-      const result = await createVPCMutation.mutateAsync(vpcData);
+      const result = await createVPCMutation.mutateAsync(vpcData) as { id?: string };
       
       // 성공 시 콜백 호출
       if (result?.id && onSuccess) {

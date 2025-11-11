@@ -1,12 +1,12 @@
 /**
  * VM Actions Hook
- * VM 액션 (시작, 중지, 삭제) 로직 및 optimistic updates
+ * VM 액션 (시작, 중지, 삭제) 로직 및 실시간 업데이트
  */
 
 import { useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import type { VM } from '@/lib/types';
 import { getLiveRegionMessage } from '@/lib/accessibility';
-import { queryKeys } from '@/lib/query-keys';
+import { queryKeys } from '@/lib/query';
 
 interface UseVMActionsOptions {
   workspaceId?: string;
@@ -54,7 +54,7 @@ export function useVMActions({
     const vm = vms.find(v => v.id === vmId);
     if (!vm) return;
 
-    // Optimistic update
+    // 실시간 업데이트
     queryClient.setQueryData(['vms', workspaceId], (old: VM[] | undefined) => {
       if (!old) return old;
       return old.map(v => v.id === vmId ? { ...v, status: 'starting' as const } : v);
@@ -70,7 +70,7 @@ export function useVMActions({
         }
       },
       onError: (error: unknown) => {
-        // Rollback optimistic update
+        // 실시간 업데이트 롤백
         queryClient.setQueryData(['vms', workspaceId], (old: VM[] | undefined) => {
           if (!old) return old;
           return old.map(v => v.id === vmId ? { ...v, status: vm.status } : v);
@@ -88,7 +88,7 @@ export function useVMActions({
     const vm = vms.find(v => v.id === vmId);
     if (!vm) return;
 
-    // Optimistic update
+    // 실시간 업데이트
     queryClient.setQueryData(['vms', workspaceId], (old: VM[] | undefined) => {
       if (!old) return old;
       return old.map(v => v.id === vmId ? { ...v, status: 'stopping' as const } : v);
@@ -104,7 +104,7 @@ export function useVMActions({
         }
       },
       onError: (error: unknown) => {
-        // Rollback optimistic update
+        // 실시간 업데이트 롤백
         queryClient.setQueryData(['vms', workspaceId], (old: VM[] | undefined) => {
           if (!old) return old;
           return old.map(v => v.id === vmId ? { ...v, status: vm.status } : v);

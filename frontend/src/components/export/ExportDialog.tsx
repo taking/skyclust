@@ -48,7 +48,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { logger } from '@/lib/logger';
+import { log } from '@/lib/logging';
 import { useExportData } from '@/hooks/use-export';
 import type { ExportRequest } from '@/lib/types/export';
 
@@ -110,7 +110,7 @@ export function ExportDialog({
       onOpenChange(false);
       form.reset();
     } catch (error) {
-      logger.error('Export failed', error instanceof Error ? error : new Error(String(error)));
+      log.error('Export failed', error instanceof Error ? error : new Error(String(error)));
     } finally {
       setIsSubmitting(false);
     }

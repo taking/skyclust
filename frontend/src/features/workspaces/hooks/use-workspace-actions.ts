@@ -6,7 +6,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useStandardMutation } from '@/hooks/use-standard-mutation';
 import { workspaceService } from '../services/workspace';
-import { queryKeys } from '@/lib/query-keys';
+import { queryKeys } from '@/lib/query';
 import type { CreateWorkspaceForm } from '@/lib/types';
 
 interface UseWorkspaceActionsOptions {

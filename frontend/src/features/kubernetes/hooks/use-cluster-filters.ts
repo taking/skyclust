@@ -4,7 +4,7 @@
  */
 
 import { useState, useMemo, useCallback } from 'react';
-import { DataProcessor } from '@/lib/data-processor';
+import { DataProcessor } from '@/lib/data';
 import type { KubernetesCluster } from '@/lib/types';
 import type { FilterValue } from '@/components/ui/filter-panel';
 

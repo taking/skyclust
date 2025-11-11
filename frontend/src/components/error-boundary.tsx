@@ -11,8 +11,8 @@ import { ErrorBoundary, ErrorBoundaryPropsWithFallback } from 'react-error-bound
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertTriangle, RefreshCw, Home, Bug, Mail } from 'lucide-react';
-import { getUserFriendlyErrorMessage, NetworkError, ServerError, ErrorHandler } from '@/lib/error-handler';
-import { logger } from '@/lib/logger';
+import { getUserFriendlyErrorMessage, NetworkError, ServerError, ErrorHandler } from '@/lib/error-handling';
+import { log } from '@/lib/logging';
 import { useState } from 'react';
 
 export interface ErrorFallbackProps {
@@ -208,7 +208,7 @@ export function AppErrorBoundary({
 }: AppErrorBoundaryProps) {
   const handleError = (error: Error, errorInfo: React.ErrorInfo) => {
     // Logger를 통해 에러 로깅
-    logger.error('Error caught by boundary', error, {
+    log.error('Error caught by boundary', error, {
       componentStack: errorInfo.componentStack,
       errorBoundary: true,
     });

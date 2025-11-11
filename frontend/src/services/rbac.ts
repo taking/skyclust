@@ -3,8 +3,8 @@
  * RBAC (역할 기반 접근 제어) 관련 API 호출
  */
 
-import { BaseService } from '@/lib/service-base';
-import { API_ENDPOINTS } from '@/lib/api-endpoints';
+import { BaseService } from '@/lib/api';
+import { API_ENDPOINTS } from '@/lib/api';
 
 export type Role = 'admin' | 'user' | 'viewer';
 

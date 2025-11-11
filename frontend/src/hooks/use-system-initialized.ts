@@ -16,7 +16,8 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { BaseService } from '@/lib/service-base';
+import { CACHE_TIMES, GC_TIMES } from '@/lib/query';
+import { BaseService } from '@/lib/api';
 
 /**
  * 시스템 초기화 상태 응답 타입
@@ -51,14 +52,14 @@ export function useSystemInitialized(options?: {
   enabled?: boolean;
   staleTime?: number;
 }) {
-  const { enabled = true, staleTime = 5 * 60 * 1000 } = options || {};
+  const { enabled = true, staleTime = CACHE_TIMES.RESOURCE } = options || {};
 
   return useQuery<SystemInitializationStatus>({
     queryKey: ['system', 'initialized'],
     queryFn: () => systemService.getInitializationStatus(),
     enabled,
     staleTime, // 5분간 캐시
-    gcTime: 10 * 60 * 1000, // 10분간 가비지 컬렉션 방지
+    gcTime: GC_TIMES.MEDIUM, // 10분간 가비지 컬렉션 방지
     retry: 3,
     retryDelay: 1000,
   });

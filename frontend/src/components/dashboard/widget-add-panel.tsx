@@ -8,9 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Search, Server, DollarSign, Activity, Clock, Zap, AlertTriangle, TrendingUp, MapPin } from 'lucide-react';
-import { WidgetType, WIDGET_CONFIGS } from '@/lib/widgets';
+import { WidgetType, WIDGET_CONFIGS, useWidgetConfigs, getWidgetCategoryTranslationKey, getWidgetSizeTranslationKey } from '@/lib/widgets';
 import { useTranslation } from '@/hooks/use-translation';
-import { useWidgetConfigs, getWidgetCategoryTranslationKey, getWidgetSizeTranslationKey } from '@/lib/widgets-utils';
 
 interface WidgetAddPanelProps {
   onAddWidget: (type: WidgetType) => void;

@@ -5,8 +5,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { workspaceService } from '../services/workspace';
-import { queryKeys } from '@/lib/query-keys';
-import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
+import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
 import type { Workspace } from '@/lib/types';
 
 interface UseWorkspacesOptions {

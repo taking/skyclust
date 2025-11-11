@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button';
 import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
 import { useToast } from '@/hooks/use-toast';
-import { createValidationSchemas } from '@/lib/validations';
+import { createValidationSchemas } from '@/lib/validation';
 import type { CreateClusterForm, Credential, CloudProvider } from '@/lib/types';
 import { useTranslation } from '@/hooks/use-translation';
 

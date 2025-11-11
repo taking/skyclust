@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
 import { useToast } from '@/hooks/use-toast';
-import { createValidationSchemas } from '@/lib/validations';
+import { createValidationSchemas } from '@/lib/validation';
 import type { CreateVMForm, Credential, CloudProvider } from '@/lib/types';
 import { useTranslation } from '@/hooks/use-translation';
 

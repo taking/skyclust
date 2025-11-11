@@ -11,9 +11,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { GripVertical, Settings, X, Maximize2, Minimize2 } from 'lucide-react';
-import { WidgetData, WidgetType, WidgetSize, WIDGET_CONFIGS, getWidgetSizeClasses } from '@/lib/widgets';
+import { WidgetData, WidgetType, WidgetSize, WIDGET_CONFIGS, getWidgetSizeClasses, useWidgetConfigs } from '@/lib/widgets';
 import { useTranslation } from '@/hooks/use-translation';
-import { useWidgetConfigs } from '@/lib/widgets-utils';
 import {
   DropdownMenu,
   DropdownMenuContent,

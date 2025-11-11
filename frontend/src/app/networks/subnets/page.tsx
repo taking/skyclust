@@ -27,7 +27,7 @@ import { ResourceEmptyState } from '@/components/common/resource-empty-state';
 import { useCredentialAutoSelect } from '@/hooks/use-credential-auto-select';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useTranslation } from '@/hooks/use-translation';
-import { DataProcessor } from '@/lib/data-processor';
+import { DataProcessor } from '@/lib/data';
 import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
 import {
   useSubnets,

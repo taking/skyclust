@@ -386,7 +386,18 @@ func (h *GCPHandler) CreateSecurityGroup(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderGCP)
+	// credential_id는 body 또는 query parameter에서 가져올 수 있음
+	credentialID := req.CredentialID
+	if credentialID == "" {
+		credentialID = c.Query("credential_id")
+	}
+
+	if credentialID == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "credential_id is required", 400), "create_security_group")
+		return
+	}
+
+	credential, err := h.GetCredentialFromBody(c, h.credentialService, credentialID, domain.ProviderGCP)
 	if err != nil {
 		h.HandleError(c, err, "create_security_group")
 		return

@@ -1,8 +1,6 @@
 package providers
 
 import (
-	"fmt"
-
 	networkservice "skyclust/internal/application/services/network"
 	"skyclust/internal/domain"
 
@@ -327,30 +325,38 @@ func (h *AzureHandler) ListSecurityGroups(c *gin.Context) {
 
 // CreateSecurityGroup: Network Security Group 생성을 처리합니다
 func (h *AzureHandler) CreateSecurityGroup(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAzure)
+	var req networkservice.CreateSecurityGroupRequest
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "create_security_group")
+		return
+	}
+
+	// credential_id는 body 또는 query parameter에서 가져올 수 있음
+	credentialID := req.CredentialID
+	if credentialID == "" {
+		credentialID = c.Query("credential_id")
+	}
+
+	if credentialID == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "credential_id is required", 400), "create_security_group")
+		return
+	}
+
+	credential, err := h.GetCredentialFromBody(c, h.credentialService, credentialID, domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "create_security_group")
 		return
 	}
 
-	var req networkservice.CreateSecurityGroupRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("invalid request body: %v", err), 400), "create_security_group")
-		return
-	}
-
-	// credential_id는 body 또는 query에서 가져올 수 있음
-	if req.CredentialID == "" {
-		req.CredentialID = credential.ID.String()
-	}
+	req.CredentialID = credential.ID.String()
 
 	// Validate required fields
 	if req.Name == "" || req.Description == "" || req.VPCID == "" || req.Region == "" {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("name, description, vpc_id, and region are required"), 400), "create_security_group")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "name, description, vpc_id, and region are required", 400), "create_security_group")
 		return
 	}
 
-	ctx := c.Request.Context()
+	ctx := h.EnrichContextWithRequestMetadata(c)
 	securityGroup, err := h.networkService.CreateSecurityGroup(ctx, credential, req)
 	if err != nil {
 		h.HandleError(c, err, "create_security_group")

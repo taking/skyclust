@@ -14,12 +14,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createValidationSchemas } from '@/lib/validations';
+import { useValidation } from '@/lib/validation';
 import type { CreateSubnetForm, VPC, CloudProvider } from '@/lib/types';
 import { useTranslation } from '@/hooks/use-translation';
 import { useSubnetActions } from '@/features/networks/hooks/use-subnet-actions';
 import { useQueryClient } from '@tanstack/react-query';
-import { queryKeys } from '@/lib/query-keys';
+import { queryKeys } from '@/lib/query';
 
 interface CreateSubnetDialogProps {
   open: boolean;
@@ -50,7 +50,7 @@ export function CreateSubnetDialog({
 }: CreateSubnetDialogProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const schemas = createValidationSchemas(t);
+  const { schemas } = useValidation();
 
   // Subnet 생성 mutation
   const { createSubnetMutation } = useSubnetActions({

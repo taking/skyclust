@@ -24,13 +24,12 @@ import { useWorkspaceStore } from '@/store/workspace';
 import { useCredentials } from '@/hooks/use-credentials';
 import { Building2 } from 'lucide-react';
 import { Node } from '@/lib/types';
-import { DataProcessor } from '@/lib/data-processor';
+import { DataProcessor } from '@/lib/data';
 import { CredentialRequiredState } from '@/components/common/credential-required-state';
 import { ResourceEmptyState } from '@/components/common/resource-empty-state';
 import { useCredentialContext } from '@/hooks/use-credential-context';
 import { useCredentialAutoSelect } from '@/hooks/use-credential-auto-select';
-import { queryKeys } from '@/lib/query-keys';
-import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
+import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
 import { useTranslation } from '@/hooks/use-translation';
 import { UI } from '@/lib/constants';
 

@@ -5,7 +5,7 @@
 
 import { useEffect, useCallback, useRef } from 'react';
 import { useOffline } from './use-offline';
-import { getOfflineQueue, type QueuedRequest } from '@/lib/offline-queue';
+import { getOfflineQueue, type QueuedRequest } from '@/lib/offline';
 import api from '@/lib/api';
 
 /**

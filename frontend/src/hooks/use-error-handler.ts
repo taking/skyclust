@@ -11,11 +11,12 @@ import React, { useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { 
   ErrorHandler,
-} from '@/lib/error-handler';
+  getErrorTranslationKey,
+  getErrorCustomMessage,
+} from '@/lib/error-handling';
 import { API } from '@/lib/constants';
 import { useOffline } from './use-offline';
 import { useTranslation } from './use-translation';
-import { getErrorTranslationKey, getErrorCustomMessage } from '@/lib/error-translations';
 
 export interface UseErrorHandlerOptions {
   /**

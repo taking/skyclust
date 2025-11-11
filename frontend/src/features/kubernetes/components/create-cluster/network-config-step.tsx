@@ -23,7 +23,7 @@ import { CreateVPCDialog } from '@/features/networks/components/create-vpc-dialo
 import { CreateSubnetDialog } from '@/features/networks/components/create-subnet-dialog';
 import { RefreshCw, Plus, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { queryKeys } from '@/lib/query-keys';
+import { queryKeys } from '@/lib/query';
 import type { CreateClusterForm, CloudProvider, CreateVPCForm, CreateSubnetForm } from '@/lib/types';
 import { useTranslation } from '@/hooks/use-translation';
 

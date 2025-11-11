@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createValidationSchemas } from '@/lib/validations';
+import { createValidationSchemas } from '@/lib/validation';
 import { ProviderFormFields } from './provider-form-fields';
 import type { CreateCredentialForm } from '@/lib/types';
 import { useTranslation } from '@/hooks/use-translation';

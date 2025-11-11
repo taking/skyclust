@@ -7,8 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notificationService } from '@/services/notification';
 import type { NotificationPreferences } from '@/lib/types/notification';
 import { toast } from 'react-hot-toast';
-import { queryKeys } from '@/lib/query-keys';
-import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
+import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
 
 export const useNotifications = (
   limit: number = 20,
@@ -22,8 +21,7 @@ export const useNotifications = (
     queryFn: () => notificationService.getNotifications(limit, offset, unreadOnly, category, priority),
     staleTime: CACHE_TIMES.REALTIME, // 30초 - 알림은 자주 업데이트될 수 있음
     gcTime: GC_TIMES.SHORT, // 5 minutes - GC 시간
-    refetchInterval: 30000, // 30초마다 refetch (실시간 알림)
-    refetchIntervalInBackground: false, // 백그라운드 polling 비활성화
+    // refetchInterval 제거: SSE system-notification 이벤트로 자동 업데이트
   });
 };
 
@@ -52,8 +50,7 @@ export const useNotificationStats = () => {
     queryFn: () => notificationService.getNotificationStats(),
     staleTime: CACHE_TIMES.REALTIME, // 30초 - 통계는 실시간성 필요
     gcTime: GC_TIMES.SHORT, // 5 minutes - GC 시간
-    refetchInterval: 30000, // 30초마다 refetch
-    refetchIntervalInBackground: false, // 백그라운드 polling 비활성화
+    // refetchInterval 제거: SSE system-notification 이벤트로 자동 업데이트
   });
 };
 

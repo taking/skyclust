@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { createValidationSchemas } from '@/lib/validations';
+import { createValidationSchemas } from '@/lib/validation';
 import type { CreateVMForm, Credential, CloudProvider } from '@/lib/types';
 import { useTranslation } from '@/hooks/use-translation';
 

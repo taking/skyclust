@@ -12,8 +12,7 @@ import { useWorkspaceStore } from '@/store/workspace';
 import { useProviderStore } from '@/store/provider';
 import { useCredentials } from '@/hooks/use-credentials';
 import { kubernetesService } from '../services/kubernetes';
-import { queryKeys } from '@/lib/query-keys';
-import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
+import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
 import { downloadKubeconfig } from '@/utils/kubeconfig';
 import type { CreateNodePoolForm, CreateNodeGroupForm, CloudProvider } from '@/lib/types';
 

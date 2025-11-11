@@ -6,8 +6,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { kubernetesService } from '../services/kubernetes';
 import type { CloudProvider } from '@/lib/types';
-import { queryKeys } from '@/lib/query-keys';
-import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
+import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
 
 interface UseKubernetesMetadataOptions {
   provider?: CloudProvider;

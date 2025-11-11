@@ -25,8 +25,9 @@ import { ResourceEmptyState } from '@/components/common/resource-empty-state';
 import { useCredentialAutoSelect } from '@/hooks/use-credential-auto-select';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useTranslation } from '@/hooks/use-translation';
-import { DataProcessor } from '@/lib/data-processor';
+import { DataProcessor } from '@/lib/data';
 import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
+import { useResourceListState } from '@/hooks/use-resource-list-state';
 import {
   useVPCs,
   useVPCActions,
@@ -63,10 +64,22 @@ function VPCsPageContent() {
     updateUrl: true,
   });
 
-  const [filters, setFilters] = useState<FilterValue>({});
-  const [showFilters, setShowFilters] = useState(false);
-  const [selectedVPCIds, setSelectedVPCIds] = useState<string[]>([]);
-  const [pageSize, setPageSize] = useState<number>(UI.PAGINATION.DEFAULT_PAGE_SIZE);
+  // 공통 리스트 상태 관리
+  const {
+    filters,
+    setFilters,
+    showFilters,
+    setShowFilters,
+    selectedIds: selectedVPCIds,
+    setSelectedIds: setSelectedVPCIds,
+    pageSize,
+    setPageSize,
+    deleteDialogState,
+    openDeleteDialog,
+    closeDeleteDialog,
+  } = useResourceListState({
+    storageKey: 'vpcs-page',
+  });
 
   const {
     deleteVPCMutation,
@@ -82,28 +95,16 @@ function VPCsPageContent() {
     router.push('/networks/vpcs/create');
   };
 
-  const [deleteDialogState, setDeleteDialogState] = useState<{
-    open: boolean;
-    vpcId: string | null;
-    region: string | null;
-    vpcName?: string;
-  }>({
-    open: false,
-    vpcId: null,
-    region: null,
-    vpcName: undefined,
-  });
-
   const handleDeleteVPC = (vpcId: string, region?: string) => {
     if (!region) return;
     const vpc = vpcs.find(v => v.id === vpcId);
-    setDeleteDialogState({ open: true, vpcId, region, vpcName: vpc?.name || vpc?.id });
+    openDeleteDialog(vpcId, region, vpc?.name || vpc?.id);
   };
 
   const handleConfirmDelete = () => {
-    if (deleteDialogState.vpcId && deleteDialogState.region) {
-      executeDeleteVPC(deleteDialogState.vpcId, deleteDialogState.region);
-      setDeleteDialogState({ open: false, vpcId: null, region: null, vpcName: undefined });
+    if (deleteDialogState.id && deleteDialogState.region) {
+      executeDeleteVPC(deleteDialogState.id, deleteDialogState.region);
+      closeDeleteDialog();
     }
   };
 
@@ -305,12 +306,18 @@ function VPCsPageContent() {
       {/* Delete VPC Confirmation Dialog */}
       <DeleteConfirmationDialog
         open={deleteDialogState.open}
-        onOpenChange={(open) => setDeleteDialogState({ ...deleteDialogState, open })}
+        onOpenChange={(open) => {
+          if (open && deleteDialogState.id) {
+            openDeleteDialog(deleteDialogState.id, deleteDialogState.region || undefined, deleteDialogState.name);
+          } else {
+            closeDeleteDialog();
+          }
+        }}
         onConfirm={handleConfirmDelete}
         title={t('network.deleteVPC')}
         description="이 VPC를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다."
         isLoading={deleteVPCMutation.isPending}
-        resourceName={deleteDialogState.vpcName}
+        resourceName={deleteDialogState.name}
         resourceNameLabel="VPC 이름"
       />
     </>

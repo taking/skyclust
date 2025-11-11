@@ -8,8 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { networkService } from '@/services/network';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useProviderStore } from '@/store/provider';
-import { queryKeys } from '@/lib/query-keys';
-import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
+import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
 import { useCredentials } from '@/hooks/use-credentials';
 
 interface NetworkStatusWidgetProps {
@@ -40,7 +39,7 @@ function NetworkStatusWidgetComponent({ credentialId, region, vpcId, isLoading }
     enabled: !!selectedProvider && !!activeCredentialId && !!currentWorkspace,
     staleTime: CACHE_TIMES.REALTIME,
     gcTime: GC_TIMES.SHORT,
-    refetchInterval: 30000,
+    // refetchInterval 제거: SSE 이벤트로 자동 업데이트
   });
 
   const activeVpcId = vpcId || vpcs[0]?.id;
@@ -54,7 +53,7 @@ function NetworkStatusWidgetComponent({ credentialId, region, vpcId, isLoading }
     enabled: !!selectedProvider && !!activeCredentialId && !!activeVpcId && !!currentWorkspace,
     staleTime: CACHE_TIMES.REALTIME,
     gcTime: GC_TIMES.SHORT,
-    refetchInterval: 30000,
+    // refetchInterval 제거: SSE 이벤트로 자동 업데이트
   });
 
   const { data: securityGroups = [], isLoading: isLoadingSecurityGroups } = useQuery({
@@ -66,7 +65,7 @@ function NetworkStatusWidgetComponent({ credentialId, region, vpcId, isLoading }
     enabled: !!selectedProvider && !!activeCredentialId && !!activeVpcId && !!currentWorkspace,
     staleTime: CACHE_TIMES.REALTIME,
     gcTime: GC_TIMES.SHORT,
-    refetchInterval: 30000,
+    // refetchInterval 제거: SSE 이벤트로 자동 업데이트
   });
 
   const isLoadingData = isLoading || isLoadingVPCs || isLoadingSubnets || isLoadingSecurityGroups;

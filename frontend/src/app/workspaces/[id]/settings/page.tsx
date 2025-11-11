@@ -14,7 +14,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { workspaceService } from '@/features/workspaces';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useToast } from '@/hooks/use-toast';
-import { ErrorHandler } from '@/lib/error-handler';
+import { ErrorHandler } from '@/lib/error-handling';
 import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
 import { UpdateWorkspaceForm } from '@/lib/types';
 import { Layout } from '@/components/layout/layout';
@@ -22,8 +22,8 @@ import { ArrowLeft, Settings, Users, Trash2, AlertTriangle } from 'lucide-react'
 import * as React from 'react';
 // import * as z from 'zod'; // Not used directly
 import { Form } from '@/components/ui/form';
-import { queryKeys } from '@/lib/query-keys';
-import { createValidationSchemas } from '@/lib/validations';
+import { queryKeys } from '@/lib/query';
+import { createValidationSchemas } from '@/lib/validation';
 import { useTranslation } from '@/hooks/use-translation';
 import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
 

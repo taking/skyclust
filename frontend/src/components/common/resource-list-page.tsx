@@ -31,7 +31,6 @@
  *   content={<VMTable {...tableProps} />}
  *   pageSize={pageSize}
  *   onPageSizeChange={handlePageSizeChange}
- *   keyboardShortcuts={<GlobalKeyboardShortcuts />}
  *   liveRegion={<LiveRegion message={liveMessage} />}
  * />
  * ```
@@ -104,7 +103,6 @@ export interface ResourceListPageProps<TItem = unknown> {
   showFilterButton?: boolean;
   showSearchResultsInfo?: boolean;
   searchResultsCount?: number;
-  keyboardShortcuts?: ReactNode;
   liveRegion?: ReactNode;
   
   // 커스텀 스켈레톤 컬럼 (로딩 상태용)
@@ -140,7 +138,6 @@ function ResourceListPageComponent<TItem = unknown>({
   showFilterButton = true,
   showSearchResultsInfo = true,
   searchResultsCount,
-  keyboardShortcuts,
   liveRegion,
   skeletonColumns = 7,
   skeletonRows = 5,
@@ -280,8 +277,7 @@ function ResourceListPageComponent<TItem = unknown>({
           )}
         </div>
       </Layout>
-      {/* 7. 키보드 단축키 및 Live Region (접근성) */}
-      {keyboardShortcuts}
+      {/* 7. Live Region (접근성) */}
       {liveRegion}
     </WorkspaceRequired>
   );

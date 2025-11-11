@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { kubernetesService } from '../services/kubernetes';
 import type { KubernetesCluster, CloudProvider } from '@/lib/types';
-import { queryKeys } from '@/lib/query-keys';
+import { queryKeys } from '@/lib/query';
 
 interface BulkOperationProgress {
   operation: 'delete' | 'tag';

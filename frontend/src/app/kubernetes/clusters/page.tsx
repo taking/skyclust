@@ -8,7 +8,7 @@
 'use client';
 
 import { Suspense } from 'react';
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
@@ -30,6 +30,7 @@ import { ResourceEmptyState } from '@/components/common/resource-empty-state';
 import { useCredentialContext } from '@/hooks/use-credential-context';
 import { useCredentialAutoSelect } from '@/hooks/use-credential-auto-select';
 import { useTranslation } from '@/hooks/use-translation';
+import { useResourceListState } from '@/hooks/use-resource-list-state';
 import {
   ClusterPageHeader,
   useKubernetesClusters,
@@ -80,20 +81,25 @@ function KubernetesClustersPageContent() {
 
   // Local state
   const router = useRouter();
-  const [filters, setFilters] = useState<FilterValue>({});
-  const [showFilters, setShowFilters] = useState(false);
-  const [selectedClusterIds, setSelectedClusterIds] = useState<string[]>([]);
-  const [tagFilters, setTagFilters] = useState<Record<string, string[]>>({});
-  const [pageSize, setPageSize] = useState(UI.PAGINATION.DEFAULT_PAGE_SIZE);
-  const [deleteDialogState, setDeleteDialogState] = useState<{
-    open: boolean;
-    clusterName: string | null;
-    region: string | null;
-  }>({
-    open: false,
-    clusterName: null,
-    region: null,
+  
+  // 공통 리스트 상태 관리
+  const {
+    filters,
+    setFilters,
+    showFilters,
+    setShowFilters,
+    selectedIds: selectedClusterIds,
+    setSelectedIds: setSelectedClusterIds,
+    pageSize,
+    setPageSize,
+    deleteDialogState,
+    openDeleteDialog,
+    closeDeleteDialog,
+  } = useResourceListState({
+    storageKey: 'kubernetes-clusters-page',
   });
+  
+  const [tagFilters, setTagFilters] = React.useState<Record<string, string[]>>({});
 
   // Tag dialog hook
   const {
@@ -192,23 +198,23 @@ function KubernetesClustersPageContent() {
 
   const handleDeleteCluster = (clusterName: string, region: string) => {
     if (!selectedCredentialId || !selectedProvider) return;
-    setDeleteDialogState({ open: true, clusterName, region });
+    openDeleteDialog(clusterName, region);
   };
 
   const handleConfirmDelete = () => {
-    if (!deleteDialogState.clusterName || !deleteDialogState.region || !selectedCredentialId || !selectedProvider) return;
+    if (!deleteDialogState.id || !deleteDialogState.region || !selectedCredentialId || !selectedProvider) return;
     
     deleteClusterMutation.mutate(
       {
         provider: selectedProvider,
-        clusterName: deleteDialogState.clusterName,
+        clusterName: deleteDialogState.id,
         credentialId: selectedCredentialId,
         region: deleteDialogState.region,
       },
       {
         onSuccess: () => {
           success(t('kubernetes.clusterDeletionInitiated'));
-          setDeleteDialogState({ open: false, clusterName: null, region: null });
+          closeDeleteDialog();
         },
         onError: (error: unknown) => {
           handleError(error, { operation: 'deleteCluster', resource: 'Cluster' });
@@ -432,12 +438,18 @@ function KubernetesClustersPageContent() {
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
         open={deleteDialogState.open}
-        onOpenChange={(open) => setDeleteDialogState({ ...deleteDialogState, open })}
+        onOpenChange={(open) => {
+          if (open && deleteDialogState.id) {
+            openDeleteDialog(deleteDialogState.id, deleteDialogState.region || undefined, deleteDialogState.name);
+          } else {
+            closeDeleteDialog();
+          }
+        }}
         onConfirm={handleConfirmDelete}
         title={t('kubernetes.deleteCluster')}
-        description={deleteDialogState.clusterName ? t('kubernetes.confirmDeleteCluster', { clusterName: deleteDialogState.clusterName }) : ''}
+        description={deleteDialogState.id ? t('kubernetes.confirmDeleteCluster', { clusterName: deleteDialogState.id }) : ''}
         isLoading={deleteClusterMutation.isPending}
-        resourceName={deleteDialogState.clusterName || undefined}
+        resourceName={deleteDialogState.name || deleteDialogState.id || undefined}
         resourceNameLabel="클러스터 이름"
       />
     </>

@@ -120,7 +120,15 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 	blacklist := cache.NewTokenBlacklist(redisClient)
 
 	// Create messaging bus (shared across services)
-	messagingBus := messaging.NewLocalBus()
+	// Use provided messaging bus if available, otherwise fallback to LocalBus
+	var messagingBus messaging.Bus
+	if config.MessagingBus != nil {
+		messagingBus = config.MessagingBus
+		logger.Info("Using provided messaging bus (NATS)")
+	} else {
+		messagingBus = messaging.NewLocalBus()
+		logger.Info("Using LocalBus (NATS not available)")
+	}
 
 	// Create EventService (requires messaging bus)
 	eventService := eventservice.NewService(messagingBus)
@@ -271,6 +279,7 @@ type ServiceConfig struct {
 	EncryptionKey string
 	RedisClient   interface{} // Redis client for TokenBlacklist
 	Cache         cache.Cache // Cache for OIDC state storage
+	MessagingBus  messaging.Bus // Optional: messaging bus (NATS or LocalBus)
 }
 
 // DomainModule initializes domain service dependencies

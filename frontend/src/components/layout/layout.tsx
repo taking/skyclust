@@ -7,12 +7,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState, Suspense } from 'react';
 import { SkipLink } from '@/components/accessibility/skip-link';
 import { LiveRegion } from '@/components/accessibility/live-region';
-import { GlobalKeyboardShortcuts } from '@/components/common/global-keyboard-shortcuts';
 import { OfflineBanner } from '@/components/common/offline-banner';
-import { KeyboardShortcutsHelp } from '@/components/common/keyboard-shortcuts-help';
-import { KeyboardShortcut } from '@/hooks/use-keyboard-shortcuts';
-import { HelpCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { useSSEEvents } from '@/hooks/use-sse-events';
 
 interface LayoutProps {
@@ -106,26 +101,23 @@ export function Layout({ children }: LayoutProps) {
 
   return (
     <div className="flex h-screen bg-background">
-      {/* 7. 전역 키보드 단축키 등록 */}
-      <GlobalKeyboardShortcuts />
-      
-      {/* 8. 접근성: 메인 콘텐츠로 건너뛰기 링크 */}
+      {/* 7. 접근성: 메인 콘텐츠로 건너뛰기 링크 */}
       <SkipLink href="#main-content">Skip to main content</SkipLink>
       
-      {/* 9. 오프라인 배너 (네트워크 상태 표시) */}
+      {/* 8. 오프라인 배너 (네트워크 상태 표시) */}
       <OfflineBanner position="top" autoHide showRefreshButton />
       
-      {/* 10. 사이드바 네비게이션 */}
+      {/* 9. 사이드바 네비게이션 */}
       <Sidebar />
       
-      {/* 11. 메인 콘텐츠 영역 */}
+      {/* 10. 메인 콘텐츠 영역 */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* 11-1. 헤더 (Suspense로 감싸서 비동기 로딩 지원) */}
+        {/* 10-1. 헤더 (Suspense로 감싸서 비동기 로딩 지원) */}
         <Suspense fallback={<div className="h-16 border-b bg-background" />}>
           <Header />
         </Suspense>
         
-        {/* 11-2. 메인 콘텐츠 영역 (스크롤 가능) */}
+        {/* 10-2. 메인 콘텐츠 영역 (스크롤 가능) */}
         <main 
           id="main-content"
           className="flex-1 overflow-y-auto bg-muted/30 p-3 sm:p-4 md:p-6"
@@ -136,36 +128,8 @@ export function Layout({ children }: LayoutProps) {
         </main>
       </div>
       
-      {/* 12. 접근성: Live Region (스크린 리더용 동적 메시지) */}
+      {/* 11. 접근성: Live Region (스크린 리더용 동적 메시지) */}
       <LiveRegion message="" />
-      
-      {/* 13. 플로팅 도움말 버튼 (키보드 단축키 도움말) - Safari 호환성 최적화 */}
-      <div 
-        className="fixed bottom-6 right-6 z-50" 
-        style={{ 
-          position: 'fixed', 
-          bottom: '1.5rem', 
-          right: '1.5rem', 
-          zIndex: 50,
-          WebkitTransform: 'translateZ(0)', // Safari 하드웨어 가속
-          transform: 'translateZ(0)',
-          willChange: 'transform', // Safari 최적화
-        }}
-      >
-        <KeyboardShortcutsHelp
-          shortcuts={[]}
-          trigger={
-            <Button
-              variant="default"
-              size="icon"
-              className="h-12 w-12 rounded-full shadow-lg hover:shadow-xl transition-shadow"
-              aria-label="Show keyboard shortcuts"
-            >
-              <HelpCircle className="h-6 w-6" />
-            </Button>
-          }
-        />
-      </div>
     </div>
   );
 }

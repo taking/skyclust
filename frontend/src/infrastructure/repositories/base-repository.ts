@@ -4,7 +4,7 @@
  * BaseService를 상속하여 API 호출 기능 제공
  */
 
-import { BaseService } from '@/lib/service-base';
+import { BaseService } from '@/lib/api';
 
 export abstract class BaseRepository extends BaseService {
   // BaseService의 모든 기능을 상속받아 사용

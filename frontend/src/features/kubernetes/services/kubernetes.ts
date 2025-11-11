@@ -3,7 +3,8 @@
  * Kubernetes 관련 API 호출
  */
 
-import { BaseService } from '@/lib/service-base';
+import { BaseService } from '@/lib/api';
+import { API_ENDPOINTS } from '@/lib/api';
 import api from '@/lib/api';
 import type {
   KubernetesCluster,
@@ -23,14 +24,8 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region?: string
   ): Promise<KubernetesCluster[]> {
-    const params = new URLSearchParams({ credential_id: credentialId });
-    // Only append region if it's provided and not empty
-    if (region && region.trim() !== '') {
-      params.append('region', region);
-    }
-    
     const data = await this.get<{ clusters: KubernetesCluster[] }>(
-      `/api/v1/${provider}/kubernetes/clusters?${params.toString()}`
+      API_ENDPOINTS.kubernetes.clusters.list(provider, credentialId, region)
     );
     return data.clusters || [];
   }
@@ -41,13 +36,8 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<KubernetesCluster> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.get<KubernetesCluster>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}?${params.toString()}`
+      API_ENDPOINTS.kubernetes.clusters.detail(provider, clusterName, credentialId, region)
     );
   }
 
@@ -56,7 +46,7 @@ class KubernetesService extends BaseService {
     data: CreateClusterForm
   ): Promise<KubernetesCluster> {
     return this.post<KubernetesCluster>(
-      `/api/v1/${provider}/kubernetes/clusters`,
+      API_ENDPOINTS.kubernetes.clusters.create(provider),
       data
     );
   }
@@ -67,13 +57,8 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<void> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.delete<void>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}?${params.toString()}`
+      API_ENDPOINTS.kubernetes.clusters.delete(provider, clusterName, credentialId, region)
     );
   }
 
@@ -83,14 +68,9 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<string> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     // Kubeconfig는 YAML 텍스트로 직접 반환되므로 BaseService의 JSON 파싱을 우회
     const url = this.buildApiUrl(
-      `${provider}/kubernetes/clusters/${clusterName}/kubeconfig?${params.toString()}`
+      API_ENDPOINTS.kubernetes.clusters.kubeconfig(provider, clusterName, credentialId, region)
     );
     
     // 직접 api를 사용하여 텍스트 응답 처리
@@ -108,13 +88,8 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<{ message: string; upgrade_id?: string }> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.post<{ message: string; upgrade_id?: string }>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/upgrade?${params.toString()}`,
+      API_ENDPOINTS.kubernetes.clusters.upgrade(provider, clusterName, credentialId, region),
       { version }
     );
   }
@@ -125,13 +100,8 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<{ status: string; current_version?: string; target_version?: string; progress?: number; error?: string }> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.get<{ status: string; current_version?: string; target_version?: string; progress?: number; error?: string }>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/upgrade/status?${params.toString()}`
+      API_ENDPOINTS.kubernetes.clusters.upgradeStatus(provider, clusterName, credentialId, region)
     );
   }
 
@@ -143,13 +113,8 @@ class KubernetesService extends BaseService {
     region: string,
     tags: Record<string, string>
   ): Promise<void> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.put<void>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/tags?${params.toString()}`,
+      API_ENDPOINTS.kubernetes.clusters.tags(provider, clusterName, credentialId, region),
       { tags }
     );
   }
@@ -180,13 +145,8 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<NodePool[]> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     const data = await this.get<{ node_pools: NodePool[] }>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/nodepools?${params.toString()}`
+      API_ENDPOINTS.kubernetes.nodePools.list(provider, clusterName, credentialId, region)
     );
     return data.node_pools || [];
   }
@@ -198,13 +158,8 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<NodePool> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.get<NodePool>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/nodepools/${nodePoolName}?${params.toString()}`
+      API_ENDPOINTS.kubernetes.nodePools.detail(provider, clusterName, nodePoolName, credentialId, region)
     );
   }
 
@@ -214,7 +169,7 @@ class KubernetesService extends BaseService {
     data: CreateNodePoolForm
   ): Promise<NodePool> {
     return this.post<NodePool>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/nodepools`,
+      API_ENDPOINTS.kubernetes.nodePools.create(provider, clusterName),
       data
     );
   }
@@ -226,13 +181,8 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<void> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.delete<void>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/nodepools/${nodePoolName}?${params.toString()}`
+      API_ENDPOINTS.kubernetes.nodePools.delete(provider, clusterName, nodePoolName, credentialId, region)
     );
   }
 
@@ -244,13 +194,8 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<void> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.put<void>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/nodepools/${nodePoolName}/scale?${params.toString()}`,
+      API_ENDPOINTS.kubernetes.nodePools.scale(provider, clusterName, nodePoolName, credentialId, region),
       { node_count: nodeCount }
     );
   }
@@ -262,13 +207,8 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<NodeGroup[]> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     const data = await this.get<{ node_groups: NodeGroup[] }>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/node-groups?${params.toString()}`
+      API_ENDPOINTS.kubernetes.nodeGroups.list(provider, clusterName, credentialId, region)
     );
     return data.node_groups || [];
   }
@@ -280,13 +220,8 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<NodeGroup> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.get<NodeGroup>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/node-groups/${nodeGroupName}?${params.toString()}`
+      API_ENDPOINTS.kubernetes.nodeGroups.detail(provider, clusterName, nodeGroupName, credentialId, region)
     );
   }
 
@@ -296,7 +231,7 @@ class KubernetesService extends BaseService {
     data: CreateNodeGroupForm
   ): Promise<NodeGroup> {
     return this.post<NodeGroup>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/node-groups`,
+      API_ENDPOINTS.kubernetes.nodeGroups.create(provider, clusterName),
       data
     );
   }
@@ -308,13 +243,8 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<void> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     return this.delete<void>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/node-groups/${nodeGroupName}?${params.toString()}`
+      API_ENDPOINTS.kubernetes.nodeGroups.delete(provider, clusterName, nodeGroupName, credentialId, region)
     );
   }
 
@@ -325,13 +255,8 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<Node[]> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     const data = await this.get<{ nodes: Node[] }>(
-      `/api/v1/${provider}/kubernetes/clusters/${clusterName}/nodes?${params.toString()}`
+      API_ENDPOINTS.kubernetes.clusters.nodes(provider, clusterName, credentialId, region)
     );
     return data.nodes || [];
   }
@@ -342,13 +267,8 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<string[]> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     const data = await this.get<{ versions: string[] }>(
-      `/api/v1/${provider}/kubernetes/metadata/versions?${params.toString()}`
+      API_ENDPOINTS.kubernetes.metadata.versions(provider, credentialId, region)
     );
     return data.versions || [];
   }
@@ -357,12 +277,8 @@ class KubernetesService extends BaseService {
     provider: CloudProvider,
     credentialId: string
   ): Promise<string[]> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-    });
-    
     const data = await this.get<{ regions: string[] }>(
-      `/api/v1/${provider}/kubernetes/metadata/regions?${params.toString()}`
+      API_ENDPOINTS.kubernetes.metadata.regions(provider, credentialId)
     );
     return data.regions || [];
   }
@@ -372,13 +288,8 @@ class KubernetesService extends BaseService {
     credentialId: string,
     region: string
   ): Promise<string[]> {
-    const params = new URLSearchParams({
-      credential_id: credentialId,
-      region,
-    });
-    
     const data = await this.get<{ zones: string[] }>(
-      `/api/v1/${provider}/kubernetes/metadata/availability-zones?${params.toString()}`
+      API_ENDPOINTS.kubernetes.metadata.availabilityZones(provider, credentialId, region)
     );
     return data.zones || [];
   }

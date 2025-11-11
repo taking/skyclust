@@ -5,9 +5,15 @@
  * 모든 검증 관련 기능을 중앙화하여 일관된 검증 경험 제공
  */
 
+// Validation
+export { Validation, validation, validate } from './validation';
+export type { ValidationResult } from './validation';
+export { useValidation } from './validation-hook';
+export type { UseValidationReturn } from './validation-hook';
+
 // Zod 스키마 팩토리
-export { createValidationSchemas } from '../validations';
-export type { TranslationFunction } from '../validations';
+export { createValidationSchemas } from './schemas';
+export type { TranslationFunction } from './schemas';
 
 // React Hook Form 통합 훅
 export { useFormWithValidation } from '@/hooks/use-form-with-validation';

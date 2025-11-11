@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createValidationSchemas } from '@/lib/validations';
+import { useValidation } from '@/lib/validation';
 import { Plus } from 'lucide-react';
 import type { CreateSecurityGroupForm, VPC } from '@/lib/types';
 import { useTranslation } from '@/hooks/use-translation';
@@ -44,7 +44,7 @@ export function CreateSecurityGroupDialog({
   disabled = false,
 }: CreateSecurityGroupDialogProps) {
   const { t } = useTranslation();
-  const schemas = createValidationSchemas(t);
+  const { schemas } = useValidation();
   const form = useForm<CreateSecurityGroupForm>({
     resolver: zodResolver(schemas.createSecurityGroupSchema),
     defaultValues: {

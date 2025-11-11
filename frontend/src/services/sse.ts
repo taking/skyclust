@@ -4,12 +4,11 @@
  */
 
 import type { SSECallbacks, SSEErrorInfo } from '@/lib/types/sse';
-import { API_CONFIG } from '@/lib/api-config';
-import { API_ENDPOINTS } from '@/lib/api-endpoints';
+import { API_CONFIG, API_ENDPOINTS, api, getApiUrl } from '@/lib/api';
 import { CONNECTION, STORAGE_KEYS } from '@/lib/constants';
-import { getErrorLogger } from '@/lib/error-logger';
-import { parseSSEMessage } from '@/lib/sse-compression';
-import { logger } from '@/lib/logger';
+import { getErrorLogger } from '@/lib/error-handling';
+import { parseSSEMessage } from '@/lib/sse';
+import { log } from '@/lib/logging';
 
 class SSEService {
   private eventSource: EventSource | null = null;
@@ -22,33 +21,94 @@ class SSEService {
   private clientId: string | null = null;
   private subscribedEvents = new Set<string>();
   private subscribedVMs = new Set<string>();
+  private currentToken: string | null = null; // 현재 연결된 토큰 추적
+  private lastEventId: string | null = null; // 마지막 수신한 이벤트 ID
+  private retryInterval: number = 3000; // 재연결 간격 (밀리초, 기본 3초)
 
   connect(token: string, callbacks: SSECallbacks = {}): void {
-    if (this.eventSource?.readyState === EventSource.OPEN) {
+    // 토큰이 없으면 연결하지 않음
+    if (!token || token.trim() === '') {
+      log.warn('SSE connect called with empty token, skipping connection');
       return;
     }
 
-    if (this.isConnecting) {
+    // 이미 같은 토큰으로 연결되어 있으면 재연결하지 않음
+    if (this.eventSource?.readyState === EventSource.OPEN && this.currentToken === token) {
+      log.debug('SSE already connected with same token, skipping reconnection', {
+        token: token.substring(0, 20) + '...',
+      });
+      // 콜백만 업데이트 (연결은 유지)
+      this.updateCallbacks(callbacks);
       return;
+    }
+
+    // 연결 중이면 대기
+    if (this.isConnecting) {
+      log.debug('SSE connection already in progress, skipping duplicate connection attempt');
+      return;
+    }
+
+    // 기존 연결이 있으면 먼저 정리
+    if (this.eventSource) {
+      log.debug('Closing existing SSE connection before reconnecting');
+      this.disconnect();
     }
 
     this.isConnecting = true;
+    this.currentToken = token;
     this.callbacks = callbacks;
 
-    const endpoint = `${API_ENDPOINTS.sse.connect()}?token=${token}`;
-    const url = `${API_CONFIG.BASE_URL}${API_CONFIG.API_PREFIX}/${API_CONFIG.VERSION}${endpoint}`;
-    this.eventSource = new EventSource(url);
+    // localStorage에서 마지막 이벤트 ID 로드
+    this.loadLastEventId();
 
-    this.setupEventListeners();
+    // Token과 Last-Event-ID를 URL 인코딩하여 쿼리 파라미터로 전달
+    const encodedToken = encodeURIComponent(token);
+    const params = new URLSearchParams({
+      token: encodedToken,
+    });
+    
+    // Last-Event-ID가 있으면 쿼리 파라미터로 추가
+    if (this.lastEventId) {
+      params.set('last_event_id', this.lastEventId);
+    }
+
+    const endpoint = `${API_ENDPOINTS.sse.connect()}?${params.toString()}`;
+    const url = `${API_CONFIG.BASE_URL}${API_CONFIG.API_PREFIX}/${API_CONFIG.VERSION}/${endpoint}`;
+    
+    log.debug('Connecting to SSE', {
+      url: url.replace(token, '***').replace(this.lastEventId || '', '***'),
+      endpoint,
+      lastEventId: this.lastEventId ? '***' : null,
+    });
+
+    try {
+      this.eventSource = new EventSource(url);
+      this.setupEventListeners();
+    } catch (error) {
+      log.error('Failed to create EventSource', error, {
+        service: 'SSE',
+        action: 'connect',
+        url: url.replace(token, '***').replace(this.lastEventId || '', '***'),
+      });
+      this.isConnecting = false;
+      this.currentToken = null;
+      throw error;
+    }
   }
 
   disconnect(): void {
     if (this.eventSource) {
+      log.debug('Disconnecting SSE', {
+        readyState: this.eventSource.readyState,
+        url: this.eventSource.url?.replace(this.currentToken || '', '***'),
+      });
       this.eventSource.close();
       this.eventSource = null;
     }
     this.isConnecting = false;
     this.reconnectAttempts = 0;
+    this.currentToken = null;
+    this.clientId = null;
   }
 
   /**
@@ -127,33 +187,69 @@ class SSEService {
 
     // 연결 성공
     this.eventSource.addEventListener('connected', (event) => {
-      logger.debug('SSE connected', { event });
+      log.info('SSE connected successfully', {
+        hasClientId: !!this.clientId,
+        reconnectAttempts: this.reconnectAttempts,
+      });
       try {
         const { data: parsedData } = this.parseSSEEvent(event);
         const data = this.extractEventData(parsedData);
-        const eventData = data as { client_id?: string };
-        this.clientId = eventData.client_id || null;
+        const eventData = data as { client_id?: string; connection_id?: string };
+        // connection_id 또는 client_id 중 하나를 사용
+        this.clientId = eventData.connection_id || eventData.client_id || null;
         this.reconnectAttempts = 0;
         this.isConnecting = false;
+        log.debug('SSE connection established', {
+          clientId: this.clientId,
+          data: eventData,
+        });
         this.callbacks.onConnected?.(data);
       } catch (error) {
         getErrorLogger().log(error, { service: 'SSE', action: 'connected' });
         // Fallback: 기존 방식으로 파싱 시도
         try {
           const data = JSON.parse(event.data);
-          this.clientId = data.client_id;
+          this.clientId = data.connection_id || data.client_id || null;
           this.reconnectAttempts = 0;
           this.isConnecting = false;
+          log.debug('SSE connection established (fallback)', {
+            clientId: this.clientId,
+          });
           this.callbacks.onConnected?.(data);
         } catch (fallbackError) {
           getErrorLogger().log(fallbackError, { service: 'SSE', action: 'connected-fallback' });
+          this.isConnecting = false;
         }
+      }
+    });
+
+    // Retry 이벤트 처리
+    this.eventSource.addEventListener('message', (event: MessageEvent) => {
+      // Retry 이벤트 처리 (서버에서 전송한 retry 간격)
+      if (event.data && event.data.startsWith('retry:')) {
+        const retryValue = parseInt(event.data.replace('retry:', '').trim(), 10);
+        if (!isNaN(retryValue) && retryValue > 0) {
+          this.retryInterval = retryValue;
+          log.debug('SSE retry interval updated', { retryInterval: this.retryInterval });
+        }
+      }
+
+      // 이벤트 ID 추적 및 저장
+      if (event.lastEventId) {
+        this.lastEventId = event.lastEventId;
+        this.saveLastEventId(event.lastEventId);
       }
     });
 
     // 공통 이벤트 처리 헬퍼
     const handleEvent = (eventType: string, callback?: (data: unknown) => void) => {
       return (event: MessageEvent) => {
+        // 이벤트 ID 추적 및 저장
+        if (event.lastEventId) {
+          this.lastEventId = event.lastEventId;
+          this.saveLastEventId(event.lastEventId);
+        }
+
         try {
           const { data: parsedData } = this.parseSSEEvent(event);
           const data = this.extractEventData(parsedData);
@@ -235,20 +331,33 @@ class SSEService {
       const readyState = this.eventSource?.readyState;
       const url = this.eventSource?.url;
       
+      // URL에서 토큰 부분을 마스킹하여 로그에 출력
+      const maskedUrl = url ? url.replace(/token=[^&]*/, 'token=***') : undefined;
+      
       // readyState에 따른 메시지 생성
       let errorMessage = 'SSE connection error';
+      let shouldReconnect = true;
+      
       if (readyState === EventSource.CONNECTING) {
         errorMessage = 'SSE connection failed during initialization';
+        // CONNECTING 상태에서 에러는 인증 실패일 가능성이 높음
+        log.warn('SSE connection failed during initialization - possible authentication issue', {
+          readyState,
+          url: maskedUrl,
+          hasToken: !!this.currentToken,
+        });
       } else if (readyState === EventSource.CLOSED) {
         errorMessage = 'SSE connection closed unexpectedly';
+        // CLOSED 상태는 정상적인 종료일 수도 있으므로 재연결 시도
       } else if (readyState === EventSource.OPEN) {
         errorMessage = 'SSE connection error occurred';
+        // OPEN 상태에서 에러는 네트워크 문제일 가능성이 높음
       }
       
       const errorInfo: SSEErrorInfo & { message?: string } = {
         type: 'SSE',
         readyState: readyState,
-        url: url,
+        url: maskedUrl,
         timestamp: new Date().toISOString(),
         message: errorMessage,
       };
@@ -260,26 +369,39 @@ class SSEService {
       // Error 객체로 변환하여 ErrorLogger가 메시지를 인식할 수 있도록 함
       const error = new Error(errorMessage);
       
-      logger.error(errorMessage, error, {
+      log.error(errorMessage, error, {
         service: 'SSE',
         readyState,
         readyStateText,
-        url,
+        url: maskedUrl,
         timestamp: errorInfo.timestamp,
+        reconnectAttempts: this.reconnectAttempts,
+        maxReconnectAttempts: this.maxReconnectAttempts,
       });
+      
       (error as Error & { readyState?: number; url?: string }).readyState = readyState;
-      (error as Error & { readyState?: number; url?: string }).url = url;
+      (error as Error & { readyState?: number; url?: string }).url = maskedUrl;
       error.name = 'SSEError';
       
-      getErrorLogger().log(error, { type: 'SSE', readyState, url });
+      getErrorLogger().log(error, { 
+        type: 'SSE', 
+        readyState, 
+        url: maskedUrl,
+        reconnectAttempts: this.reconnectAttempts,
+      });
+      
       this.isConnecting = false;
       this.callbacks.onError?.(errorInfo);
-      this.handleReconnect();
+      
+      // 재연결 시도 (최대 시도 횟수 내에서만)
+      if (shouldReconnect) {
+        this.handleReconnect();
+      }
     });
 
     // 연결 해제
     this.eventSource.addEventListener('close', () => {
-      logger.info('SSE connection closed');
+      log.info('SSE connection closed');
       this.isConnecting = false;
       this.handleReconnect();
     });
@@ -288,7 +410,7 @@ class SSEService {
   private handleReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       const error = new Error('Max reconnection attempts reached');
-      logger.error('Max reconnection attempts reached', error, { 
+      log.error('Max reconnection attempts reached', error, { 
         service: 'SSE', 
         attempts: this.reconnectAttempts 
       });
@@ -297,33 +419,46 @@ class SSEService {
 
     this.reconnectAttempts++;
     
-    // Exponential backoff with jitter and max delay
-    const exponentialDelay = this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
-    const jitter = Math.random() * 1000; // 0-1000ms jitter
-    const delay = Math.min(exponentialDelay + jitter, this.maxReconnectDelay);
+    // 서버에서 전송한 retryInterval을 우선 사용, 없으면 exponential backoff
+    let delay: number;
+    if (this.retryInterval > 0) {
+      // 서버에서 지정한 재연결 간격 사용 (jitter 추가)
+      const jitter = Math.random() * 500; // 0-500ms jitter
+      delay = this.retryInterval + jitter;
+    } else {
+      // Exponential backoff with jitter and max delay
+      const exponentialDelay = this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+      const jitter = Math.random() * 1000; // 0-1000ms jitter
+      delay = Math.min(exponentialDelay + jitter, this.maxReconnectDelay);
+    }
 
-    logger.debug(`Reconnecting SSE in ${Math.round(delay)}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`, {
+    log.debug(`Reconnecting SSE in ${Math.round(delay)}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`, {
       delay: Math.round(delay),
       attempt: this.reconnectAttempts,
       maxAttempts: this.maxReconnectAttempts,
+      retryInterval: this.retryInterval,
     });
 
     setTimeout(() => {
-      if (this.eventSource?.readyState === EventSource.CLOSED) {
+      if (this.eventSource?.readyState === EventSource.CLOSED || !this.eventSource) {
         // 토큰을 다시 가져와서 재연결 (auth-storage에서 가져오기)
-        let token: string | null = null;
-        try {
-          const authStorage = localStorage.getItem(STORAGE_KEYS.AUTH_STORAGE);
-          if (authStorage) {
-            const parsed = JSON.parse(authStorage);
-            token = parsed?.state?.token || null;
-          }
-          // Fallback to legacy token for backward compatibility
-          if (!token) {
+        let token: string | null = this.currentToken; // 먼저 현재 토큰 사용
+        
+        // 현재 토큰이 없으면 스토리지에서 가져오기
+        if (!token) {
+          try {
+            const authStorage = localStorage.getItem(STORAGE_KEYS.AUTH_STORAGE);
+            if (authStorage) {
+              const parsed = JSON.parse(authStorage);
+              token = parsed?.state?.token || null;
+            }
+            // Fallback to legacy token for backward compatibility
+            if (!token) {
+              token = localStorage.getItem('token');
+            }
+          } catch {
             token = localStorage.getItem('token');
           }
-        } catch {
-          token = localStorage.getItem('token');
         }
         if (token) {
           this.connect(token, this.callbacks);
@@ -341,14 +476,64 @@ class SSEService {
   }
 
   // 구독 관리 메서드들
-  subscribeToEvent(eventType: string): void {
-    this.subscribedEvents.add(eventType);
-    this.sendSubscriptionUpdate();
+  async subscribeToEvent(eventType: string, filters?: {
+    providers?: string[];
+    credential_ids?: string[];
+    regions?: string[];
+  }): Promise<void> {
+    if (!this.isConnected() || !this.clientId) {
+      log.warn('Cannot subscribe: SSE not connected', {
+        eventType,
+        connected: this.isConnected(),
+        clientId: this.clientId,
+      });
+      return;
+    }
+
+    try {
+      await api.post(getApiUrl(API_ENDPOINTS.sse.subscribe()), {
+        event_type: eventType,
+        filters: filters || {},
+      });
+
+      this.subscribedEvents.add(eventType);
+      log.debug('Subscribed to event', { eventType, filters });
+    } catch (error) {
+      getErrorLogger().log(error, {
+        service: 'SSE',
+        action: 'subscribeToEvent',
+        eventType,
+        filters,
+      });
+      throw error;
+    }
   }
 
-  unsubscribeFromEvent(eventType: string): void {
-    this.subscribedEvents.delete(eventType);
-    this.sendSubscriptionUpdate();
+  async unsubscribeFromEvent(eventType: string): Promise<void> {
+    if (!this.isConnected() || !this.clientId) {
+      log.warn('Cannot unsubscribe: SSE not connected', {
+        eventType,
+        connected: this.isConnected(),
+        clientId: this.clientId,
+      });
+      return;
+    }
+
+    try {
+      await api.post(getApiUrl(API_ENDPOINTS.sse.unsubscribe()), {
+        event_type: eventType,
+      });
+
+      this.subscribedEvents.delete(eventType);
+      log.debug('Unsubscribed from event', { eventType });
+    } catch (error) {
+      getErrorLogger().log(error, {
+        service: 'SSE',
+        action: 'unsubscribeFromEvent',
+        eventType,
+      });
+      throw error;
+    }
   }
 
   subscribeToVM(vmId: string): void {
@@ -362,19 +547,12 @@ class SSEService {
   }
 
   private sendSubscriptionUpdate(): void {
-    if (!this.clientId || !this.isConnected()) {
-      return;
-    }
-
-    // 구독 정보를 서버에 전송 (실제 구현에서는 별도 API 엔드포인트 사용)
-    const subscriptionData = {
-      clientId: this.clientId,
+    // 구독 정보는 이제 subscribeToEvent/unsubscribeFromEvent에서 직접 API 호출
+    // 이 메서드는 더 이상 필요하지 않지만, 호환성을 위해 유지
+    log.debug('Subscription state updated', {
       events: Array.from(this.subscribedEvents),
       vms: Array.from(this.subscribedVMs),
-    };
-
-    logger.debug('Subscription update', { subscriptionData });
-    // TODO: 서버에 구독 정보 전송
+    });
   }
 
   getSubscriptions() {
@@ -382,6 +560,164 @@ class SSEService {
       events: Array.from(this.subscribedEvents),
       vms: Array.from(this.subscribedVMs),
     };
+  }
+
+  /**
+   * 현재 구독 중인 이벤트 타입 Set을 반환합니다.
+   * @returns 구독 중인 이벤트 타입 Set
+   */
+  getSubscribedEvents(): Set<string> {
+    return new Set(this.subscribedEvents);
+  }
+
+  /**
+   * 여러 이벤트를 한 번에 구독합니다.
+   * @param eventTypes - 구독할 이벤트 타입 배열
+   * @param filters - 필터 옵션
+   */
+  async subscribeToEvents(
+    eventTypes: string[],
+    filters?: {
+      providers?: string[];
+      credential_ids?: string[];
+      regions?: string[];
+    }
+  ): Promise<void> {
+    const promises = eventTypes.map((eventType) =>
+      this.subscribeToEvent(eventType, filters)
+    );
+    await Promise.allSettled(promises);
+  }
+
+  /**
+   * 여러 이벤트를 한 번에 구독 해제합니다.
+   * @param eventTypes - 구독 해제할 이벤트 타입 배열
+   */
+  async unsubscribeFromEvents(eventTypes: string[]): Promise<void> {
+    const promises = eventTypes.map((eventType) =>
+      this.unsubscribeFromEvent(eventType)
+    );
+    await Promise.allSettled(promises);
+  }
+
+  /**
+   * 필요한 이벤트만 구독하고 불필요한 구독을 해제합니다.
+   * @param requiredEvents - 필요한 이벤트 타입 Set
+   * @param filters - 필터 옵션
+   */
+  async syncSubscriptions(
+    requiredEvents: Set<string>,
+    filters?: {
+      providers?: string[];
+      credential_ids?: string[];
+      regions?: string[];
+    }
+  ): Promise<void> {
+    const currentEvents = this.getSubscribedEvents();
+    const toSubscribe = Array.from(requiredEvents).filter(
+      (event) => !currentEvents.has(event)
+    );
+    const toUnsubscribe = Array.from(currentEvents).filter(
+      (event) => !requiredEvents.has(event)
+    );
+
+    if (toSubscribe.length > 0) {
+      log.debug('Subscribing to new events', {
+        events: toSubscribe,
+        filters,
+      });
+      await this.subscribeToEvents(toSubscribe, filters);
+    }
+
+    if (toUnsubscribe.length > 0) {
+      log.debug('Unsubscribing from unused events', {
+        events: toUnsubscribe,
+      });
+      await this.unsubscribeFromEvents(toUnsubscribe);
+    }
+  }
+
+  /**
+   * 현재 등록된 콜백을 반환합니다.
+   * @returns 현재 콜백 객체
+   */
+  getCallbacks(): SSECallbacks {
+    return { ...this.callbacks };
+  }
+
+  /**
+   * 콜백을 업데이트합니다. 기존 콜백과 병합됩니다.
+   * @param newCallbacks - 추가할 콜백
+   */
+  updateCallbacks(newCallbacks: SSECallbacks): void {
+    this.callbacks = { ...this.callbacks, ...newCallbacks };
+    log.debug('SSE callbacks updated', {
+      callbackCount: Object.keys(this.callbacks).length,
+    });
+  }
+
+  /**
+   * 마지막 이벤트 ID를 localStorage에서 로드합니다.
+   */
+  private loadLastEventId(): void {
+    try {
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem(STORAGE_KEYS.SSE_LAST_EVENT_ID);
+        if (stored) {
+          this.lastEventId = stored;
+          log.debug('Last event ID loaded from storage', {
+            lastEventId: this.lastEventId.substring(0, 20) + '...',
+          });
+        }
+      }
+    } catch (error) {
+      getErrorLogger().log(error, { service: 'SSE', action: 'loadLastEventId' });
+    }
+  }
+
+  /**
+   * 마지막 이벤트 ID를 localStorage에 저장합니다.
+   * @param eventId - 저장할 이벤트 ID
+   */
+  private saveLastEventId(eventId: string): void {
+    try {
+      if (typeof window !== 'undefined' && eventId) {
+        localStorage.setItem(STORAGE_KEYS.SSE_LAST_EVENT_ID, eventId);
+        log.debug('Last event ID saved to storage', {
+          eventId: eventId.substring(0, 20) + '...',
+        });
+      }
+    } catch (error) {
+      getErrorLogger().log(error, { service: 'SSE', action: 'saveLastEventId' });
+    }
+  }
+
+  /**
+   * 토큰 갱신 시 재연결합니다.
+   * @param newToken - 새로운 토큰
+   */
+  async refreshToken(newToken: string): Promise<void> {
+    const savedLastEventId = this.lastEventId;
+    
+    log.info('Refreshing SSE token', {
+      hasLastEventId: !!savedLastEventId,
+    });
+
+    // 기존 연결 종료
+    this.disconnect();
+
+    // 새 토큰으로 재연결 (Last-Event-ID 포함)
+    this.connect(newToken, this.callbacks);
+
+    // Last-Event-ID는 connect() 내부에서 자동으로 로드됨
+  }
+
+  /**
+   * 현재 재연결 간격을 반환합니다.
+   * @returns 재연결 간격 (밀리초)
+   */
+  getRetryInterval(): number {
+    return this.retryInterval;
   }
 }
 

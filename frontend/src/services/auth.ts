@@ -3,8 +3,8 @@
  * 인증 관련 API 호출
  */
 
-import { BaseService } from '@/lib/service-base';
-import { API_ENDPOINTS } from '@/lib/api-endpoints';
+import { BaseService } from '@/lib/api';
+import { API_ENDPOINTS } from '@/lib/api';
 import type { LoginForm, RegisterForm, AuthResponse, User } from '@/lib/types';
 
 class AuthService extends BaseService {

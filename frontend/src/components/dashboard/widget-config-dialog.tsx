@@ -6,9 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { WidgetData, WidgetSize, WIDGET_CONFIGS } from '@/lib/widgets';
+import { WidgetData, WidgetSize, WIDGET_CONFIGS, getWidgetSizeTranslationKey } from '@/lib/widgets';
 import { useTranslation } from '@/hooks/use-translation';
-import { getWidgetSizeTranslationKey } from '@/lib/widgets-utils';
 
 interface WidgetConfigDialogProps {
   widget: WidgetData | null;

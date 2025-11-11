@@ -48,7 +48,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { useExportHistory, useDownloadExport } from '@/hooks/use-export';
-import { logger } from '@/lib/logger';
+import { log } from '@/lib/logging';
 import { exportService } from '@/services/export';
 import type { ExportResult } from '@/lib/types/export';
 import { toast } from 'react-hot-toast';
@@ -72,7 +72,7 @@ export function ExportHistory({ limit = 20, showActions = true }: ExportHistoryP
     try {
       await downloadMutation.mutateAsync(exportItem.id);
     } catch (error) {
-      logger.error('Download failed', error instanceof Error ? error : new Error(String(error)));
+      log.error('Download failed', error instanceof Error ? error : new Error(String(error)));
     }
   };
 

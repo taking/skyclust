@@ -17,10 +17,10 @@ import { useAuthHydration } from '@/hooks/use-auth-hydration';
 import { authService } from '@/services/auth';
 import { LoginForm } from '@/lib/types';
 import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
-import { getUserFriendlyErrorMessage } from '@/lib/error-handler';
+import { getUserFriendlyErrorMessage } from '@/lib/error-handling';
 import Link from 'next/link';
 import { useTranslation } from '@/hooks/use-translation';
-import { createValidationSchemas } from '@/lib/validations';
+import { createValidationSchemas } from '@/lib/validation';
 
 export default function LoginPage() {
   const { login } = useAuthStore();

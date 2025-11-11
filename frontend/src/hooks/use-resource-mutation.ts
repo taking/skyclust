@@ -27,7 +27,7 @@
  */
 
 import { useStandardMutation, UseStandardMutationOptions } from './use-standard-mutation';
-import { queryKeys } from '@/lib/query-keys';
+import { queryKeys } from '@/lib/query';
 import type { QueryKey } from '@tanstack/react-query';
 
 /**

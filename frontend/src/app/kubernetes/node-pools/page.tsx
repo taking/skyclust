@@ -34,16 +34,14 @@ import { kubernetesService } from '@/features/kubernetes';
 import { useCredentials } from '@/hooks/use-credentials';
 import { Plus, Trash2, Edit, Layers } from 'lucide-react';
 import { CreateNodePoolForm, NodePool } from '@/lib/types';
-import { DataProcessor } from '@/lib/data-processor';
+import { DataProcessor } from '@/lib/data';
 import { CredentialRequiredState } from '@/components/common/credential-required-state';
 import { ResourceEmptyState } from '@/components/common/resource-empty-state';
 import { useCredentialContext } from '@/hooks/use-credential-context';
 import { useCredentialAutoSelect } from '@/hooks/use-credential-auto-select';
-import { queryKeys } from '@/lib/query-keys';
-import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
-import { TIME } from '@/lib/constants';
+import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
 import { useTranslation } from '@/hooks/use-translation';
-import { createValidationSchemas } from '@/lib/validations';
+import { createValidationSchemas } from '@/lib/validation';
 import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
 
 function NodePoolsPageContent() {
@@ -116,7 +114,7 @@ function NodePoolsPageContent() {
     enabled: !!selectedProvider && !!selectedCredentialId && !!selectedClusterName && !!selectedRegion && !!currentWorkspace,
     staleTime: CACHE_TIMES.REALTIME,
     gcTime: GC_TIMES.SHORT,
-    refetchInterval: TIME.POLLING.REALTIME,
+    refetchInterval: CACHE_TIMES.REALTIME,
   });
 
   // Search functionality

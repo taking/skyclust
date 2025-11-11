@@ -4,7 +4,7 @@
  */
 
 import { useState, useMemo, useCallback } from 'react';
-import { DataProcessor } from '@/lib/data-processor';
+import { DataProcessor } from '@/lib/data';
 import type { SortConfig } from '@/hooks/use-advanced-filtering';
 import type { VM } from '@/lib/types';
 import type { FilterValue } from '@/components/ui/filter-panel';

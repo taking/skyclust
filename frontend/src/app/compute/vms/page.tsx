@@ -28,10 +28,11 @@ import { useCredentialAutoSelect } from '@/hooks/use-credential-auto-select';
 import { useCreateDialog } from '@/hooks/use-create-dialog';
 import { useTranslation } from '@/hooks/use-translation';
 import { useGenericResource } from '@/hooks/use-generic-resource';
+import { useResourceListState } from '@/hooks/use-resource-list-state';
 import { VMPageHeader, useVMs, useVMActions } from '@/features/vms';
 import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
-import { logger } from '@/lib/logger';
+import { log } from '@/lib/logging';
 import type { CreateVMForm, VM } from '@/lib/types';
 
 // Dynamic import for VMTable
@@ -63,15 +64,16 @@ function VMsPageContent() {
 
   // Local state
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useCreateDialog(EVENTS.CREATE_DIALOG.VM);
-  const [showFilters, setShowFilters] = React.useState(false);
-  const [deleteDialogState, setDeleteDialogState] = React.useState<{
-    open: boolean;
-    vmId: string | null;
-    vmName?: string;
-  }>({
-    open: false,
-    vmId: null,
-    vmName: undefined,
+  
+  // 공통 리스트 상태 관리 (deleteDialogState와 showFilters만 사용)
+  const {
+    showFilters,
+    setShowFilters,
+    deleteDialogState,
+    openDeleteDialog,
+    closeDeleteDialog,
+  } = useResourceListState({
+    storageKey: 'vms-page',
   });
 
   // VMs hook
@@ -188,15 +190,15 @@ function VMsPageContent() {
 
   const handleVMDelete = useCallback((vmId: string) => {
     const vm = vms.find(v => v.id === vmId);
-    setDeleteDialogState({ open: true, vmId, vmName: vm?.name });
-  }, [vms]);
+    openDeleteDialog(vmId, undefined, vm?.name);
+  }, [vms, openDeleteDialog]);
 
   const handleConfirmDelete = useCallback(() => {
-    if (deleteDialogState.vmId) {
-      handleDeleteVM(deleteDialogState.vmId, vms);
-      setDeleteDialogState({ open: false, vmId: null });
+    if (deleteDialogState.id) {
+      handleDeleteVM(deleteDialogState.id, vms);
+      closeDeleteDialog();
     }
-  }, [deleteDialogState.vmId, handleDeleteVM, vms]);
+  }, [deleteDialogState.id, handleDeleteVM, vms, closeDeleteDialog]);
 
   // Event handlers
   const handleCreateVM = useCallback((data: CreateVMForm) => {
@@ -292,7 +294,7 @@ function VMsPageContent() {
             onSelectionChange={setSelectedVMIds}
             onBulkDelete={(vmIds) => {
               // TODO: Implement bulk delete
-              logger.debug('Bulk delete VMs', { vmIds });
+              log.debug('Bulk delete VMs', { vmIds });
             }}
             getItemDisplayName={(vm) => vm.name}
           />
@@ -364,12 +366,18 @@ function VMsPageContent() {
       {/* Delete VM Confirmation Dialog */}
       <DeleteConfirmationDialog
         open={deleteDialogState.open}
-        onOpenChange={(open) => setDeleteDialogState({ ...deleteDialogState, open })}
+        onOpenChange={(open) => {
+          if (open && deleteDialogState.id) {
+            openDeleteDialog(deleteDialogState.id, deleteDialogState.region || undefined, deleteDialogState.name);
+          } else {
+            closeDeleteDialog();
+          }
+        }}
         onConfirm={handleConfirmDelete}
         title={t('vm.deleteVM')}
         description="이 VM을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다."
         isLoading={deleteVMMutation.isPending}
-        resourceName={deleteDialogState.vmName}
+        resourceName={deleteDialogState.name}
         resourceNameLabel="VM 이름"
       />
     </>

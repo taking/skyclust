@@ -290,7 +290,6 @@ const message = t('common.home'); // "홈" 또는 "Home"
 - `useSSEEvents` - 실시간 이벤트 구독
 - `useErrorHandler` - 에러 처리
 - `useTranslation` - 국제화
-- `useKeyboardShortcuts` - 키보드 단축키
 
 ## 테스팅
 

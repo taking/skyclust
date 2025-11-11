@@ -8,7 +8,7 @@ import { useMemo } from 'react';
 import { useStandardMutation } from '@/hooks/use-standard-mutation';
 import { credentialRepository } from '@/infrastructure/repositories';
 import { CreateCredentialUseCase } from '@/domain/use-cases';
-import { queryKeys } from '@/lib/query-keys';
+import { queryKeys } from '@/lib/query';
 import type { CreateCredentialForm } from '@/lib/types';
 
 export interface UseCredentialActionsOptions {

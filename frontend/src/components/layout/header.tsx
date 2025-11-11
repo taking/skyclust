@@ -46,7 +46,7 @@ import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { ScreenReaderOnly } from '@/components/accessibility/screen-reader-only';
 import { getActionAriaLabel } from '@/lib/accessibility';
 import { Breadcrumb } from '@/components/common/breadcrumb';
-import { getRegionsForProvider, supportsRegionSelection, getDefaultRegionForProvider } from '@/lib/regions';
+import { getRegionsByProvider, supportsRegionSelection, getDefaultRegionForProvider } from '@/lib/regions';
 import type { CloudProvider } from '@/lib/types/kubernetes';
 import { useTranslation } from '@/hooks/use-translation';
 import { locales, localeNames, type Locale } from '@/i18n/config';

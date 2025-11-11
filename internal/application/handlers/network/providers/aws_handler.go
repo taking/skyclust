@@ -397,30 +397,38 @@ func (h *AWSHandler) ListSecurityGroups(c *gin.Context) {
 
 // CreateSecurityGroup handles security group creation
 func (h *AWSHandler) CreateSecurityGroup(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	var req networkservice.CreateSecurityGroupRequest
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "create_security_group")
+		return
+	}
+
+	// credential_id는 body 또는 query parameter에서 가져올 수 있음
+	credentialID := req.CredentialID
+	if credentialID == "" {
+		credentialID = c.Query("credential_id")
+	}
+
+	if credentialID == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "credential_id is required", 400), "create_security_group")
+		return
+	}
+
+	credential, err := h.GetCredentialFromBody(c, h.credentialService, credentialID, domain.ProviderAWS)
 	if err != nil {
 		h.HandleError(c, err, "create_security_group")
 		return
 	}
 
-	var req networkservice.CreateSecurityGroupRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("invalid request body: %v", err), 400), "create_security_group")
-		return
-	}
-
-	// credential_id는 body 또는 query에서 가져올 수 있음
-	if req.CredentialID == "" {
-		req.CredentialID = credential.ID.String()
-	}
+	req.CredentialID = credential.ID.String()
 
 	// Validate required fields
 	if req.Name == "" || req.Description == "" || req.VPCID == "" || req.Region == "" {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, fmt.Sprintf("name, description, vpc_id, and region are required"), 400), "create_security_group")
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "name, description, vpc_id, and region are required", 400), "create_security_group")
 		return
 	}
 
-	ctx := c.Request.Context()
+	ctx := h.EnrichContextWithRequestMetadata(c)
 	securityGroup, err := h.networkService.CreateSecurityGroup(ctx, credential, req)
 	if err != nil {
 		h.HandleError(c, err, "create_security_group")
@@ -442,7 +450,38 @@ func (h *AWSHandler) UpdateSecurityGroup(c *gin.Context) {
 
 // DeleteSecurityGroup handles security group deletion requests
 func (h *AWSHandler) DeleteSecurityGroup(c *gin.Context) {
-	h.NotImplemented(c, "delete_security_group")
+	credential, err := h.GetCredentialFromRequest(c, h.credentialService, domain.ProviderAWS)
+	if err != nil {
+		h.HandleError(c, err, "delete_security_group")
+		return
+	}
+
+	securityGroupID := c.Param("id")
+	if securityGroupID == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "Security Group ID is required", 400), "delete_security_group")
+		return
+	}
+
+	region := c.Query("region")
+	if region == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region is required", 400), "delete_security_group")
+		return
+	}
+
+	serviceReq := networkservice.DeleteSecurityGroupRequest{
+		CredentialID:    credential.ID.String(),
+		SecurityGroupID: securityGroupID,
+		Region:          region,
+	}
+
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	err = h.networkService.DeleteSecurityGroup(ctx, credential, serviceReq)
+	if err != nil {
+		h.HandleError(c, err, "delete_security_group")
+		return
+	}
+
+	h.OK(c, nil, "AWS security group deleted successfully")
 }
 
 // AddSecurityGroupRule handles adding a security group rule

@@ -23,9 +23,9 @@ import { CreateWorkspaceForm, Workspace } from '@/lib/types';
 import { useRequireAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
-import { ErrorHandler } from '@/lib/error-handler';
-import { queryKeys } from '@/lib/query-keys';
-import { createValidationSchemas } from '@/lib/validations';
+import { ErrorHandler } from '@/lib/error-handling';
+import { queryKeys } from '@/lib/query';
+import { createValidationSchemas } from '@/lib/validation';
 import { useTranslation } from '@/hooks/use-translation';
 import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
 

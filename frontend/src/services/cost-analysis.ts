@@ -3,8 +3,8 @@
  * 비용 분석 관련 API 호출
  */
 
-import { BaseService } from '@/lib/service-base';
-import { API_ENDPOINTS } from '@/lib/api-endpoints';
+import { BaseService } from '@/lib/api';
+import { API_ENDPOINTS } from '@/lib/api';
 import type {
   CostData,
   CostSummary,

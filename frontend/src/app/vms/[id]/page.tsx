@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { vmService, VMOverviewTab, VMMonitoringTab, VMNetworkingTab, VMStorageTab, VMDetailHeader, VMActionsCard } from '@/features/vms';
 import { useToast } from '@/hooks/use-toast';
 import { useRequireAuth } from '@/hooks/use-auth';
-import { queryKeys } from '@/lib/query-keys';
+import { queryKeys } from '@/lib/query';
 import { Spinner } from '@/components/ui/spinner';
 import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
 

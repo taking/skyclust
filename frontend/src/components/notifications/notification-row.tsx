@@ -21,7 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { getNotificationTypeIcon, getNotificationTypeColor, getNotificationPriorityColor } from '@/lib/notification-utils';
+import { getNotificationTypeIcon, getNotificationTypeColor, getNotificationPriorityColor } from '@/lib/notification';
 import type { Notification } from '@/lib/types/notification';
 
 export interface NotificationRowProps {

@@ -4,7 +4,7 @@
  */
 
 import { BaseRepository } from './base-repository';
-import { API_ENDPOINTS } from '@/lib/api-endpoints';
+import { API_ENDPOINTS } from '@/lib/api';
 import type { ICredentialRepository } from '@/lib/types/repository';
 import type { Credential, CreateCredentialForm } from '@/lib/types';
 

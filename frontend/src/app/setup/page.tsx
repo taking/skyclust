@@ -16,7 +16,7 @@ import { authService } from '@/services/auth';
 import { RegisterForm } from '@/lib/types';
 import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-validation';
 import { useTranslation } from '@/hooks/use-translation';
-import { createValidationSchemas } from '@/lib/validations';
+import { createValidationSchemas } from '@/lib/validation';
 import { useSystemInitialized } from '@/hooks/use-system-initialized';
 import { useAuthStore } from '@/store/auth';
 import { Spinner } from '@/components/ui/loading-states';

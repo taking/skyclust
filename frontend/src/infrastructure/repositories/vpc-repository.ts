@@ -4,7 +4,7 @@
  */
 
 import { BaseRepository } from './base-repository';
-import { API_ENDPOINTS } from '@/lib/api-endpoints';
+import { API_ENDPOINTS } from '@/lib/api';
 import type { IVPCRepository } from '@/lib/types/repository';
 import type { VPC, CreateVPCForm, CloudProvider } from '@/lib/types';
 

@@ -7,9 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useStandardMutation } from '@/hooks/use-standard-mutation';
 import { kubernetesService } from '../services/kubernetes';
 import type { KubernetesCluster as _KubernetesCluster, CreateClusterForm, CloudProvider } from '@/lib/types';
-import { queryKeys } from '@/lib/query-keys';
-import { CACHE_TIMES, GC_TIMES } from '@/lib/query-client';
-import { TIME } from '@/lib/constants';
+import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
 import { useTranslation } from '@/hooks/use-translation';
 import { useCredentials } from '@/hooks/use-credentials';
 
@@ -32,7 +30,7 @@ export function useKubernetesClusters({
     selectedCredentialId,
   });
 
-  // Fetch clusters (클러스터 상태 변화를 반영하기 위해 짧은 staleTime과 polling)
+  // Fetch clusters (SSE 이벤트로 실시간 업데이트)
   const { data: clusters = [], isLoading } = useQuery({
     queryKey: queryKeys.kubernetesClusters.list(workspaceId, selectedProvider, selectedCredentialId, selectedRegion),
     queryFn: async () => {
@@ -44,8 +42,7 @@ export function useKubernetesClusters({
     enabled: !!workspaceId && !!selectedProvider && !!selectedCredentialId,
     staleTime: CACHE_TIMES.MONITORING, // 1분 - 클러스터 상태는 비교적 안정적이지만 변경 가능
     gcTime: GC_TIMES.MEDIUM, // 10분 - GC 시간
-    refetchInterval: TIME.POLLING.REALTIME, // Poll every 30 seconds
-    refetchIntervalInBackground: false, // 백그라운드 polling 비활성화
+    // refetchInterval 제거: SSE 이벤트로 자동 업데이트
   });
 
   // Create cluster mutation
