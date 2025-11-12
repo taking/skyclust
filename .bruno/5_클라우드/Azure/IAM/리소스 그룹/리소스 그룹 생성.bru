@@ -1,0 +1,69 @@
+meta {
+  name: 리소스 그룹 생성
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/iam/resource-groups
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "credential_id": "{{azure_credentialsId}}",
+    "name": "skyclust-rg",
+    "location": "eastus",
+    "tags": {
+      "Environment": "production",
+      "Project": "skyclust"
+    }
+  }
+}
+
+script:post-response {
+  bru.setEnvVar("resourceGroupId", res.body.data.id);
+  bru.setEnvVar("resourceGroupName", res.body.data.name);
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Azure Resource Group 생성
+  
+  새로운 Azure Resource Group을 생성합니다.
+  
+  ## Request Body
+  
+  - `credential_id`: Azure credential ID (필수)
+  - `name`: Resource Group 이름 (필수, 1-90자, 영숫자, 언더스코어, 괄호, 하이픈, 마침표 허용)
+  - `location`: Azure 리전 (필수, 예: "eastus")
+  - `tags`: 태그 (선택, key-value 쌍)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "/subscriptions/xxx/resourceGroups/skyclust-rg",
+      "name": "skyclust-rg",
+      "location": "eastus",
+      "provisioning_state": "Succeeded",
+      "tags": {
+        "Environment": "production",
+        "Project": "skyclust"
+      }
+    },
+    "message": "Resource group created successfully"
+  }
+  ```
+}

@@ -11,11 +11,13 @@ import { TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Download, Settings, Trash2, ExternalLink } from 'lucide-react';
-import type { KubernetesCluster } from '@/lib/types';
+import { Download, Settings, Trash2, Copy, Check } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import type { KubernetesCluster, CloudProvider } from '@/lib/types';
 
 interface ClusterRowProps {
   cluster: KubernetesCluster;
+  provider?: CloudProvider;
   isSelected: boolean;
   onSelect: (checked: boolean) => void;
   onDelete: (clusterName: string, region: string) => void;
@@ -30,8 +32,18 @@ function getStatusVariant(status: string): 'default' | 'secondary' | 'destructiv
   return 'destructive';
 }
 
+function formatDate(dateString?: string): string {
+  if (!dateString) return '-';
+  try {
+    return new Date(dateString).toLocaleDateString();
+  } catch {
+    return '-';
+  }
+}
+
 function ClusterRowComponent({
   cluster,
+  provider,
   isSelected,
   onSelect,
   onDelete,
@@ -40,6 +52,9 @@ function ClusterRowComponent({
   isDownloading = false,
 }: ClusterRowProps) {
   const router = useRouter();
+  const { success } = useToast();
+  const [copiedEndpoint, setCopiedEndpoint] = React.useState(false);
+  const isAzure = provider === 'azure';
 
   return (
     <>
@@ -53,34 +68,72 @@ function ClusterRowComponent({
         <Button
           variant="link"
           className="p-0 h-auto font-medium"
-          onClick={() => router.push(`/kubernetes/${cluster.name}`)}
+          onClick={() => router.push(`/kubernetes/clusters/${cluster.name}`)}
         >
           {cluster.name}
         </Button>
       </TableCell>
-      <TableCell>{cluster.version}</TableCell>
       <TableCell>
         <Badge variant={getStatusVariant(cluster.status)}>
           {cluster.status}
         </Badge>
       </TableCell>
-      <TableCell>{cluster.region}</TableCell>
+      <TableCell>{cluster.version || '-'}</TableCell>
+      <TableCell>{cluster.region || '-'}</TableCell>
+      {isAzure && (
+        <TableCell>{cluster.resource_group || '-'}</TableCell>
+      )}
       <TableCell>
         {cluster.endpoint ? (
-          <a
-            href={cluster.endpoint.startsWith('http://') || cluster.endpoint.startsWith('https://') 
-              ? cluster.endpoint 
-              : `https://${cluster.endpoint}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 hover:underline flex items-center"
-          >
-            {cluster.endpoint.substring(0, 30)}...
-            <ExternalLink className="ml-1 h-3 w-3" />
-          </a>
+          <div className="flex items-center gap-2 w-full">
+            <a
+              href={cluster.endpoint.startsWith('http://') || cluster.endpoint.startsWith('https://') 
+                ? cluster.endpoint 
+                : `https://${cluster.endpoint}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline truncate flex-1"
+              title={cluster.endpoint}
+            >
+              {cluster.endpoint.length > 40 
+                ? `${cluster.endpoint.substring(0, 40)}...`
+                : cluster.endpoint}
+            </a>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (cluster.endpoint) {
+                  try {
+                    await navigator.clipboard.writeText(cluster.endpoint);
+                    setCopiedEndpoint(true);
+                    success('Endpoint copied to clipboard');
+                    setTimeout(() => {
+                      setCopiedEndpoint(false);
+                    }, 2000);
+                  } catch (error) {
+                    console.error('Failed to copy endpoint:', error);
+                  }
+                }
+              }}
+              className="shrink-0"
+              aria-label="Copy endpoint"
+            >
+              {copiedEndpoint ? (
+                <Check className="h-4 w-4 text-green-600" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
         ) : (
-          <span className="text-gray-400">-</span>
+          <span className="text-muted-foreground">-</span>
         )}
+      </TableCell>
+      <TableCell>
+        {formatDate(cluster.created_at)}
       </TableCell>
       <TableCell>
         <div className="flex items-center space-x-2">
@@ -96,7 +149,7 @@ function ClusterRowComponent({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => router.push(`/kubernetes/${cluster.name}`)}
+            onClick={() => router.push(`/kubernetes/clusters/${cluster.name}`)}
             aria-label={`View details for ${cluster.name}`}
           >
             <Settings className="h-4 w-4" />
@@ -124,6 +177,12 @@ export const ClusterRow = React.memo(ClusterRowComponent, (prevProps, nextProps)
   return (
     clusterId === nextClusterId &&
     prevProps.cluster.status === nextProps.cluster.status &&
+    prevProps.cluster.version === nextProps.cluster.version &&
+    prevProps.cluster.region === nextProps.cluster.region &&
+    prevProps.cluster.endpoint === nextProps.cluster.endpoint &&
+    prevProps.cluster.resource_group === nextProps.cluster.resource_group &&
+    prevProps.cluster.created_at === nextProps.cluster.created_at &&
+    prevProps.provider === nextProps.provider &&
     prevProps.isSelected === nextProps.isSelected &&
     prevProps.isDeleting === nextProps.isDeleting &&
     prevProps.isDownloading === nextProps.isDownloading

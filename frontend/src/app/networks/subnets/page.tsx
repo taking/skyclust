@@ -29,6 +29,9 @@ import { useWorkspaceStore } from '@/store/workspace';
 import { useTranslation } from '@/hooks/use-translation';
 import { DataProcessor } from '@/lib/data';
 import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
+import { sseService } from '@/services/sse';
+import { log } from '@/lib/logging';
+import { useSSEStatus } from '@/hooks/use-sse-status';
 import {
   useSubnetActions,
   SubnetsPageHeader,
@@ -68,6 +71,67 @@ function SubnetsPageContent() {
     resourceType: 'network',
     updateUrl: true,
   });
+
+  // SSE 상태 확인
+  const { status: sseStatus } = useSSEStatus();
+
+  // SSE 이벤트 구독 (Subnet 실시간 업데이트)
+  useEffect(() => {
+    // SSE 연결 완료 확인 (clientId는 subscribeToEvent 내부에서 대기 처리)
+    if (!sseStatus.isConnected) {
+      log.debug('[Subnets Page] SSE not connected, skipping subscription', {
+        isConnected: sseStatus.isConnected,
+        readyState: sseStatus.readyState,
+      });
+      return;
+    }
+
+    const filters = {
+      credential_ids: selectedCredentialId ? [selectedCredentialId] : undefined,
+      regions: selectedRegion ? [selectedRegion] : undefined,
+    };
+
+    const subscribeToSubnetEvents = async () => {
+      try {
+        await sseService.subscribeToEvent('network-subnet-created', filters);
+        await sseService.subscribeToEvent('network-subnet-updated', filters);
+        await sseService.subscribeToEvent('network-subnet-deleted', filters);
+        await sseService.subscribeToEvent('network-subnet-list', filters);
+        
+        log.debug('[Subnets Page] Subscribed to Subnet events', { 
+          filters,
+          clientId: sseService.getClientId(),
+        });
+      } catch (error) {
+        log.error('[Subnets Page] Failed to subscribe to Subnet events', error, {
+          service: 'SSE',
+          action: 'subscribeSubnetEvents',
+        });
+      }
+    };
+
+    subscribeToSubnetEvents();
+
+    // Cleanup: 페이지를 떠날 때 또는 필터가 변경될 때 구독 해제
+    return () => {
+      const unsubscribe = async () => {
+        try {
+          await sseService.unsubscribeFromEvent('network-subnet-created', filters);
+          await sseService.unsubscribeFromEvent('network-subnet-updated', filters);
+          await sseService.unsubscribeFromEvent('network-subnet-deleted', filters);
+          await sseService.unsubscribeFromEvent('network-subnet-list', filters);
+          
+          log.debug('[Subnets Page] Unsubscribed from Subnet events', { filters });
+        } catch (error) {
+          log.warn('[Subnets Page] Failed to unsubscribe from Subnet events', error, {
+            service: 'SSE',
+            action: 'unsubscribeSubnetEvents',
+          });
+        }
+      };
+      unsubscribe();
+    };
+  }, [selectedCredentialId, selectedRegion, sseStatus.isConnected]);
 
   // URL 파라미터에서 VPC ID를 가져와서 자동 선택
   useEffect(() => {

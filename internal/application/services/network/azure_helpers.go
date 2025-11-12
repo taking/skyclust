@@ -20,7 +20,8 @@ type AzureCredentials struct {
 }
 
 // extractAzureCredentials: 복호화된 자격증명 데이터에서 Azure 자격증명을 추출합니다
-func (s *Service) extractAzureCredentials(ctx context.Context, credential *domain.Credential) (*AzureCredentials, error) {
+// resourceGroup 파라미터가 제공되면 우선 사용 (요청에서 받은 값이 credential에 저장된 값보다 우선)
+func (s *Service) extractAzureCredentials(ctx context.Context, credential *domain.Credential, resourceGroup ...string) (*AzureCredentials, error) {
 	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
 	if err != nil {
 		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
@@ -46,10 +47,12 @@ func (s *Service) extractAzureCredentials(ctx context.Context, credential *domai
 		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "tenant_id not found in credential", 400)
 	}
 
-	// Resource group은 선택적 (요청에서 받을 수 있음)
-	resourceGroup := ""
-	if rg, ok := credData["resource_group"].(string); ok {
-		resourceGroup = rg
+	// Resource group 우선순위: 1) 요청 파라미터, 2) credential에 저장된 값
+	rg := ""
+	if len(resourceGroup) > 0 && resourceGroup[0] != "" {
+		rg = resourceGroup[0]
+	} else if rgFromCred, ok := credData["resource_group"].(string); ok && rgFromCred != "" {
+		rg = rgFromCred
 	}
 
 	return &AzureCredentials{
@@ -57,7 +60,7 @@ func (s *Service) extractAzureCredentials(ctx context.Context, credential *domai
 		ClientID:       clientID,
 		ClientSecret:   clientSecret,
 		TenantID:       tenantID,
-		ResourceGroup:  resourceGroup,
+		ResourceGroup:  rg,
 	}, nil
 }
 

@@ -2,15 +2,19 @@ package dashboard
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	kubernetesservice "skyclust/internal/application/services/kubernetes"
 	networkservice "skyclust/internal/application/services/network"
 	"skyclust/internal/domain"
+	"skyclust/internal/infrastructure/messaging"
 
 	"github.com/google/uuid"
+	"github.com/nats-io/nats.go"
 	"go.uber.org/zap"
 )
 
@@ -21,12 +25,17 @@ import (
 
 // Service 대시보드 서비스
 type Service struct {
-	workspaceRepo     domain.WorkspaceRepository
-	vmRepo            domain.VMRepository
-	credentialRepo    domain.CredentialRepository
-	kubernetesService *kubernetesservice.Service
-	networkService    *networkservice.Service
-	logger            *zap.Logger
+	workspaceRepo         domain.WorkspaceRepository
+	vmRepo                domain.VMRepository
+	credentialRepo        domain.CredentialRepository
+	kubernetesService     *kubernetesservice.Service
+	networkService        *networkservice.Service
+	eventService          domain.EventService
+	logger                *zap.Logger
+	natsConn              *nats.Conn
+	debounceTimer         *time.Timer
+	debounceMutex         sync.Mutex
+	pendingRecalculations map[string]map[string]bool // workspace_id -> filter_key (credential_id:region)
 }
 
 // NewService 새로운 대시보드 서비스 생성
@@ -36,16 +45,24 @@ func NewService(
 	credentialRepo domain.CredentialRepository,
 	kubernetesService *kubernetesservice.Service,
 	networkService *networkservice.Service,
+	eventService domain.EventService,
 	logger *zap.Logger,
 ) *Service {
 	return &Service{
-		workspaceRepo:     workspaceRepo,
-		vmRepo:            vmRepo,
-		credentialRepo:    credentialRepo,
-		kubernetesService: kubernetesService,
-		networkService:    networkService,
-		logger:            logger,
+		workspaceRepo:         workspaceRepo,
+		vmRepo:                vmRepo,
+		credentialRepo:        credentialRepo,
+		kubernetesService:     kubernetesService,
+		networkService:        networkService,
+		eventService:          eventService,
+		logger:                logger,
+		pendingRecalculations: make(map[string]map[string]bool),
 	}
+}
+
+// SetNATSConnection NATS 연결을 설정합니다 (이벤트 구독을 위해)
+func (s *Service) SetNATSConnection(conn *nats.Conn) {
+	s.natsConn = conn
 }
 
 // GetDashboardSummary 대시보드 요약 정보 조회 (병렬 최적화 버전 사용)
@@ -65,7 +82,60 @@ func (s *Service) GetDashboardSummaryOptimized(ctx context.Context, workspaceID 
 	}
 
 	stats := s.collectStatsInParallel(ctx, workspaceID, workspaceUUID, credentialID, region)
-	return s.buildDashboardSummary(workspaceID, stats), nil
+	summary := s.buildDashboardSummary(workspaceID, stats)
+
+	// Dashboard summary 이벤트 발행 (SSE를 통해 실시간 업데이트)
+	s.publishDashboardSummaryUpdate(ctx, summary, credentialID, region)
+
+	return summary, nil
+}
+
+// publishDashboardSummaryUpdate 대시보드 요약 정보 업데이트 이벤트를 발행합니다
+func (s *Service) publishDashboardSummaryUpdate(ctx context.Context, summary *domain.DashboardSummary, credentialID *string, region *string) {
+	if s.eventService == nil {
+		return
+	}
+
+	eventData := map[string]interface{}{
+		"workspace_id": summary.WorkspaceID,
+		"vms": map[string]interface{}{
+			"total":       summary.VMs.Total,
+			"running":     summary.VMs.Running,
+			"stopped":     summary.VMs.Stopped,
+			"by_provider": summary.VMs.ByProvider,
+		},
+		"clusters": map[string]interface{}{
+			"total":       summary.Clusters.Total,
+			"healthy":     summary.Clusters.Healthy,
+			"by_provider": summary.Clusters.ByProvider,
+		},
+		"networks": map[string]interface{}{
+			"vpcs":            summary.Networks.VPCs,
+			"subnets":         summary.Networks.Subnets,
+			"security_groups": summary.Networks.SecurityGroups,
+		},
+		"credentials": map[string]interface{}{
+			"total":       summary.Credentials.Total,
+			"by_provider": summary.Credentials.ByProvider,
+		},
+		"members": map[string]interface{}{
+			"total": summary.Members.Total,
+		},
+		"last_updated": summary.LastUpdated,
+	}
+
+	if credentialID != nil {
+		eventData["credential_id"] = *credentialID
+	}
+	if region != nil {
+		eventData["region"] = *region
+	}
+
+	if err := s.eventService.Publish(ctx, "dashboard-summary-updated", eventData); err != nil {
+		s.logger.Warn("Failed to publish dashboard summary update event",
+			zap.String("workspace_id", summary.WorkspaceID),
+			zap.Error(err))
+	}
 }
 
 // validateWorkspace 워크스페이스 존재 여부를 확인합니다
@@ -82,16 +152,16 @@ func (s *Service) validateWorkspace(ctx context.Context, workspaceID string) err
 
 // dashboardStats 모든 통계 데이터를 담는 구조체
 type dashboardStats struct {
-	vmStats         *domain.VMStats
-	clusterStats    *domain.ClusterStats
-	networkStats    *domain.NetworkStats
-	credentialStats *domain.CredentialStats
-	memberStats     *domain.MemberStats
-	vmStatsErr      error
-	clusterStatsErr error
-	networkStatsErr error
+	vmStats            *domain.VMStats
+	clusterStats       *domain.ClusterStats
+	networkStats       *domain.NetworkStats
+	credentialStats    *domain.CredentialStats
+	memberStats        *domain.MemberStats
+	vmStatsErr         error
+	clusterStatsErr    error
+	networkStatsErr    error
 	credentialStatsErr error
-	memberStatsErr  error
+	memberStatsErr     error
 }
 
 // collectStatsInParallel 모든 통계를 병렬로 수집합니다
@@ -476,4 +546,292 @@ func (s *Service) getMemberStats(ctx context.Context, workspaceID string) (*doma
 	}
 
 	return &stats, nil
+}
+
+// StartEventSubscriptions 리소스 변경 이벤트 구독을 시작합니다
+func (s *Service) StartEventSubscriptions(ctx context.Context) error {
+	if s.natsConn == nil {
+		s.logger.Warn("NATS connection not available, skipping dashboard event subscriptions")
+		return nil
+	}
+
+	// NATS 메시지 처리 헬퍼 함수 (압축 해제 포함)
+	handleNATSMessage := func(m *nats.Msg) {
+		data := m.Data
+
+		// 압축 해제 시도
+		if len(data) >= 2 && data[0] == 0x1f && data[1] == 0x8b {
+			// gzip 압축 해제
+			decompressed, err := messaging.Decompress(data, messaging.CompressionGzip)
+			if err != nil {
+				s.logger.Warn("Failed to decompress gzip message, using raw data",
+					zap.Error(err),
+					zap.String("subject", m.Subject))
+			} else {
+				data = decompressed
+			}
+		} else if len(data) >= 4 && data[0] == 's' && data[1] == 'N' && data[2] == 'a' && data[3] == 'P' {
+			// snappy 압축 해제
+			decompressed, err := messaging.Decompress(data, messaging.CompressionSnappy)
+			if err != nil {
+				s.logger.Warn("Failed to decompress snappy message, using raw data",
+					zap.Error(err),
+					zap.String("subject", m.Subject))
+			} else {
+				data = decompressed
+			}
+		}
+
+		// Event 구조체로 파싱 시도
+		var event struct {
+			Type        string                 `json:"type"`
+			WorkspaceID string                 `json:"workspace_id,omitempty"`
+			UserID      string                 `json:"user_id,omitempty"`
+			Data        map[string]interface{} `json:"data"`
+			Timestamp   int64                  `json:"timestamp"`
+		}
+
+		if err := json.Unmarshal(data, &event); err != nil {
+			s.logger.Warn("Failed to parse event data",
+				zap.Error(err),
+				zap.String("subject", m.Subject))
+			return
+		}
+
+		s.handleResourceChange(ctx, event.Type, event.Data, event.WorkspaceID)
+	}
+
+	// VM 이벤트 구독
+	_, err := s.natsConn.Subscribe("cmp.events.vm.*.*.*.created", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to VM created events", zap.Error(err))
+	}
+	_, err = s.natsConn.Subscribe("cmp.events.vm.*.*.*.updated", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to VM updated events", zap.Error(err))
+	}
+	_, err = s.natsConn.Subscribe("cmp.events.vm.*.*.*.deleted", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to VM deleted events", zap.Error(err))
+	}
+
+	// Kubernetes 클러스터 이벤트 구독
+	_, err = s.natsConn.Subscribe("cmp.events.kubernetes.*.*.*.clusters.created", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to Kubernetes cluster created events", zap.Error(err))
+	}
+	_, err = s.natsConn.Subscribe("cmp.events.kubernetes.*.*.*.clusters.updated", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to Kubernetes cluster updated events", zap.Error(err))
+	}
+	_, err = s.natsConn.Subscribe("cmp.events.kubernetes.*.*.*.clusters.deleted", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to Kubernetes cluster deleted events", zap.Error(err))
+	}
+
+	// Network VPC 이벤트 구독
+	_, err = s.natsConn.Subscribe("cmp.events.network.*.*.*.vpcs.created", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to VPC created events", zap.Error(err))
+	}
+	_, err = s.natsConn.Subscribe("cmp.events.network.*.*.*.vpcs.updated", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to VPC updated events", zap.Error(err))
+	}
+	_, err = s.natsConn.Subscribe("cmp.events.network.*.*.*.vpcs.deleted", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to VPC deleted events", zap.Error(err))
+	}
+
+	// Network Subnet 이벤트 구독
+	_, err = s.natsConn.Subscribe("cmp.events.network.*.*.vpcs.*.subnets.created", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to Subnet created events", zap.Error(err))
+	}
+	_, err = s.natsConn.Subscribe("cmp.events.network.*.*.vpcs.*.subnets.updated", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to Subnet updated events", zap.Error(err))
+	}
+	_, err = s.natsConn.Subscribe("cmp.events.network.*.*.vpcs.*.subnets.deleted", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to Subnet deleted events", zap.Error(err))
+	}
+
+	// Network Security Group 이벤트 구독
+	_, err = s.natsConn.Subscribe("cmp.events.network.*.*.*.security-groups.created", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to Security Group created events", zap.Error(err))
+	}
+	_, err = s.natsConn.Subscribe("cmp.events.network.*.*.*.security-groups.updated", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to Security Group updated events", zap.Error(err))
+	}
+	_, err = s.natsConn.Subscribe("cmp.events.network.*.*.*.security-groups.deleted", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to Security Group deleted events", zap.Error(err))
+	}
+
+	// Credential 이벤트 구독
+	_, err = s.natsConn.Subscribe("cmp.events.credential.*.*.created", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to Credential created events", zap.Error(err))
+	}
+	_, err = s.natsConn.Subscribe("cmp.events.credential.*.*.updated", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to Credential updated events", zap.Error(err))
+	}
+	_, err = s.natsConn.Subscribe("cmp.events.credential.*.*.deleted", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to Credential deleted events", zap.Error(err))
+	}
+
+	// Workspace Member 이벤트 구독 (workspace_id는 이벤트에 포함됨)
+	_, err = s.natsConn.Subscribe("cmp.events.workspace.*.members.created", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to Workspace Member created events", zap.Error(err))
+	}
+	_, err = s.natsConn.Subscribe("cmp.events.workspace.*.members.deleted", handleNATSMessage)
+	if err != nil {
+		s.logger.Warn("Failed to subscribe to Workspace Member deleted events", zap.Error(err))
+	}
+
+	s.logger.Info("Dashboard event subscriptions started")
+	return nil
+}
+
+// handleResourceChange 리소스 변경 이벤트를 처리합니다
+func (s *Service) handleResourceChange(ctx context.Context, eventType string, eventData map[string]interface{}, eventWorkspaceID string) {
+	var workspaceID string
+	var credentialID *string
+	var region *string
+
+	// Workspace ID 추출
+	if eventWorkspaceID != "" {
+		workspaceID = eventWorkspaceID
+	} else if wsID, ok := eventData["workspace_id"].(string); ok && wsID != "" {
+		workspaceID = wsID
+	} else if cid, ok := eventData["credential_id"].(string); ok && cid != "" {
+		// Credential ID가 있으면 credential에서 workspace_id 추출
+		credentialUUID, err := uuid.Parse(cid)
+		if err != nil {
+			s.logger.Warn("Failed to parse credential_id",
+				zap.String("event_type", eventType),
+				zap.String("credential_id", cid),
+				zap.Error(err))
+			return
+		}
+
+		credential, err := s.credentialRepo.GetByID(credentialUUID)
+		if err != nil || credential == nil {
+			s.logger.Warn("Failed to get credential for workspace_id extraction",
+				zap.String("event_type", eventType),
+				zap.String("credential_id", cid),
+				zap.Error(err))
+			return
+		}
+
+		workspaceID = credential.WorkspaceID.String()
+		credentialID = &cid
+	} else {
+		s.logger.Debug("Event missing workspace_id and credential_id, skipping",
+			zap.String("event_type", eventType),
+			zap.Any("event_data", eventData))
+		return
+	}
+
+	// Credential ID 추출 (이미 위에서 추출했으면 그대로 사용)
+	if credentialID == nil {
+		if cid, ok := eventData["credential_id"].(string); ok && cid != "" {
+			credentialID = &cid
+		}
+	}
+
+	// Region 추출
+	if r, ok := eventData["region"].(string); ok && r != "" {
+		region = &r
+	}
+
+	// Debounced 재계산 스케줄링
+	s.scheduleSummaryRecalculation(workspaceID, credentialID, region)
+}
+
+// scheduleSummaryRecalculation 재계산을 스케줄링합니다 (Debouncing)
+func (s *Service) scheduleSummaryRecalculation(workspaceID string, credentialID *string, region *string) {
+	s.debounceMutex.Lock()
+	defer s.debounceMutex.Unlock()
+
+	// Pending recalculations에 추가
+	if s.pendingRecalculations == nil {
+		s.pendingRecalculations = make(map[string]map[string]bool)
+	}
+	if s.pendingRecalculations[workspaceID] == nil {
+		s.pendingRecalculations[workspaceID] = make(map[string]bool)
+	}
+
+	// Filter key 생성: credential_id:region
+	filterKey := fmt.Sprintf("%s:%s",
+		getStringValue(credentialID),
+		getStringValue(region))
+	s.pendingRecalculations[workspaceID][filterKey] = true
+
+	// 기존 타이머 취소
+	if s.debounceTimer != nil {
+		s.debounceTimer.Stop()
+	}
+
+	// 새 타이머 설정 (500ms 후 실행)
+	s.debounceTimer = time.AfterFunc(500*time.Millisecond, func() {
+		s.processPendingRecalculations()
+	})
+}
+
+// processPendingRecalculations 대기 중인 재계산을 처리합니다
+func (s *Service) processPendingRecalculations() {
+	s.debounceMutex.Lock()
+	workspaces := s.pendingRecalculations
+	s.pendingRecalculations = make(map[string]map[string]bool)
+	s.debounceMutex.Unlock()
+
+	// 각 workspace별로 재계산
+	for workspaceID, filters := range workspaces {
+		for filterKey := range filters {
+			// filterKey 파싱: "credential_id:region"
+			parts := strings.Split(filterKey, ":")
+			var credentialID *string
+			var region *string
+
+			if len(parts) >= 1 && parts[0] != "" {
+				credentialID = &parts[0]
+			}
+			if len(parts) >= 2 && parts[1] != "" {
+				region = &parts[1]
+			}
+
+			// Dashboard Summary 재계산 및 이벤트 발행
+			ctx := context.Background()
+			_, err := s.GetDashboardSummary(ctx, workspaceID, credentialID, region)
+			if err != nil {
+				s.logger.Error("Failed to recalculate dashboard summary",
+					zap.String("workspace_id", workspaceID),
+					zap.String("credential_id", getStringValue(credentialID)),
+					zap.String("region", getStringValue(region)),
+					zap.Error(err))
+				continue
+			}
+
+			// 이벤트는 GetDashboardSummary 내부에서 자동 발행됨
+			s.logger.Debug("Dashboard summary recalculated",
+				zap.String("workspace_id", workspaceID),
+				zap.String("credential_id", getStringValue(credentialID)),
+				zap.String("region", getStringValue(region)))
+		}
+	}
+}
+
+// getStringValue 포인터 문자열을 안전하게 반환합니다
+func getStringValue(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

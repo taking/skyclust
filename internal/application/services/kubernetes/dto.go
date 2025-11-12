@@ -42,22 +42,24 @@ type CreateClusterResponse struct {
 
 // ListClustersRequest represents a request to list clusters
 type ListClustersRequest struct {
-	CredentialID string `json:"credential_id" validate:"required,uuid"`
-	Region       string `json:"region,omitempty"`
+	CredentialID  string `json:"credential_id" validate:"required,uuid"`
+	Region        string `json:"region,omitempty"`
+	ResourceGroup string `json:"resource_group,omitempty" form:"resource_group"` // Azure-specific: Resource Group filter
 }
 
 // ClusterInfo represents basic cluster information for listing
 type ClusterInfo struct {
-	ID        string            `json:"id"`
-	Name      string            `json:"name"`
-	Version   string            `json:"version"`
-	Status    string            `json:"status"`
-	Region    string            `json:"region"`
-	Zone      string            `json:"zone,omitempty"`
-	Endpoint  string            `json:"endpoint,omitempty"`
-	CreatedAt string            `json:"created_at,omitempty"`
-	UpdatedAt string            `json:"updated_at,omitempty"`
-	Tags      map[string]string `json:"tags,omitempty"`
+	ID            string            `json:"id"`
+	Name          string            `json:"name"`
+	Version       string            `json:"version"`
+	Status        string            `json:"status"`
+	Region        string            `json:"region"`
+	Zone          string            `json:"zone,omitempty"`
+	Endpoint      string            `json:"endpoint,omitempty"`
+	ResourceGroup string            `json:"resource_group,omitempty"` // Azure-specific: Resource Group name
+	CreatedAt     string            `json:"created_at,omitempty"`
+	UpdatedAt     string            `json:"updated_at,omitempty"`
+	Tags          map[string]string `json:"tags,omitempty"`
 
 	// Network information
 	NetworkConfig *NetworkConfigInfo `json:"network_config,omitempty"`

@@ -6,7 +6,7 @@
 'use client';
 
 import { Suspense } from 'react';
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
@@ -29,6 +29,9 @@ import { useTranslation } from '@/hooks/use-translation';
 import { DataProcessor } from '@/lib/data';
 import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
 import { useResourceListState } from '@/hooks/use-resource-list-state';
+import { sseService } from '@/services/sse';
+import { log } from '@/lib/logging';
+import { useSSEStatus } from '@/hooks/use-sse-status';
 import {
   useVPCActions,
   VPCsPageHeader,
@@ -64,6 +67,67 @@ function VPCsPageContent() {
     resourceType: 'network',
     updateUrl: true,
   });
+
+  // SSE 상태 확인
+  const { status: sseStatus } = useSSEStatus();
+
+  // SSE 이벤트 구독 (VPC 실시간 업데이트)
+  useEffect(() => {
+    // SSE 연결 완료 확인 (clientId는 subscribeToEvent 내부에서 대기 처리)
+    if (!sseStatus.isConnected) {
+      log.debug('[VPCs Page] SSE not connected, skipping subscription', {
+        isConnected: sseStatus.isConnected,
+        readyState: sseStatus.readyState,
+      });
+      return;
+    }
+
+    const filters = {
+      credential_ids: selectedCredentialId ? [selectedCredentialId] : undefined,
+      regions: selectedRegion ? [selectedRegion] : undefined,
+    };
+
+    const subscribeToVPCEvents = async () => {
+      try {
+        await sseService.subscribeToEvent('network-vpc-created', filters);
+        await sseService.subscribeToEvent('network-vpc-updated', filters);
+        await sseService.subscribeToEvent('network-vpc-deleted', filters);
+        await sseService.subscribeToEvent('network-vpc-list', filters);
+        
+        log.debug('[VPCs Page] Subscribed to VPC events', { 
+          filters,
+          clientId: sseService.getClientId(),
+        });
+      } catch (error) {
+        log.error('[VPCs Page] Failed to subscribe to VPC events', error, {
+          service: 'SSE',
+          action: 'subscribeVPCEvents',
+        });
+      }
+    };
+
+    subscribeToVPCEvents();
+
+    // Cleanup: 페이지를 떠날 때 또는 필터가 변경될 때 구독 해제
+    return () => {
+      const unsubscribe = async () => {
+        try {
+          await sseService.unsubscribeFromEvent('network-vpc-created', filters);
+          await sseService.unsubscribeFromEvent('network-vpc-updated', filters);
+          await sseService.unsubscribeFromEvent('network-vpc-deleted', filters);
+          await sseService.unsubscribeFromEvent('network-vpc-list', filters);
+          
+          log.debug('[VPCs Page] Unsubscribed from VPC events', { filters });
+        } catch (error) {
+          log.warn('[VPCs Page] Failed to unsubscribe from VPC events', error, {
+            service: 'SSE',
+            action: 'unsubscribeVPCEvents',
+          });
+        }
+      };
+      unsubscribe();
+    };
+  }, [selectedCredentialId, selectedRegion, sseStatus.isConnected]);
 
   // 공통 리스트 상태 관리
   const {

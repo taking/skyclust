@@ -8,7 +8,7 @@
 'use client';
 
 import { Suspense } from 'react';
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useEffect } from 'react';
 import * as React from 'react';
 import dynamic from 'next/dynamic';
 import { ResourceListPage } from '@/components/common/resource-list-page';
@@ -32,6 +32,8 @@ import { VMPageHeader, useVMs, useVMActions } from '@/features/vms';
 import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
 import { log } from '@/lib/logging';
+import { sseService } from '@/services/sse';
+import { useSSEStatus } from '@/hooks/use-sse-status';
 import type { CreateVMForm, VM } from '@/lib/types';
 
 // Dynamic import for VMTable
@@ -59,6 +61,62 @@ function VMsPageContent() {
     resourceType: 'compute',
     updateUrl: true,
   });
+
+  // SSE 상태 확인
+  const { status: sseStatus } = useSSEStatus();
+
+  // SSE 이벤트 구독 (VM 실시간 업데이트)
+  useEffect(() => {
+    // SSE 연결 완료 확인 (clientId는 subscribeToEvent 내부에서 대기 처리)
+    if (!sseStatus.isConnected || !currentWorkspace?.id) {
+      log.debug('[VMs Page] SSE not connected or workspace not available, skipping subscription', {
+        isConnected: sseStatus.isConnected,
+        readyState: sseStatus.readyState,
+        workspaceId: currentWorkspace?.id,
+      });
+      return;
+    }
+
+    const subscribeToVMEvents = async () => {
+      try {
+        await sseService.subscribeToEvent('vm-created');
+        await sseService.subscribeToEvent('vm-updated');
+        await sseService.subscribeToEvent('vm-deleted');
+        await sseService.subscribeToEvent('vm-list');
+        
+        log.debug('[VMs Page] Subscribed to VM events', {
+          clientId: sseService.getClientId(),
+        });
+      } catch (error) {
+        log.error('[VMs Page] Failed to subscribe to VM events', error, {
+          service: 'SSE',
+          action: 'subscribeVMEvents',
+        });
+      }
+    };
+
+    subscribeToVMEvents();
+
+    // Cleanup: 페이지를 떠날 때 구독 해제
+    return () => {
+      const unsubscribe = async () => {
+        try {
+          await sseService.unsubscribeFromEvent('vm-created');
+          await sseService.unsubscribeFromEvent('vm-updated');
+          await sseService.unsubscribeFromEvent('vm-deleted');
+          await sseService.unsubscribeFromEvent('vm-list');
+          
+          log.debug('[VMs Page] Unsubscribed from VM events');
+        } catch (error) {
+          log.warn('[VMs Page] Failed to unsubscribe from VM events', error, {
+            service: 'SSE',
+            action: 'unsubscribeVMEvents',
+          });
+        }
+      };
+      unsubscribe();
+    };
+  }, [currentWorkspace?.id, sseStatus.isConnected]);
 
   // Local state
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useCreateDialog(EVENTS.CREATE_DIALOG.VM);

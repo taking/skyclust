@@ -12,10 +12,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Pagination } from '@/components/ui/pagination';
 import { VirtualizedTable } from '@/components/common/virtualized-table';
 import { ClusterRow } from './cluster-row';
-import type { KubernetesCluster } from '@/lib/types';
+import type { KubernetesCluster, CloudProvider } from '@/lib/types';
 
 interface ClusterTableProps {
   clusters: KubernetesCluster[];
+  provider?: CloudProvider;
   selectedIds: string[];
   onSelectionChange: (ids: string[]) => void;
   onDelete: (clusterName: string, region: string) => void;
@@ -31,6 +32,7 @@ interface ClusterTableProps {
 
 function ClusterTableComponent({
   clusters,
+  provider,
   selectedIds,
   onSelectionChange,
   onDelete,
@@ -43,6 +45,7 @@ function ClusterTableComponent({
   onPageChange,
   onPageSizeChange,
 }: ClusterTableProps) {
+  const isAzure = provider === 'azure';
   // Virtual scrolling은 50개 이상일 때만 활성화
   const shouldUseVirtualScrolling = clusters.length >= 50;
   const allSelected = useMemo(
@@ -72,6 +75,7 @@ function ClusterTableComponent({
       <TableRow key={clusterId}>
         <ClusterRow
           cluster={cluster}
+          provider={provider}
           isSelected={isSelected}
           onSelect={(checked) => handleSelectCluster(clusterId, checked)}
           onDelete={onDelete}
@@ -81,7 +85,7 @@ function ClusterTableComponent({
         />
       </TableRow>
     );
-  }, [selectedIds, handleSelectCluster, onDelete, onDownloadKubeconfig, isDeleting, isDownloading]);
+  }, [selectedIds, handleSelectCluster, onDelete, onDownloadKubeconfig, isDeleting, isDownloading, provider]);
 
   if (shouldUseVirtualScrolling) {
     return (
@@ -100,10 +104,12 @@ function ClusterTableComponent({
                 />
               </TableHead>
               <TableHead>Name</TableHead>
-              <TableHead>Version</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Version</TableHead>
               <TableHead>Region</TableHead>
+              {isAzure && <TableHead>Resource Group</TableHead>}
               <TableHead>Endpoint</TableHead>
+              <TableHead>Created</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
           )}
@@ -138,10 +144,12 @@ function ClusterTableComponent({
               />
             </TableHead>
             <TableHead>Name</TableHead>
-            <TableHead>Version</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Version</TableHead>
             <TableHead>Region</TableHead>
+            {isAzure && <TableHead>Resource Group</TableHead>}
             <TableHead>Endpoint</TableHead>
+            <TableHead>Created</TableHead>
             <TableHead>Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -154,6 +162,7 @@ function ClusterTableComponent({
               <TableRow key={clusterId}>
                 <ClusterRow
                   cluster={cluster}
+                  provider={provider}
                   isSelected={isSelected}
                   onSelect={(checked) => handleSelectCluster(clusterId, checked)}
                   onDelete={onDelete}

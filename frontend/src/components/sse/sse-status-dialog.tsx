@@ -6,7 +6,7 @@
 
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   Sheet,
   SheetContent,
@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useSSEStatus } from '@/hooks/use-sse-status';
 import { useTranslation } from '@/hooks/use-translation';
-import { formatDistanceToNow, format } from 'date-fns';
+import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { RefreshCw, CheckCircle2, XCircle, Clock, Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -26,6 +26,32 @@ import { cn } from '@/lib/utils';
 interface SSEStatusDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+/**
+ * 연결 시간을 시분초 형식으로 포맷팅하는 함수
+ */
+function formatDuration(seconds: number, locale: string): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  if (hours > 0) {
+    if (locale === 'ko') {
+      return `${hours}시간 ${minutes}분 ${secs}초`;
+    }
+    return `${hours}h ${minutes}m ${secs}s`;
+  }
+  if (minutes > 0) {
+    if (locale === 'ko') {
+      return `${minutes}분 ${secs}초`;
+    }
+    return `${minutes}m ${secs}s`;
+  }
+  if (locale === 'ko') {
+    return `${secs}초`;
+  }
+  return `${secs}s`;
 }
 
 /**
@@ -39,34 +65,32 @@ interface SSEStatusDialogProps {
 export function SSEStatusDialog({ open, onOpenChange }: SSEStatusDialogProps) {
   const { status, reconnect } = useSSEStatus();
   const { t, locale } = useTranslation();
+  const [connectedDuration, setConnectedDuration] = useState<string | null>(null);
 
   const localeObj = locale === 'ko' ? ko : undefined;
 
-  // 연결 시간 포맷팅
-  const connectedDuration = useMemo(() => {
-    if (!status.connectedAt) {
-      return null;
+  // 연결 시간을 1초마다 업데이트 (실시간 증가)
+  useEffect(() => {
+    if (!status.connectedAt || !status.isConnected) {
+      setConnectedDuration(null);
+      return;
     }
 
-    try {
-      return formatDistanceToNow(status.connectedAt, {
-        addSuffix: false,
-        locale: localeObj,
-      });
-    } catch {
-      const seconds = Math.floor((Date.now() - status.connectedAt.getTime()) / 1000);
-      const minutes = Math.floor(seconds / 60);
-      const hours = Math.floor(minutes / 60);
-      
-      if (hours > 0) {
-        return `${hours}${locale === 'ko' ? '시간' : 'h'} ${minutes % 60}${locale === 'ko' ? '분' : 'm'}`;
-      }
-      if (minutes > 0) {
-        return `${minutes}${locale === 'ko' ? '분' : 'm'}`;
-      }
-      return `${seconds}${locale === 'ko' ? '초' : 's'}`;
-    }
-  }, [status.connectedAt, locale, localeObj]);
+    const updateDuration = () => {
+      const now = Date.now();
+      const connectedAt = status.connectedAt!.getTime();
+      const seconds = Math.floor((now - connectedAt) / 1000);
+      setConnectedDuration(formatDuration(seconds, locale));
+    };
+
+    // 즉시 업데이트
+    updateDuration();
+
+    // 1초마다 업데이트
+    const interval = setInterval(updateDuration, 1000);
+
+    return () => clearInterval(interval);
+  }, [status.connectedAt, status.isConnected, locale]);
 
   // 마지막 업데이트 시간 포맷팅
   const lastUpdateFormatted = useMemo(() => {

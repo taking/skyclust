@@ -8,7 +8,7 @@
 'use client';
 
 import { Suspense } from 'react';
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
@@ -31,6 +31,9 @@ import { useCredentialContext } from '@/hooks/use-credential-context';
 import { useCredentialAutoSelect } from '@/hooks/use-credential-auto-select';
 import { useTranslation } from '@/hooks/use-translation';
 import { useResourceListState } from '@/hooks/use-resource-list-state';
+import { sseService } from '@/services/sse';
+import { log } from '@/lib/logging';
+import { useSSEStatus } from '@/hooks/use-sse-status';
 import {
   ClusterPageHeader,
   useKubernetesClusters,
@@ -57,7 +60,7 @@ const ClusterTable = dynamic(
   () => import('@/features/kubernetes').then(mod => ({ default: mod.ClusterTable })),
   { 
     ssr: false,
-    loading: () => <TableSkeleton columns={6} rows={5} showCheckbox={true} />,
+    loading: () => <TableSkeleton columns={8} rows={5} showCheckbox={true} />, // Updated: 8 columns (Name, Status, Version, Region, Resource Group (Azure), Endpoint, Created, Actions)
   }
 );
 
@@ -78,6 +81,67 @@ function KubernetesClustersPageContent() {
     resourceType: 'kubernetes',
     updateUrl: true,
   });
+
+  // SSE 상태 확인
+  const { status: sseStatus } = useSSEStatus();
+
+  // SSE 이벤트 구독 (Kubernetes 클러스터 실시간 업데이트)
+  useEffect(() => {
+    // SSE 연결 완료 확인 (clientId는 subscribeToEvent 내부에서 대기 처리)
+    if (!sseStatus.isConnected) {
+      log.debug('[Kubernetes Clusters Page] SSE not connected, skipping subscription', {
+        isConnected: sseStatus.isConnected,
+        readyState: sseStatus.readyState,
+      });
+      return;
+    }
+
+    const filters = {
+      credential_ids: selectedCredentialId ? [selectedCredentialId] : undefined,
+      regions: selectedRegion ? [selectedRegion] : undefined,
+    };
+
+    const subscribeToKubernetesEvents = async () => {
+      try {
+        await sseService.subscribeToEvent('kubernetes-cluster-created', filters);
+        await sseService.subscribeToEvent('kubernetes-cluster-updated', filters);
+        await sseService.subscribeToEvent('kubernetes-cluster-deleted', filters);
+        await sseService.subscribeToEvent('kubernetes-cluster-list', filters);
+        
+        log.debug('[Kubernetes Clusters Page] Subscribed to Kubernetes cluster events', { 
+          filters,
+          clientId: sseService.getClientId(),
+        });
+      } catch (error) {
+        log.error('[Kubernetes Clusters Page] Failed to subscribe to Kubernetes cluster events', error, {
+          service: 'SSE',
+          action: 'subscribeKubernetesEvents',
+        });
+      }
+    };
+
+    subscribeToKubernetesEvents();
+
+    // Cleanup: 페이지를 떠날 때 또는 필터가 변경될 때 구독 해제
+    return () => {
+      const unsubscribe = async () => {
+        try {
+          await sseService.unsubscribeFromEvent('kubernetes-cluster-created', filters);
+          await sseService.unsubscribeFromEvent('kubernetes-cluster-updated', filters);
+          await sseService.unsubscribeFromEvent('kubernetes-cluster-deleted', filters);
+          await sseService.unsubscribeFromEvent('kubernetes-cluster-list', filters);
+          
+          log.debug('[Kubernetes Clusters Page] Unsubscribed from Kubernetes cluster events', { filters });
+        } catch (error) {
+          log.warn('[Kubernetes Clusters Page] Failed to unsubscribe from Kubernetes cluster events', error, {
+            service: 'SSE',
+            action: 'unsubscribeKubernetesEvents',
+          });
+        }
+      };
+      unsubscribe();
+    };
+  }, [selectedCredentialId, selectedRegion, sseStatus.isConnected]);
 
   // Local state
   const router = useRouter();
@@ -394,20 +458,21 @@ function KubernetesClustersPageContent() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <ClusterTable
-                  clusters={paginatedClusters}
-                  selectedIds={selectedClusterIds}
-                  onSelectionChange={setSelectedClusterIds}
-                  onDelete={handleDeleteCluster}
-                  onDownloadKubeconfig={handleDownloadKubeconfig}
-                  isDeleting={deleteClusterMutation.isPending}
-                  isDownloading={downloadKubeconfigMutation.isPending}
-                  page={page}
-                  pageSize={pageSize}
-                  total={filteredClusters.length}
-                  onPageChange={setPage}
-                  onPageSizeChange={handlePageSizeChange}
-                />
+            <ClusterTable
+              clusters={paginatedClusters}
+              provider={selectedProvider}
+              selectedIds={selectedClusterIds}
+              onSelectionChange={setSelectedClusterIds}
+              onDelete={handleDeleteCluster}
+              onDownloadKubeconfig={handleDownloadKubeconfig}
+              isDeleting={deleteClusterMutation.isPending}
+              isDownloading={downloadKubeconfigMutation.isPending}
+              page={page}
+              pageSize={pageSize}
+              total={filteredClusters.length}
+              onPageChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
+            />
               </CardContent>
             </Card>
 

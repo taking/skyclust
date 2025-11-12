@@ -72,9 +72,10 @@ type SecurityGroupRuleInfo struct {
 
 // ListVPCsRequest represents a request to list VPCs
 type ListVPCsRequest struct {
-	CredentialID string `json:"credential_id" validate:"required,uuid"`
-	Region       string `json:"region,omitempty"`
-	VPCID        string `json:"vpc_id,omitempty"`
+	CredentialID  string `json:"credential_id" validate:"required,uuid"`
+	Region        string `json:"region,omitempty"`
+	VPCID         string `json:"vpc_id,omitempty"`
+	ResourceGroup string `json:"resource_group,omitempty" form:"resource_group"` // Azure-specific: Resource Group filter
 	// Pagination parameters
 	Page  int `json:"page,omitempty" form:"page" validate:"omitempty,min=1"`
 	Limit int `json:"limit,omitempty" form:"limit" validate:"omitempty,min=1,max=100"`
@@ -93,10 +94,11 @@ type ListVPCsResponse struct {
 
 // ListSubnetsRequest represents a request to list subnets
 type ListSubnetsRequest struct {
-	CredentialID string `json:"credential_id" validate:"required,uuid"`
-	VPCID        string `json:"vpc_id,omitempty"`
-	Region       string `json:"region,omitempty"`
-	SubnetID     string `json:"subnet_id,omitempty"`
+	CredentialID  string `json:"credential_id" validate:"required,uuid"`
+	VPCID         string `json:"vpc_id,omitempty"`
+	Region        string `json:"region,omitempty"`
+	SubnetID      string `json:"subnet_id,omitempty"`
+	ResourceGroup string `json:"resource_group,omitempty" form:"resource_group"` // Azure-specific: Resource Group filter
 	// Pagination parameters
 	Page  int `json:"page,omitempty" form:"page" validate:"omitempty,min=1"`
 	Limit int `json:"limit,omitempty" form:"limit" validate:"omitempty,min=1,max=100"`
@@ -119,6 +121,7 @@ type ListSecurityGroupsRequest struct {
 	VPCID           string `json:"vpc_id,omitempty"`
 	Region          string `json:"region,omitempty"`
 	SecurityGroupID string `json:"security_group_id,omitempty"`
+	ResourceGroup   string `json:"resource_group,omitempty" form:"resource_group"` // Azure-specific: Resource Group filter
 	// Pagination parameters
 	Page  int `json:"page,omitempty" form:"page" validate:"omitempty,min=1"`
 	Limit int `json:"limit,omitempty" form:"limit" validate:"omitempty,min=1,max=100"`

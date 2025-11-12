@@ -27,8 +27,7 @@ body:json {
       "subscription_id": "{{azure_subscription_id}}",
       "client_id": "{{azure_client_id}}",
       "client_secret": "{{azure_client_secret}}",
-      "tenant_id": "{{azure_tenant_id}}",
-      "resource_group": "skyclust-rg"
+      "tenant_id": "{{azure_tenant_id}}"
     }
   }
 }
@@ -96,7 +95,6 @@ docs {
     - `client_id`: Service Principal App ID (필수)
     - `client_secret`: Service Principal Password (필수)
     - `tenant_id`: Azure Tenant ID (필수)
-    - `resource_group`: 기본 Resource Group 이름 (선택)
   
   ## Response
   
@@ -130,6 +128,4 @@ docs {
   
   1. **보안**: `client_secret`은 안전하게 보관해야 합니다
   2. **만료**: Service Principal의 비밀번호는 만료될 수 있으므로 주기적으로 갱신해야 합니다
-  3. **Resource Group**: 기본 Resource Group이 없으면 자동으로 생성되지 않으므로 미리 생성해야 합니다
 }
-

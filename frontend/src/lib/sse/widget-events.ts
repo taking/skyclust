@@ -100,24 +100,12 @@ export const WIDGET_EVENT_MAP: Record<WidgetType, string[]> = {
 
 /**
  * 대시보드 요약 정보에 필요한 이벤트 타입 목록
+ * 
+ * 참고: Dashboard summary는 backend에서 자동으로 재계산되어
+ * 'dashboard-summary-updated' 이벤트 하나만 구독하면 됩니다.
+ * 개별 리소스 이벤트는 구독하지 않습니다.
  */
-export const DASHBOARD_SUMMARY_EVENTS = [
-  'vm-created',
-  'vm-updated',
-  'vm-deleted',
-  'kubernetes-cluster-created',
-  'kubernetes-cluster-updated',
-  'kubernetes-cluster-deleted',
-  'network-vpc-created',
-  'network-vpc-updated',
-  'network-vpc-deleted',
-  'network-subnet-created',
-  'network-subnet-updated',
-  'network-subnet-deleted',
-  'network-security-group-created',
-  'network-security-group-updated',
-  'network-security-group-deleted',
-] as const;
+export const DASHBOARD_SUMMARY_EVENTS = [] as const;
 
 /**
  * 위젯 목록에서 필요한 모든 이벤트 타입을 추출합니다.

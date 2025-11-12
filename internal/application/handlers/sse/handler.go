@@ -233,6 +233,17 @@ func (h *SSEHandler) setupNATSSubscriptions() {
 	_, _ = h.natsConn.Subscribe("cmp.events.network.*.*.*.security-groups.deleted", handleNATSMessage(EventTypeNetworkSecurityGroupDeleted))
 	_, _ = h.natsConn.Subscribe("cmp.events.network.*.*.*.security-groups.list", handleNATSMessage(EventTypeNetworkSecurityGroupList))
 
+	// Azure Resource Group 이벤트 구독
+	_, _ = h.natsConn.Subscribe("cmp.events.azure.*.*.resource-groups.created", handleNATSMessage(EventTypeAzureResourceGroupCreated))
+	_, _ = h.natsConn.Subscribe("cmp.events.azure.*.*.resource-groups.updated", handleNATSMessage(EventTypeAzureResourceGroupUpdated))
+	_, _ = h.natsConn.Subscribe("cmp.events.azure.*.*.resource-groups.deleted", handleNATSMessage(EventTypeAzureResourceGroupDeleted))
+	_, _ = h.natsConn.Subscribe("cmp.events.azure.*.*.resource-groups.list", handleNATSMessage(EventTypeAzureResourceGroupList))
+
+	// Dashboard Summary 이벤트 구독
+	// dashboard-summary-updated 이벤트는 dashboard service에서 직접 발행되므로
+	// messaging bus를 통해 전달됩니다 (NATS topic: dashboard.summary.updated)
+	_, _ = h.natsConn.Subscribe("dashboard.summary.updated", handleNATSMessage(EventTypeDashboardSummaryUpdated))
+
 	h.logger.Info("NATS subscriptions configured for SSE")
 }
 

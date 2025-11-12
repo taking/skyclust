@@ -18,8 +18,10 @@ const isDevelopment = process.env.NODE_ENV === 'development';
 interface CredentialContextState {
   selectedCredentialId: string | null;
   selectedRegion: string | null;
+  selectedResourceGroup: string | null; // Azure-specific: Resource Group selection
   setSelectedCredential: (credentialId: string | null) => void;
   setSelectedRegion: (region: string | null) => void;
+  setSelectedResourceGroup: (resourceGroup: string | null) => void;
   clearSelection: () => void;
 }
 
@@ -27,6 +29,7 @@ const storeCreator: StateCreator<CredentialContextState> = (set) => ({
   // 초기 상태
   selectedCredentialId: null,
   selectedRegion: null,
+  selectedResourceGroup: null,
   
   /**
    * 선택된 자격 증명 ID 설정
@@ -43,11 +46,18 @@ const storeCreator: StateCreator<CredentialContextState> = (set) => ({
     set({ selectedRegion: region }),
   
   /**
+   * 선택된 Resource Group 설정 (Azure 전용)
+   * @param resourceGroup - Resource Group (null이면 선택 해제)
+   */
+  setSelectedResourceGroup: (resourceGroup) => 
+    set({ selectedResourceGroup: resourceGroup }),
+  
+  /**
    * 선택 초기화
-   * 자격 증명과 리전 선택을 모두 초기화합니다.
+   * 자격 증명, 리전, Resource Group 선택을 모두 초기화합니다.
    */
   clearSelection: () => 
-    set({ selectedCredentialId: null, selectedRegion: null }),
+    set({ selectedCredentialId: null, selectedRegion: null, selectedResourceGroup: null }),
 });
 
 const persistedStore = persist(
@@ -58,6 +68,7 @@ const persistedStore = persist(
     partialize: (state) => ({
       selectedCredentialId: state.selectedCredentialId,
       selectedRegion: state.selectedRegion,
+      selectedResourceGroup: state.selectedResourceGroup,
     }),
   }
 );

@@ -16,9 +16,11 @@ export function useCredentialContext() {
   const searchParams = useSearchParams();
   const { 
     selectedCredentialId, 
-    selectedRegion, 
+    selectedRegion,
+    selectedResourceGroup,
     setSelectedCredential, 
-    setSelectedRegion 
+    setSelectedRegion,
+    setSelectedResourceGroup,
   } = useCredentialContextStore();
 
   // Check if we should sync for this path
@@ -30,6 +32,7 @@ export function useCredentialContext() {
   // useRef를 사용하여 이전 값 추적하여 무한 루프 방지
   const prevUrlCredentialIdRef = useRef<string | null>(null);
   const prevUrlRegionRef = useRef<string | null>(null);
+  const prevUrlResourceGroupRef = useRef<string | null>(null);
 
   // Sync from URL to store on mount and when URL changes (read-only)
   // URL 업데이트는 Header 컴포넌트에서만 처리합니다
@@ -39,9 +42,12 @@ export function useCredentialContext() {
 
     const urlCredentialId = searchParams.get('credentialId');
     const urlRegion = searchParams.get('region');
+    const urlResourceGroup = searchParams.get('resourceGroup');
 
     // URL이 변경되지 않았으면 스킵 (무한 루프 방지)
-    if (urlCredentialId === prevUrlCredentialIdRef.current && urlRegion === prevUrlRegionRef.current) {
+    if (urlCredentialId === prevUrlCredentialIdRef.current && 
+        urlRegion === prevUrlRegionRef.current &&
+        urlResourceGroup === prevUrlResourceGroupRef.current) {
       return;
     }
 
@@ -62,13 +68,24 @@ export function useCredentialContext() {
       prevUrlRegionRef.current = null;
     }
     // URL이 없을 때 store를 초기화하지 않음 (Header에서 Store → URL 동기화 처리)
-  }, [searchParams, shouldSync, selectedCredentialId, selectedRegion, setSelectedCredential, setSelectedRegion]);
+
+    // Sync resource group from URL to store only (Azure-specific)
+    if (urlResourceGroup !== null && urlResourceGroup !== selectedResourceGroup) {
+      setSelectedResourceGroup(urlResourceGroup || null);
+      prevUrlResourceGroupRef.current = urlResourceGroup;
+    } else if (urlResourceGroup === null) {
+      prevUrlResourceGroupRef.current = null;
+    }
+    // URL이 없을 때 store를 초기화하지 않음 (Header에서 Store → URL 동기화 처리)
+  }, [searchParams, shouldSync, selectedCredentialId, selectedRegion, selectedResourceGroup, setSelectedCredential, setSelectedRegion, setSelectedResourceGroup]);
 
   return {
     selectedCredentialId,
     selectedRegion,
+    selectedResourceGroup,
     setSelectedCredential,
     setSelectedRegion,
+    setSelectedResourceGroup,
   };
 }
 

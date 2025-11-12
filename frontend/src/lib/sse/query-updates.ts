@@ -12,10 +12,13 @@ import type {
   NetworkSubnetEventData,
   NetworkSecurityGroupEventData,
   VMEventData,
+  AzureResourceGroupEventData,
+  DashboardSummaryEventData,
 } from '@/lib/types/sse-events';
 import type { VM } from '@/lib/types/vm';
 import type { KubernetesCluster } from '@/lib/types/kubernetes';
 import type { VPC, Subnet, SecurityGroup } from '@/lib/types/network';
+import type { ResourceGroupInfo } from '@/services/resource-group';
 import { log } from '@/lib/logging';
 
 /**
@@ -577,5 +580,164 @@ export function applySecurityGroupDeletedUpdate(
       return filtered;
     }
   );
+}
+
+/**
+ * Azure Resource Group 생성 이벤트를 캐시에 반영
+ */
+export function applyAzureResourceGroupCreatedUpdate(
+  queryClient: QueryClient,
+  eventData: AzureResourceGroupEventData
+): void {
+  const { provider, credentialId, region } = eventData;
+  const resourceGroup = (eventData as unknown as {
+    resourceGroup?: ResourceGroupInfo;
+    data?: { resourceGroup?: ResourceGroupInfo };
+  }).resourceGroup ||
+  (eventData as unknown as { data?: { resourceGroup?: ResourceGroupInfo } }).data?.resourceGroup;
+
+  if (!resourceGroup) {
+    // Resource Group 객체가 없으면 무효화만 수행
+    log.debug('[SSE Query Update] Resource Group created event missing resourceGroup object, using invalidation', { eventData });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.azureResourceGroups.list(credentialId),
+    });
+    return;
+  }
+
+  // 목록 캐시에 추가 (실시간 업데이트)
+  queryClient.setQueryData<ResourceGroupInfo[]>(
+    queryKeys.azureResourceGroups.list(credentialId),
+    (oldData) => {
+      if (!oldData) return [resourceGroup];
+      // 중복 체크
+      if (oldData.some((rg) => rg.name === resourceGroup.name)) {
+        return oldData;
+      }
+      log.debug('[SSE Query Update] Real-time added Resource Group to list cache', { resourceGroupName: resourceGroup.name });
+      return [...oldData, resourceGroup];
+    }
+  );
+}
+
+/**
+ * Azure Resource Group 업데이트 이벤트를 캐시에 반영
+ */
+export function applyAzureResourceGroupUpdatedUpdate(
+  queryClient: QueryClient,
+  eventData: AzureResourceGroupEventData
+): void {
+  const { provider, credentialId, region, resourceGroupName } = eventData;
+  const updatedResourceGroup = (eventData as unknown as {
+    resourceGroup?: ResourceGroupInfo;
+    data?: { resourceGroup?: ResourceGroupInfo };
+  }).resourceGroup ||
+  (eventData as unknown as { data?: { resourceGroup?: ResourceGroupInfo } }).data?.resourceGroup;
+
+  if (!updatedResourceGroup) {
+    // Resource Group 객체가 없으면 무효화만 수행
+    log.debug('[SSE Query Update] Resource Group updated event missing resourceGroup object, using invalidation', { eventData });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.azureResourceGroups.list(credentialId),
+    });
+    if (resourceGroupName) {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.azureResourceGroups.detail(resourceGroupName, credentialId),
+      });
+    }
+    return;
+  }
+
+  // 목록 캐시 업데이트 (실시간 업데이트)
+  queryClient.setQueryData<ResourceGroupInfo[]>(
+    queryKeys.azureResourceGroups.list(credentialId),
+    (oldData) => {
+      if (!oldData) return [updatedResourceGroup];
+      const updated = oldData.map((rg) =>
+        rg.name === updatedResourceGroup.name
+          ? updatedResourceGroup
+          : rg
+      );
+      log.debug('[SSE Query Update] Real-time updated Resource Group in list cache', { resourceGroupName: updatedResourceGroup.name });
+      return updated;
+    }
+  );
+
+  // 상세 캐시 업데이트
+  if (resourceGroupName || updatedResourceGroup.name) {
+    const detailKey = resourceGroupName || updatedResourceGroup.name;
+    queryClient.setQueryData<ResourceGroupInfo>(
+      queryKeys.azureResourceGroups.detail(detailKey, credentialId),
+      updatedResourceGroup
+    );
+    log.debug('[SSE Query Update] Real-time updated Resource Group detail cache', { resourceGroupName: detailKey });
+  }
+}
+
+/**
+ * Azure Resource Group 삭제 이벤트를 캐시에 반영
+ */
+export function applyAzureResourceGroupDeletedUpdate(
+  queryClient: QueryClient,
+  eventData: AzureResourceGroupEventData
+): void {
+  const { provider, credentialId, region, resourceGroupName } = eventData;
+
+  if (!resourceGroupName) {
+    // resourceGroupName이 없으면 무효화만 수행
+    log.debug('[SSE Query Update] Resource Group deleted event missing resourceGroupName, using invalidation', { eventData });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.azureResourceGroups.list(credentialId),
+    });
+    return;
+  }
+
+  // 목록 캐시에서 제거 (실시간 업데이트)
+  queryClient.setQueryData<ResourceGroupInfo[]>(
+    queryKeys.azureResourceGroups.list(credentialId),
+    (oldData) => {
+      if (!oldData) return [];
+      const filtered = oldData.filter((rg) => rg.name !== resourceGroupName);
+      log.debug('[SSE Query Update] Real-time removed Resource Group from list cache', { resourceGroupName });
+      return filtered;
+    }
+  );
+
+  // 상세 캐시 제거
+  queryClient.removeQueries({
+    queryKey: queryKeys.azureResourceGroups.detail(resourceGroupName, credentialId),
+  });
+}
+
+/**
+ * Dashboard Summary 업데이트 이벤트를 캐시에 반영
+ */
+export function applyDashboardSummaryUpdatedUpdate(
+  queryClient: QueryClient,
+  eventData: DashboardSummaryEventData
+): void {
+  const { workspace_id, credential_id, region } = eventData;
+
+  // Dashboard summary 데이터를 직접 캐시에 설정
+  const summary = {
+    workspace_id: eventData.workspace_id,
+    vms: eventData.vms,
+    clusters: eventData.clusters,
+    networks: eventData.networks,
+    credentials: eventData.credentials,
+    members: eventData.members,
+    last_updated: eventData.last_updated,
+  };
+
+  queryClient.setQueryData(
+    queryKeys.dashboard.summary(workspace_id, credential_id, region),
+    summary
+  );
+
+  log.debug('[SSE Query Update] Real-time updated dashboard summary', {
+    workspaceId: workspace_id,
+    credentialId: credential_id,
+    region,
+  });
 }
 

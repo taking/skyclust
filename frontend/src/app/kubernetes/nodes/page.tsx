@@ -6,7 +6,7 @@
 'use client';
 
 import { Suspense } from 'react';
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ResourceListPage } from '@/components/common/resource-list-page';
 import { usePagination } from '@/hooks/use-pagination';
@@ -32,6 +32,9 @@ import { useCredentialAutoSelect } from '@/hooks/use-credential-auto-select';
 import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
 import { useTranslation } from '@/hooks/use-translation';
 import { UI } from '@/lib/constants';
+import { sseService } from '@/services/sse';
+import { log } from '@/lib/logging';
+import { useSSEStatus } from '@/hooks/use-sse-status';
 
 function NodesPageContent() {
   const { t } = useTranslation();
@@ -46,6 +49,65 @@ function NodesPageContent() {
     resourceType: 'kubernetes',
     updateUrl: true,
   });
+
+  // SSE 상태 확인
+  const { status: sseStatus } = useSSEStatus();
+
+  // SSE 이벤트 구독 (Kubernetes Node 실시간 업데이트)
+  useEffect(() => {
+    // SSE 연결 완료 확인 (clientId는 subscribeToEvent 내부에서 대기 처리)
+    if (!sseStatus.isConnected) {
+      log.debug('[Nodes Page] SSE not connected, skipping subscription', {
+        isConnected: sseStatus.isConnected,
+        readyState: sseStatus.readyState,
+      });
+      return;
+    }
+
+    const filters = {
+      credential_ids: selectedCredentialId ? [selectedCredentialId] : undefined,
+      regions: selectedRegion ? [selectedRegion] : undefined,
+    };
+
+    const subscribeToNodeEvents = async () => {
+      try {
+        await sseService.subscribeToEvent('kubernetes-node-created', filters);
+        await sseService.subscribeToEvent('kubernetes-node-updated', filters);
+        await sseService.subscribeToEvent('kubernetes-node-deleted', filters);
+        
+        log.debug('[Nodes Page] Subscribed to Kubernetes Node events', { 
+          filters,
+          clientId: sseService.getClientId(),
+        });
+      } catch (error) {
+        log.error('[Nodes Page] Failed to subscribe to Kubernetes Node events', error, {
+          service: 'SSE',
+          action: 'subscribeNodeEvents',
+        });
+      }
+    };
+
+    subscribeToNodeEvents();
+
+    // Cleanup: 페이지를 떠날 때 또는 필터가 변경될 때 구독 해제
+    return () => {
+      const unsubscribe = async () => {
+        try {
+          await sseService.unsubscribeFromEvent('kubernetes-node-created', filters);
+          await sseService.unsubscribeFromEvent('kubernetes-node-updated', filters);
+          await sseService.unsubscribeFromEvent('kubernetes-node-deleted', filters);
+          
+          log.debug('[Nodes Page] Unsubscribed from Kubernetes Node events', { filters });
+        } catch (error) {
+          log.warn('[Nodes Page] Failed to unsubscribe from Kubernetes Node events', error, {
+            service: 'SSE',
+            action: 'unsubscribeNodeEvents',
+          });
+        }
+      };
+      unsubscribe();
+    };
+  }, [selectedCredentialId, selectedRegion, sseStatus.isConnected]);
 
   const [selectedClusterName, setSelectedClusterName] = useState<string>('');
   const [filters, setFilters] = useState<FilterValue>({});

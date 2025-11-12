@@ -58,7 +58,9 @@
     "securityGroups": "Security Groups",
     "costAnalysis": "Cost Analysis",
     "exports": "Exports",
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "iam": "IAM",
+    "resourceGroups": "Resource Groups"
   },
   "workspace": {
     "title": "Workspace",

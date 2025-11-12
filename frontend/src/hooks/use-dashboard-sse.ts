@@ -14,13 +14,16 @@ import type { WidgetData } from '@/lib/widgets';
 import { log } from '@/lib/logging';
 import { logger } from '@/lib/logging/logger';
 import { queryKeys } from '@/lib/query';
+import { useSSEStatus } from '@/hooks/use-sse-status';
 import type {
   KubernetesClusterEventData,
   NetworkVPCEventData,
   NetworkSubnetEventData,
   NetworkSecurityGroupEventData,
   VMEventData,
+  DashboardSummaryEventData,
 } from '@/lib/types/sse-events';
+import { applyDashboardSummaryUpdatedUpdate } from '@/lib/sse/query-updates';
 
 interface UseDashboardSSEOptions {
   widgets: WidgetData[];
@@ -58,27 +61,107 @@ export function useDashboardSSE({
   enabled = true,
 }: UseDashboardSSEOptions): void {
   const queryClient = useQueryClient();
+  const { status: sseStatus } = useSSEStatus();
   const previousRequiredEventsRef = useRef<Set<string>>(new Set());
   const previousFiltersRef = useRef<{
     credentialId?: string;
     region?: string;
   }>({});
 
+  // Dashboard Summary 이벤트 구독 (통합 이벤트 방식)
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || !includeSummary) {
+      return;
+    }
+
+    // SSE 연결 완료 확인
+    if (!sseStatus.isConnected) {
+      log.debug('[Dashboard SSE] SSE not connected, skipping dashboard summary subscription', {
+        isConnected: sseStatus.isConnected,
+        readyState: sseStatus.readyState,
+      });
+      return;
+    }
+
+    const subscribeToDashboardSummary = async () => {
+      try {
+        await sseService.subscribeToEvent('dashboard-summary-updated', {
+          credential_ids: credentialId ? [credentialId] : undefined,
+          regions: region ? [region] : undefined,
+        });
+        log.debug('[Dashboard SSE] Subscribed to dashboard-summary-updated', {
+          credentialId,
+          region,
+          clientId: sseService.getClientId(),
+        });
+      } catch (error) {
+        logger.logError(error, {
+          service: 'SSE',
+          action: 'subscribeDashboardSummary',
+          credentialId,
+          region,
+        });
+      }
+    };
+
+    subscribeToDashboardSummary();
+
+    // Cleanup: 구독 해제
+    return () => {
+      const unsubscribe = async () => {
+        try {
+          await sseService.unsubscribeFromEvent('dashboard-summary-updated', {
+            credential_ids: credentialId ? [credentialId] : undefined,
+            regions: region ? [region] : undefined,
+          });
+          log.debug('[Dashboard SSE] Unsubscribed from dashboard-summary-updated', {
+            credentialId,
+            region,
+          });
+        } catch (error) {
+          log.warn('[Dashboard SSE] Failed to unsubscribe from dashboard-summary-updated', error, {
+            service: 'SSE',
+            action: 'unsubscribeDashboardSummary',
+          });
+        }
+      };
+      unsubscribe();
+    };
+  }, [enabled, includeSummary, credentialId, region, sseStatus.isConnected]);
+
+  // Widget별 이벤트 구독 (필요한 경우에만)
+  useEffect(() => {
+    if (!enabled || widgets.length === 0) {
+      // 위젯이 없으면 이전 구독 정리
+      if (previousRequiredEventsRef.current.size > 0) {
+        const syncSubscriptions = async () => {
+          try {
+            if (sseStatus.isConnected) {
+              await sseService.syncSubscriptions(new Set<string>(), {
+                credential_ids: credentialId ? [credentialId] : undefined,
+                regions: region ? [region] : undefined,
+              });
+              previousRequiredEventsRef.current = new Set();
+              previousFiltersRef.current = {};
+              log.debug('[Dashboard SSE] Cleared widget subscriptions (no widgets)');
+            }
+          } catch (error) {
+            log.warn('[Dashboard SSE] Failed to clear widget subscriptions', error);
+          }
+        };
+        syncSubscriptions();
+      }
       return;
     }
 
     // SSE 연결 확인
-    if (!sseService.isConnected()) {
-      log.debug('[Dashboard SSE] SSE not connected, skipping subscription sync');
+    if (!sseStatus.isConnected) {
+      log.debug('[Dashboard SSE] SSE not connected, skipping widget subscription sync');
       return;
     }
 
-    // 필요한 이벤트 계산
-    const requiredEvents = includeSummary
-      ? getAllRequiredEvents(widgets, true)
-      : getAllRequiredEvents(widgets, false);
+    // 필요한 이벤트 계산 (dashboard-summary 이벤트 제외)
+    const requiredEvents = getAllRequiredEvents(widgets, false);
 
     // 필터 옵션 준비
     const filters = {
@@ -104,7 +187,7 @@ export function useDashboardSSE({
         await sseService.syncSubscriptions(requiredEvents, filters);
         previousRequiredEventsRef.current = requiredEvents;
         previousFiltersRef.current = { credentialId, region };
-        log.debug('[Dashboard SSE] Subscription sync completed', {
+        log.debug('[Dashboard SSE] Widget subscription sync completed', {
           eventCount: requiredEvents.size,
           filters,
         });
@@ -119,117 +202,58 @@ export function useDashboardSSE({
     };
 
     syncSubscriptions();
-  }, [widgets, credentialId, region, includeSummary, enabled]);
+  }, [widgets, credentialId, region, enabled, sseStatus.isConnected]);
 
-  // SSE 이벤트 리스너 등록: 대시보드 요약 정보 무효화
+  // Dashboard Summary 이벤트 핸들러 등록 (실시간 업데이트)
   useEffect(() => {
-    if (!enabled || !sseService.isConnected()) {
+    if (!enabled || !includeSummary || !sseStatus.isConnected) {
       return;
     }
 
     const callbacks = {
-      // VM 이벤트: 대시보드 요약 정보 무효화
-      onVMCreated: (data: unknown) => {
-        const eventData = data as VMEventData;
-        invalidateDashboardSummary(eventData.credentialId, eventData.region);
-      },
-      onVMUpdated: (data: unknown) => {
-        const eventData = data as VMEventData;
-        invalidateDashboardSummary(eventData.credentialId, eventData.region);
-      },
-      onVMDeleted: (data: unknown) => {
-        const eventData = data as VMEventData;
-        invalidateDashboardSummary(eventData.credentialId, eventData.region);
-      },
+      // Dashboard Summary 이벤트: 직접 캐시 업데이트
+      onDashboardSummaryUpdated: (data: unknown) => {
+        const eventData = data as DashboardSummaryEventData;
+        
+        // 필터와 일치하는 경우에만 업데이트
+        if (
+          credentialId &&
+          eventData.credential_id &&
+          credentialId !== eventData.credential_id
+        ) {
+          return;
+        }
+        if (region && eventData.region && region !== eventData.region) {
+          return;
+        }
 
-      // Kubernetes 이벤트: 대시보드 요약 정보 무효화
-      onKubernetesClusterCreated: (data: unknown) => {
-        const eventData = data as KubernetesClusterEventData;
-        invalidateDashboardSummary(eventData.credentialId, eventData.region);
-      },
-      onKubernetesClusterUpdated: (data: unknown) => {
-        const eventData = data as KubernetesClusterEventData;
-        invalidateDashboardSummary(eventData.credentialId, eventData.region);
-      },
-      onKubernetesClusterDeleted: (data: unknown) => {
-        const eventData = data as KubernetesClusterEventData;
-        invalidateDashboardSummary(eventData.credentialId, eventData.region);
-      },
-
-      // Network 이벤트: 대시보드 요약 정보 무효화
-      onNetworkVPCCreated: (data: unknown) => {
-        const eventData = data as NetworkVPCEventData;
-        invalidateDashboardSummary(eventData.credentialId, eventData.region);
-      },
-      onNetworkVPCUpdated: (data: unknown) => {
-        const eventData = data as NetworkVPCEventData;
-        invalidateDashboardSummary(eventData.credentialId, eventData.region);
-      },
-      onNetworkVPCDeleted: (data: unknown) => {
-        const eventData = data as NetworkVPCEventData;
-        invalidateDashboardSummary(eventData.credentialId, eventData.region);
-      },
-      onNetworkSubnetCreated: (data: unknown) => {
-        const eventData = data as NetworkSubnetEventData;
-        invalidateDashboardSummary(eventData.credentialId, eventData.region);
-      },
-      onNetworkSubnetUpdated: (data: unknown) => {
-        const eventData = data as NetworkSubnetEventData;
-        invalidateDashboardSummary(eventData.credentialId, eventData.region);
-      },
-      onNetworkSubnetDeleted: (data: unknown) => {
-        const eventData = data as NetworkSubnetEventData;
-        invalidateDashboardSummary(eventData.credentialId, eventData.region);
-      },
-      onNetworkSecurityGroupCreated: (data: unknown) => {
-        const eventData = data as NetworkSecurityGroupEventData;
-        invalidateDashboardSummary(eventData.credentialId, eventData.region);
-      },
-      onNetworkSecurityGroupUpdated: (data: unknown) => {
-        const eventData = data as NetworkSecurityGroupEventData;
-        invalidateDashboardSummary(eventData.credentialId, eventData.region);
-      },
-      onNetworkSecurityGroupDeleted: (data: unknown) => {
-        const eventData = data as NetworkSecurityGroupEventData;
-        invalidateDashboardSummary(eventData.credentialId, eventData.region);
+        try {
+          // 실시간 업데이트 시도
+          applyDashboardSummaryUpdatedUpdate(queryClient, eventData);
+          log.debug('[Dashboard SSE] Real-time updated dashboard summary', {
+            workspaceId: eventData.workspace_id,
+            credentialId: eventData.credential_id,
+            region: eventData.region,
+          });
+        } catch (error) {
+          log.warn('[Dashboard SSE] Failed to apply real-time dashboard summary update, falling back to invalidation', error);
+          // Fallback: 무효화
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.dashboard.summary(
+              eventData.workspace_id,
+              eventData.credential_id,
+              eventData.region
+            ),
+          });
+        }
       },
     };
 
-    // 대시보드 요약 정보 무효화 헬퍼 함수
-    function invalidateDashboardSummary(
-      eventCredentialId?: string,
-      eventRegion?: string
-    ) {
-      // 필터와 일치하는 경우에만 무효화
-      if (
-        credentialId &&
-        eventCredentialId &&
-        credentialId !== eventCredentialId
-      ) {
-        return;
-      }
-      if (region && eventRegion && region !== eventRegion) {
-        return;
-      }
-
-      // 대시보드 요약 정보 무효화
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.dashboard.all,
-      });
-      log.debug('[Dashboard SSE] Invalidated dashboard summary', {
-        eventCredentialId,
-        eventRegion,
-        filterCredentialId: credentialId,
-        filterRegion: region,
-      });
-    }
-
-    // 기존 콜백에 추가 (기존 콜백은 유지)
+    // 기존 콜백에 추가
     sseService.updateCallbacks(callbacks);
 
     // cleanup: 컴포넌트 언마운트 시 콜백 제거하지 않음 (다른 컴포넌트에서도 사용 가능)
-    // 대신 필터 조건을 확인하여 무효화 여부를 결정
-  }, [enabled, credentialId, region, queryClient]);
+  }, [enabled, includeSummary, credentialId, region, queryClient, sseStatus.isConnected]);
 }
 
 /**

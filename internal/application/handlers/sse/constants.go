@@ -37,6 +37,15 @@ const (
 	EventTypeNetworkSecurityGroupUpdated = "network-security-group-updated"
 	EventTypeNetworkSecurityGroupDeleted = "network-security-group-deleted"
 	EventTypeNetworkSecurityGroupList    = "network-security-group-list"
+
+	// Azure Resource Group event types
+	EventTypeAzureResourceGroupCreated = "azure-resource-group-created"
+	EventTypeAzureResourceGroupUpdated = "azure-resource-group-updated"
+	EventTypeAzureResourceGroupDeleted = "azure-resource-group-deleted"
+	EventTypeAzureResourceGroupList    = "azure-resource-group-list"
+
+	// Dashboard event types
+	EventTypeDashboardSummaryUpdated = "dashboard-summary-updated"
 )
 
 // SSE timing constants

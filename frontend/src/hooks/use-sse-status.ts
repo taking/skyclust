@@ -130,6 +130,11 @@ export function useSSEStatus() {
       onVMUpdated: () => trackEvent(),
       onVMDeleted: () => trackEvent(),
       onVMList: () => trackEvent(),
+      onAzureResourceGroupCreated: () => trackEvent(),
+      onAzureResourceGroupUpdated: () => trackEvent(),
+      onAzureResourceGroupDeleted: () => trackEvent(),
+      onAzureResourceGroupList: () => trackEvent(),
+      onDashboardSummaryUpdated: () => trackEvent(),
       onError: () => {
         setStatus((prev) => ({
           ...prev,
@@ -157,12 +162,19 @@ export function useSSEStatus() {
       setStatus((prev) => {
         // 연결 상태가 변경된 경우
         if (prev.isConnected !== isConnected) {
-          if (isConnected && !prev.connectedAt) {
+          if (isConnected && !connectedAtRef.current) {
+            // 연결되었지만 connectedAt이 없으면 현재 시간으로 설정
             connectedAtRef.current = new Date();
           } else if (!isConnected) {
+            // 연결이 끊긴 경우 초기화
             connectedAtRef.current = null;
             eventTimestampsRef.current = [];
           }
+        }
+
+        // 연결되었지만 connectedAt이 없으면 현재 시간으로 설정 (fallback)
+        if (isConnected && !connectedAtRef.current) {
+          connectedAtRef.current = new Date();
         }
 
         return {
@@ -175,6 +187,7 @@ export function useSSEStatus() {
           ...(isConnected ? {} : {
             eventCountLastMinute: 0,
             eventCountLast5Minutes: 0,
+            lastUpdateTime: null,
           }),
         };
       });

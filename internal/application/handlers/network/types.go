@@ -80,13 +80,14 @@ type SecurityGroupRuleInfoResponse struct {
 
 // ListVPCsRequest represents a request to list VPCs (HTTP layer)
 type ListVPCsRequest struct {
-	Region    string `form:"region" json:"region,omitempty"`
-	VPCID     string `form:"vpc_id" json:"vpc_id,omitempty"`
-	Page      int    `form:"page" json:"page,omitempty"`
-	Limit     int    `form:"limit" json:"limit,omitempty"`
-	SortBy    string `form:"sort_by" json:"sort_by,omitempty"`
-	SortOrder string `form:"sort_order" json:"sort_order,omitempty"`
-	Search    string `form:"search" json:"search,omitempty"`
+	Region        string `form:"region" json:"region,omitempty"`
+	VPCID         string `form:"vpc_id" json:"vpc_id,omitempty"`
+	ResourceGroup string `form:"resource_group" json:"resource_group,omitempty"` // Azure-specific: Resource Group filter
+	Page          int    `form:"page" json:"page,omitempty"`
+	Limit         int    `form:"limit" json:"limit,omitempty"`
+	SortBy        string `form:"sort_by" json:"sort_by,omitempty"`
+	SortOrder     string `form:"sort_order" json:"sort_order,omitempty"`
+	Search        string `form:"search" json:"search,omitempty"`
 }
 
 // ListVPCsResponse represents the response after listing VPCs (HTTP layer)
@@ -96,14 +97,15 @@ type ListVPCsResponse struct {
 
 // ListSubnetsRequest represents a request to list subnets (HTTP layer)
 type ListSubnetsRequest struct {
-	VPCID     string `form:"vpc_id" json:"vpc_id,omitempty"`
-	Region    string `form:"region" json:"region,omitempty"`
-	SubnetID  string `form:"subnet_id" json:"subnet_id,omitempty"`
-	Page      int    `form:"page" json:"page,omitempty"`
-	Limit     int    `form:"limit" json:"limit,omitempty"`
-	SortBy    string `form:"sort_by" json:"sort_by,omitempty"`
-	SortOrder string `form:"sort_order" json:"sort_order,omitempty"`
-	Search    string `form:"search" json:"search,omitempty"`
+	VPCID         string `form:"vpc_id" json:"vpc_id,omitempty"`
+	Region        string `form:"region" json:"region,omitempty"`
+	SubnetID      string `form:"subnet_id" json:"subnet_id,omitempty"`
+	ResourceGroup string `form:"resource_group" json:"resource_group,omitempty"` // Azure-specific: Resource Group filter
+	Page          int    `form:"page" json:"page,omitempty"`
+	Limit         int    `form:"limit" json:"limit,omitempty"`
+	SortBy        string `form:"sort_by" json:"sort_by,omitempty"`
+	SortOrder     string `form:"sort_order" json:"sort_order,omitempty"`
+	Search        string `form:"search" json:"search,omitempty"`
 }
 
 // ListSubnetsResponse represents the response after listing subnets (HTTP layer)
@@ -116,6 +118,7 @@ type ListSecurityGroupsRequest struct {
 	VPCID           string `form:"vpc_id" json:"vpc_id,omitempty"`
 	Region          string `form:"region" json:"region,omitempty"`
 	SecurityGroupID string `form:"security_group_id" json:"security_group_id,omitempty"`
+	ResourceGroup   string `form:"resource_group" json:"resource_group,omitempty"` // Azure-specific: Resource Group filter
 	Page            int    `form:"page" json:"page,omitempty"`
 	Limit           int    `form:"limit" json:"limit,omitempty"`
 	SortBy          string `form:"sort_by" json:"sort_by,omitempty"`
@@ -309,29 +312,31 @@ type SecurityGroupRuleResponse struct {
 // ToServiceListVPCsRequest converts handler request to service request
 func ToServiceListVPCsRequest(req ListVPCsRequest, credentialID string) networkservice.ListVPCsRequest {
 	return networkservice.ListVPCsRequest{
-		CredentialID: credentialID,
-		Region:       req.Region,
-		VPCID:        req.VPCID,
-		Page:         req.Page,
-		Limit:        req.Limit,
-		SortBy:       req.SortBy,
-		SortOrder:    req.SortOrder,
-		Search:       req.Search,
+		CredentialID:  credentialID,
+		Region:        req.Region,
+		VPCID:         req.VPCID,
+		ResourceGroup: req.ResourceGroup,
+		Page:          req.Page,
+		Limit:         req.Limit,
+		SortBy:        req.SortBy,
+		SortOrder:     req.SortOrder,
+		Search:        req.Search,
 	}
 }
 
 // ToServiceListSubnetsRequest converts handler request to service request
 func ToServiceListSubnetsRequest(req ListSubnetsRequest, credentialID string) networkservice.ListSubnetsRequest {
 	return networkservice.ListSubnetsRequest{
-		CredentialID: credentialID,
-		VPCID:        req.VPCID,
-		Region:       req.Region,
-		SubnetID:     req.SubnetID,
-		Page:         req.Page,
-		Limit:        req.Limit,
-		SortBy:       req.SortBy,
-		SortOrder:    req.SortOrder,
-		Search:       req.Search,
+		CredentialID:  credentialID,
+		VPCID:         req.VPCID,
+		Region:        req.Region,
+		SubnetID:      req.SubnetID,
+		ResourceGroup: req.ResourceGroup,
+		Page:          req.Page,
+		Limit:         req.Limit,
+		SortBy:        req.SortBy,
+		SortOrder:     req.SortOrder,
+		Search:        req.Search,
 	}
 }
 
@@ -342,6 +347,7 @@ func ToServiceListSecurityGroupsRequest(req ListSecurityGroupsRequest, credentia
 		VPCID:           req.VPCID,
 		Region:          req.Region,
 		SecurityGroupID: req.SecurityGroupID,
+		ResourceGroup:   req.ResourceGroup,
 		Page:            req.Page,
 		Limit:           req.Limit,
 		SortBy:          req.SortBy,

@@ -372,5 +372,37 @@ export const API_ENDPOINTS = {
       );
     },
   },
+
+  // Azure IAM endpoints
+  azure: {
+    iam: {
+      resourceGroups: {
+        list: (credentialId: string, limit?: number) => {
+          return buildEndpointWithQuery(
+            'azure/iam/resource-groups',
+            { 
+              credential_id: credentialId,
+              // limit이 undefined이면 전달하지 않음 (클라이언트 사이드 페이징을 위해 모든 데이터 요청)
+              ...(limit !== undefined && limit !== null && { limit })
+            }
+          );
+        },
+        detail: (name: string, credentialId: string) => {
+          return buildEndpointWithQuery(
+            `azure/iam/resource-groups/${encodeURIComponent(name)}`,
+            { credential_id: credentialId }
+          );
+        },
+        create: () => 'azure/iam/resource-groups',
+        update: (name: string) => `azure/iam/resource-groups/${encodeURIComponent(name)}`,
+        delete: (name: string, credentialId: string) => {
+          return buildEndpointWithQuery(
+            `azure/iam/resource-groups/${encodeURIComponent(name)}`,
+            { credential_id: credentialId }
+          );
+        },
+      },
+    },
+  },
 } as const;
 

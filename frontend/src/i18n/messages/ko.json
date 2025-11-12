@@ -58,7 +58,9 @@
     "securityGroups": "보안 그룹",
     "costAnalysis": "비용 분석",
     "exports": "내보내기",
-    "notifications": "알림"
+    "notifications": "알림",
+    "iam": "IAM",
+    "resourceGroups": "리소스 그룹"
   },
   "workspace": {
     "title": "작업 공간",

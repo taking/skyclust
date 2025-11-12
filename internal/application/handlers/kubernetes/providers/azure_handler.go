@@ -1,18 +1,22 @@
 package providers
 
 import (
+	"net/http"
+
 	kubernetesservice "skyclust/internal/application/services/kubernetes"
 	"skyclust/internal/domain"
+	"skyclust/internal/shared/handlers"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
-// AzureHandler: Azure AKS 관련 HTTP 요청을 처리하는 핸들러
+// AzureHandler handles Azure AKS-related HTTP requests
 type AzureHandler struct {
 	*BaseHandler
 }
 
-// NewAzureHandler: 새로운 Azure AKS 핸들러를 생성합니다
+// NewAzureHandler creates a new Azure AKS handler
 func NewAzureHandler(
 	k8sService *kubernetesservice.Service,
 	credentialService domain.CredentialService,
@@ -22,196 +26,354 @@ func NewAzureHandler(
 	}
 }
 
-// CreateCluster: AKS 클러스터 생성을 처리합니다
+// CreateCluster handles AKS cluster creation using decorator pattern
 func (h *AzureHandler) CreateCluster(c *gin.Context) {
-	var req kubernetesservice.CreateAKSClusterRequest
-	if err := h.ValidateRequest(c, &req); err != nil {
-		h.HandleError(c, err, "create_cluster")
-		return
-	}
+	handler := h.Compose(
+		h.createClusterHandler(),
+		h.StandardCRUDDecorators("create_cluster")...,
+	)
 
-	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), req.CredentialID, domain.ProviderAzure)
-	if err != nil {
-		h.HandleError(c, err, "create_cluster")
-		return
-	}
-
-	ctx := h.EnrichContextWithRequestMetadata(c)
-	cluster, err := h.GetK8sService().CreateAKSCluster(ctx, credential, req)
-	if err != nil {
-		h.HandleError(c, err, "create_cluster")
-		return
-	}
-
-	h.Created(c, cluster, "AKS cluster creation initiated")
+	handler(c)
 }
 
-// ListClusters: AKS 클러스터 목록 조회를 처리합니다
+func (h *AzureHandler) createClusterHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		var req kubernetesservice.CreateAKSClusterRequest
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "create_cluster")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "create_cluster")
+			return
+		}
+
+		h.logClusterCreationAttempt(c, userID, req)
+
+		credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), req.CredentialID, domain.ProviderAzure)
+		if err != nil {
+			h.HandleError(c, err, "create_cluster")
+			return
+		}
+
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		cluster, err := h.GetK8sService().CreateAKSCluster(ctx, credential, req)
+		if err != nil {
+			h.HandleError(c, err, "create_cluster")
+			return
+		}
+
+		h.logClusterCreationSuccess(c, userID, cluster)
+		h.Created(c, cluster, "AKS cluster creation initiated")
+	}
+}
+
+// ListClusters handles listing AKS clusters using decorator pattern
 func (h *AzureHandler) ListClusters(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
-	if err != nil {
-		h.HandleError(c, err, "list_clusters")
-		return
-	}
+	handler := h.Compose(
+		h.listClustersHandler(),
+		h.StandardCRUDDecorators("list_clusters")...,
+	)
 
-	location := c.Query("region")
-	if location == "" {
-		location = c.Query("location") // Azure uses "location" instead of "region"
-	}
-
-	clusters, err := h.GetK8sService().ListEKSClusters(c.Request.Context(), credential, location)
-	if err != nil {
-		h.HandleError(c, err, "list_clusters")
-		return
-	}
-
-	if clusters == nil {
-		clusters = &kubernetesservice.ListClustersResponse{Clusters: []kubernetesservice.ClusterInfo{}}
-	}
-	if clusters.Clusters == nil {
-		clusters.Clusters = []kubernetesservice.ClusterInfo{}
-	}
-
-	// Always include meta information for consistency (direct array: data[])
-	page, limit := h.ParsePageLimitParams(c)
-	total := int64(len(clusters.Clusters))
-	h.BuildPaginatedResponse(c, clusters.Clusters, page, limit, total, "AKS clusters retrieved successfully")
+	handler(c)
 }
 
-// GetCluster: AKS 클러스터 상세 정보 조회를 처리합니다
+func (h *AzureHandler) listClustersHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
+		if err != nil {
+			h.HandleError(c, err, "list_clusters")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_clusters")
+			return
+		}
+
+		location := c.Query("region")
+		if location == "" {
+			location = c.Query("location") // Azure uses "location" instead of "region"
+		}
+
+		resourceGroup := c.Query("resource_group")
+
+		h.logClusterListAttempt(c, userID, credential.ID, location)
+
+		clusters, err := h.GetK8sService().ListEKSClusters(c.Request.Context(), credential, location, resourceGroup)
+		if err != nil {
+			h.HandleError(c, err, "list_clusters")
+			return
+		}
+
+		if clusters == nil {
+			clusters = &kubernetesservice.ListClustersResponse{Clusters: []kubernetesservice.ClusterInfo{}}
+		}
+		if clusters.Clusters == nil {
+			clusters.Clusters = []kubernetesservice.ClusterInfo{}
+		}
+
+		h.logClusterListSuccess(c, userID, len(clusters.Clusters))
+
+		// Always include meta information for consistency (direct array: data[])
+		page, limit := h.ParsePageLimitParams(c)
+		total := int64(len(clusters.Clusters))
+		h.BuildPaginatedResponse(c, clusters.Clusters, page, limit, total, "AKS clusters retrieved successfully")
+	}
+}
+
+// GetCluster handles getting AKS cluster details using decorator pattern
 func (h *AzureHandler) GetCluster(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
-	if err != nil {
-		h.HandleError(c, err, "get_cluster")
-		return
-	}
+	handler := h.Compose(
+		h.getClusterHandler(),
+		h.StandardCRUDDecorators("get_cluster")...,
+	)
 
-	clusterName := h.parseClusterName(c)
-	location := h.parseRegion(c)
-
-	if clusterName == "" || location == "" {
-		return
-	}
-
-	cluster, err := h.GetK8sService().GetEKSCluster(c.Request.Context(), credential, clusterName, location)
-	if err != nil {
-		h.HandleError(c, err, "get_cluster")
-		return
-	}
-
-	h.OK(c, cluster, "AKS cluster retrieved successfully")
+	handler(c)
 }
 
-// DeleteCluster: AKS 클러스터 삭제를 처리합니다
+func (h *AzureHandler) getClusterHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
+		if err != nil {
+			h.HandleError(c, err, "get_cluster")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_cluster")
+			return
+		}
+
+		clusterName := h.parseClusterName(c)
+		location := h.parseRegion(c)
+		if location == "" {
+			location = c.Query("location") // Azure uses "location" instead of "region"
+		}
+
+		if clusterName == "" || location == "" {
+			return
+		}
+
+		h.logClusterGetAttempt(c, userID, clusterName, credential.ID, location)
+
+		cluster, err := h.GetK8sService().GetEKSCluster(c.Request.Context(), credential, clusterName, location)
+		if err != nil {
+			h.HandleError(c, err, "get_cluster")
+			return
+		}
+
+		h.logClusterGetSuccess(c, userID, clusterName)
+		h.OK(c, cluster, "AKS cluster retrieved successfully")
+	}
+}
+
+// DeleteCluster handles AKS cluster deletion using decorator pattern
 func (h *AzureHandler) DeleteCluster(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
-	if err != nil {
-		h.HandleError(c, err, "delete_cluster")
-		return
-	}
+	handler := h.Compose(
+		h.deleteClusterHandler(),
+		h.StandardCRUDDecorators("delete_cluster")...,
+	)
 
-	clusterName := h.parseClusterName(c)
-	location := h.parseRegion(c)
-
-	if clusterName == "" || location == "" {
-		return
-	}
-
-	err = h.GetK8sService().DeleteEKSCluster(c.Request.Context(), credential, clusterName, location)
-	if err != nil {
-		h.HandleError(c, err, "delete_cluster")
-		return
-	}
-
-	h.OK(c, nil, "AKS cluster deletion initiated")
+	handler(c)
 }
 
-// GetKubeconfig: AKS 클러스터의 kubeconfig 조회를 처리합니다
+func (h *AzureHandler) deleteClusterHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
+		if err != nil {
+			h.HandleError(c, err, "delete_cluster")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "delete_cluster")
+			return
+		}
+
+		clusterName := h.parseClusterName(c)
+		location := h.parseRegion(c)
+		if location == "" {
+			location = c.Query("location") // Azure uses "location" instead of "region"
+		}
+
+		if clusterName == "" || location == "" {
+			return
+		}
+
+		h.logClusterDeletionAttempt(c, userID, clusterName, credential.ID, location)
+
+		ctx := h.EnrichContextWithRequestMetadata(c)
+		if err := h.GetK8sService().DeleteEKSCluster(ctx, credential, clusterName, location); err != nil {
+			h.HandleError(c, err, "delete_cluster")
+			return
+		}
+
+		h.logClusterDeletionSuccess(c, userID, clusterName)
+		h.OK(c, nil, "AKS cluster deletion initiated")
+	}
+}
+
+// GetKubeconfig handles getting kubeconfig for AKS cluster using decorator pattern
 func (h *AzureHandler) GetKubeconfig(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
-	if err != nil {
-		h.HandleError(c, err, "get_kubeconfig")
-		return
-	}
+	handler := h.Compose(
+		h.getKubeconfigHandler(),
+		h.StandardCRUDDecorators("get_kubeconfig")...,
+	)
 
-	clusterName := h.parseClusterName(c)
-	location := h.parseRegion(c)
-
-	if clusterName == "" || location == "" {
-		return
-	}
-
-	kubeconfig, err := h.GetK8sService().GetEKSKubeconfig(c.Request.Context(), credential, clusterName, location)
-	if err != nil {
-		h.HandleError(c, err, "get_kubeconfig")
-		return
-	}
-
-	h.OK(c, map[string]string{"kubeconfig": kubeconfig}, "Kubeconfig retrieved successfully")
+	handler(c)
 }
 
-// ListNodeGroups: 노드 그룹 목록 조회를 처리합니다
+func (h *AzureHandler) getKubeconfigHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
+		if err != nil {
+			h.HandleError(c, err, "get_kubeconfig")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_kubeconfig")
+			return
+		}
+
+		clusterName := h.parseClusterName(c)
+		location := h.parseRegion(c)
+		if location == "" {
+			location = c.Query("location") // Azure uses "location" instead of "region"
+		}
+
+		if clusterName == "" || location == "" {
+			return
+		}
+
+		h.logKubeconfigGetAttempt(c, userID, clusterName, credential.ID, location)
+
+		kubeconfig, err := h.GetK8sService().GetEKSKubeconfig(c.Request.Context(), credential, clusterName, location)
+		if err != nil {
+			h.HandleError(c, err, "get_kubeconfig")
+			return
+		}
+
+		h.logKubeconfigGetSuccess(c, userID, clusterName)
+
+		c.Header("Content-Type", "application/x-yaml")
+		c.Header("Content-Disposition", "attachment; filename=kubeconfig-"+clusterName+".yaml")
+		c.String(http.StatusOK, kubeconfig)
+	}
+}
+
+// ListNodeGroups handles listing node groups for a cluster using decorator pattern
 func (h *AzureHandler) ListNodeGroups(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
-	if err != nil {
-		h.HandleError(c, err, "list_node_groups")
-		return
-	}
+	handler := h.Compose(
+		h.listNodeGroupsHandler(),
+		h.StandardCRUDDecorators("list_node_groups")...,
+	)
 
-	clusterName := h.parseClusterName(c)
-	location := h.parseRegion(c)
-
-	if clusterName == "" || location == "" {
-		return
-	}
-
-	req := kubernetesservice.ListNodeGroupsRequest{
-		ClusterName: clusterName,
-		Region:      location,
-	}
-
-	nodeGroups, err := h.GetK8sService().ListNodeGroups(c.Request.Context(), credential, req)
-	if err != nil {
-		h.HandleError(c, err, "list_node_groups")
-		return
-	}
-
-	// Always include meta information for consistency (direct array: data[])
-	page, limit := h.ParsePageLimitParams(c)
-	total := int64(len(nodeGroups.NodeGroups))
-	h.BuildPaginatedResponse(c, nodeGroups.NodeGroups, page, limit, total, "Node groups retrieved successfully")
+	handler(c)
 }
 
-// GetNodeGroup: 노드 그룹 상세 정보 조회를 처리합니다
+func (h *AzureHandler) listNodeGroupsHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
+		if err != nil {
+			h.HandleError(c, err, "list_node_groups")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "list_node_groups")
+			return
+		}
+
+		clusterName := h.parseClusterName(c)
+		location := h.parseRegion(c)
+		if location == "" {
+			location = c.Query("location") // Azure uses "location" instead of "region"
+		}
+
+		if clusterName == "" || location == "" {
+			return
+		}
+
+		h.logNodeGroupsListAttempt(c, userID, clusterName, credential.ID, location)
+
+		req := kubernetesservice.ListNodeGroupsRequest{
+			CredentialID: credential.ID.String(),
+			ClusterName:  clusterName,
+			Region:       location,
+		}
+
+		nodeGroupsResponse, err := h.GetK8sService().ListNodeGroups(c.Request.Context(), credential, req)
+		if err != nil {
+			h.HandleError(c, err, "list_node_groups")
+			return
+		}
+
+		h.logNodeGroupsListSuccess(c, userID, clusterName, len(nodeGroupsResponse.NodeGroups))
+
+		// Always include meta information for consistency (direct array: data[])
+		page, limit := h.ParsePageLimitParams(c)
+		total := int64(len(nodeGroupsResponse.NodeGroups))
+		h.BuildPaginatedResponse(c, nodeGroupsResponse.NodeGroups, page, limit, total, "Node groups retrieved successfully")
+	}
+}
+
+// GetNodeGroup handles getting node group details using decorator pattern
 func (h *AzureHandler) GetNodeGroup(c *gin.Context) {
-	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
-	if err != nil {
-		h.HandleError(c, err, "get_node_group")
-		return
+	handler := h.Compose(
+		h.getNodeGroupHandler(),
+		h.StandardCRUDDecorators("get_node_group")...,
+	)
+
+	handler(c)
+}
+
+func (h *AzureHandler) getNodeGroupHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
+		if err != nil {
+			h.HandleError(c, err, "get_node_group")
+			return
+		}
+
+		clusterName := h.parseClusterName(c)
+		location := h.parseRegion(c)
+		if location == "" {
+			location = c.Query("location") // Azure uses "location" instead of "region"
+		}
+		nodeGroupName := c.Param("nodegroup")
+		if nodeGroupName == "" {
+			nodeGroupName = c.Param("node_group_name")
+		}
+
+		if clusterName == "" || location == "" || nodeGroupName == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "cluster name, location, and node group name are required", 400), "get_node_group")
+			return
+		}
+
+		req := kubernetesservice.GetNodeGroupRequest{
+			CredentialID:  credential.ID.String(),
+			ClusterName:   clusterName,
+			NodeGroupName: nodeGroupName,
+			Region:        location,
+		}
+
+		nodeGroup, err := h.GetK8sService().GetNodeGroup(c.Request.Context(), credential, req)
+		if err != nil {
+			h.HandleError(c, err, "get_node_group")
+			return
+		}
+
+		h.OK(c, nodeGroup, "Node group retrieved successfully")
 	}
-
-	clusterName := h.parseClusterName(c)
-	location := h.parseRegion(c)
-	nodeGroupName := c.Param("node_group_name")
-
-	if clusterName == "" || location == "" || nodeGroupName == "" {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "cluster name, region, and node group name are required", 400), "get_node_group")
-		return
-	}
-
-	req := kubernetesservice.GetNodeGroupRequest{
-		ClusterName:   clusterName,
-		NodeGroupName: nodeGroupName,
-		Region:        location,
-	}
-
-	nodeGroup, err := h.GetK8sService().GetNodeGroup(c.Request.Context(), credential, req)
-	if err != nil {
-		h.HandleError(c, err, "get_node_group")
-		return
-	}
-
-	h.OK(c, nodeGroup, "Node group retrieved successfully")
 }
 
 // CreateNodePool: 노드 풀 생성을 처리합니다
@@ -307,4 +469,104 @@ func (h *AzureHandler) GetAWSRegions(c *gin.Context) {
 // GetAvailabilityZones: 가용 영역 목록 조회를 처리합니다 (AWS 전용)
 func (h *AzureHandler) GetAvailabilityZones(c *gin.Context) {
 	h.NotImplemented(c, "get_availability_zones")
+}
+
+// Logging helper methods
+
+func (h *AzureHandler) logClusterCreationAttempt(c *gin.Context, userID uuid.UUID, req kubernetesservice.CreateAKSClusterRequest) {
+	h.LogBusinessEvent(c, "cluster_creation_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "create_cluster",
+		"cluster_name":  req.Name,
+		"provider":      domain.ProviderAzure,
+		"credential_id": req.CredentialID,
+	})
+}
+
+func (h *AzureHandler) logClusterCreationSuccess(c *gin.Context, userID uuid.UUID, cluster interface{}) {
+	h.LogBusinessEvent(c, "cluster_created", userID.String(), "", map[string]interface{}{
+		"operation": "create_cluster",
+		"provider":  domain.ProviderAzure,
+	})
+}
+
+func (h *AzureHandler) logClusterListAttempt(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID, location string) {
+	h.LogBusinessEvent(c, "cluster_list_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "list_clusters",
+		"provider":      domain.ProviderAzure,
+		"credential_id": credentialID.String(),
+		"location":      location,
+	})
+}
+
+func (h *AzureHandler) logClusterListSuccess(c *gin.Context, userID uuid.UUID, count int) {
+	h.LogBusinessEvent(c, "clusters_listed", userID.String(), "", map[string]interface{}{
+		"operation": "list_clusters",
+		"provider":  domain.ProviderAzure,
+		"count":     count,
+	})
+}
+
+func (h *AzureHandler) logClusterGetAttempt(c *gin.Context, userID uuid.UUID, clusterName string, credentialID uuid.UUID, location string) {
+	h.LogBusinessEvent(c, "cluster_get_attempted", userID.String(), clusterName, map[string]interface{}{
+		"operation":     "get_cluster",
+		"provider":      domain.ProviderAzure,
+		"credential_id": credentialID.String(),
+		"location":      location,
+	})
+}
+
+func (h *AzureHandler) logClusterGetSuccess(c *gin.Context, userID uuid.UUID, clusterName string) {
+	h.LogBusinessEvent(c, "cluster_retrieved", userID.String(), clusterName, map[string]interface{}{
+		"operation": "get_cluster",
+		"provider":  domain.ProviderAzure,
+	})
+}
+
+func (h *AzureHandler) logClusterDeletionAttempt(c *gin.Context, userID uuid.UUID, clusterName string, credentialID uuid.UUID, location string) {
+	h.LogBusinessEvent(c, "cluster_deletion_attempted", userID.String(), clusterName, map[string]interface{}{
+		"operation":     "delete_cluster",
+		"provider":      domain.ProviderAzure,
+		"credential_id": credentialID.String(),
+		"location":      location,
+	})
+}
+
+func (h *AzureHandler) logClusterDeletionSuccess(c *gin.Context, userID uuid.UUID, clusterName string) {
+	h.LogBusinessEvent(c, "cluster_deleted", userID.String(), clusterName, map[string]interface{}{
+		"operation": "delete_cluster",
+		"provider":  domain.ProviderAzure,
+	})
+}
+
+func (h *AzureHandler) logKubeconfigGetAttempt(c *gin.Context, userID uuid.UUID, clusterName string, credentialID uuid.UUID, location string) {
+	h.LogBusinessEvent(c, "kubeconfig_get_attempted", userID.String(), clusterName, map[string]interface{}{
+		"operation":     "get_kubeconfig",
+		"provider":      domain.ProviderAzure,
+		"credential_id": credentialID.String(),
+		"location":      location,
+	})
+}
+
+func (h *AzureHandler) logKubeconfigGetSuccess(c *gin.Context, userID uuid.UUID, clusterName string) {
+	h.LogBusinessEvent(c, "kubeconfig_retrieved", userID.String(), clusterName, map[string]interface{}{
+		"operation": "get_kubeconfig",
+		"provider":  domain.ProviderAzure,
+	})
+}
+
+func (h *AzureHandler) logNodeGroupsListAttempt(c *gin.Context, userID uuid.UUID, clusterName string, credentialID uuid.UUID, location string) {
+	h.LogBusinessEvent(c, "node_groups_list_attempted", userID.String(), clusterName, map[string]interface{}{
+		"operation":     "list_node_groups",
+		"provider":      domain.ProviderAzure,
+		"credential_id": credentialID.String(),
+		"location":      location,
+	})
+}
+
+func (h *AzureHandler) logNodeGroupsListSuccess(c *gin.Context, userID uuid.UUID, clusterName string, count int) {
+	h.LogBusinessEvent(c, "node_groups_listed", userID.String(), clusterName, map[string]interface{}{
+		"operation": "list_node_groups",
+		"provider":  domain.ProviderAzure,
+		"count":     count,
+	})
 }

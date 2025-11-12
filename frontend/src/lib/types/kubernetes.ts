@@ -12,6 +12,7 @@ export interface KubernetesCluster {
   region: string;
   zone?: string;
   endpoint?: string;
+  resource_group?: string; // Azure-specific: Resource Group name
   project_id?: string;
   created_at?: string;
   updated_at?: string;

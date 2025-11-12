@@ -35,9 +35,12 @@ func (h *AzureHandler) ListVPCs(c *gin.Context) {
 		region = c.Query("location") // Azure uses "location" instead of "region"
 	}
 
+	resourceGroup := c.Query("resource_group")
+
 	serviceReq := networkservice.ListVPCsRequest{
-		CredentialID: credential.ID.String(),
-		Region:       region,
+		CredentialID:  credential.ID.String(),
+		Region:        region,
+		ResourceGroup: resourceGroup,
 	}
 
 	vpcs, err := h.GetNetworkService().ListVPCs(c.Request.Context(), credential, serviceReq)
@@ -57,7 +60,7 @@ func (h *AzureHandler) ListVPCs(c *gin.Context) {
 	h.OKWithPagination(c, vpcList, "Virtual Networks retrieved successfully", page, limit, total)
 }
 
-// CreateVPC: Virtual Network 생성을 처리합니다
+// CreateVPC handles Virtual Network creation
 func (h *AzureHandler) CreateVPC(c *gin.Context) {
 	var req networkservice.CreateVPCRequest
 	if err := h.ValidateRequest(c, &req); err != nil {
@@ -65,11 +68,24 @@ func (h *AzureHandler) CreateVPC(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), req.CredentialID, domain.ProviderAzure)
+	// credential_id는 body 또는 query parameter에서 가져올 수 있음
+	credentialID := req.CredentialID
+	if credentialID == "" {
+		credentialID = c.Query("credential_id")
+	}
+
+	if credentialID == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "credential_id is required", 400), "create_vpc")
+		return
+	}
+
+	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), credentialID, domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "create_vpc")
 		return
 	}
+
+	req.CredentialID = credential.ID.String()
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
 	vpc, err := h.GetNetworkService().CreateVPC(ctx, credential, req)
@@ -78,10 +94,10 @@ func (h *AzureHandler) CreateVPC(c *gin.Context) {
 		return
 	}
 
-	h.Created(c, vpc, "Virtual Network creation initiated")
+	h.Created(c, vpc, "Virtual Network created successfully")
 }
 
-// GetVPC: Virtual Network 상세 정보 조회를 처리합니다
+// GetVPC handles Virtual Network detail requests
 func (h *AzureHandler) GetVPC(c *gin.Context) {
 	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
@@ -91,6 +107,9 @@ func (h *AzureHandler) GetVPC(c *gin.Context) {
 
 	vpcID := h.parseVPCID(c)
 	region := h.parseRegion(c)
+	if region == "" {
+		region = c.Query("location") // Azure uses "location" instead of "region"
+	}
 
 	if vpcID == "" || region == "" {
 		return
@@ -111,23 +130,8 @@ func (h *AzureHandler) GetVPC(c *gin.Context) {
 	h.OK(c, vpc, "Virtual Network retrieved successfully")
 }
 
-// UpdateVPC: Virtual Network 업데이트를 처리합니다
+// UpdateVPC handles Virtual Network update requests
 func (h *AzureHandler) UpdateVPC(c *gin.Context) {
-	var req networkservice.UpdateVPCRequest
-	if err := h.ValidateRequest(c, &req); err != nil {
-		h.HandleError(c, err, "update_vpc")
-		return
-	}
-
-	credentialID := c.Query("credential_id")
-	if credentialID == "" {
-		credentialID = c.Param("credential_id")
-	}
-	if credentialID == "" {
-		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "credential_id is required", 400), "update_vpc")
-		return
-	}
-
 	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "update_vpc")
@@ -136,8 +140,17 @@ func (h *AzureHandler) UpdateVPC(c *gin.Context) {
 
 	vpcID := h.parseVPCID(c)
 	region := h.parseRegion(c)
+	if region == "" {
+		region = c.Query("location") // Azure uses "location" instead of "region"
+	}
 
 	if vpcID == "" || region == "" {
+		return
+	}
+
+	var req networkservice.UpdateVPCRequest
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "update_vpc")
 		return
 	}
 
@@ -151,7 +164,7 @@ func (h *AzureHandler) UpdateVPC(c *gin.Context) {
 	h.OK(c, vpc, "Virtual Network updated successfully")
 }
 
-// DeleteVPC: Virtual Network 삭제를 처리합니다
+// DeleteVPC handles Virtual Network deletion requests
 func (h *AzureHandler) DeleteVPC(c *gin.Context) {
 	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
@@ -161,6 +174,9 @@ func (h *AzureHandler) DeleteVPC(c *gin.Context) {
 
 	vpcID := h.parseVPCID(c)
 	region := h.parseRegion(c)
+	if region == "" {
+		region = c.Query("location") // Azure uses "location" instead of "region"
+	}
 
 	if vpcID == "" || region == "" {
 		return
@@ -172,16 +188,17 @@ func (h *AzureHandler) DeleteVPC(c *gin.Context) {
 		Region:       region,
 	}
 
-	err = h.GetNetworkService().DeleteVPC(c.Request.Context(), credential, serviceReq)
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	err = h.GetNetworkService().DeleteVPC(ctx, credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "delete_vpc")
 		return
 	}
 
-	h.OK(c, nil, "Virtual Network deletion initiated")
+	h.OK(c, nil, "Virtual Network deleted successfully")
 }
 
-// ListSubnets: 서브넷 목록 조회를 처리합니다
+// ListSubnets handles subnet listing requests
 func (h *AzureHandler) ListSubnets(c *gin.Context) {
 	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
@@ -191,15 +208,21 @@ func (h *AzureHandler) ListSubnets(c *gin.Context) {
 
 	vpcID := h.parseVPCID(c)
 	region := h.parseRegion(c)
+	if region == "" {
+		region = c.Query("location") // Azure uses "location" instead of "region"
+	}
+
+	resourceGroup := c.Query("resource_group")
 
 	if vpcID == "" || region == "" {
 		return
 	}
 
 	serviceReq := networkservice.ListSubnetsRequest{
-		CredentialID: credential.ID.String(),
-		VPCID:        vpcID,
-		Region:       region,
+		CredentialID:  credential.ID.String(),
+		VPCID:         vpcID,
+		Region:        region,
+		ResourceGroup: resourceGroup,
 	}
 
 	subnets, err := h.GetNetworkService().ListSubnets(c.Request.Context(), credential, serviceReq)
@@ -219,7 +242,7 @@ func (h *AzureHandler) ListSubnets(c *gin.Context) {
 	h.OKWithPagination(c, subnetList, "Subnets retrieved successfully", page, limit, total)
 }
 
-// CreateSubnet: 서브넷 생성을 처리합니다
+// CreateSubnet handles subnet creation
 func (h *AzureHandler) CreateSubnet(c *gin.Context) {
 	var req networkservice.CreateSubnetRequest
 	if err := h.ValidateRequest(c, &req); err != nil {
@@ -227,11 +250,24 @@ func (h *AzureHandler) CreateSubnet(c *gin.Context) {
 		return
 	}
 
-	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), req.CredentialID, domain.ProviderAzure)
+	// credential_id는 body 또는 query parameter에서 가져올 수 있음
+	credentialID := req.CredentialID
+	if credentialID == "" {
+		credentialID = c.Query("credential_id")
+	}
+
+	if credentialID == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "credential_id is required", 400), "create_subnet")
+		return
+	}
+
+	credential, err := h.GetCredentialFromBody(c, h.GetCredentialService(), credentialID, domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "create_subnet")
 		return
 	}
+
+	req.CredentialID = credential.ID.String()
 
 	ctx := h.EnrichContextWithRequestMetadata(c)
 	subnet, err := h.GetNetworkService().CreateSubnet(ctx, credential, req)
@@ -240,10 +276,10 @@ func (h *AzureHandler) CreateSubnet(c *gin.Context) {
 		return
 	}
 
-	h.Created(c, subnet, "Subnet creation initiated")
+	h.Created(c, subnet, "Subnet created successfully")
 }
 
-// GetSubnet: 서브넷 상세 정보 조회를 처리합니다
+// GetSubnet handles subnet detail requests
 func (h *AzureHandler) GetSubnet(c *gin.Context) {
 	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
@@ -253,6 +289,9 @@ func (h *AzureHandler) GetSubnet(c *gin.Context) {
 
 	subnetID := h.parseSubnetID(c)
 	region := h.parseRegion(c)
+	if region == "" {
+		region = c.Query("location") // Azure uses "location" instead of "region"
+	}
 
 	if subnetID == "" || region == "" {
 		return
@@ -273,14 +312,8 @@ func (h *AzureHandler) GetSubnet(c *gin.Context) {
 	h.OK(c, subnet, "Subnet retrieved successfully")
 }
 
-// UpdateSubnet: 서브넷 업데이트를 처리합니다
+// UpdateSubnet handles subnet update requests
 func (h *AzureHandler) UpdateSubnet(c *gin.Context) {
-	var req networkservice.UpdateSubnetRequest
-	if err := h.ValidateRequest(c, &req); err != nil {
-		h.HandleError(c, err, "update_subnet")
-		return
-	}
-
 	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
 		h.HandleError(c, err, "update_subnet")
@@ -289,8 +322,17 @@ func (h *AzureHandler) UpdateSubnet(c *gin.Context) {
 
 	subnetID := h.parseSubnetID(c)
 	region := h.parseRegion(c)
+	if region == "" {
+		region = c.Query("location") // Azure uses "location" instead of "region"
+	}
 
 	if subnetID == "" || region == "" {
+		return
+	}
+
+	var req networkservice.UpdateSubnetRequest
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "update_subnet")
 		return
 	}
 
@@ -304,7 +346,7 @@ func (h *AzureHandler) UpdateSubnet(c *gin.Context) {
 	h.OK(c, subnet, "Subnet updated successfully")
 }
 
-// DeleteSubnet: 서브넷 삭제를 처리합니다
+// DeleteSubnet handles subnet deletion requests
 func (h *AzureHandler) DeleteSubnet(c *gin.Context) {
 	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
 	if err != nil {
@@ -314,6 +356,9 @@ func (h *AzureHandler) DeleteSubnet(c *gin.Context) {
 
 	subnetID := h.parseSubnetID(c)
 	region := h.parseRegion(c)
+	if region == "" {
+		region = c.Query("location") // Azure uses "location" instead of "region"
+	}
 
 	if subnetID == "" || region == "" {
 		return
@@ -325,13 +370,14 @@ func (h *AzureHandler) DeleteSubnet(c *gin.Context) {
 		Region:       region,
 	}
 
-	err = h.GetNetworkService().DeleteSubnet(c.Request.Context(), credential, serviceReq)
+	ctx := h.EnrichContextWithRequestMetadata(c)
+	err = h.GetNetworkService().DeleteSubnet(ctx, credential, serviceReq)
 	if err != nil {
 		h.HandleError(c, err, "delete_subnet")
 		return
 	}
 
-	h.OK(c, nil, "Subnet deletion initiated")
+	h.OK(c, nil, "Subnet deleted successfully")
 }
 
 // ListSecurityGroups: Network Security Group 목록 조회를 처리합니다

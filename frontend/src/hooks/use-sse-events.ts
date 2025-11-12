@@ -16,6 +16,8 @@ import type {
   NetworkSubnetEventData,
   NetworkSecurityGroupEventData,
   VMEventData,
+  AzureResourceGroupEventData,
+  DashboardSummaryEventData,
 } from '@/lib/types/sse-events';
 import {
   applyVMCreatedUpdate,
@@ -33,6 +35,10 @@ import {
   applySecurityGroupCreatedUpdate,
   applySecurityGroupUpdatedUpdate,
   applySecurityGroupDeletedUpdate,
+  applyAzureResourceGroupCreatedUpdate,
+  applyAzureResourceGroupUpdatedUpdate,
+  applyAzureResourceGroupDeletedUpdate,
+  applyDashboardSummaryUpdatedUpdate,
 } from '@/lib/sse/query-updates';
 
 /**
@@ -517,6 +523,108 @@ export function useSSEEvents(token: string | null) {
         } else {
           queryClient.invalidateQueries({
             queryKey: queryKeys.vms.all,
+          });
+        }
+      },
+
+      // Azure Resource Group 이벤트 (실시간 업데이트)
+      onAzureResourceGroupCreated: (data) => {
+        log.debug('[SSE] Azure Resource Group created', { data });
+        const eventData = data as AzureResourceGroupEventData;
+        try {
+          // 실시간 업데이트 시도
+          applyAzureResourceGroupCreatedUpdate(queryClient, eventData);
+        } catch (error) {
+          log.warn('[SSE] Failed to apply real-time Resource Group created update, falling back to invalidation', error);
+          // Fallback: 무효화
+          const { credentialId } = eventData;
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.azureResourceGroups.list(credentialId),
+          });
+        }
+        // 대시보드 무효화 (항상 수행)
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.dashboard.all,
+        });
+      },
+
+      onAzureResourceGroupUpdated: (data) => {
+        log.debug('[SSE] Azure Resource Group updated', { data });
+        const eventData = data as AzureResourceGroupEventData;
+        try {
+          // 실시간 업데이트 시도
+          applyAzureResourceGroupUpdatedUpdate(queryClient, eventData);
+        } catch (error) {
+          log.warn('[SSE] Failed to apply real-time Resource Group updated update, falling back to invalidation', error);
+          // Fallback: 무효화
+          const { credentialId, resourceGroupName } = eventData;
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.azureResourceGroups.list(credentialId),
+          });
+          if (resourceGroupName) {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.azureResourceGroups.detail(resourceGroupName, credentialId),
+            });
+          }
+        }
+        // 대시보드 무효화 (항상 수행)
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.dashboard.all,
+        });
+      },
+
+      onAzureResourceGroupDeleted: (data) => {
+        log.debug('[SSE] Azure Resource Group deleted', { data });
+        const eventData = data as AzureResourceGroupEventData;
+        try {
+          // 실시간 업데이트 시도
+          applyAzureResourceGroupDeletedUpdate(queryClient, eventData);
+        } catch (error) {
+          log.warn('[SSE] Failed to apply real-time Resource Group deleted update, falling back to invalidation', error);
+          // Fallback: 무효화
+          const { credentialId } = eventData;
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.azureResourceGroups.list(credentialId),
+          });
+        }
+        // 대시보드 무효화 (항상 수행)
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.dashboard.all,
+        });
+      },
+
+      onAzureResourceGroupList: (data) => {
+        log.debug('[SSE] Azure Resource Group list updated', { data });
+        const eventData = data as AzureResourceGroupEventData;
+        const { credentialId } = eventData;
+        if (credentialId) {
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.azureResourceGroups.list(credentialId),
+          });
+          // 대시보드 쿼리 무효화
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.dashboard.all,
+          });
+        } else {
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.azureResourceGroups.all,
+          });
+        }
+      },
+
+      // Dashboard Summary 이벤트 (실시간 업데이트)
+      onDashboardSummaryUpdated: (data) => {
+        log.debug('[SSE] Dashboard summary updated', { data });
+        const eventData = data as DashboardSummaryEventData;
+        try {
+          // 실시간 업데이트 시도
+          applyDashboardSummaryUpdatedUpdate(queryClient, eventData);
+        } catch (error) {
+          log.warn('[SSE] Failed to apply real-time dashboard summary update, falling back to invalidation', error);
+          // Fallback: 무효화
+          const { workspace_id, credential_id, region } = eventData;
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.dashboard.summary(workspace_id, credential_id, region),
           });
         }
       },

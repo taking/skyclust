@@ -10,6 +10,18 @@ import { logger } from '@/lib/logging/logger';
 import { parseSSEMessage } from '@/lib/sse';
 import { log } from '@/lib/logging';
 
+interface SubscriptionFilters {
+  providers?: string[];
+  credential_ids?: string[];
+  regions?: string[];
+}
+
+interface SubscriptionInfo {
+  eventType: string;
+  filters?: SubscriptionFilters;
+  timestamp: Date;
+}
+
 class SSEService {
   private eventSource: EventSource | null = null;
   private callbacks: SSECallbacks = {};
@@ -24,6 +36,8 @@ class SSEService {
   private currentToken: string | null = null; // 현재 연결된 토큰 추적
   private lastEventId: string | null = null; // 마지막 수신한 이벤트 ID
   private retryInterval: number = 3000; // 재연결 간격 (밀리초, 기본 3초)
+  // 구독 추적: subscriptionKey -> SubscriptionInfo
+  private activeSubscriptions = new Map<string, SubscriptionInfo>();
 
   connect(token: string, callbacks: SSECallbacks = {}): void {
     // 토큰이 없으면 연결하지 않음
@@ -109,6 +123,10 @@ class SSEService {
     this.reconnectAttempts = 0;
     this.currentToken = null;
     this.clientId = null;
+    // 구독 정보 초기화
+    this.subscribedEvents.clear();
+    this.activeSubscriptions.clear();
+    this.subscribedVMs.clear();
   }
 
   /**
@@ -325,6 +343,15 @@ class SSEService {
     this.eventSource.addEventListener('vm-deleted', handleEvent('vm-deleted', this.callbacks.onVMDeleted));
     this.eventSource.addEventListener('vm-list', handleEvent('vm-list', this.callbacks.onVMList));
 
+    // Azure Resource Group 이벤트
+    this.eventSource.addEventListener('azure-resource-group-created', handleEvent('azure-resource-group-created', this.callbacks.onAzureResourceGroupCreated));
+    this.eventSource.addEventListener('azure-resource-group-updated', handleEvent('azure-resource-group-updated', this.callbacks.onAzureResourceGroupUpdated));
+    this.eventSource.addEventListener('azure-resource-group-deleted', handleEvent('azure-resource-group-deleted', this.callbacks.onAzureResourceGroupDeleted));
+    this.eventSource.addEventListener('azure-resource-group-list', handleEvent('azure-resource-group-list', this.callbacks.onAzureResourceGroupList));
+
+    // Dashboard Summary 이벤트
+    this.eventSource.addEventListener('dashboard-summary-updated', handleEvent('dashboard-summary-updated', this.callbacks.onDashboardSummaryUpdated));
+
     // 에러 처리
     this.eventSource.addEventListener('error', (_event) => {
       // Event 객체는 직렬화할 수 없으므로 필요한 정보만 추출
@@ -475,17 +502,67 @@ class SSEService {
     return this.eventSource?.readyState ?? null;
   }
 
+  getClientId(): string | null {
+    return this.clientId;
+  }
+
+  // 구독 키 생성 (eventType + filters의 해시)
+  private getSubscriptionKey(eventType: string, filters?: SubscriptionFilters): string {
+    if (!filters || Object.keys(filters).length === 0) {
+      return eventType;
+    }
+    
+    // 필터를 정렬하여 일관된 키 생성
+    const sortedFilters = JSON.stringify({
+      providers: filters.providers?.sort(),
+      credential_ids: filters.credential_ids?.sort(),
+      regions: filters.regions?.sort(),
+    });
+    
+    return `${eventType}:${sortedFilters}`;
+  }
+
   // 구독 관리 메서드들
-  async subscribeToEvent(eventType: string, filters?: {
-    providers?: string[];
-    credential_ids?: string[];
-    regions?: string[];
-  }): Promise<void> {
-    if (!this.isConnected() || !this.clientId) {
+  async subscribeToEvent(eventType: string, filters?: SubscriptionFilters): Promise<void> {
+    // 연결 상태 확인
+    if (!this.isConnected()) {
       log.warn('Cannot subscribe: SSE not connected', {
         eventType,
         connected: this.isConnected(),
-        clientId: this.clientId,
+        readyState: this.eventSource?.readyState,
+      });
+      return;
+    }
+
+    // clientId가 없으면 잠시 대기 후 재시도 (최대 3초)
+    if (!this.clientId) {
+      log.debug('Waiting for clientId to be set...', { eventType });
+      // 최대 3초 대기 (300ms 간격으로 10번 시도)
+      for (let i = 0; i < 10; i++) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+        if (this.clientId) {
+          log.debug('ClientId set, proceeding with subscription', { eventType, clientId: this.clientId });
+          break;
+        }
+      }
+      // 여전히 clientId가 없으면 실패
+      if (!this.clientId) {
+        log.error('Failed to get clientId after waiting, cannot subscribe', { eventType });
+        return;
+      }
+    }
+
+    const subscriptionKey = this.getSubscriptionKey(eventType, filters);
+    
+    // 이미 동일한 구독이 활성화되어 있는지 확인
+    if (this.activeSubscriptions.has(subscriptionKey)) {
+      const existing = this.activeSubscriptions.get(subscriptionKey)!;
+      // 중복이지만 subscribedEvents Set에는 eventType이 포함되어야 함
+      this.subscribedEvents.add(eventType);
+      log.debug('Subscription already active, skipping', {
+        eventType,
+        filters,
+        existingTimestamp: existing.timestamp,
       });
       return;
     }
@@ -496,8 +573,17 @@ class SSEService {
         filters: filters || {},
       });
 
+      // 구독 정보 저장
+      // subscribedEvents Set에는 eventType만 저장 (중복 방지)
       this.subscribedEvents.add(eventType);
-      log.debug('Subscribed to event', { eventType, filters });
+      // activeSubscriptions Map에는 필터 정보와 함께 저장
+      this.activeSubscriptions.set(subscriptionKey, {
+        eventType,
+        filters,
+        timestamp: new Date(),
+      });
+      
+      log.debug('Subscribed to event', { eventType, filters, subscriptionKey });
     } catch (error) {
       logger.logError(error, {
         service: 'SSE',
@@ -509,7 +595,7 @@ class SSEService {
     }
   }
 
-  async unsubscribeFromEvent(eventType: string): Promise<void> {
+  async unsubscribeFromEvent(eventType: string, filters?: SubscriptionFilters): Promise<void> {
     if (!this.isConnected() || !this.clientId) {
       log.warn('Cannot unsubscribe: SSE not connected', {
         eventType,
@@ -519,20 +605,61 @@ class SSEService {
       return;
     }
 
+    const subscriptionKey = this.getSubscriptionKey(eventType, filters);
+    
+    // 구독이 활성화되어 있지 않으면 스킵
+    if (!this.activeSubscriptions.has(subscriptionKey)) {
+      log.debug('Subscription not found, skipping unsubscribe', {
+        eventType,
+        filters,
+        subscriptionKey,
+      });
+      return;
+    }
+
     try {
       await api.post(getApiUrl(API_ENDPOINTS.sse.unsubscribe()), {
         event_type: eventType,
+        filters: filters || {},
       });
 
-      this.subscribedEvents.delete(eventType);
-      log.debug('Unsubscribed from event', { eventType });
+      // 구독 정보 제거
+      this.activeSubscriptions.delete(subscriptionKey);
+      
+      // 해당 eventType의 다른 구독이 없으면 Set에서도 제거
+      const hasOtherSubscriptions = Array.from(this.activeSubscriptions.values())
+        .some(sub => sub.eventType === eventType);
+      if (!hasOtherSubscriptions) {
+        this.subscribedEvents.delete(eventType);
+      }
+      
+      log.debug('Unsubscribed from event', { eventType, filters, subscriptionKey });
     } catch (error) {
       logger.logError(error, {
         service: 'SSE',
         action: 'unsubscribeFromEvent',
         eventType,
+        filters,
       });
       throw error;
+    }
+  }
+
+  // 특정 eventType의 모든 구독 해제
+  async unsubscribeFromAllEventType(eventType: string): Promise<void> {
+    const subscriptionsToRemove: string[] = [];
+    
+    // 해당 eventType의 모든 구독 찾기
+    for (const [key, info] of this.activeSubscriptions.entries()) {
+      if (info.eventType === eventType) {
+        subscriptionsToRemove.push(key);
+      }
+    }
+
+    // 모든 구독 해제
+    for (const key of subscriptionsToRemove) {
+      const info = this.activeSubscriptions.get(key)!;
+      await this.unsubscribeFromEvent(eventType, info.filters);
     }
   }
 
@@ -568,6 +695,25 @@ class SSEService {
    */
   getSubscribedEvents(): Set<string> {
     return new Set(this.subscribedEvents);
+  }
+
+  /**
+   * 활성 구독 정보를 조회합니다.
+   * @returns 활성 구독 정보 Map
+   */
+  getActiveSubscriptions(): Map<string, SubscriptionInfo> {
+    return new Map(this.activeSubscriptions);
+  }
+
+  /**
+   * 특정 eventType의 활성 구독 개수를 조회합니다.
+   * @param eventType - 이벤트 타입
+   * @returns 활성 구독 개수
+   */
+  getActiveSubscriptionCount(eventType: string): number {
+    return Array.from(this.activeSubscriptions.values())
+      .filter(info => info.eventType === eventType)
+      .length;
   }
 
   /**
@@ -613,12 +759,28 @@ class SSEService {
       regions?: string[];
     }
   ): Promise<void> {
+    // SSE 연결 확인
+    if (!this.isConnected()) {
+      log.warn('Cannot sync subscriptions: SSE not connected', {
+        requiredEvents: Array.from(requiredEvents),
+        filters,
+      });
+      throw new Error('SSE not connected');
+    }
+
     const currentEvents = this.getSubscribedEvents();
+    
+    // 시스템 이벤트는 항상 유지 (system-notification, system-alert)
+    const systemEvents = new Set(['system-notification', 'system-alert']);
+    
+    // 구독할 이벤트: requiredEvents에 있지만 현재 구독되지 않은 이벤트
     const toSubscribe = Array.from(requiredEvents).filter(
-      (event) => !currentEvents.has(event)
+      (event) => !currentEvents.has(event) && !systemEvents.has(event)
     );
+    
+    // 구독 해제할 이벤트: 현재 구독 중이지만 requiredEvents에 없고, 시스템 이벤트가 아닌 이벤트
     const toUnsubscribe = Array.from(currentEvents).filter(
-      (event) => !requiredEvents.has(event)
+      (event) => !requiredEvents.has(event) && !systemEvents.has(event)
     );
 
     if (toSubscribe.length > 0) {

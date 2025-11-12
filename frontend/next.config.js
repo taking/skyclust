@@ -18,6 +18,18 @@ const nextConfig = {
       },
     ];
   },
+  // 개발 모드에서 HMR WebSocket 에러를 줄이기 위한 설정
+  // 참고: HMR WebSocket 에러는 개발 모드에서 정상적인 동작이며, 프로덕션에서는 발생하지 않습니다.
+  webpack: (config, { dev, isServer }) => {
+    if (dev && !isServer) {
+      // WebSocket 에러를 무시하도록 설정 (HMR은 선택적 기능)
+      config.ignoreWarnings = [
+        { module: /webpack-dev-server/ },
+        { message: /WebSocket/ },
+      ];
+    }
+    return config;
+  },
 }
 
 module.exports = nextConfig

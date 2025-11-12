@@ -222,9 +222,13 @@ func (s *Service) createAWSEKSCluster(ctx context.Context, credential *domain.Cr
 }
 
 // ListEKSClusters: 모든 Kubernetes 클러스터 목록을 조회합니다 (다중 프로바이더 지원)
-func (s *Service) ListEKSClusters(ctx context.Context, credential *domain.Credential, region string) (*ListClustersResponse, error) {
-	// 캐시 키 생성
+func (s *Service) ListEKSClusters(ctx context.Context, credential *domain.Credential, region string, resourceGroup ...string) (*ListClustersResponse, error) {
+	// 캐시 키 생성 (resource group 포함)
 	credentialID := credential.ID.String()
+	rg := ""
+	if len(resourceGroup) > 0 {
+		rg = resourceGroup[0]
+	}
 	cacheKey := buildKubernetesClusterListKey(credential.Provider, credentialID, region)
 
 	// 캐시에서 조회 시도
@@ -235,13 +239,15 @@ func (s *Service) ListEKSClusters(ctx context.Context, credential *domain.Creden
 				s.logger.Debug(ctx, "Kubernetes clusters retrieved from cache",
 					domain.NewLogField("provider", credential.Provider),
 					domain.NewLogField("credential_id", credentialID),
-					domain.NewLogField("region", region))
+					domain.NewLogField("region", region),
+					domain.NewLogField("resource_group", rg))
 				return cachedResponse, nil
 			} else if cachedResponse, ok := cachedValue.(ListClustersResponse); ok {
 				s.logger.Debug(ctx, "Kubernetes clusters retrieved from cache",
 					domain.NewLogField("provider", credential.Provider),
 					domain.NewLogField("credential_id", credentialID),
-					domain.NewLogField("region", region))
+					domain.NewLogField("region", region),
+					domain.NewLogField("resource_group", rg))
 				return &cachedResponse, nil
 			}
 		}
@@ -257,7 +263,7 @@ func (s *Service) ListEKSClusters(ctx context.Context, credential *domain.Creden
 	case "gcp":
 		response, err = s.listGCPGKEClusters(ctx, credential, region)
 	case "azure":
-		response, err = s.listAzureAKSClusters(ctx, credential, region)
+		response, err = s.listAzureAKSClusters(ctx, credential, region, rg)
 	case "ncp":
 		// TODO: Implement NCP NKS cluster listing
 		response = &ListClustersResponse{Clusters: []ClusterInfo{}}
@@ -1629,8 +1635,12 @@ func (s *Service) createAzureAKSCluster(ctx context.Context, credential *domain.
 }
 
 // listAzureAKSClusters: Azure AKS 클러스터 목록을 조회합니다
-func (s *Service) listAzureAKSClusters(ctx context.Context, credential *domain.Credential, location string) (*ListClustersResponse, error) {
-	creds, err := s.extractAzureCredentials(ctx, credential)
+func (s *Service) listAzureAKSClusters(ctx context.Context, credential *domain.Credential, location string, resourceGroup ...string) (*ListClustersResponse, error) {
+	rg := ""
+	if len(resourceGroup) > 0 {
+		rg = resourceGroup[0]
+	}
+	creds, err := s.extractAzureCredentials(ctx, credential, rg)
 	if err != nil {
 		return nil, err
 	}
@@ -1644,61 +1654,105 @@ func (s *Service) listAzureAKSClusters(ctx context.Context, credential *domain.C
 	// Get managed clusters client
 	managedClustersClient := clientFactory.NewManagedClustersClient()
 
-	// List all clusters in the subscription
 	var clusters []ClusterInfo
-	pager := managedClustersClient.NewListPager(nil)
 
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return nil, s.providerErrorConverter.ConvertAzureError(err, "list AKS clusters")
+	// Resource Group이 있으면 해당 Resource Group의 클러스터만 조회 (최적화)
+	if creds.ResourceGroup != "" {
+		pager := managedClustersClient.NewListByResourceGroupPager(creds.ResourceGroup, nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, s.providerErrorConverter.ConvertAzureError(err, "list AKS clusters by resource group")
+			}
+
+			for _, cluster := range page.Value {
+				// Filter by location if provided
+				if location != "" && cluster.Location != nil && *cluster.Location != location {
+					continue
+				}
+
+				clusterInfo := s.buildClusterInfoFromAzureCluster(cluster)
+				clusters = append(clusters, clusterInfo)
+			}
 		}
-
-		for _, cluster := range page.Value {
-			// Filter by location if provided
-			if location != "" && cluster.Location != nil && *cluster.Location != location {
-				continue
+	} else {
+		// Resource Group이 없으면 전체 구독에서 조회
+		pager := managedClustersClient.NewListPager(nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, s.providerErrorConverter.ConvertAzureError(err, "list AKS clusters")
 			}
 
-			clusterInfo := ClusterInfo{
-				ID:      *cluster.ID,
-				Name:    *cluster.Name,
-				Version: "",
-				Status:  "",
-				Region:  "",
-			}
-
-			if cluster.Properties != nil {
-				if cluster.Properties.KubernetesVersion != nil {
-					clusterInfo.Version = *cluster.Properties.KubernetesVersion
+			for _, cluster := range page.Value {
+				// Filter by location if provided
+				if location != "" && cluster.Location != nil && *cluster.Location != location {
+					continue
 				}
-				if cluster.Properties.PowerState != nil && cluster.Properties.PowerState.Code != nil {
-					clusterInfo.Status = string(*cluster.Properties.PowerState.Code)
-				}
-				if cluster.Properties.Fqdn != nil {
-					clusterInfo.Endpoint = *cluster.Properties.Fqdn
-				}
-			}
 
-			if cluster.Location != nil {
-				clusterInfo.Region = *cluster.Location
+				clusterInfo := s.buildClusterInfoFromAzureCluster(cluster)
+				clusters = append(clusters, clusterInfo)
 			}
-
-			if cluster.Tags != nil {
-				tags := make(map[string]string)
-				for k, v := range cluster.Tags {
-					if v != nil {
-						tags[k] = *v
-					}
-				}
-				clusterInfo.Tags = tags
-			}
-
-			clusters = append(clusters, clusterInfo)
 		}
 	}
 
+	s.logger.Info(ctx, "Azure AKS clusters listed successfully",
+		domain.NewLogField("count", len(clusters)),
+		domain.NewLogField("resource_group", creds.ResourceGroup),
+		domain.NewLogField("location", location))
+
 	return &ListClustersResponse{Clusters: clusters}, nil
+}
+
+// buildClusterInfoFromAzureCluster: Azure Managed Cluster에서 ClusterInfo를 생성합니다
+func (s *Service) buildClusterInfoFromAzureCluster(cluster *armcontainerservice.ManagedCluster) ClusterInfo {
+	clusterInfo := ClusterInfo{
+		ID:      *cluster.ID,
+		Name:    *cluster.Name,
+		Version: "",
+		Status:  "",
+		Region:  "",
+	}
+
+	// Extract resource group from cluster ID
+	// Format: /subscriptions/{sub}/resourceGroups/{rg}/providers/...
+	if cluster.ID != nil {
+		parts := strings.Split(*cluster.ID, "/")
+		for i, part := range parts {
+			if part == "resourceGroups" && i+1 < len(parts) {
+				clusterInfo.ResourceGroup = parts[i+1]
+				break
+			}
+		}
+	}
+
+	if cluster.Properties != nil {
+		if cluster.Properties.KubernetesVersion != nil {
+			clusterInfo.Version = *cluster.Properties.KubernetesVersion
+		}
+		if cluster.Properties.PowerState != nil && cluster.Properties.PowerState.Code != nil {
+			clusterInfo.Status = string(*cluster.Properties.PowerState.Code)
+		}
+		if cluster.Properties.Fqdn != nil {
+			clusterInfo.Endpoint = *cluster.Properties.Fqdn
+		}
+	}
+
+	if cluster.Location != nil {
+		clusterInfo.Region = *cluster.Location
+	}
+
+	if cluster.Tags != nil {
+		tags := make(map[string]string)
+		for k, v := range cluster.Tags {
+			if v != nil {
+				tags[k] = *v
+			}
+		}
+		clusterInfo.Tags = tags
+	}
+
+	return clusterInfo
 }
 
 // getAzureAKSCluster: Azure AKS 클러스터 상세 정보를 조회합니다
@@ -1759,6 +1813,21 @@ func (s *Service) getAzureAKSCluster(ctx context.Context, credential *domain.Cre
 		Version: "",
 		Status:  "",
 		Region:  "",
+	}
+
+	// Extract resource group from cluster ID or use the one from credentials
+	if cluster.ID != nil {
+		parts := strings.Split(*cluster.ID, "/")
+		for i, part := range parts {
+			if part == "resourceGroups" && i+1 < len(parts) {
+				clusterInfo.ResourceGroup = parts[i+1]
+				break
+			}
+		}
+	}
+	// Fallback to credentials resource group if not found in ID
+	if clusterInfo.ResourceGroup == "" {
+		clusterInfo.ResourceGroup = creds.ResourceGroup
 	}
 
 	if cluster.Properties != nil {
@@ -1955,7 +2024,7 @@ func (s *Service) getAzureAKSKubeconfig(ctx context.Context, credential *domain.
 	}
 
 	// Extract kubeconfig from the credential result
-	if credentialResult.Kubeconfigs == nil || len(credentialResult.Kubeconfigs) == 0 {
+	if len(credentialResult.Kubeconfigs) == 0 {
 		return "", domain.NewDomainError(domain.ErrCodeInternalError, "no kubeconfig found in Azure response", HTTPStatusInternalServerError)
 	}
 

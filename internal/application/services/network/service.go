@@ -3,6 +3,7 @@ package network
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"skyclust/internal/application/services/common"
@@ -306,7 +307,7 @@ func (s *Service) CreateVPC(ctx context.Context, credential *domain.Credential, 
 
 // listAzureVPCs: Azure Virtual Network 목록을 조회합니다
 func (s *Service) listAzureVPCs(ctx context.Context, credential *domain.Credential, req ListVPCsRequest) (*ListVPCsResponse, error) {
-	creds, err := s.extractAzureCredentials(ctx, credential)
+	creds, err := s.extractAzureCredentials(ctx, credential, req.ResourceGroup)
 	if err != nil {
 		return nil, err
 	}
@@ -320,68 +321,105 @@ func (s *Service) listAzureVPCs(ctx context.Context, credential *domain.Credenti
 	// Get virtual networks client
 	virtualNetworksClient := clientFactory.NewVirtualNetworksClient()
 
-	// List all virtual networks in the subscription
 	var vpcs []VPCInfo
-	pager := virtualNetworksClient.NewListAllPager(nil)
 
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return nil, s.providerErrorConverter.ConvertAzureError(err, "list Azure virtual networks")
+	// Resource Group이 있으면 해당 Resource Group의 VPC만 조회 (최적화)
+	if creds.ResourceGroup != "" {
+		pager := virtualNetworksClient.NewListPager(creds.ResourceGroup, nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, s.providerErrorConverter.ConvertAzureError(err, "list Azure virtual networks by resource group")
+			}
+
+			for _, vnet := range page.Value {
+				// Filter by location if provided
+				if req.Region != "" && vnet.Location != nil && *vnet.Location != req.Region {
+					continue
+				}
+
+				// Filter by VPC ID if provided
+				if req.VPCID != "" && vnet.ID != nil && *vnet.ID != req.VPCID {
+					continue
+				}
+
+				vpcInfo := s.buildVPCInfoFromAzureVNet(vnet)
+				vpcs = append(vpcs, vpcInfo)
+			}
 		}
-
-		for _, vnet := range page.Value {
-			// Filter by location if provided
-			if req.Region != "" && vnet.Location != nil && *vnet.Location != req.Region {
-				continue
+	} else {
+		// Resource Group이 없으면 전체 구독에서 조회
+		pager := virtualNetworksClient.NewListAllPager(nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, s.providerErrorConverter.ConvertAzureError(err, "list Azure virtual networks")
 			}
 
-			// Filter by VPC ID if provided
-			if req.VPCID != "" && vnet.ID != nil && *vnet.ID != req.VPCID {
-				continue
-			}
-
-			vpcInfo := VPCInfo{
-				ID:        "",
-				Name:      "",
-				State:     "Succeeded",
-				IsDefault: false,
-			}
-
-			if vnet.ID != nil {
-				vpcInfo.ID = *vnet.ID
-			}
-			if vnet.Name != nil {
-				vpcInfo.Name = *vnet.Name
-			}
-			if vnet.Location != nil {
-				vpcInfo.Region = *vnet.Location
-			}
-
-			// Extract CIDR blocks from address space
-			if vnet.Properties != nil && vnet.Properties.AddressSpace != nil && len(vnet.Properties.AddressSpace.AddressPrefixes) > 0 {
-				// Use first CIDR block
-				if vnet.Properties.AddressSpace.AddressPrefixes[0] != nil {
-					// Note: VPCInfo doesn't have CIDRBlock field, but we can add it if needed
+			for _, vnet := range page.Value {
+				// Filter by location if provided
+				if req.Region != "" && vnet.Location != nil && *vnet.Location != req.Region {
+					continue
 				}
-			}
 
-			// Extract tags
-			if vnet.Tags != nil {
-				tags := make(map[string]string)
-				for k, v := range vnet.Tags {
-					if v != nil {
-						tags[k] = *v
-					}
+				// Filter by VPC ID if provided
+				if req.VPCID != "" && vnet.ID != nil && *vnet.ID != req.VPCID {
+					continue
 				}
-				vpcInfo.Tags = tags
-			}
 
-			vpcs = append(vpcs, vpcInfo)
+				vpcInfo := s.buildVPCInfoFromAzureVNet(vnet)
+				vpcs = append(vpcs, vpcInfo)
+			}
 		}
 	}
 
+	s.logger.Info(ctx, "Azure Virtual Networks listed successfully",
+		domain.NewLogField("count", len(vpcs)),
+		domain.NewLogField("resource_group", creds.ResourceGroup),
+		domain.NewLogField("region", req.Region))
+
 	return &ListVPCsResponse{VPCs: vpcs}, nil
+}
+
+// buildVPCInfoFromAzureVNet: Azure Virtual Network에서 VPCInfo를 생성합니다
+func (s *Service) buildVPCInfoFromAzureVNet(vnet *armnetwork.VirtualNetwork) VPCInfo {
+	vpcInfo := VPCInfo{
+		ID:        "",
+		Name:      "",
+		State:     "Succeeded",
+		IsDefault: false,
+	}
+
+	if vnet.ID != nil {
+		vpcInfo.ID = *vnet.ID
+	}
+	if vnet.Name != nil {
+		vpcInfo.Name = *vnet.Name
+	}
+	if vnet.Location != nil {
+		vpcInfo.Region = *vnet.Location
+	}
+
+	// Extract CIDR blocks from address space
+	if vnet.Properties != nil && vnet.Properties.AddressSpace != nil && len(vnet.Properties.AddressSpace.AddressPrefixes) > 0 {
+		// Use first CIDR block
+		if vnet.Properties.AddressSpace.AddressPrefixes[0] != nil {
+			// Note: VPCInfo doesn't have CIDRBlock field, but we can add it if needed
+		}
+	}
+
+	// Extract tags
+	if vnet.Tags != nil {
+		tags := make(map[string]string)
+		for k, v := range vnet.Tags {
+			if v != nil {
+				tags[k] = *v
+			}
+		}
+		vpcInfo.Tags = tags
+	}
+
+	return vpcInfo
 }
 
 // listNCPVPCs: NCP VPC 목록을 조회합니다
@@ -706,6 +744,27 @@ func (s *Service) updateAzureVPC(ctx context.Context, credential *domain.Credent
 			}
 		}
 		vpcInfo.Tags = tags
+	}
+
+	// 캐시 무효화: VPC 목록 및 개별 VPC 캐시 삭제
+	credentialID := credential.ID.String()
+	if s.cacheService != nil {
+		listKey := buildNetworkVPCListKey(credential.Provider, credentialID, region)
+		if err := s.cacheService.Delete(ctx, listKey); err != nil {
+			s.logger.Warn(ctx, "Failed to invalidate VPC list cache",
+				domain.NewLogField("provider", credential.Provider),
+				domain.NewLogField("credential_id", credentialID),
+				domain.NewLogField("region", region),
+				domain.NewLogField("error", err))
+		}
+		itemKey := buildNetworkVPCItemKey(credential.Provider, credentialID, vpcID)
+		if err := s.cacheService.Delete(ctx, itemKey); err != nil {
+			s.logger.Warn(ctx, "Failed to invalidate VPC item cache",
+				domain.NewLogField("provider", credential.Provider),
+				domain.NewLogField("credential_id", credentialID),
+				domain.NewLogField("vpc_id", vpcID),
+				domain.NewLogField("error", err))
+		}
 	}
 
 	return &vpcInfo, nil
@@ -1311,11 +1370,7 @@ func (s *Service) ListSecurityGroups(ctx context.Context, credential *domain.Cre
 		case "gcp":
 			response, err = s.listGCPSecurityGroups(ctx, credential, req)
 		case "azure":
-			return nil, domain.NewDomainError(
-				domain.ErrCodeNotImplemented,
-				fmt.Sprintf(ErrMsgProviderNotImplemented, domain.ProviderAzure),
-				501,
-			)
+			response, err = s.listAzureSecurityGroups(ctx, credential, req)
 		case "ncp":
 			return nil, domain.NewDomainError(
 				domain.ErrCodeNotImplemented,
@@ -1587,40 +1642,288 @@ func (s *Service) createAzureSecurityGroup(ctx context.Context, credential *doma
 		domain.NewLogField("resource_group", creds.ResourceGroup),
 		domain.NewLogField("location", req.Region))
 
-	// 감사로그 기록
-	credentialID := credential.ID.String()
-	common.LogAction(ctx, s.auditLogRepo, nil, domain.ActionSecurityGroupCreate,
-		fmt.Sprintf("POST /api/v1/%s/networks/security-groups", credential.Provider),
-		map[string]interface{}{
-			"security_group_id": sgInfo.ID,
-			"name":              req.Name,
-			"vpc_id":            req.VPCID,
-			"provider":          credential.Provider,
-			"credential_id":     credentialID,
-			"region":            req.Region,
-		},
-	)
+	return sgInfo, nil
+}
 
-	// NATS 이벤트 발행
-	if s.eventService != nil {
-		sgData := map[string]interface{}{
-			"security_group_id": sgInfo.ID,
-			"name":              req.Name,
-			"vpc_id":            req.VPCID,
-			"provider":          credential.Provider,
-			"credential_id":     credentialID,
-			"region":            req.Region,
+// listAzureSecurityGroups: Azure Network Security Group 목록을 조회합니다
+func (s *Service) listAzureSecurityGroups(ctx context.Context, credential *domain.Credential, req ListSecurityGroupsRequest) (*ListSecurityGroupsResponse, error) {
+	creds, err := s.extractAzureCredentials(ctx, credential, req.ResourceGroup)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create Azure Network client
+	clientFactory, err := s.createAzureNetworkClient(ctx, creds)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get Network Security Groups client
+	nsgClient := clientFactory.NewSecurityGroupsClient()
+
+	var securityGroups []SecurityGroupInfo
+
+	// Resource Group이 있으면 해당 Resource Group의 Security Group만 조회 (최적화)
+	if creds.ResourceGroup != "" {
+		pager := nsgClient.NewListPager(creds.ResourceGroup, nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, s.providerErrorConverter.ConvertAzureError(err, "list Azure Network Security Groups by resource group")
+			}
+
+			for _, nsg := range page.Value {
+				// Filter by location if provided
+				if req.Region != "" && nsg.Location != nil && *nsg.Location != req.Region {
+					continue
+				}
+
+				// Filter by Security Group ID if provided
+				if req.SecurityGroupID != "" && nsg.ID != nil && *nsg.ID != req.SecurityGroupID {
+					continue
+				}
+
+				// Filter by VPC ID if provided (Azure에서는 VNet ID를 VPCID로 사용)
+				if req.VPCID != "" {
+					// Extract VNet ID from NSG associations
+					vnetID := s.extractVNetIDFromNSG(nsg)
+					if vnetID != "" && vnetID != req.VPCID {
+						continue
+					}
+				}
+
+				sgInfo := s.buildSecurityGroupInfoFromAzureNSG(nsg)
+				securityGroups = append(securityGroups, sgInfo)
+			}
 		}
-		if s.eventService != nil {
-			sgData := sgData
-			sgData["provider"] = credential.Provider
-			sgData["credential_id"] = credentialID
-			eventType := fmt.Sprintf("network.security-group.%s.created", credential.Provider)
-			_ = s.eventService.Publish(ctx, eventType, sgData)
+	} else {
+		// Resource Group이 없으면 전체 구독에서 조회
+		pager := nsgClient.NewListAllPager(nil)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return nil, s.providerErrorConverter.ConvertAzureError(err, "list Azure Network Security Groups")
+			}
+
+			for _, nsg := range page.Value {
+				// Filter by location if provided
+				if req.Region != "" && nsg.Location != nil && *nsg.Location != req.Region {
+					continue
+				}
+
+				// Filter by Security Group ID if provided
+				if req.SecurityGroupID != "" && nsg.ID != nil && *nsg.ID != req.SecurityGroupID {
+					continue
+				}
+
+				// Filter by VPC ID if provided (Azure에서는 VNet ID를 VPCID로 사용)
+				if req.VPCID != "" {
+					// Extract VNet ID from NSG associations
+					vnetID := s.extractVNetIDFromNSG(nsg)
+					if vnetID != "" && vnetID != req.VPCID {
+						continue
+					}
+				}
+
+				sgInfo := s.buildSecurityGroupInfoFromAzureNSG(nsg)
+				securityGroups = append(securityGroups, sgInfo)
+			}
 		}
 	}
 
-	return sgInfo, nil
+	s.logger.Info(ctx, "Azure Network Security Groups listed successfully",
+		domain.NewLogField("count", len(securityGroups)),
+		domain.NewLogField("resource_group", creds.ResourceGroup),
+		domain.NewLogField("region", req.Region))
+
+	return &ListSecurityGroupsResponse{SecurityGroups: securityGroups}, nil
+}
+
+// buildSecurityGroupInfoFromAzureNSG: Azure Network Security Group에서 SecurityGroupInfo를 생성합니다
+func (s *Service) buildSecurityGroupInfoFromAzureNSG(nsg *armnetwork.SecurityGroup) SecurityGroupInfo {
+	sgInfo := SecurityGroupInfo{
+		ID:          "",
+		Name:        "",
+		Description: "",
+		VPCID:       "",
+		Region:      "",
+		Rules:       []SecurityGroupRuleInfo{},
+		Tags:        make(map[string]string),
+	}
+
+	if nsg.ID != nil {
+		sgInfo.ID = *nsg.ID
+	}
+	if nsg.Name != nil {
+		sgInfo.Name = *nsg.Name
+	}
+	if nsg.Location != nil {
+		sgInfo.Region = *nsg.Location
+	}
+
+	// Extract VNet ID from NSG associations
+	sgInfo.VPCID = s.extractVNetIDFromNSG(nsg)
+
+	// Extract security rules
+	if nsg.Properties != nil && nsg.Properties.SecurityRules != nil {
+		sgInfo.Rules = s.convertAzureSecurityRules(nsg.Properties.SecurityRules)
+	}
+
+	// Extract tags
+	if nsg.Tags != nil {
+		for k, v := range nsg.Tags {
+			if v != nil {
+				sgInfo.Tags[k] = *v
+			}
+		}
+	}
+
+	return sgInfo
+}
+
+// extractVNetIDFromNSG: Azure Network Security Group에서 VNet ID를 추출합니다
+func (s *Service) extractVNetIDFromNSG(nsg *armnetwork.SecurityGroup) string {
+	if nsg.Properties == nil || nsg.Properties.NetworkInterfaces == nil {
+		return ""
+	}
+
+	// NSG는 Network Interface나 Subnet에 연결될 수 있음
+	// Subnet을 통해 VNet ID를 추출
+	for _, ni := range nsg.Properties.NetworkInterfaces {
+		if ni.ID != nil {
+			// Network Interface ID에서 VNet ID 추출 시도
+			parts := strings.Split(*ni.ID, "/")
+			for i, part := range parts {
+				if part == "virtualNetworks" && i+1 < len(parts) {
+					// VNet ID 재구성
+					vnetID := strings.Join(parts[:i+2], "/")
+					return vnetID
+				}
+			}
+		}
+	}
+
+	// Subnet을 통해 VNet ID 추출
+	if nsg.Properties.Subnets != nil {
+		for _, subnet := range nsg.Properties.Subnets {
+			if subnet.ID != nil {
+				parts := strings.Split(*subnet.ID, "/")
+				for i, part := range parts {
+					if part == "virtualNetworks" && i+1 < len(parts) {
+						vnetID := strings.Join(parts[:i+2], "/")
+						return vnetID
+					}
+				}
+			}
+		}
+	}
+
+	return ""
+}
+
+// convertAzureSecurityRules: Azure Security Rules를 SecurityGroupRuleInfo로 변환합니다
+func (s *Service) convertAzureSecurityRules(rules []*armnetwork.SecurityRule) []SecurityGroupRuleInfo {
+	ruleInfos := make([]SecurityGroupRuleInfo, 0, len(rules))
+
+	for _, rule := range rules {
+		if rule == nil || rule.Name == nil {
+			continue
+		}
+
+		ruleInfo := SecurityGroupRuleInfo{
+			ID:          "",
+			Type:        "",
+			Protocol:    "",
+			FromPort:    0,
+			ToPort:      0,
+			CIDRBlocks:  []string{},
+			Description: "",
+		}
+
+		if rule.ID != nil {
+			ruleInfo.ID = *rule.ID
+		}
+
+		// Determine rule type (ingress or egress)
+		if rule.Properties != nil {
+			if rule.Properties.Direction != nil {
+				switch *rule.Properties.Direction {
+				case armnetwork.SecurityRuleDirectionInbound:
+					ruleInfo.Type = "ingress"
+				case armnetwork.SecurityRuleDirectionOutbound:
+					ruleInfo.Type = "egress"
+				}
+			}
+
+			// Protocol
+			if rule.Properties.Protocol != nil {
+				ruleInfo.Protocol = string(*rule.Properties.Protocol)
+			}
+
+			// Source port range
+			if rule.Properties.SourcePortRange != nil {
+				// Parse port range (e.g., "80" or "80-443")
+				portRange := *rule.Properties.SourcePortRange
+				if strings.Contains(portRange, "-") {
+					parts := strings.Split(portRange, "-")
+					if len(parts) == 2 {
+						if fromPort, err := strconv.ParseInt(parts[0], 10, 32); err == nil {
+							ruleInfo.FromPort = int32(fromPort)
+						}
+						if toPort, err := strconv.ParseInt(parts[1], 10, 32); err == nil {
+							ruleInfo.ToPort = int32(toPort)
+						}
+					}
+				} else {
+					if port, err := strconv.ParseInt(portRange, 10, 32); err == nil {
+						ruleInfo.FromPort = int32(port)
+						ruleInfo.ToPort = int32(port)
+					}
+				}
+			}
+
+			// Destination port range (Azure uses destination for inbound rules)
+			if rule.Properties.DestinationPortRange != nil {
+				portRange := *rule.Properties.DestinationPortRange
+				if strings.Contains(portRange, "-") {
+					parts := strings.Split(portRange, "-")
+					if len(parts) == 2 {
+						if fromPort, err := strconv.ParseInt(parts[0], 10, 32); err == nil {
+							ruleInfo.FromPort = int32(fromPort)
+						}
+						if toPort, err := strconv.ParseInt(parts[1], 10, 32); err == nil {
+							ruleInfo.ToPort = int32(toPort)
+						}
+					}
+				} else {
+					if port, err := strconv.ParseInt(portRange, 10, 32); err == nil {
+						ruleInfo.FromPort = int32(port)
+						ruleInfo.ToPort = int32(port)
+					}
+				}
+			}
+
+			// Source address prefixes
+			if rule.Properties.SourceAddressPrefixes != nil {
+				for _, prefix := range rule.Properties.SourceAddressPrefixes {
+					if prefix != nil {
+						ruleInfo.CIDRBlocks = append(ruleInfo.CIDRBlocks, *prefix)
+					}
+				}
+			} else if rule.Properties.SourceAddressPrefix != nil {
+				ruleInfo.CIDRBlocks = append(ruleInfo.CIDRBlocks, *rule.Properties.SourceAddressPrefix)
+			}
+
+			// Description
+			if rule.Properties.Description != nil {
+				ruleInfo.Description = *rule.Properties.Description
+			}
+		}
+
+		ruleInfos = append(ruleInfos, ruleInfo)
+	}
+
+	return ruleInfos
 }
 
 // convertGCPFirewallRulesFromRequest: 요청으로부터 GCP 방화벽 규칙을 보안 그룹 규칙 정보로 변환합니다
@@ -2030,7 +2333,7 @@ func (s *Service) UpdateSecurityGroupRules(ctx context.Context, credential *doma
 
 // listAzureSubnets lists Azure subnets (stub)
 func (s *Service) listAzureSubnets(ctx context.Context, credential *domain.Credential, req ListSubnetsRequest) (*ListSubnetsResponse, error) {
-	creds, err := s.extractAzureCredentials(ctx, credential)
+	creds, err := s.extractAzureCredentials(ctx, credential, req.ResourceGroup)
 	if err != nil {
 		return nil, err
 	}

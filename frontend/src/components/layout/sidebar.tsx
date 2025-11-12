@@ -25,6 +25,7 @@ import {
   Layers,
   Shield,
   Building2,
+  FolderTree,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScreenReaderOnly } from '@/components/accessibility/screen-reader-only';
@@ -37,6 +38,7 @@ import * as z from 'zod';
 import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
 import { useTranslation } from '@/hooks/use-translation';
 import { CredentialSelector } from './credential-selector';
+import { useCredentials } from '@/hooks/use-credentials';
 
 const createWorkspaceSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),
@@ -52,8 +54,9 @@ interface NavigationItem {
 }
 
 // 네비게이션은 번역을 사용하여 동적으로 생성됨
-function getNavigation(t: (key: string) => string): NavigationItem[] {
-  return [
+// selectedProvider를 파라미터로 받아 Azure인 경우 IAM 메뉴 추가
+function getNavigation(t: (key: string) => string, selectedProvider?: string): NavigationItem[] {
+  const navItems: NavigationItem[] = [
     { name: t('nav.dashboard'), href: '/dashboard', icon: Home },
     {
       name: t('nav.compute'),
@@ -82,8 +85,22 @@ function getNavigation(t: (key: string) => string): NavigationItem[] {
         { name: t('nav.securityGroups'), href: '/networks/security-groups', icon: Shield },
       ],
     },
-    { name: t('nav.credentials'), href: '/credentials', icon: Key },
   ];
+
+  // Azure인 경우 IAM 메뉴 추가
+  if (selectedProvider === 'azure') {
+    navItems.push({
+      name: t('nav.iam'),
+      icon: Shield,
+      children: [
+        { name: t('nav.resourceGroups'), href: '/azure/iam/resource-groups', icon: FolderTree },
+      ],
+    });
+  }
+
+  navItems.push({ name: t('nav.credentials'), href: '/credentials', icon: Key });
+
+  return navItems;
 }
 
 /**
@@ -110,14 +127,22 @@ function SidebarComponent() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const { t } = useTranslation();
   
+  // 현재 선택된 credential의 provider 확인 (Azure IAM 메뉴 표시용)
+  const { selectedCredentialId } = useCredentialContextStore();
+  const { selectedProvider } = useCredentials({
+    workspaceId: currentWorkspace?.id,
+    selectedCredentialId: selectedCredentialId || undefined,
+    enabled: !!currentWorkspace,
+  });
+  
   // 1. 네비게이션 메뉴 생성: 번역 함수를 사용하여 다국어 지원
   // t가 함수인지 확인하여 안전하게 처리
   const navigation = React.useMemo(() => {
     if (typeof t === 'function') {
-      return getNavigation(t);
+      return getNavigation(t, selectedProvider);
     }
     // Fallback: 기본 영어 메뉴 (번역 함수가 없을 경우)
-    return [
+    const fallbackNav: NavigationItem[] = [
       { name: 'Dashboard', href: '/dashboard', icon: Home },
       {
         name: 'Compute',
@@ -146,9 +171,23 @@ function SidebarComponent() {
           { name: 'Security Groups', href: '/networks/security-groups', icon: Shield },
         ],
       },
-      { name: 'Credentials', href: '/credentials', icon: Key },
     ];
-  }, [t]);
+
+    // Azure인 경우 IAM 메뉴 추가
+    if (selectedProvider === 'azure') {
+      fallbackNav.push({
+        name: 'IAM',
+        icon: Shield,
+        children: [
+          { name: 'Resource Groups', href: '/azure/iam/resource-groups', icon: FolderTree },
+        ],
+      });
+    }
+
+    fallbackNav.push({ name: 'Credentials', href: '/credentials', icon: Key });
+
+    return fallbackNav;
+  }, [t, selectedProvider]);
 
   // 2. 워크스페이스 목록 조회 (React Query 사용)
   const { data: fetchedWorkspaces = [] } = useQuery({
@@ -358,6 +397,7 @@ function SidebarComponent() {
     if (pathname.startsWith('/compute')) items.push('compute');
     if (pathname.startsWith('/kubernetes')) items.push('kubernetes');
     if (pathname.startsWith('/networks')) items.push('networks');
+    if (pathname.startsWith('/azure/iam')) items.push('iam');
     return items;
   });
 
@@ -367,6 +407,7 @@ function SidebarComponent() {
     if (pathname.startsWith('/compute')) items.push('compute');
     if (pathname.startsWith('/kubernetes')) items.push('kubernetes');
     if (pathname.startsWith('/networks')) items.push('networks');
+    if (pathname.startsWith('/azure/iam')) items.push('iam');
     setOpenItems(items);
   }, [pathname]);
 
@@ -556,6 +597,8 @@ function SidebarComponent() {
                     accordionValue = 'kubernetes';
                   } else if (item.children.some(child => child.href?.startsWith('/networks'))) {
                     accordionValue = 'networks';
+                  } else if (item.children.some(child => child.href?.startsWith('/azure/iam'))) {
+                    accordionValue = 'iam';
                   }
                   
                   return (
@@ -592,10 +635,11 @@ function SidebarComponent() {
                                 params.set('workspaceId', currentWorkspace.id);
                               }
                               
-                              // 9-3. credentialId와 region은 compute/kubernetes/networks 경로에서만 유지
+                              // 9-3. credentialId와 region은 compute/kubernetes/networks/azure 경로에서만 유지
                               const shouldKeepParams = child.href.startsWith('/compute') || 
                                                       child.href.startsWith('/kubernetes') || 
-                                                      child.href.startsWith('/networks');
+                                                      child.href.startsWith('/networks') ||
+                                                      child.href.startsWith('/azure');
                               
                               if (!shouldKeepParams) {
                                 params.delete('credentialId');

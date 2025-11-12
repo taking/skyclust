@@ -35,6 +35,8 @@ import { useTranslation } from '@/hooks/use-translation';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { getRegionsByProvider, supportsRegionSelection, getDefaultRegionForProvider } from '@/lib/regions';
 import type { CloudProvider } from '@/lib/types/kubernetes';
+import { useResourceGroups } from '@/hooks/use-resource-groups';
+import { ResourceGroupSelect } from './resource-group-select';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,14 +49,22 @@ export function CredentialSelector() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { currentWorkspace } = useWorkspaceStore();
-  const { selectedCredentialId, selectedRegion, setSelectedCredential, setSelectedRegion } = useCredentialContext();
+  const { 
+    selectedCredentialId, 
+    selectedRegion, 
+    selectedResourceGroup,
+    setSelectedCredential, 
+    setSelectedRegion,
+    setSelectedResourceGroup,
+  } = useCredentialContext();
   
   // 자격 증명 선택기를 표시할 경로인지 확인
   const shouldShow = React.useMemo(() => {
     return pathname.startsWith('/compute') || 
            pathname.startsWith('/kubernetes') || 
            pathname.startsWith('/networks') ||
-           pathname.startsWith('/dashboard');
+           pathname.startsWith('/dashboard') ||
+           pathname.startsWith('/azure/iam');
   }, [pathname]);
 
   const { credentials, selectedCredential, selectedProvider } = useCredentials({
@@ -65,6 +75,29 @@ export function CredentialSelector() {
   
   const regions = React.useMemo(() => getRegionsByProvider(selectedProvider), [selectedProvider]);
   const showRegionSelector = supportsRegionSelection(selectedProvider);
+  const isAzure = selectedProvider === 'azure';
+  
+  // Azure Resource Groups 조회 (Azure credential이 선택된 경우에만)
+  // Sidebar용이므로 limit=100으로 설정하여 충분한 데이터 조회
+  const { data: resourceGroups = [], isLoading: isLoadingResourceGroups, error: resourceGroupsError } = useResourceGroups({
+    credentialId: isAzure && selectedCredentialId ? selectedCredentialId : undefined,
+    enabled: isAzure && !!selectedCredentialId,
+    limit: 100, // Sidebar용: 충분한 데이터 조회
+  });
+  
+  // 디버깅: 데이터 확인
+  React.useEffect(() => {
+    if (isAzure && selectedCredentialId) {
+      console.log('[CredentialSelector] Azure Resource Groups:', {
+        isAzure,
+        selectedCredentialId,
+        resourceGroupsCount: resourceGroups.length,
+        resourceGroups,
+        isLoading: isLoadingResourceGroups,
+        error: resourceGroupsError,
+      });
+    }
+  }, [isAzure, selectedCredentialId, resourceGroups, isLoadingResourceGroups, resourceGroupsError]);
   
   /**
    * 자격 증명 변경 핸들러
@@ -87,11 +120,19 @@ export function CredentialSelector() {
     // 3. 변경된 자격 증명 정보 조회
     const newCredential = credentials.find((c) => c.id === credentialId);
     
-    // 4. 자격 증명이 없거나 리전을 지원하지 않는 경우 리전 제거
+    // 4. Azure의 경우 Resource Group 초기화, 다른 프로바이더는 리전 처리
     if (!newCredential) {
-      // 자격 증명을 찾을 수 없는 경우 리전 초기화
+      // 자격 증명을 찾을 수 없는 경우 리전 및 Resource Group 초기화
       params.delete('region');
+      params.delete('resourceGroup');
       setSelectedRegion(null);
+      setSelectedResourceGroup(null);
+    } else if (newCredential.provider === 'azure') {
+      // Azure의 경우 Resource Group과 Region 모두 초기화
+      params.delete('region');
+      params.delete('resourceGroup');
+      setSelectedRegion(null);
+      setSelectedResourceGroup(null);
     } else if (!supportsRegionSelection(newCredential.provider as CloudProvider)) {
       // 프로바이더가 리전 선택을 지원하지 않는 경우 리전 초기화
       params.delete('region');
@@ -114,6 +155,31 @@ export function CredentialSelector() {
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
   
+  /**
+   * Resource Group 변경 핸들러 (Azure 전용)
+   * - Resource Group 선택 시 URL 쿼리 파라미터 업데이트
+   */
+  const handleResourceGroupChange = (resourceGroup: string) => {
+    // 1. 'all' 선택 시 빈 문자열로 변환 (전체 Resource Group 선택 의미)
+    const rgValue = resourceGroup === 'all' ? '' : resourceGroup;
+    
+    // 2. 전역 상태에 선택된 Resource Group 저장 (빈 문자열이면 null로 변환)
+    setSelectedResourceGroup(rgValue || null);
+    
+    // 3. URL 쿼리 파라미터 업데이트
+    const params = new URLSearchParams(searchParams.toString());
+    if (rgValue) {
+      // Resource Group이 선택된 경우 URL에 추가
+      params.set('resourceGroup', rgValue);
+    } else {
+      // 전체 Resource Group 선택('all')인 경우 URL에서 제거
+      params.delete('resourceGroup');
+    }
+    
+    // 4. URL 업데이트 (스크롤 없이)
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
   /**
    * 리전 변경 핸들러
    * - 리전 선택 시 URL 쿼리 파라미터 업데이트
@@ -253,6 +319,22 @@ export function CredentialSelector() {
           </div>
         </SelectContent>
       </Select>
+      
+      {/* Azure의 경우 Resource Group 선택기 (Region보다 먼저 표시) */}
+      {isAzure && (
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-muted-foreground">
+            Resource Group
+          </label>
+          <ResourceGroupSelect
+            resourceGroups={resourceGroups}
+            selectedResourceGroup={selectedResourceGroup}
+            onValueChange={(value) => handleResourceGroupChange(value || 'all')}
+            isLoading={isLoadingResourceGroups}
+            error={resourceGroupsError}
+          />
+        </div>
+      )}
       
       {/* 리전 선택기 (프로바이더가 리전을 지원하는 경우) */}
       {showRegionSelector && (

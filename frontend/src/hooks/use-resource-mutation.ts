@@ -43,7 +43,8 @@ export type ResourceType =
   | 'nodePools'
   | 'nodes'
   | 'credentials'
-  | 'workspaces';
+  | 'workspaces'
+  | 'resource-groups';
 
 /**
  * Mutation 작업 타입
@@ -102,6 +103,8 @@ function getResourceQueryKeys(resourceType: ResourceType): typeof queryKeys[keyo
       return queryKeys.credentials;
     case 'workspaces':
       return queryKeys.workspaces;
+    case 'resource-groups':
+      return queryKeys.azureResourceGroups;
     default:
       throw new Error(`Unknown resource type: ${resourceType}`);
   }

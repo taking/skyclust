@@ -57,6 +57,15 @@ export interface SSECallbacks {
   onVMDeleted?: (data: unknown) => void;
   onVMList?: (data: unknown) => void;
   
+  // Azure Resource Group 이벤트
+  onAzureResourceGroupCreated?: (data: unknown) => void;
+  onAzureResourceGroupUpdated?: (data: unknown) => void;
+  onAzureResourceGroupDeleted?: (data: unknown) => void;
+  onAzureResourceGroupList?: (data: unknown) => void;
+  
+  // Dashboard Summary 이벤트
+  onDashboardSummaryUpdated?: (data: unknown) => void;
+  
   onError?: (error: Event | SSEErrorInfo) => void;
 }
 

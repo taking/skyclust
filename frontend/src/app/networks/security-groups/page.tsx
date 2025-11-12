@@ -29,6 +29,9 @@ import { useWorkspaceStore } from '@/store/workspace';
 import { useTranslation } from '@/hooks/use-translation';
 import { DataProcessor } from '@/lib/data';
 import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
+import { sseService } from '@/services/sse';
+import { log } from '@/lib/logging';
+import { useSSEStatus } from '@/hooks/use-sse-status';
 import {
   useSecurityGroupActions,
   SecurityGroupsPageHeader,
@@ -68,6 +71,67 @@ function SecurityGroupsPageContent() {
     resourceType: 'network',
     updateUrl: true,
   });
+
+  // SSE 상태 확인
+  const { status: sseStatus } = useSSEStatus();
+
+  // SSE 이벤트 구독 (Security Group 실시간 업데이트)
+  useEffect(() => {
+    // SSE 연결 완료 확인 (clientId는 subscribeToEvent 내부에서 대기 처리)
+    if (!sseStatus.isConnected) {
+      log.debug('[Security Groups Page] SSE not connected, skipping subscription', {
+        isConnected: sseStatus.isConnected,
+        readyState: sseStatus.readyState,
+      });
+      return;
+    }
+
+    const filters = {
+      credential_ids: selectedCredentialId ? [selectedCredentialId] : undefined,
+      regions: selectedRegion ? [selectedRegion] : undefined,
+    };
+
+    const subscribeToSecurityGroupEvents = async () => {
+      try {
+        await sseService.subscribeToEvent('network-security-group-created', filters);
+        await sseService.subscribeToEvent('network-security-group-updated', filters);
+        await sseService.subscribeToEvent('network-security-group-deleted', filters);
+        await sseService.subscribeToEvent('network-security-group-list', filters);
+        
+        log.debug('[Security Groups Page] Subscribed to Security Group events', { 
+          filters,
+          clientId: sseService.getClientId(),
+        });
+      } catch (error) {
+        log.error('[Security Groups Page] Failed to subscribe to Security Group events', error, {
+          service: 'SSE',
+          action: 'subscribeSecurityGroupEvents',
+        });
+      }
+    };
+
+    subscribeToSecurityGroupEvents();
+
+    // Cleanup: 페이지를 떠날 때 또는 필터가 변경될 때 구독 해제
+    return () => {
+      const unsubscribe = async () => {
+        try {
+          await sseService.unsubscribeFromEvent('network-security-group-created', filters);
+          await sseService.unsubscribeFromEvent('network-security-group-updated', filters);
+          await sseService.unsubscribeFromEvent('network-security-group-deleted', filters);
+          await sseService.unsubscribeFromEvent('network-security-group-list', filters);
+          
+          log.debug('[Security Groups Page] Unsubscribed from Security Group events', { filters });
+        } catch (error) {
+          log.warn('[Security Groups Page] Failed to unsubscribe from Security Group events', error, {
+            service: 'SSE',
+            action: 'unsubscribeSecurityGroupEvents',
+          });
+        }
+      };
+      unsubscribe();
+    };
+  }, [selectedCredentialId, selectedRegion, sseStatus.isConnected]);
 
   // URL 파라미터에서 VPC ID를 가져와서 자동 선택
   useEffect(() => {

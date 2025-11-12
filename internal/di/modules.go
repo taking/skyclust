@@ -264,6 +264,7 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 		repos.CredentialRepository,
 		k8sService,
 		networkService,
+		eventService,
 		logger.DefaultLogger.GetLogger(),
 	)
 

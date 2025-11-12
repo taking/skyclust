@@ -249,6 +249,19 @@ export const dashboard = {
 } as const;
 
 /**
+ * Azure Resource Groups Query Keys
+ */
+export const azureResourceGroups = {
+  all: ['azure-resource-groups'] as const,
+  lists: () => [...azureResourceGroups.all, 'list'] as const,
+  list: (credentialId?: string, limit?: number) =>
+    [...azureResourceGroups.lists(), credentialId, limit] as const,
+  details: () => [...azureResourceGroups.all, 'detail'] as const,
+  detail: (name: string, credentialId?: string) =>
+    [...azureResourceGroups.details(), name, credentialId] as const,
+} as const;
+
+/**
  * Query Keys 통합 객체
  */
 export const queryKeys = {
@@ -270,6 +283,7 @@ export const queryKeys = {
   costAnalysis,
   user,
   dashboard,
+  azureResourceGroups,
 } as const;
 
 /**

@@ -59,13 +59,11 @@ export function useSSEMonitoring() {
   }, [token]);
 
   // 자동 구독 설정
+  // 참고: vm-status, vm-resource, provider-status, provider-instance 이벤트는 더 이상 사용되지 않습니다.
+  // 시스템 이벤트만 구독합니다.
   useEffect(() => {
     if (sseService.isConnected()) {
       // 기본 이벤트 구독
-      sseService.subscribeToEvent('vm-status');
-      sseService.subscribeToEvent('vm-resource');
-      sseService.subscribeToEvent('provider-status');
-      sseService.subscribeToEvent('provider-instance');
       sseService.subscribeToEvent('system-notification');
       sseService.subscribeToEvent('system-alert');
     }

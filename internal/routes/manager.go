@@ -16,6 +16,7 @@ import (
 	"skyclust/internal/application/handlers/notification"
 	"skyclust/internal/application/handlers/oidc"
 	"skyclust/internal/application/handlers/rbac"
+	"skyclust/internal/application/handlers/resourcegroup"
 	ssehandler "skyclust/internal/application/handlers/sse"
 	"skyclust/internal/application/handlers/system"
 	"skyclust/internal/application/handlers/workspace"
@@ -24,7 +25,9 @@ import (
 	exportservice "skyclust/internal/application/services/export"
 	kubernetesservice "skyclust/internal/application/services/kubernetes"
 	networkservice "skyclust/internal/application/services/network"
+	resourcegroupservice "skyclust/internal/application/services/resourcegroup"
 	"skyclust/internal/di"
+	"skyclust/internal/domain"
 	"skyclust/internal/shared/responses"
 	"skyclust/pkg/config"
 	"skyclust/pkg/middleware"
@@ -326,6 +329,37 @@ func (rm *RouteManager) setupAzureRoutes(router *gin.RouterGroup) {
 		if k8s, ok := k8sService.(*kubernetesservice.Service); ok {
 			kubernetes.SetupRoutes(k8sGroup, k8s, rm.container.GetCredentialService(), "azure")
 		}
+	}
+	// Network resources (VPC, Subnet, Security Group)
+	networkGroup := router.Group("/network")
+	if networkService := rm.container.GetNetworkService(); networkService != nil {
+		if networkSvc, ok := networkService.(*networkservice.Service); ok {
+			network.SetupRoutes(networkGroup, networkSvc, rm.container.GetCredentialService(), "azure", rm.logger)
+		}
+	}
+	// IAM resources (Resource Group management - Azure-specific)
+	iamGroup := router.Group("/iam")
+	credentialService := rm.container.GetCredentialService()
+	if credentialService == nil {
+		rm.logger.Warn("CredentialService is nil, skipping Azure Resource Group routes")
+	} else {
+		cacheService, ok := rm.container.GetCache().(domain.CacheService)
+		if !ok {
+			rm.logger.Warn("Cache service type assertion failed, Azure Resource Group routes will work without cache")
+			cacheService = nil
+		}
+		loggerService, ok := rm.container.GetLogger().(domain.LoggerService)
+		if !ok {
+			rm.logger.Warn("Logger service type assertion failed, using default logger for Azure Resource Group")
+			loggerService = nil
+		}
+		resourceGroupService := resourcegroupservice.NewService(
+			credentialService,
+			cacheService,
+			loggerService,
+		)
+		rm.logger.Info("Setting up Azure Resource Group routes", zap.String("path", "/api/v1/azure/iam/resource-groups"))
+		resourcegroup.SetupRoutes(iamGroup, resourceGroupService, credentialService)
 	}
 	// TODO: Add more Azure-specific services
 	// - Virtual Machines

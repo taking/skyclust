@@ -133,6 +133,16 @@ export function createValidationSchemas(t: TranslationFunction) {
     tags: z.record(z.string(), z.string()).optional(),
   });
 
+  const createResourceGroupSchema = z.object({
+    credential_id: z.string().uuid(t('form.validation.invalidCredentialId')),
+    name: z.string()
+      .min(1, t('form.validation.nameRequired'))
+      .max(90, t('form.validation.nameMaxLength', { max: '90' }))
+      .regex(/^[a-zA-Z0-9._()-]+$/, 'Resource group name can only contain alphanumeric characters, periods, underscores, hyphens, and parentheses'),
+    location: z.string().min(1, 'Location is required'),
+    tags: z.record(z.string(), z.string()).optional(),
+  });
+
   const updateSubnetSchema = z.object({
     name: z.string().min(1, t('form.validation.nameRequired')).max(255, t('form.validation.nameMaxLength', { max: '255' })).optional(),
     description: z.string().max(500).optional(),
@@ -277,6 +287,7 @@ export function createValidationSchemas(t: TranslationFunction) {
     updateSubnetSchema,
     createSecurityGroupSchema,
     updateSecurityGroupSchema,
+    createResourceGroupSchema,
     createVMSchema,
     updateVMSchema,
     createCredentialSchema,
@@ -382,6 +393,16 @@ export const createSubnetSchema = z.object({
   description: z.string().max(500).optional(),
   private_ip_google_access: z.boolean().optional(),
   flow_logs: z.boolean().optional(),
+  tags: z.record(z.string(), z.string()).optional(),
+});
+
+export const createResourceGroupSchema = z.object({
+  credential_id: z.string().uuid('Invalid credential ID'),
+  name: z.string()
+    .min(1, 'Name is required')
+    .max(90, 'Name must be less than 90 characters')
+    .regex(/^[a-zA-Z0-9._()-]+$/, 'Resource group name can only contain alphanumeric characters, periods, underscores, hyphens, and parentheses'),
+  location: z.string().min(1, 'Location is required'),
   tags: z.record(z.string(), z.string()).optional(),
 });
 

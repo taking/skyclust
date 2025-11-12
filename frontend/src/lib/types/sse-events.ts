@@ -78,6 +78,47 @@ export interface VMEventData {
 }
 
 /**
+ * Azure Resource Group Event Data
+ */
+export interface AzureResourceGroupEventData extends ResourceEventBase {
+  resourceGroupName?: string;  // Backend: resourceGroupName (not resource_group_name)
+  action?: 'created' | 'updated' | 'deleted' | 'list';
+}
+
+/**
+ * Dashboard Summary Event Data
+ */
+export interface DashboardSummaryEventData {
+  workspace_id: string;
+  credential_id?: string;
+  region?: string;
+  vms: {
+    total: number;
+    running: number;
+    stopped: number;
+    by_provider: Record<string, number>;
+  };
+  clusters: {
+    total: number;
+    healthy: number;
+    by_provider: Record<string, number>;
+  };
+  networks: {
+    vpcs: number;
+    subnets: number;
+    security_groups: number;
+  };
+  credentials: {
+    total: number;
+    by_provider: Record<string, number>;
+  };
+  members: {
+    total: number;
+  };
+  last_updated: string;
+}
+
+/**
  * SSE Message Structure
  * Backend에서 전송하는 메시지 구조: { id, event, data: { data: <actualData> }, timestamp }
  */

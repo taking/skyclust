@@ -1,0 +1,61 @@
+meta {
+  name: 리소스 그룹 상세 조회
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/iam/resource-groups/{{resourceGroupName}}?credential_id={{azure_credentialsId}}
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{azure_credentialsId}}
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Azure Resource Group 상세 조회
+  
+  특정 Resource Group의 상세 정보를 조회합니다.
+  
+  ## Path Parameters
+  
+  - `resourceGroupName`: Resource Group 이름 (필수)
+  
+  ## Query Parameters
+  
+  - `credential_id`: Azure credential ID (필수)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "/subscriptions/xxx/resourceGroups/skyclust-rg",
+      "name": "skyclust-rg",
+      "location": "eastus",
+      "provisioning_state": "Succeeded",
+      "tags": {
+        "Environment": "production",
+        "Project": "skyclust"
+      },
+      "properties": {
+        "provisioningState": "Succeeded"
+      }
+    },
+    "message": "Resource group retrieved successfully"
+  }
+  ```
+}
+

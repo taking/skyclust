@@ -142,7 +142,7 @@ export function supportsRegionSelection(provider?: string): boolean {
  * 프로바이더의 기본 리전 반환
  * - GCP: asia-northeast3 (서울)
  * - AWS: ap-northeast-3 (오사카)
- * - Azure: null (기본 리전 없음)
+ * - Azure: koreacentral (한국 중부)
  * @param provider 프로바이더 이름
  * @returns 기본 리전 또는 null
  */
@@ -158,8 +158,8 @@ export function getDefaultRegionForProvider(provider?: string): string | null {
       // AWS 기본 리전: 오사카 (ap-northeast-3)
       return 'ap-northeast-3';
     case 'azure':
-      // Azure는 기본 리전이 없으므로 null 반환
-      return null;
+      // Azure 기본 리전: 한국 중부 (koreacentral)
+      return 'koreacentral';
     default:
       // 지원하지 않는 프로바이더이거나 provider가 undefined인 경우 null 반환
       return null;

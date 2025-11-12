@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nats-io/nats.go"
 	"github.com/redis/go-redis/v9"
 	"skyclust/internal/application/handlers/sse"
 	"skyclust/internal/domain"
@@ -148,6 +149,24 @@ func (c *Container) Initialize(ctx context.Context, cfg *config.Config) error {
 		sseHandler := sse.NewSSEHandler(c.logger, natsService.GetConnection(), eventBus, c.cache)
 		c.sseHandler = sseHandler
 		logger.Info("SSE handler initialized")
+
+		// Initialize Dashboard Service event subscriptions
+		logger.Info("Initializing Dashboard Service event subscriptions...")
+		dashboardService := c.serviceModule.GetContainer().DashboardService
+		if dashboardService != nil {
+			if svc, ok := dashboardService.(interface {
+				SetNATSConnection(conn *nats.Conn)
+				StartEventSubscriptions(ctx context.Context) error
+			}); ok {
+				svc.SetNATSConnection(natsService.GetConnection())
+				ctx := context.Background()
+				if err := svc.StartEventSubscriptions(ctx); err != nil {
+					logger.Warnf("Failed to start dashboard event subscriptions: %v", err)
+				} else {
+					logger.Info("Dashboard Service event subscriptions started")
+				}
+			}
+		}
 	} else {
 		logger.Warn("NATS connection not available, SSE will be disabled")
 		c.sseHandler = nil

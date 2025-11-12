@@ -7,7 +7,7 @@
 
 import * as React from 'react';
 import { Suspense } from 'react';
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useStandardMutation } from '@/hooks/use-standard-mutation';
 import { ResourceListPage } from '@/components/common/resource-list-page';
@@ -43,6 +43,9 @@ import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
 import { useTranslation } from '@/hooks/use-translation';
 import { createValidationSchemas } from '@/lib/validation';
 import { DeleteConfirmationDialog } from '@/components/common/delete-confirmation-dialog';
+import { sseService } from '@/services/sse';
+import { log } from '@/lib/logging';
+import { useSSEStatus } from '@/hooks/use-sse-status';
 
 function NodePoolsPageContent() {
   const { t } = useTranslation();
@@ -60,6 +63,65 @@ function NodePoolsPageContent() {
     resourceType: 'kubernetes',
     updateUrl: true,
   });
+
+  // SSE 상태 확인
+  const { status: sseStatus } = useSSEStatus();
+
+  // SSE 이벤트 구독 (Kubernetes Node Pool 실시간 업데이트)
+  useEffect(() => {
+    // SSE 연결 완료 확인 (clientId는 subscribeToEvent 내부에서 대기 처리)
+    if (!sseStatus.isConnected) {
+      log.debug('[Node Pools Page] SSE not connected, skipping subscription', {
+        isConnected: sseStatus.isConnected,
+        readyState: sseStatus.readyState,
+      });
+      return;
+    }
+
+    const filters = {
+      credential_ids: selectedCredentialId ? [selectedCredentialId] : undefined,
+      regions: selectedRegion ? [selectedRegion] : undefined,
+    };
+
+    const subscribeToNodePoolEvents = async () => {
+      try {
+        await sseService.subscribeToEvent('kubernetes-node-pool-created', filters);
+        await sseService.subscribeToEvent('kubernetes-node-pool-updated', filters);
+        await sseService.subscribeToEvent('kubernetes-node-pool-deleted', filters);
+        
+        log.debug('[Node Pools Page] Subscribed to Kubernetes Node Pool events', { 
+          filters,
+          clientId: sseService.getClientId(),
+        });
+      } catch (error) {
+        log.error('[Node Pools Page] Failed to subscribe to Kubernetes Node Pool events', error, {
+          service: 'SSE',
+          action: 'subscribeNodePoolEvents',
+        });
+      }
+    };
+
+    subscribeToNodePoolEvents();
+
+    // Cleanup: 페이지를 떠날 때 또는 필터가 변경될 때 구독 해제
+    return () => {
+      const unsubscribe = async () => {
+        try {
+          await sseService.unsubscribeFromEvent('kubernetes-node-pool-created', filters);
+          await sseService.unsubscribeFromEvent('kubernetes-node-pool-updated', filters);
+          await sseService.unsubscribeFromEvent('kubernetes-node-pool-deleted', filters);
+          
+          log.debug('[Node Pools Page] Unsubscribed from Kubernetes Node Pool events', { filters });
+        } catch (error) {
+          log.warn('[Node Pools Page] Failed to unsubscribe from Kubernetes Node Pool events', error, {
+            service: 'SSE',
+            action: 'unsubscribeNodePoolEvents',
+          });
+        }
+      };
+      unsubscribe();
+    };
+  }, [selectedCredentialId, selectedRegion, sseStatus.isConnected]);
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedClusterName, setSelectedClusterName] = useState<string>('');

@@ -13,6 +13,40 @@ if (process.env.NODE_ENV === 'development') {
   import('@/lib/test');
 }
 
+// 개발 환경에서 개발 도구 관련 경고 필터링
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+  const originalError = console.error;
+  const originalWarn = console.warn;
+  
+  // console.error 필터링
+  console.error = (...args: unknown[]) => {
+    // HMR WebSocket 에러는 무시 (정상적인 개발 모드 동작)
+    const message = args[0]?.toString() || '';
+    if (
+      message.includes('WebSocket connection to') &&
+      message.includes('_next/webpack-hmr')
+    ) {
+      return;
+    }
+    originalError.apply(console, args);
+  };
+  
+  // console.warn 필터링 (소스맵 경고 등)
+  console.warn = (...args: unknown[]) => {
+    const message = args[0]?.toString() || '';
+    // 소스맵 관련 경고는 무시 (정상적인 개발 모드 동작)
+    if (
+      message.includes('소스 맵에 유효하지 않은') ||
+      message.includes('sourcesContent') ||
+      message.includes('source map') ||
+      message.includes('_next/static/chunks')
+    ) {
+      return;
+    }
+    originalWarn.apply(console, args);
+  };
+}
+
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {

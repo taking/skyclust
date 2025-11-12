@@ -97,12 +97,13 @@ function DashboardContent() {
 
   // 대시보드 SSE 동적 구독 관리
   // 위젯 목록과 필터에 따라 필요한 이벤트만 구독
+  // Dashboard summary는 항상 구독 (위젯이 없어도)
   useDashboardSSE({
     widgets,
     credentialId: selectedCredentialId || undefined,
     region: selectedRegion || undefined,
     includeSummary: true,
-    enabled: !!currentWorkspace?.id && widgets.length > 0,
+    enabled: !!currentWorkspace?.id, // 위젯이 없어도 summary는 구독
   });
 
   // Fetch workspaces
