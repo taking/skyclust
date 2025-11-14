@@ -19,7 +19,12 @@ export interface ResourceEventBase {
  */
 export interface KubernetesClusterEventData extends ResourceEventBase {
   clusterId?: string;      // Backend: clusterId (not cluster_id)
+  cluster_id?: string;     // Backend에서 사용하는 필드명 (snake_case)
   cluster_name?: string;   // Backend에서 사용하는 필드명
+  name?: string;           // Backend에서 사용하는 필드명 (cluster name)
+  new_status?: string;    // Backend에서 status 변경 시 사용
+  old_status?: string;     // Backend에서 status 변경 시 사용
+  version?: string;        // Backend에서 version 변경 시 사용
   action?: 'created' | 'updated' | 'deleted' | 'list';
 }
 

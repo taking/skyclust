@@ -38,6 +38,7 @@ func SetupRoutes(router *gin.RouterGroup, k8sService *kubernetesservice.Service,
 	router.POST("/clusters/:name/node-groups", handler.CreateNodeGroup)
 	router.GET("/clusters/:name/node-groups", handler.ListNodeGroups)
 	router.GET("/clusters/:name/node-groups/:nodegroup", handler.GetNodeGroup)
+	router.PUT("/clusters/:name/node-groups/:nodegroup", handler.UpdateNodeGroup)
 	router.DELETE("/clusters/:name/node-groups/:nodegroup", handler.DeleteNodeGroup)
 
 	// Cluster operations
@@ -64,5 +65,8 @@ func SetupRoutes(router *gin.RouterGroup, k8sService *kubernetesservice.Service,
 		router.GET("/metadata/versions", handler.GetEKSVersions)
 		router.GET("/metadata/regions", handler.GetAWSRegions)
 		router.GET("/metadata/availability-zones", handler.GetAvailabilityZones)
+		router.GET("/metadata/instance-types", handler.GetInstanceTypes)
+		router.GET("/metadata/ami-types", handler.GetEKSAmitTypes)
+		router.GET("/metadata/gpu-quota", handler.CheckGPUQuota)
 	}
 }

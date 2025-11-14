@@ -29,6 +29,7 @@ type ProviderHandler interface {
 	CreateNodeGroup(c *gin.Context)
 	ListNodeGroups(c *gin.Context)
 	GetNodeGroup(c *gin.Context)
+	UpdateNodeGroup(c *gin.Context)
 	DeleteNodeGroup(c *gin.Context)
 
 	// Cluster operations
@@ -50,6 +51,9 @@ type ProviderHandler interface {
 	GetEKSVersions(c *gin.Context)
 	GetAWSRegions(c *gin.Context)
 	GetAvailabilityZones(c *gin.Context)
+	GetInstanceTypes(c *gin.Context)
+	GetEKSAmitTypes(c *gin.Context)
+	CheckGPUQuota(c *gin.Context)
 }
 
 // Factory creates and manages provider-specific Kubernetes handlers

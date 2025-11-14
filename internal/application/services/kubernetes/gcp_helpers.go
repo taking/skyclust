@@ -408,7 +408,7 @@ func (s *Service) listGCPGKEClusters(ctx context.Context, credential *domain.Cre
 	// List clusters in the region and all zones of the specified region
 	locations := s.getGCPLocations(region)
 
-	var allClusters []ClusterInfo
+	var allClusters []BaseClusterInfo
 
 	for _, location := range locations {
 		// List clusters in each location (region or zone)
@@ -450,7 +450,7 @@ func (s *Service) listGCPGKEClusters(ctx context.Context, credential *domain.Cre
 				domain.NewLogField("zone", clusterZone))
 
 			// Build detailed cluster information
-			clusterInfo := ClusterInfo{
+			clusterInfo := BaseClusterInfo{
 				ID:        cluster.Name,
 				Name:      cluster.Name,
 				Version:   cluster.CurrentMasterVersion,
@@ -458,6 +458,7 @@ func (s *Service) listGCPGKEClusters(ctx context.Context, credential *domain.Cre
 				Region:    region,
 				Zone:      clusterZone,
 				Endpoint:  cluster.Endpoint,
+				ProjectID: projectID, // GCP project ID for listing compatibility
 				CreatedAt: cluster.CreateTime,
 				UpdatedAt: "", // UpdateTime field doesn't exist in GCP SDK
 				Tags:      cluster.ResourceLabels,
@@ -515,13 +516,13 @@ func (s *Service) listGCPGKEClusters(ctx context.Context, credential *domain.Cre
 
 	// 빈 배열인 경우에도 nil이 아닌 빈 슬라이스 반환 보장
 	if allClusters == nil {
-		allClusters = []ClusterInfo{}
+		allClusters = []BaseClusterInfo{}
 	}
 
 	return &ListClustersResponse{Clusters: allClusters}, nil
 }
 
-func (s *Service) getGCPGKECluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (*ClusterInfo, error) {
+func (s *Service) getGCPGKECluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (interface{}, error) {
 	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
 	if err != nil {
 		return nil, err
@@ -534,32 +535,100 @@ func (s *Service) getGCPGKECluster(ctx context.Context, credential *domain.Crede
 		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to get GKE cluster: %v", err), 502)
 	}
 
-	// Convert to ClusterInfo
+	// Convert to GCPClusterInfo with full GCP-specific details
 	clusterZone := extractZoneFromLocation(cluster.Location)
 
-	// Build detailed cluster information
-	clusterInfo := ClusterInfo{
-		ID:        cluster.Name,
-		Name:      cluster.Name,
-		Version:   cluster.CurrentMasterVersion,
-		Status:    cluster.Status,
-		Region:    region,
-		Zone:      clusterZone,
-		Endpoint:  cluster.Endpoint,
-		CreatedAt: cluster.CreateTime,
-		UpdatedAt: "", // UpdateTime field doesn't exist in GCP SDK
-		Tags:      cluster.ResourceLabels,
+	clusterInfo := &GCPClusterInfo{
+		BaseClusterInfo: BaseClusterInfo{
+			ID:        cluster.Name,
+			Name:      cluster.Name,
+			Version:   cluster.CurrentMasterVersion,
+			Status:    cluster.Status,
+			Region:    region,
+			Zone:      clusterZone,
+			Endpoint:  cluster.Endpoint,
+			CreatedAt: cluster.CreateTime,
+			UpdatedAt: "", // UpdateTime field doesn't exist in GCP SDK
+			Tags:      cluster.ResourceLabels,
+		},
+		ProjectID: projectID,
 	}
 
-	// Add network configuration (simplified)
+	// Parse NetworkConfig (GCP-specific)
 	if cluster.NetworkConfig != nil {
-		clusterInfo.NetworkConfig = &NetworkConfigInfo{
-			VPCID:           cluster.NetworkConfig.Network,
-			SubnetID:        cluster.NetworkConfig.Subnetwork,
-			PodCIDR:         "",    // Will be populated if available
-			ServiceCIDR:     "",    // Will be populated if available
-			PrivateNodes:    false, // Will be populated if available
-			PrivateEndpoint: false, // Will be populated if available
+		podCIDR := ""
+		serviceCIDR := ""
+		// Extract CIDR from IpAllocationPolicy if available
+		if cluster.IpAllocationPolicy != nil {
+			podCIDR = cluster.IpAllocationPolicy.ClusterIpv4CidrBlock
+			serviceCIDR = cluster.IpAllocationPolicy.ServicesIpv4CidrBlock
+		}
+
+		clusterInfo.NetworkConfig = &GCPNetworkConfig{
+			Network:     cluster.NetworkConfig.Network,
+			Subnetwork:  cluster.NetworkConfig.Subnetwork,
+			PodCIDR:     podCIDR,
+			ServiceCIDR: serviceCIDR,
+		}
+
+		// Also populate common NetworkConfig for backward compatibility
+		clusterInfo.BaseClusterInfo.NetworkConfig = &NetworkConfigInfo{
+			VPCID:       cluster.NetworkConfig.Network,
+			SubnetID:    cluster.NetworkConfig.Subnetwork,
+			PodCIDR:     podCIDR,
+			ServiceCIDR: serviceCIDR,
+		}
+	}
+
+	// Parse PrivateClusterConfig
+	if cluster.PrivateClusterConfig != nil {
+		clusterInfo.PrivateClusterConfig = &GCPPrivateClusterConfig{
+			EnablePrivateNodes:    cluster.PrivateClusterConfig.EnablePrivateNodes,
+			EnablePrivateEndpoint: cluster.PrivateClusterConfig.EnablePrivateEndpoint,
+			MasterIPv4CIDR:        cluster.PrivateClusterConfig.MasterIpv4CidrBlock,
+		}
+
+		if clusterInfo.BaseClusterInfo.NetworkConfig == nil {
+			clusterInfo.BaseClusterInfo.NetworkConfig = &NetworkConfigInfo{}
+		}
+		clusterInfo.BaseClusterInfo.NetworkConfig.PrivateNodes = cluster.PrivateClusterConfig.EnablePrivateNodes
+		clusterInfo.BaseClusterInfo.NetworkConfig.PrivateEndpoint = cluster.PrivateClusterConfig.EnablePrivateEndpoint
+	}
+
+	// Parse WorkloadIdentityConfig
+	if cluster.WorkloadIdentityConfig != nil {
+		clusterInfo.WorkloadIdentityConfig = &GCPWorkloadIdentityConfig{
+			WorkloadPool: cluster.WorkloadIdentityConfig.WorkloadPool,
+		}
+	}
+
+	// Parse MasterAuthorizedNetworksConfig
+	if cluster.MasterAuthorizedNetworksConfig != nil && cluster.MasterAuthorizedNetworksConfig.Enabled {
+		cidrBlocks := make([]string, 0, len(cluster.MasterAuthorizedNetworksConfig.CidrBlocks))
+		for _, cidrBlock := range cluster.MasterAuthorizedNetworksConfig.CidrBlocks {
+			cidrBlocks = append(cidrBlocks, cidrBlock.CidrBlock)
+		}
+		clusterInfo.MasterAuthorizedNetworksConfig = &GCPMasterAuthorizedNetworksConfig{
+			Enabled:    true,
+			CIDRBlocks: cidrBlocks,
+		}
+	}
+
+	// Parse SecurityConfig
+	if cluster.WorkloadIdentityConfig != nil || cluster.BinaryAuthorization != nil || cluster.NetworkPolicy != nil {
+		clusterInfo.SecurityConfig = &GCPSecurityConfig{
+			WorkloadIdentity:    cluster.WorkloadIdentityConfig != nil,
+			BinaryAuthorization: cluster.BinaryAuthorization != nil,
+			NetworkPolicy:       cluster.NetworkPolicy != nil,
+			PodSecurityPolicy:   false, // Deprecated in newer versions
+		}
+
+		// Also populate common SecurityConfig for backward compatibility
+		clusterInfo.BaseClusterInfo.SecurityConfig = &SecurityConfigInfo{
+			WorkloadIdentity:    cluster.WorkloadIdentityConfig != nil,
+			BinaryAuthorization: cluster.BinaryAuthorization != nil,
+			NetworkPolicy:       cluster.NetworkPolicy != nil,
+			PodSecurityPolicy:   false,
 		}
 	}
 
@@ -582,22 +651,12 @@ func (s *Service) getGCPGKECluster(ctx context.Context, credential *domain.Crede
 		}
 	}
 
-	// Add security configuration
-	if cluster.WorkloadIdentityConfig != nil || cluster.BinaryAuthorization != nil || cluster.NetworkPolicy != nil {
-		clusterInfo.SecurityConfig = &SecurityConfigInfo{
-			WorkloadIdentity:    cluster.WorkloadIdentityConfig != nil,
-			BinaryAuthorization: cluster.BinaryAuthorization != nil,
-			NetworkPolicy:       cluster.NetworkPolicy != nil,
-			PodSecurityPolicy:   false, // Deprecated in newer versions
-		}
-	}
-
 	s.logger.Info(ctx, "GCP GKE cluster retrieved successfully",
 		domain.NewLogField("project_id", projectID),
 		domain.NewLogField("cluster_name", clusterName),
 		domain.NewLogField("region", region))
 
-	return &clusterInfo, nil
+	return clusterInfo, nil
 }
 
 func extractZoneFromLocation(location string) string {

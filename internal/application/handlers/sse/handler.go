@@ -993,3 +993,129 @@ func (h *SSEHandler) unsubscribeFromEventHandler() handlers.HandlerFunc {
 		}, "Successfully unsubscribed from event")
 	}
 }
+
+// HandleGetConnectionInfo: 현재 사용자의 SSE 연결 정보를 조회합니다
+func (h *SSEHandler) HandleGetConnectionInfo(c *gin.Context) {
+	handler := h.Compose(
+		h.getConnectionInfoHandler(),
+		h.StandardCRUDDecorators("get_connection_info")...,
+	)
+
+	handler(c)
+}
+
+// getConnectionInfoHandler: 연결 정보 조회 핵심 로직
+func (h *SSEHandler) getConnectionInfoHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		// 사용자 ID 추출
+		userIDValue, exists := c.Get("user_id")
+		if !exists {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeUnauthorized, "User not authenticated", 401), "get_connection_info")
+			return
+		}
+
+		// user_id를 string으로 안전하게 변환
+		var userIDStr string
+		switch v := userIDValue.(type) {
+		case string:
+			userIDStr = v
+		case fmt.Stringer:
+			userIDStr = v.String()
+		default:
+			userIDStr = fmt.Sprintf("%v", v)
+		}
+
+		// 클라이언트 찾기 (현재 사용자의 활성 연결)
+		clientID := ""
+		var client *SSEClient
+		h.clientsMux.RLock()
+		for id, cl := range h.clients {
+			if cl.UserID == userIDStr {
+				clientID = id
+				client = cl
+				break
+			}
+		}
+		h.clientsMux.RUnlock()
+
+		// h.clients에서 찾지 못했으면 realtime.Service의 connections에서 찾기
+		if clientID == "" {
+			conn, err := h.realtimeSvc.GetConnectionByUserID(userIDStr)
+			if err == nil && conn != nil {
+				clientID = conn.ID
+				// realtime.Service의 connections에 있지만 h.clients에 없으면 등록
+				h.clientsMux.Lock()
+				if _, exists := h.clients[conn.ID]; !exists {
+					client = &SSEClient{
+						ID:                  conn.ID,
+						UserID:              conn.UserID,
+						Writer:              conn.Writer,
+						Flusher:             conn.Flusher,
+						Context:             conn.Context,
+						Cancel:              conn.Cancel,
+						LastSeen:            conn.LastSeen,
+						SubscribedEvents:    conn.SubscribedEvents,
+						SubscribedVMs:       make(map[string]bool),
+						SubscribedProviders: make(map[string]bool),
+						Filters: SSEClientFilters{
+							Providers:     make(map[string]bool),
+							CredentialIDs: make(map[string]bool),
+							Regions:       make(map[string]bool),
+							ResourceTypes: make(map[string]bool),
+						},
+					}
+					h.clients[conn.ID] = client
+				} else {
+					client = h.clients[conn.ID]
+				}
+				h.clientsMux.Unlock()
+			}
+		}
+
+		// 연결이 없으면 404 반환
+		if clientID == "" || client == nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotFound, "No active SSE connection found", 404), "get_connection_info")
+			return
+		}
+
+		// 구독 중인 이벤트 타입 목록
+		subscribedEvents := make([]string, 0, len(client.SubscribedEvents))
+		for eventType := range client.SubscribedEvents {
+			subscribedEvents = append(subscribedEvents, eventType)
+		}
+
+		// 필터 정보
+		filters := gin.H{}
+		if len(client.Filters.Providers) > 0 {
+			providers := make([]string, 0, len(client.Filters.Providers))
+			for provider := range client.Filters.Providers {
+				providers = append(providers, provider)
+			}
+			filters["providers"] = providers
+		}
+		if len(client.Filters.CredentialIDs) > 0 {
+			credentialIDs := make([]string, 0, len(client.Filters.CredentialIDs))
+			for credentialID := range client.Filters.CredentialIDs {
+				credentialIDs = append(credentialIDs, credentialID)
+			}
+			filters["credential_ids"] = credentialIDs
+		}
+		if len(client.Filters.Regions) > 0 {
+			regions := make([]string, 0, len(client.Filters.Regions))
+			for region := range client.Filters.Regions {
+				regions = append(regions, region)
+			}
+			filters["regions"] = regions
+		}
+
+		// 연결 정보 반환
+		h.OK(c, gin.H{
+			"connection_id":     clientID,
+			"user_id":           client.UserID,
+			"last_seen":         client.LastSeen,
+			"subscribed_events": subscribedEvents,
+			"filters":           filters,
+			"connected":         true,
+		}, "Connection information retrieved successfully")
+	}
+}

@@ -190,16 +190,63 @@ export function applyKubernetesClusterUpdatedUpdate(
   queryClient: QueryClient,
   eventData: KubernetesClusterEventData
 ): void {
-  const { provider, credentialId, region, clusterId } = eventData;
+  // 백엔드에서 credential_id (snake_case)를 보내는 경우를 처리
+  const credentialId = eventData.credentialId || (eventData as unknown as { credential_id?: string }).credential_id || '';
+  const { provider, region, clusterId } = eventData;
+  
+  // 백엔드에서 전체 클러스터 객체를 보내는 경우
   const updatedCluster = (eventData as unknown as {
     cluster?: KubernetesCluster;
     data?: { cluster?: KubernetesCluster };
   }).cluster ||
   (eventData as unknown as { data?: { cluster?: KubernetesCluster } }).data?.cluster;
 
-  if (!updatedCluster) {
-    // 클러스터 객체가 없으면 무효화만 수행
-    log.debug('[SSE Query Update] Cluster updated event missing cluster object, using invalidation', { eventData });
+  // 백엔드에서 부분 업데이트 필드만 보내는 경우 (status, version 등)
+  const partialUpdate = eventData as unknown as {
+    cluster_id?: string;
+    name?: string;
+    new_status?: string;
+    old_status?: string;
+    version?: string;
+    region?: string;
+  };
+
+  // 전체 클러스터 객체가 있는 경우
+  if (updatedCluster) {
+    // 목록 캐시 업데이트 (실시간 업데이트)
+    queryClient.setQueryData<KubernetesCluster[]>(
+      queryKeys.kubernetesClusters.list(undefined, provider, credentialId, region),
+      (oldData) => {
+        if (!oldData) return [updatedCluster];
+        const updated = oldData.map((c) =>
+          c.id === updatedCluster.id || c.name === updatedCluster.name
+            ? updatedCluster
+            : c
+        );
+        log.debug('[SSE Query Update] Real-time updated cluster in list cache', { clusterId: updatedCluster.id, clusterName: updatedCluster.name });
+        return updated;
+      }
+    );
+
+    // 상세 캐시 업데이트
+    const detailKey = clusterId || updatedCluster.name;
+    if (detailKey) {
+      queryClient.setQueryData<KubernetesCluster>(
+        queryKeys.kubernetesClusters.detail(detailKey),
+        updatedCluster
+      );
+      log.debug('[SSE Query Update] Real-time updated cluster detail cache', { clusterId: detailKey });
+    }
+    return;
+  }
+
+  // 부분 업데이트 필드가 있는 경우 (백엔드에서 status, version 등만 보내는 경우)
+  const targetClusterId = clusterId || partialUpdate.cluster_id;
+  const targetClusterName = partialUpdate.name;
+  
+  if (!targetClusterId && !targetClusterName) {
+    // 클러스터 식별자가 없으면 무효화만 수행
+    log.debug('[SSE Query Update] Cluster updated event missing cluster identifier, using invalidation', { eventData });
     queryClient.invalidateQueries({
       queryKey: queryKeys.kubernetesClusters.list(
         undefined,
@@ -208,37 +255,85 @@ export function applyKubernetesClusterUpdatedUpdate(
         region
       ),
     });
-    if (clusterId) {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.kubernetesClusters.detail(clusterId),
-      });
-    }
     return;
   }
 
-  // 목록 캐시 업데이트 (실시간 업데이트)
+  // 목록 캐시 부분 업데이트 (실시간 업데이트)
   queryClient.setQueryData<KubernetesCluster[]>(
     queryKeys.kubernetesClusters.list(undefined, provider, credentialId, region),
     (oldData) => {
-      if (!oldData) return [updatedCluster];
-      const updated = oldData.map((c) =>
-        c.id === updatedCluster.id || c.name === updatedCluster.name
-          ? updatedCluster
-          : c
-      );
-      log.debug('[SSE Query Update] Real-time updated cluster in list cache', { clusterId: updatedCluster.id, clusterName: updatedCluster.name });
+      if (!oldData) {
+        log.debug('[SSE Query Update] No existing cluster list cache for partial update, using invalidation');
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.kubernetesClusters.list(undefined, provider, credentialId, region),
+        });
+        return oldData;
+      }
+      
+      const updated = oldData.map((c) => {
+        const matches = (targetClusterId && c.id === targetClusterId) || 
+                       (targetClusterName && c.name === targetClusterName);
+        
+        if (!matches) return c;
+        
+        // 부분 업데이트 적용
+        const updated: KubernetesCluster = { ...c };
+        if (partialUpdate.new_status) {
+          updated.status = partialUpdate.new_status;
+        }
+        if (partialUpdate.version) {
+          updated.version = partialUpdate.version;
+        }
+        if (partialUpdate.region) {
+          updated.region = partialUpdate.region;
+        }
+        
+        log.debug('[SSE Query Update] Real-time partially updated cluster in list cache', { 
+          clusterId: updated.id, 
+          clusterName: updated.name,
+          oldStatus: partialUpdate.old_status,
+          newStatus: partialUpdate.new_status 
+        });
+        return updated;
+      });
+      
       return updated;
     }
   );
 
-  // 상세 캐시 업데이트
-  const detailKey = clusterId || updatedCluster.name;
+  // 상세 캐시 부분 업데이트
+  const detailKey = targetClusterId || targetClusterName;
   if (detailKey) {
     queryClient.setQueryData<KubernetesCluster>(
       queryKeys.kubernetesClusters.detail(detailKey),
-      updatedCluster
+      (oldData) => {
+        if (!oldData) {
+          // 상세 캐시가 없으면 무효화
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.kubernetesClusters.detail(detailKey),
+          });
+          return oldData;
+        }
+        
+        const updated: KubernetesCluster = { ...oldData };
+        if (partialUpdate.new_status) {
+          updated.status = partialUpdate.new_status;
+        }
+        if (partialUpdate.version) {
+          updated.version = partialUpdate.version;
+        }
+        if (partialUpdate.region) {
+          updated.region = partialUpdate.region;
+        }
+        
+        log.debug('[SSE Query Update] Real-time partially updated cluster detail cache', { 
+          clusterId: detailKey,
+          oldStatus: partialUpdate.old_status,
+          newStatus: partialUpdate.new_status 
+        });
+        return updated;
+      }
     );
-    log.debug('[SSE Query Update] Real-time updated cluster detail cache', { clusterId: detailKey });
   }
 }
 

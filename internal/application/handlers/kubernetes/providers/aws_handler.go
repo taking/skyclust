@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"fmt"
 	"net/http"
 
 	kubernetesservice "skyclust/internal/application/services/kubernetes"
@@ -461,6 +462,48 @@ func (h *AWSHandler) GetNodeGroup(c *gin.Context) {
 	h.OK(c, nodeGroup, "Node group retrieved successfully")
 }
 
+// UpdateNodeGroup handles updating a node group
+func (h *AWSHandler) UpdateNodeGroup(c *gin.Context) {
+	credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
+	if err != nil {
+		h.HandleError(c, err, "update_node_group")
+		return
+	}
+
+	clusterName := c.Param("name")
+	nodeGroupName := c.Param("nodegroup")
+
+	if clusterName == "" || nodeGroupName == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "cluster name and node group name are required", 400), "update_node_group")
+		return
+	}
+
+	var req kubernetesservice.UpdateNodeGroupRequest
+	if err := h.ValidateRequest(c, &req); err != nil {
+		h.HandleError(c, err, "update_node_group")
+		return
+	}
+
+	req.CredentialID = credential.ID.String()
+	req.ClusterName = clusterName
+	req.NodeGroupName = nodeGroupName
+
+	region := c.Query("region")
+	if region == "" {
+		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region is required", 400), "update_node_group")
+		return
+	}
+	req.Region = region
+
+	nodeGroup, err := h.GetK8sService().UpdateNodeGroup(c.Request.Context(), credential, req)
+	if err != nil {
+		h.HandleError(c, err, "update_node_group")
+		return
+	}
+
+	h.OK(c, nodeGroup, "Node group update initiated")
+}
+
 // DeleteNodeGroup handles deleting a node group
 func (h *AWSHandler) DeleteNodeGroup(c *gin.Context) {
 	clusterName := c.Param("name")
@@ -851,6 +894,192 @@ func (h *AWSHandler) logAvailabilityZonesGetAttempt(c *gin.Context, userID uuid.
 func (h *AWSHandler) logAvailabilityZonesGetSuccess(c *gin.Context, userID uuid.UUID, count int) {
 	h.LogBusinessEvent(c, "availability_zones_retrieved", userID.String(), "", map[string]interface{}{
 		"operation": "get_availability_zones",
+		"provider":  domain.ProviderAWS,
+		"count":     count,
+	})
+}
+
+// GetInstanceTypes handles EC2 instance types listing using decorator pattern
+func (h *AWSHandler) GetInstanceTypes(c *gin.Context) {
+	handler := h.Compose(
+		h.getInstanceTypesHandler(),
+		h.StandardCRUDDecorators("get_instance_types")...,
+	)
+	handler(c)
+}
+
+func (h *AWSHandler) getInstanceTypesHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
+		if err != nil {
+			h.HandleError(c, err, "get_instance_types")
+			return
+		}
+
+		region := c.Query("region")
+		if region == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region is required", 400), "get_instance_types")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_instance_types")
+			return
+		}
+
+		h.logInstanceTypesGetAttempt(c, userID, credential.ID, region)
+
+		instanceTypes, err := h.GetK8sService().GetInstanceTypes(c.Request.Context(), credential, region)
+		if err != nil {
+			h.HandleError(c, err, "get_instance_types")
+			return
+		}
+
+		h.logInstanceTypesGetSuccess(c, userID, len(instanceTypes))
+		h.OK(c, gin.H{
+			"instance_types": instanceTypes,
+		}, "Instance types retrieved successfully")
+	}
+}
+
+// GetEKSAmitTypes handles EKS AMI types listing using decorator pattern
+func (h *AWSHandler) GetEKSAmitTypes(c *gin.Context) {
+	handler := h.Compose(
+		h.getEKSAmitTypesHandler(),
+		h.StandardCRUDDecorators("get_eks_ami_types")...,
+	)
+	handler(c)
+}
+
+func (h *AWSHandler) getEKSAmitTypesHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_eks_ami_types")
+			return
+		}
+
+		h.logEKSAmitTypesGetAttempt(c, userID)
+
+		amiTypes, err := h.GetK8sService().GetEKSAmitTypes(c.Request.Context())
+		if err != nil {
+			h.HandleError(c, err, "get_eks_ami_types")
+			return
+		}
+
+		h.logEKSAmitTypesGetSuccess(c, userID, len(amiTypes))
+		h.OK(c, gin.H{
+			"ami_types": amiTypes,
+		}, "EKS AMI types retrieved successfully")
+	}
+}
+
+// CheckGPUQuota handles GPU quota checking using decorator pattern
+func (h *AWSHandler) CheckGPUQuota(c *gin.Context) {
+	handler := h.Compose(
+		h.checkGPUQuotaHandler(),
+		h.StandardCRUDDecorators("check_gpu_quota")...,
+	)
+	handler(c)
+}
+
+func (h *AWSHandler) checkGPUQuotaHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
+		if err != nil {
+			h.HandleError(c, err, "check_gpu_quota")
+			return
+		}
+
+		region := c.Query("region")
+		if region == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region is required", 400), "check_gpu_quota")
+			return
+		}
+
+		instanceType := c.Query("instance_type")
+		if instanceType == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "instance_type is required", 400), "check_gpu_quota")
+			return
+		}
+
+		// required_count는 선택적 (기본값: 1)
+		requiredCount := int32(1)
+		if reqCountStr := c.Query("required_count"); reqCountStr != "" {
+			var reqCount int32
+			if _, err := fmt.Sscanf(reqCountStr, "%d", &reqCount); err == nil && reqCount > 0 {
+				requiredCount = reqCount
+			}
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "check_gpu_quota")
+			return
+		}
+
+		h.logGPUQuotaCheckAttempt(c, userID, credential.ID, region, instanceType, requiredCount)
+
+		availability, err := h.GetK8sService().CheckGPUQuotaAvailability(c.Request.Context(), credential, region, instanceType, requiredCount)
+		if err != nil {
+			h.HandleError(c, err, "check_gpu_quota")
+			return
+		}
+
+		h.logGPUQuotaCheckSuccess(c, userID, availability.Available)
+		h.OK(c, gin.H{
+			"availability": availability,
+		}, "GPU quota checked successfully")
+	}
+}
+
+func (h *AWSHandler) logGPUQuotaCheckAttempt(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID, region, instanceType string, requiredCount int32) {
+	h.LogBusinessEvent(c, "gpu_quota_check_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "check_gpu_quota",
+		"provider":      domain.ProviderAWS,
+		"credential_id": credentialID.String(),
+		"region":        region,
+		"instance_type": instanceType,
+		"required_count": requiredCount,
+	})
+}
+
+func (h *AWSHandler) logGPUQuotaCheckSuccess(c *gin.Context, userID uuid.UUID, available bool) {
+	h.LogBusinessEvent(c, "gpu_quota_checked", userID.String(), "", map[string]interface{}{
+		"operation": "check_gpu_quota",
+		"provider":  domain.ProviderAWS,
+		"available": available,
+	})
+}
+
+func (h *AWSHandler) logInstanceTypesGetAttempt(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID, region string) {
+	h.LogBusinessEvent(c, "instance_types_get_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "get_instance_types",
+		"provider":      domain.ProviderAWS,
+		"credential_id": credentialID.String(),
+		"region":        region,
+	})
+}
+
+func (h *AWSHandler) logInstanceTypesGetSuccess(c *gin.Context, userID uuid.UUID, count int) {
+	h.LogBusinessEvent(c, "instance_types_retrieved", userID.String(), "", map[string]interface{}{
+		"operation": "get_instance_types",
+		"provider":  domain.ProviderAWS,
+		"count":     count,
+	})
+}
+
+func (h *AWSHandler) logEKSAmitTypesGetAttempt(c *gin.Context, userID uuid.UUID) {
+	h.LogBusinessEvent(c, "eks_ami_types_get_attempted", userID.String(), "", map[string]interface{}{
+		"operation": "get_eks_ami_types",
+		"provider":  domain.ProviderAWS,
+	})
+}
+
+func (h *AWSHandler) logEKSAmitTypesGetSuccess(c *gin.Context, userID uuid.UUID, count int) {
+	h.LogBusinessEvent(c, "eks_ami_types_retrieved", userID.String(), "", map[string]interface{}{
+		"operation": "get_eks_ami_types",
 		"provider":  domain.ProviderAWS,
 		"count":     count,
 	})

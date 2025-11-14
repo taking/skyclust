@@ -72,7 +72,11 @@ function getNavigation(t: (key: string) => string, selectedProvider?: string): N
       icon: Container,
       children: [
         { name: t('nav.clusters'), href: '/kubernetes/clusters', icon: Container },
-        { name: t('nav.nodePools'), href: '/kubernetes/node-pools', icon: Layers },
+        // AWS인 경우 Node Groups, 그 외는 Node Pools
+        ...(selectedProvider === 'aws'
+          ? [{ name: t('nav.nodeGroups'), href: '/kubernetes/node-groups', icon: Layers }]
+          : [{ name: t('nav.nodePools'), href: '/kubernetes/node-pools', icon: Layers }]
+        ),
         { name: t('nav.nodes'), href: '/kubernetes/nodes', icon: Building2 },
       ],
     },

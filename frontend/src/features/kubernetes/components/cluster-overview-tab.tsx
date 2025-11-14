@@ -1,80 +1,55 @@
 /**
  * Cluster Overview Tab Component
- * 클러스터 개요 탭 컴포넌트
+ * 클러스터 개요 탭 컴포넌트 - Provider별 상세 정보 표시
  */
 
 'use client';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { ClusterMetricsChart } from './cluster-metrics-chart';
-import type { KubernetesCluster } from '@/lib/types';
+import { AWSClusterDetailTab } from './aws-cluster-detail-tab';
+import { GCPClusterDetailTab } from './gcp-cluster-detail-tab';
+import { AzureClusterDetailTab } from './azure-cluster-detail-tab';
+import type { ProviderCluster, BaseCluster } from '@/lib/types';
+import { isAWSCluster, isGCPCluster, isAzureCluster } from '@/lib/types';
 
 interface ClusterOverviewTabProps {
   clusterName: string;
-  cluster: KubernetesCluster | undefined;
+  cluster: ProviderCluster | BaseCluster | undefined;
 }
 
 export function ClusterOverviewTab({ clusterName, cluster }: ClusterOverviewTabProps) {
+  if (!cluster) {
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">Loading cluster information...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Cluster Metrics Preview */}
-      {cluster && (
-        <ClusterMetricsChart clusterName={clusterName} />
+      <ClusterMetricsChart clusterName={clusterName} />
+
+      {/* Provider-specific detail tabs */}
+      {isAWSCluster(cluster) && (
+        <AWSClusterDetailTab clusterName={clusterName} cluster={cluster} />
       )}
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Network Configuration</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {cluster?.network_config ? (
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500">VPC ID:</span>
-                  <span className="text-sm">{cluster.network_config.vpc_id || '-'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500">Subnet ID:</span>
-                  <span className="text-sm">{cluster.network_config.subnet_id || '-'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500">Pod CIDR:</span>
-                  <span className="text-sm">{cluster.network_config.pod_cidr || '-'}</span>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500">No network configuration available</p>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Security Configuration</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {cluster?.security_config ? (
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500">Workload Identity:</span>
-                  <Badge variant={cluster.security_config.workload_identity ? 'default' : 'secondary'}>
-                    {cluster.security_config.workload_identity ? 'Enabled' : 'Disabled'}
-                  </Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500">Network Policy:</span>
-                  <Badge variant={cluster.security_config.network_policy ? 'default' : 'secondary'}>
-                    {cluster.security_config.network_policy ? 'Enabled' : 'Disabled'}
-                  </Badge>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500">No security configuration available</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+
+      {isGCPCluster(cluster) && (
+        <GCPClusterDetailTab clusterName={clusterName} cluster={cluster} />
+      )}
+
+      {isAzureCluster(cluster) && (
+        <AzureClusterDetailTab clusterName={clusterName} cluster={cluster} />
+      )}
+
+      {/* Fallback for unknown provider or base cluster */}
+      {!isAWSCluster(cluster) && !isGCPCluster(cluster) && !isAzureCluster(cluster) && (
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">Provider-specific details not available. Showing basic information.</p>
+        </div>
+      )}
     </div>
   );
 }

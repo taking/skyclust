@@ -354,12 +354,15 @@ export const createNodeGroupSchema = z.object({
   credential_id: z.string().uuid('Invalid credential ID'),
   name: z.string().min(1, 'Name is required'),
   cluster_name: z.string().min(1, 'Cluster name is required'),
-  instance_type: z.string().min(1, 'Instance type is required'),
-  disk_size_gb: z.number().min(10).optional(),
+  instance_types: z.array(z.string()).min(1, 'At least one instance type is required'),
+  ami_type: z.string().optional(),
+  disk_size: z.number().min(10).optional(),
   min_size: z.number().min(0),
   max_size: z.number().min(1),
   desired_size: z.number().min(0),
   region: z.string().min(1, 'Region is required'),
+  subnet_ids: z.array(z.string()).min(1, 'At least one subnet is required').optional(),
+  capacity_type: z.enum(['ON_DEMAND', 'SPOT']).optional(),
   tags: z.record(z.string(), z.string()).optional(),
 });
 

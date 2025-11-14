@@ -17,20 +17,31 @@ auth:bearer {
 body:json {
   {
     "credential_id": "{{aws_credentialsId}}",
-    "node_group_name": "skyclust-node-group-{{$timestamp}}",
-  //   "node_role_arn": "{{aws_node_role_arn}}",
+    "cluster_name": "{{clusterName}}",
+    "name": "skyclust-node-group-{{$timestamp}}",
     "subnet_ids": [
       "subnet-00dd2a2fcfbed393e",
       "subnet-00d0f9c6824d5335d"
     ],
     "instance_types": ["t3.medium"],
     "scaling_config": {
-      "min_size": 1,
-      "max_size": 10,
-      "desired_size": 1
+      "min_size": 1,      // 최소 크기 (단위. 노드) - 1보다 크거나 같아야 함
+      "max_size": 10,     // 최대 크기 (단위. 노드) - 1보다 크거나 같아야 함
+      "desired_size": 1   // 원하는 크기 (단위. 노드) - 1보다 크거나 같아야 함
     },
-    "disk_size": 20,
-    "capacity_type": "ON_DEMAND",
+    "disk_size": 20,      // 각 노드에 연결되는 EBS 볼륨의 크기 (GB, 최소 10)
+    "ami_type": "AL2023_x86_64_STANDARD",  // EKS AMI Type (선택사항)
+    // 지원되는 AMI Type:
+    // - BOTTLEROCKET_x86_64
+    // - BOTTLEROCKET_ARM_x86_64
+    // - BOTTLEROCKET_x86_64_NVIDIA
+    // - BOTTLEROCKET_ARM_x86_64_NVIDIA
+    // - AL2023_x86_64_STANDARD
+    // - AL2023_ARM_64_STANDARD
+    // - AL2023_x86_64_NEURON
+    // - AL2023_x86_64_NVIDIA
+    // - AL2023_ARM_64_NVIDIA
+    "capacity_type": "ON_DEMAND",  // ON_DEMAND 또는 SPOT
     "region": "ap-northeast-3",
     "tags": {
       "Environment": "development",
@@ -67,10 +78,34 @@ docs {
   
   ## Request Body
   
+  ### 필수 필드
+  
+  - `credential_id`: 자격 증명 ID (UUID)
+  - `cluster_name`: 클러스터 이름
+  - `name`: 노드 그룹 이름 (필수)
+  - `subnet_ids`: 서브넷 ID 배열 (최소 1개, 최소 2개의 다른 AZ에 있어야 함)
+  - `instance_types`: 인스턴스 유형 배열 (최소 1개)
+  - `scaling_config`: 스케일링 설정
+    - `min_size`: 최소 크기 (1 이상)
+    - `max_size`: 최대 크기 (1 이상)
+    - `desired_size`: 원하는 크기 (1 이상)
+  - `region`: AWS 리전
+  
+  ### 선택 필드
+  
+  - `node_role_arn`: 노드 역할 ARN (없으면 자동 생성)
+  - `disk_size`: 디스크 크기 (GB, 최소 10, 기본값: 20)
+  - `ami_type`: EKS AMI Type (선택사항)
+    - GPU 미지원: `AL2023_x86_64_STANDARD`, `AL2023_ARM_64_STANDARD`, `BOTTLEROCKET_x86_64`, `BOTTLEROCKET_ARM_x86_64`
+    - GPU 지원: `AL2023_x86_64_NVIDIA`, `AL2023_ARM_64_NVIDIA`, `AL2023_x86_64_NEURON`, `BOTTLEROCKET_x86_64_NVIDIA`, `BOTTLEROCKET_ARM_x86_64_NVIDIA`
+  - `capacity_type`: 용량 타입 (`ON_DEMAND` 또는 `SPOT`, 기본값: `ON_DEMAND`)
+  - `tags`: 태그 (키-값 쌍)
+  
   ```json
   {
     "credential_id": "your-credential-id",
-    "node_group_name": "skyclust-node-group-1234567890",
+    "cluster_name": "skyclust-test-cluster",
+    "name": "skyclust-node-group-1234567890",
     "node_role_arn": "arn:aws:iam::123456789012:role/EKSNodeRole",
     "subnet_ids": [
       "subnet-0123456789abcdef0",
@@ -83,6 +118,7 @@ docs {
       "desired_size": 3
     },
     "disk_size": 20,
+    "ami_type": "AL2023_x86_64_STANDARD",
     "capacity_type": "ON_DEMAND",
     "region": "ap-northeast-3",
     "tags": {
@@ -94,31 +130,45 @@ docs {
   
   ## Response
   
+  ### 성공 응답 (201 Created)
+  
   ```json
   {
     "success": true,
     "data": {
       "node_group_name": "skyclust-node-group-1234567890",
       "cluster_name": "skyclust-test-cluster",
-      "node_role_arn": "arn:aws:iam::123456789012:role/EKSNodeRole",
       "status": "CREATING",
+      "instance_types": ["t3.medium"],
       "scaling_config": {
         "min_size": 1,
         "max_size": 10,
         "desired_size": 3
       },
-      "instance_types": ["t3.medium"],
-      "capacity_type": "ON_DEMAND",
-      "disk_size": 20,
-      "region": "ap-northeast-3",
       "tags": {
         "Environment": "development",
         "Project": "skyclust"
-      }
+      },
+      "created_at": "2024-01-01T00:00:00Z"
     },
     "message": "Node group creation initiated"
   }
   ```
+  
+  ### 에러 응답 (400 Bad Request)
+  
+  - 필수 필드 누락
+  - 잘못된 인스턴스 유형
+  - 서브넷이 2개 이상의 다른 AZ에 없음
+  - 잘못된 AMI Type (인스턴스 유형과 호환되지 않음)
+  
+  ### 에러 응답 (404 Not Found)
+  
+  - 클러스터를 찾을 수 없음
+  
+  ### 에러 응답 (502 Bad Gateway)
+  
+  - AWS API 호출 실패
   
   ## 필수 IAM 권한
   
@@ -126,4 +176,24 @@ docs {
   - `iam:PassRole` (EKSNodeRole에 대해)
   - `ec2:DescribeSubnets`
   - `ec2:DescribeSecurityGroups`
+  - `ec2:DescribeInstanceTypes` (인스턴스 유형 조회용)
+  
+  ## 참고사항
+  
+  ### GPU 지원 인스턴스 사용 시
+  
+  - GPU 지원 인스턴스 유형 (예: `g5.xlarge`, `p3.2xlarge`)을 사용하는 경우:
+    - `ami_type`에 GPU 지원 AMI Type을 지정해야 함
+    - 예: `AL2023_x86_64_NVIDIA`, `BOTTLEROCKET_x86_64_NVIDIA`
+  
+  ### 서브넷 요구사항
+  
+  - 최소 2개의 서브넷이 서로 다른 Availability Zone에 있어야 함
+  - EKS는 고가용성을 위해 여러 AZ에 노드를 분산시킴
+  
+  ### 인스턴스 유형과 AMI Type 호환성
+  
+  - GPU 인스턴스: GPU 지원 AMI Type 필수
+  - 비-GPU 인스턴스: GPU 미지원 AMI Type 사용
+  - 아키텍처 매칭: x86_64 인스턴스는 x86_64 AMI, ARM64 인스턴스는 ARM64 AMI 사용
 }

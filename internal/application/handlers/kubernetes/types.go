@@ -80,3 +80,25 @@ type GetAWSRegionsResponse struct {
 type GetAvailabilityZonesResponse struct {
 	Zones []string `json:"zones"`
 }
+
+// GetInstanceTypesResponse represents the response for EC2 instance types
+type GetInstanceTypesResponse struct {
+	InstanceTypes []InstanceTypeInfo `json:"instance_types"`
+}
+
+// InstanceTypeInfo represents EC2 instance type information with GPU support
+// This is a duplicate of kubernetesservice.InstanceTypeInfo for handler layer
+type InstanceTypeInfo struct {
+	InstanceType string `json:"instance_type"`
+	VCPU         int32  `json:"vcpu"`
+	MemoryInMiB  int32  `json:"memory_in_mib"`
+	HasGPU       bool   `json:"has_gpu"`
+	GPUCount     int32  `json:"gpu_count,omitempty"`
+	GPUName      string `json:"gpu_name,omitempty"`
+	Architecture string `json:"architecture"` // x86_64, arm64
+}
+
+// GetEKSAmitTypesResponse represents the response for EKS AMI types
+type GetEKSAmitTypesResponse struct {
+	AMITypes []string `json:"ami_types"`
+}

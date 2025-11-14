@@ -6,6 +6,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -82,7 +83,14 @@ export function ClusterNodeGroupsTab({
           <TableBody>
             {nodeGroups.map((ng) => (
               <TableRow key={ng.id || ng.name}>
-                <TableCell className="font-medium">{ng.name}</TableCell>
+                <TableCell className="font-medium">
+                  <Link
+                    href={`/kubernetes/node-groups/${ng.name}?cluster=${ng.cluster_name}`}
+                    className="text-blue-600 hover:text-blue-800 hover:underline"
+                  >
+                    {ng.name}
+                  </Link>
+                </TableCell>
                 <TableCell>{ng.instance_type}</TableCell>
                 <TableCell>{ng.node_count}</TableCell>
                 <TableCell>{ng.min_size}/{ng.max_size}</TableCell>

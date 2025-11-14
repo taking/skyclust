@@ -68,7 +68,12 @@ function ClusterRowComponent({
         <Button
           variant="link"
           className="p-0 h-auto font-medium"
-          onClick={() => router.push(`/kubernetes/clusters/${cluster.name}`)}
+          onClick={() => {
+            const url = provider 
+              ? `/kubernetes/clusters/${cluster.name}?provider=${provider}`
+              : `/kubernetes/clusters/${cluster.name}`;
+            router.push(url);
+          }}
         >
           {cluster.name}
         </Button>

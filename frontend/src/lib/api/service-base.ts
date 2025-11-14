@@ -63,12 +63,16 @@ export abstract class BaseService {
 
       // 성공 응답 처리
       if (response.data.success) {
+        // DELETE 요청이나 일부 작업은 data 필드가 없을 수 있음
+        // 이 경우 undefined를 반환하거나 빈 객체를 반환
         if (response.data.data === undefined) {
-          throw new ServiceError(
-            'Success response but no data field',
-            'NO_DATA_FIELD',
-            response.status
-          );
+          // DELETE 요청의 경우 void를 반환할 수 있음
+          if (method === 'delete') {
+            return undefined as T;
+          }
+          // 다른 메서드의 경우 빈 객체나 null을 반환
+          // 타입에 따라 다르게 처리할 수 있지만, 일단 undefined를 반환
+          return undefined as T;
         }
         return response.data.data;
       }

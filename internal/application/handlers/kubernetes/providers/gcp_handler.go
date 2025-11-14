@@ -351,6 +351,11 @@ func (h *GCPHandler) GetNodeGroup(c *gin.Context) {
 	h.NotImplemented(c, "get_node_group")
 }
 
+// UpdateNodeGroup handles updating a node group (not used for GCP, but required by interface)
+func (h *GCPHandler) UpdateNodeGroup(c *gin.Context) {
+	h.NotImplemented(c, "update_node_group")
+}
+
 // DeleteNodeGroup handles deleting a node group (not used for GCP, but required by interface)
 func (h *GCPHandler) DeleteNodeGroup(c *gin.Context) {
 	h.NotImplemented(c, "delete_node_group")
@@ -414,4 +419,19 @@ func (h *GCPHandler) GetAWSRegions(c *gin.Context) {
 // GetAvailabilityZones handles availability zones listing (AWS only)
 func (h *GCPHandler) GetAvailabilityZones(c *gin.Context) {
 	h.NotImplemented(c, "get_availability_zones")
+}
+
+// GetInstanceTypes handles instance types listing (AWS only)
+func (h *GCPHandler) GetInstanceTypes(c *gin.Context) {
+	h.NotImplemented(c, "get_instance_types")
+}
+
+// GetEKSAmitTypes handles EKS AMI types listing (AWS only)
+func (h *GCPHandler) GetEKSAmitTypes(c *gin.Context) {
+	h.NotImplemented(c, "get_eks_ami_types")
+}
+
+// CheckGPUQuota handles GPU quota checking (AWS only)
+func (h *GCPHandler) CheckGPUQuota(c *gin.Context) {
+	h.NotImplemented(c, "check_gpu_quota")
 }

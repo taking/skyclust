@@ -1,0 +1,76 @@
+meta {
+  name: SSE 연결
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/sse/events
+  body: none
+  auth: bearer
+}
+
+headers {
+  Accept: text/event-stream
+  Cache-Control: no-cache
+}
+
+docs {
+  # SSE 연결
+  
+  Server-Sent Events (SSE) 연결을 생성합니다. 이 엔드포인트는 스트리밍 연결을 유지하며 실시간 이벤트를 수신합니다.
+  
+  ## 인증
+  
+  Bearer 토큰 인증이 필요합니다. `Authorization: Bearer <token>` 헤더를 포함해야 합니다.
+  
+  ## 헤더
+  
+  - `Accept: text/event-stream` - SSE 스트리밍을 위한 필수 헤더
+  - `Cache-Control: no-cache` - 캐시 비활성화
+  - `Last-Event-ID` (선택) - 마지막으로 수신한 이벤트 ID (재연결 시 사용)
+  
+  ## 쿼리 파라미터
+  
+  - `last_event_id` (선택) - 마지막으로 수신한 이벤트 ID (재연결 시 사용)
+  
+  ## 응답 형식
+  
+  SSE 표준 형식으로 이벤트가 전송됩니다:
+  
+  ```
+  event: <event_type>
+  id: <event_id>
+  data: <json_data>
+  
+  ```
+  
+  ## 이벤트 타입
+  
+  - `system-notification` - 시스템 알림
+  - `system-alert` - 시스템 경고
+  - `dashboard-summary-updated` - 대시보드 요약 업데이트
+  - `kubernetes-cluster-*` - Kubernetes 클러스터 이벤트
+  - `vm-*` - VM 이벤트
+  - 기타 리소스별 이벤트
+  
+  ## 사용 예시
+  
+  ```bash
+  curl -N -H "Authorization: Bearer <token>" \
+       -H "Accept: text/event-stream" \
+       -H "Cache-Control: no-cache" \
+       {{baseUrl}}/api/{{apiVersion}}/sse/events
+  ```
+  
+  ## 재연결
+  
+  연결이 끊어진 경우, `Last-Event-ID` 헤더를 사용하여 마지막 이벤트 이후의 이벤트만 수신할 수 있습니다.
+  
+  ## 주의사항
+  
+  - 이 엔드포인트는 장기 실행 연결입니다.
+  - 연결은 클라이언트가 종료하거나 서버 타임아웃까지 유지됩니다.
+  - 연결 후 `/subscribe` 엔드포인트를 사용하여 특정 이벤트를 구독해야 합니다.
+}
+

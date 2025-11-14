@@ -15,6 +15,7 @@ import type {
   CreateNodePoolForm,
   CreateNodeGroupForm,
   CloudProvider,
+  AWSNodeGroup,
 } from '@/lib/types';
 
 class KubernetesService extends BaseService {
@@ -219,8 +220,8 @@ class KubernetesService extends BaseService {
     nodeGroupName: string,
     credentialId: string,
     region: string
-  ): Promise<NodeGroup> {
-    return this.get<NodeGroup>(
+  ): Promise<NodeGroup | AWSNodeGroup> {
+    return this.get<NodeGroup | AWSNodeGroup>(
       API_ENDPOINTS.kubernetes.nodeGroups.detail(provider, clusterName, nodeGroupName, credentialId, region)
     );
   }
@@ -230,9 +231,47 @@ class KubernetesService extends BaseService {
     clusterName: string,
     data: CreateNodeGroupForm
   ): Promise<NodeGroup> {
+    // Transform CreateNodeGroupForm to backend DTO structure
+    // Backend expects scaling_config as nested object, not flat structure
+    const { min_size, max_size, desired_size, ...rest } = data;
+    const backendPayload = {
+      ...rest,
+      scaling_config: {
+        min_size,
+        max_size,
+        desired_size,
+      },
+    };
+    
     return this.post<NodeGroup>(
       API_ENDPOINTS.kubernetes.nodeGroups.create(provider, clusterName),
-      data
+      backendPayload
+    );
+  }
+
+  async updateNodeGroup(
+    provider: CloudProvider,
+    clusterName: string,
+    nodeGroupName: string,
+    data: Partial<CreateNodeGroupForm>,
+    credentialId: string,
+    region: string
+  ): Promise<NodeGroup | AWSNodeGroup> {
+    // Transform data to backend DTO structure
+    const { min_size, max_size, desired_size, ...rest } = data;
+    const backendPayload: any = { ...rest };
+    
+    if (min_size !== undefined || max_size !== undefined || desired_size !== undefined) {
+      backendPayload.scaling_config = {
+        min_size: min_size ?? 0,
+        max_size: max_size ?? 0,
+        desired_size: desired_size ?? 0,
+      };
+    }
+    
+    return this.put<NodeGroup | AWSNodeGroup>(
+      API_ENDPOINTS.kubernetes.nodeGroups.update(provider, clusterName, nodeGroupName, credentialId, region),
+      backendPayload
     );
   }
 
@@ -293,6 +332,59 @@ class KubernetesService extends BaseService {
     );
     return data.zones || [];
   }
+
+  async getInstanceTypes(
+    provider: CloudProvider,
+    credentialId: string,
+    region: string
+  ): Promise<InstanceTypeInfo[]> {
+    const data = await this.get<{ instance_types: InstanceTypeInfo[] }>(
+      API_ENDPOINTS.kubernetes.metadata.instanceTypes(provider, credentialId, region)
+    );
+    return data.instance_types || [];
+  }
+
+  async getEKSAmitTypes(provider: CloudProvider): Promise<string[]> {
+    const data = await this.get<{ ami_types: string[] }>(
+      API_ENDPOINTS.kubernetes.metadata.amiTypes(provider)
+    );
+    return data.ami_types || [];
+  }
+
+  async checkGPUQuota(
+    provider: CloudProvider,
+    credentialId: string,
+    region: string,
+    instanceType: string,
+    requiredCount: number = 1
+  ): Promise<GPUQuotaAvailability> {
+    const data = await this.get<{ availability: GPUQuotaAvailability }>(
+      API_ENDPOINTS.kubernetes.metadata.gpuQuota(provider, credentialId, region, instanceType, requiredCount)
+    );
+    return data.availability;
+  }
+}
+
+export interface GPUQuotaAvailability {
+  instance_type: string;
+  region: string;
+  available: boolean;
+  quota_value: number;
+  current_usage?: number;
+  available_quota: number;
+  required_count: number;
+  quota_insufficient: boolean;
+  message?: string;
+}
+
+export interface InstanceTypeInfo {
+  instance_type: string;
+  vcpu: number;
+  memory_in_mib: number;
+  has_gpu: boolean;
+  gpu_count?: number;
+  gpu_name?: string;
+  architecture: string; // x86_64, arm64
 }
 
 export const kubernetesService = new KubernetesService();

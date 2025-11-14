@@ -16,4 +16,7 @@ func SetupRoutes(router *gin.RouterGroup, sseHandler *SSEHandler) {
 	// 구독 관리 엔드포인트
 	router.POST("/subscribe", sseHandler.HandleSubscribeToEvent)
 	router.POST("/unsubscribe", sseHandler.HandleUnsubscribeFromEvent)
+	
+	// 연결 정보 조회 엔드포인트
+	router.GET("/connection", sseHandler.HandleGetConnectionInfo)
 }

@@ -7,7 +7,7 @@ import { Container, AlertCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { kubernetesService } from '@/features/kubernetes';
 import { useWorkspaceStore } from '@/store/workspace';
-import { useProviderStore } from '@/store/provider';
+import { useCredentialContext } from '@/hooks/use-credential-context';
 import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
 import { useCredentials } from '@/hooks/use-credentials';
 
@@ -19,15 +19,16 @@ interface KubernetesStatusWidgetProps {
 
 function KubernetesStatusWidgetComponent({ credentialId, region, isLoading }: KubernetesStatusWidgetProps) {
   const { currentWorkspace } = useWorkspaceStore();
-  const { selectedProvider } = useProviderStore();
+  const { selectedCredentialId, selectedRegion: contextRegion } = useCredentialContext();
 
   // Fetch credentials using unified hook
-  const { credentials } = useCredentials({
+  const { credentials, selectedCredential, selectedProvider } = useCredentials({
     workspaceId: currentWorkspace?.id,
+    selectedCredentialId: credentialId || selectedCredentialId || undefined,
   });
 
-  const activeCredentialId = credentialId || credentials.find(c => c.provider === selectedProvider)?.id;
-  const activeRegion = region || 'ap-northeast-2';
+  const activeCredentialId = credentialId || selectedCredentialId || '';
+  const activeRegion = region || contextRegion || 'ap-northeast-2';
 
   const { data: clusters = [], isLoading: isLoadingClusters } = useQuery({
     queryKey: [...queryKeys.kubernetesClusters.all, 'widget', selectedProvider, activeCredentialId, activeRegion],

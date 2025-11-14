@@ -88,6 +88,12 @@ export const kubernetesMetadata = {
     [...kubernetesMetadata.all, 'regions', provider, credentialId] as const,
   availabilityZones: (provider?: string, credentialId?: string, region?: string) =>
     [...kubernetesMetadata.all, 'availability-zones', provider, credentialId, region] as const,
+  instanceTypes: (provider?: string, credentialId?: string, region?: string) =>
+    [...kubernetesMetadata.all, 'instance-types', provider, credentialId, region] as const,
+  amiTypes: (provider?: string) =>
+    [...kubernetesMetadata.all, 'ami-types', provider] as const,
+  gpuQuota: (provider?: string, credentialId?: string, region?: string, instanceType?: string, requiredCount?: number) =>
+    [...kubernetesMetadata.all, 'gpu-quota', provider, credentialId, region, instanceType, requiredCount] as const,
 } as const;
 
 /**
@@ -110,6 +116,18 @@ export const nodePools = {
     [...nodePools.lists(), provider, credentialId, region, clusterName] as const,
   details: () => [...nodePools.all, 'detail'] as const,
   detail: (id: string) => [...nodePools.details(), id] as const,
+} as const;
+
+/**
+ * Node Groups Query Keys (AWS EKS specific)
+ */
+export const nodeGroups = {
+  all: ['node-groups'] as const,
+  lists: () => [...nodeGroups.all, 'list'] as const,
+  list: (provider?: string, credentialId?: string, region?: string, clusterName?: string) =>
+    [...nodeGroups.lists(), provider, credentialId, region, clusterName] as const,
+  details: () => [...nodeGroups.all, 'detail'] as const,
+  detail: (id: string) => [...nodeGroups.details(), id] as const,
 } as const;
 
 /**
@@ -272,6 +290,7 @@ export const queryKeys = {
   kubernetesMetadata,
   clusters,
   nodePools,
+  nodeGroups,
   nodes,
   vpcs,
   subnets,

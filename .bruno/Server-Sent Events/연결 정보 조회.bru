@@ -1,0 +1,102 @@
+meta {
+  name: 연결 정보 조회
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/sse/connection
+  body: none
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+docs {
+  # SSE 연결 정보 조회
+  
+  현재 사용자의 활성 SSE 연결 정보를 조회합니다.
+  
+  ## 인증
+  
+  Bearer 토큰 인증이 필요합니다. `Authorization: Bearer <token>` 헤더를 포함해야 합니다.
+  
+  ## 사전 조건
+  
+  - SSE 연결이 먼저 생성되어 있어야 합니다 (`GET /api/v1/sse/events`)
+  - 연결이 활성 상태여야 합니다
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "connection_id": "user-id-1234567890",
+      "user_id": "user-id-here",
+      "last_seen": "2025-01-23T10:30:00Z",
+      "subscribed_events": [
+        "system-notification",
+        "system-alert",
+        "dashboard-summary-updated",
+        "kubernetes-cluster-created"
+      ],
+      "filters": {
+        "providers": ["aws", "gcp"],
+        "credential_ids": ["credential-id-1", "credential-id-2"],
+        "regions": ["ap-northeast-2", "us-east-1"]
+      },
+      "connected": true
+    },
+    "message": "Connection information retrieved successfully",
+    "request_id": "...",
+    "timestamp": "..."
+  }
+  ```
+  
+  ### 필드 설명
+  
+  - `connection_id` - SSE 연결 ID
+  - `user_id` - 연결한 사용자 ID
+  - `last_seen` - 마지막 활동 시간 (ISO 8601 형식)
+  - `subscribed_events` - 구독 중인 이벤트 타입 목록
+  - `filters` - 적용된 필터 정보
+    - `providers` - 구독 중인 클라우드 프로바이더 목록
+    - `credential_ids` - 구독 중인 자격증명 ID 목록
+    - `regions` - 구독 중인 리전 목록
+  - `connected` - 연결 상태 (항상 `true`)
+  
+  ## 에러 응답
+  
+  ### SSE 연결이 없는 경우
+  
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "NOT_FOUND",
+      "message": "No active SSE connection found"
+    },
+    "status": 404
+  }
+  ```
+  
+  ## 사용 예시
+  
+  ```bash
+  curl -H "Authorization: Bearer <token>" \
+       {{baseUrl}}/api/{{apiVersion}}/sse/connection
+  ```
+  
+  ## 주의사항
+  
+  - 연결이 없으면 404 에러가 반환됩니다.
+  - 연결 정보는 실시간으로 업데이트됩니다.
+  - `last_seen`은 마지막 하트비트 또는 이벤트 수신 시간을 나타냅니다.
+}

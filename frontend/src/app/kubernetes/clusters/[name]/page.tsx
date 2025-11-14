@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useParams, useRouter } from 'next/navigation';
 import { Layout } from '@/components/layout/layout';
@@ -19,13 +19,14 @@ import type { CreateNodePoolForm, CreateNodeGroupForm } from '@/lib/types';
 import {
   useClusterDetail,
   ClusterHeader,
-  ClusterConfigurationCard,
-  ClusterInfoCard,
   ClusterUpgradeStatusCard,
-  ClusterOverviewTab,
-  ClusterNodePoolsTab,
-  ClusterNodeGroupsTab,
-  ClusterNodesTab,
+  ClusterOverviewHeader,
+  ClusterDetailOverviewTab,
+  ClusterDetailResourcesTab,
+  ClusterDetailComputingTab,
+  ClusterDetailNetworkingTab,
+  ClusterDetailAccessTab,
+  ClusterDetailTagsTab,
 } from '@/features/kubernetes';
 
 // Dynamic imports for Dialog components
@@ -69,14 +70,16 @@ const ClusterMetricsTab = dynamic(
   }
 );
 
-export default function KubernetesClusterDetailPage() {
+function KubernetesClusterDetailPageContent() {
   const params = useParams();
   const router = useRouter();
   const { isLoading: authLoading } = useRequireAuth();
   useSSEMonitoring();
 
   const clusterName = params.name as string;
-  const [activeTab, setActiveTab] = useState<'overview' | 'metrics' | 'nodepools' | 'nodegroups' | 'nodes'>('overview');
+  const [activeTab, setActiveTab] = useState<
+    'overview' | 'resources' | 'computing' | 'networking' | 'access' | 'tags' | 'metrics'
+  >('overview');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isUpgradeDialogOpen, setIsUpgradeDialogOpen] = useState(false);
   const [upgradeVersion, setUpgradeVersion] = useState<string>('');
@@ -131,6 +134,14 @@ export default function KubernetesClusterDetailPage() {
   };
 
 
+  // 클러스터가 삭제된 경우 목록 페이지로 리다이렉트
+  useEffect(() => {
+    if (!isLoadingCluster && !cluster && clusterName && currentWorkspace && selectedProvider) {
+      // 클러스터가 로드되지 않았고, 로딩이 완료된 경우 (삭제되었거나 존재하지 않음)
+      router.push('/kubernetes/clusters');
+    }
+  }, [isLoadingCluster, cluster, clusterName, currentWorkspace, selectedProvider, router]);
+
   if (authLoading) {
     return (
       <Layout>
@@ -170,21 +181,10 @@ export default function KubernetesClusterDetailPage() {
           isDownloadPending={downloadKubeconfigMutation.isPending}
         />
 
-        <ClusterConfigurationCard
-          credentials={credentials}
-          selectedCredentialId={selectedCredentialId}
-          onCredentialChange={setSelectedCredentialId}
-          selectedRegion={selectedRegion}
-          onRegionChange={setSelectedRegion}
-        />
-
-        <ClusterInfoCard
+        <ClusterOverviewHeader
           cluster={cluster}
-          isLoading={isLoadingCluster}
           selectedProvider={selectedProvider}
-          clusterName={clusterName}
-          selectedCredentialId={selectedCredentialId}
-          selectedRegion={selectedRegion}
+          isLoading={isLoadingCluster}
         />
 
         {upgradeStatus && (
@@ -212,68 +212,75 @@ export default function KubernetesClusterDetailPage() {
           isPending={upgradeClusterMutation.isPending}
         />
 
-        {selectedCredentialId && (
+        {selectedCredentialId && cluster && (
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="space-y-4">
             <div className="flex items-center justify-between">
               <TabsList>
-                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="overview">개요</TabsTrigger>
+                <TabsTrigger value="resources">리소스</TabsTrigger>
+                <TabsTrigger value="computing">컴퓨팅</TabsTrigger>
+                <TabsTrigger value="networking">네트워킹</TabsTrigger>
+                <TabsTrigger value="access">액세스</TabsTrigger>
+                <TabsTrigger value="tags">태그</TabsTrigger>
                 <TabsTrigger value="metrics">Metrics</TabsTrigger>
-                {selectedProvider !== 'aws' && (
-                  <TabsTrigger value="nodepools">Node Pools</TabsTrigger>
-                )}
-                {selectedProvider === 'aws' && (
-                  <TabsTrigger value="nodegroups">Node Groups</TabsTrigger>
-                )}
-                <TabsTrigger value="nodes">Nodes</TabsTrigger>
               </TabsList>
-              {(activeTab === 'nodepools' || activeTab === 'nodegroups') && (
-                <Button onClick={() => setIsCreateDialogOpen(true)}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create {activeTab === 'nodepools' ? 'Node Pool' : 'Node Group'}
-                </Button>
-              )}
             </div>
 
             <TabsContent value="overview" className="space-y-4">
-              <ClusterOverviewTab clusterName={clusterName} cluster={cluster} />
+              <ClusterDetailOverviewTab cluster={cluster as any} />
+            </TabsContent>
+
+            <TabsContent value="resources" className="space-y-4">
+              <ClusterDetailResourcesTab />
+            </TabsContent>
+
+            <TabsContent value="computing" className="space-y-4">
+              <ClusterDetailComputingTab
+                nodePools={nodePools}
+                nodeGroups={nodeGroups}
+                nodes={nodes}
+                isLoadingNodePools={isLoadingNodePools}
+                isLoadingNodeGroups={isLoadingNodeGroups}
+                isLoadingNodes={isLoadingNodes}
+                selectedProvider={selectedProvider}
+                onCreateNodePoolClick={() => setIsCreateDialogOpen(true)}
+                onCreateNodeGroupClick={() => setIsCreateDialogOpen(true)}
+                onScaleNodePoolClick={handleScaleNodePool}
+                onDeleteNodePoolClick={(name) => deleteNodePoolMutation.mutate({ nodePoolName: name })}
+                onDeleteNodeGroupClick={(name) => deleteNodeGroupMutation.mutate({ nodeGroupName: name })}
+                isDeletingNodePool={deleteNodePoolMutation.isPending}
+                isDeletingNodeGroup={deleteNodeGroupMutation.isPending}
+              />
+            </TabsContent>
+
+            <TabsContent value="networking" className="space-y-4">
+              <ClusterDetailNetworkingTab
+                cluster={cluster as any}
+                selectedProvider={selectedProvider as 'aws' | 'gcp' | 'azure' | undefined}
+              />
+            </TabsContent>
+
+            <TabsContent value="access" className="space-y-4">
+              <ClusterDetailAccessTab />
+            </TabsContent>
+
+            <TabsContent value="tags" className="space-y-4">
+              <ClusterDetailTagsTab
+                cluster={cluster}
+                selectedProvider={selectedProvider}
+                clusterName={clusterName}
+                selectedCredentialId={selectedCredentialId}
+                selectedRegion={selectedRegion}
+              />
             </TabsContent>
 
             <TabsContent value="metrics" className="space-y-4">
               <ClusterMetricsTab clusterName={clusterName} nodes={nodes} />
             </TabsContent>
-
-            {selectedProvider !== 'aws' && (
-              <TabsContent value="nodepools" className="space-y-4">
-                <ClusterNodePoolsTab
-                  nodePools={nodePools}
-                  isLoading={isLoadingNodePools}
-                  onCreateClick={() => setIsCreateDialogOpen(true)}
-                  onScaleClick={handleScaleNodePool}
-                  onDeleteClick={(name) => deleteNodePoolMutation.mutate({ nodePoolName: name })}
-                  isDeleting={deleteNodePoolMutation.isPending}
-                />
-              </TabsContent>
-            )}
-
-            {selectedProvider === 'aws' && (
-              <TabsContent value="nodegroups" className="space-y-4">
-                <ClusterNodeGroupsTab
-                  nodeGroups={nodeGroups}
-                  isLoading={isLoadingNodeGroups}
-                  onCreateClick={() => setIsCreateDialogOpen(true)}
-                  onDeleteClick={(name) => deleteNodeGroupMutation.mutate({ nodeGroupName: name })}
-                  isDeleting={deleteNodeGroupMutation.isPending}
-                />
-              </TabsContent>
-            )}
-
-            <TabsContent value="nodes" className="space-y-4">
-              <ClusterNodesTab nodes={nodes} isLoading={isLoadingNodes} />
-            </TabsContent>
           </Tabs>
         )}
 
-        {activeTab === 'nodepools' && selectedProvider !== 'aws' && (
+        {activeTab === 'computing' && selectedProvider !== 'aws' && (
           <CreateNodePoolDialog
             open={isCreateDialogOpen}
             onOpenChange={setIsCreateDialogOpen}
@@ -287,11 +294,12 @@ export default function KubernetesClusterDetailPage() {
           />
         )}
 
-        {activeTab === 'nodegroups' && selectedProvider === 'aws' && (
+        {activeTab === 'computing' && selectedProvider === 'aws' && (
           <CreateNodeGroupDialog
             open={isCreateDialogOpen}
             onOpenChange={setIsCreateDialogOpen}
             clusterName={clusterName}
+            cluster={cluster}
             defaultRegion={selectedRegion}
             defaultCredentialId={selectedCredentialId}
             onSubmit={handleCreateNodeGroup}
@@ -302,6 +310,20 @@ export default function KubernetesClusterDetailPage() {
         )}
       </div>
     </Layout>
+  );
+}
+
+export default function KubernetesClusterDetailPage() {
+  return (
+    <Suspense fallback={
+      <Layout>
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+        </div>
+      </Layout>
+    }>
+      <KubernetesClusterDetailPageContent />
+    </Suspense>
   );
 }
 

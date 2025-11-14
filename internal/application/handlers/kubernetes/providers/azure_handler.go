@@ -407,6 +407,11 @@ func (h *AzureHandler) CreateNodeGroup(c *gin.Context) {
 }
 
 // DeleteNodeGroup: 노드 그룹 삭제를 처리합니다
+// UpdateNodeGroup handles updating a node group
+func (h *AzureHandler) UpdateNodeGroup(c *gin.Context) {
+	h.NotImplemented(c, "update_node_group")
+}
+
 func (h *AzureHandler) DeleteNodeGroup(c *gin.Context) {
 	h.NotImplemented(c, "delete_node_group")
 }
@@ -469,6 +474,21 @@ func (h *AzureHandler) GetAWSRegions(c *gin.Context) {
 // GetAvailabilityZones: 가용 영역 목록 조회를 처리합니다 (AWS 전용)
 func (h *AzureHandler) GetAvailabilityZones(c *gin.Context) {
 	h.NotImplemented(c, "get_availability_zones")
+}
+
+// GetInstanceTypes: 인스턴스 유형 목록 조회를 처리합니다 (AWS 전용)
+func (h *AzureHandler) GetInstanceTypes(c *gin.Context) {
+	h.NotImplemented(c, "get_instance_types")
+}
+
+// GetEKSAmitTypes: EKS AMI 유형 목록 조회를 처리합니다 (AWS 전용)
+func (h *AzureHandler) GetEKSAmitTypes(c *gin.Context) {
+	h.NotImplemented(c, "get_eks_ami_types")
+}
+
+// CheckGPUQuota: GPU 할당량 확인을 처리합니다 (AWS 전용)
+func (h *AzureHandler) CheckGPUQuota(c *gin.Context) {
+	h.NotImplemented(c, "check_gpu_quota")
 }
 
 // Logging helper methods

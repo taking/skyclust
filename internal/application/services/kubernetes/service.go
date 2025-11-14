@@ -318,7 +318,7 @@ func (s *Service) listAWSEKSClusters(ctx context.Context, credential *domain.Cre
 	}
 
 	// Get detailed information for each cluster
-	var clusters []ClusterInfo
+	var clusters []BaseClusterInfo
 	for _, clusterName := range output.Clusters {
 		// Describe each cluster to get detailed information
 		describeOutput, err := eksClient.DescribeCluster(ctx, &eks.DescribeClusterInput{
@@ -331,7 +331,7 @@ func (s *Service) listAWSEKSClusters(ctx context.Context, credential *domain.Cre
 			continue
 		}
 
-		cluster := ClusterInfo{
+		cluster := BaseClusterInfo{
 			ID:      aws.ToString(describeOutput.Cluster.Arn),
 			Name:    aws.ToString(describeOutput.Cluster.Name),
 			Version: aws.ToString(describeOutput.Cluster.Version),
@@ -348,12 +348,25 @@ func (s *Service) listAWSEKSClusters(ctx context.Context, credential *domain.Cre
 			cluster.CreatedAt = describeOutput.Cluster.CreatedAt.String()
 		}
 
+		// Extract basic network config from ResourcesVpcConfig (for listing)
+		if describeOutput.Cluster.ResourcesVpcConfig != nil {
+			vpcConfig := describeOutput.Cluster.ResourcesVpcConfig
+			cluster.NetworkConfig = &NetworkConfigInfo{
+				VPCID:           aws.ToString(vpcConfig.VpcId),
+				SubnetID:        "", // Multiple subnets, use first one or empty
+				PrivateEndpoint: vpcConfig.EndpointPrivateAccess,
+			}
+			if len(vpcConfig.SubnetIds) > 0 {
+				cluster.NetworkConfig.SubnetID = vpcConfig.SubnetIds[0]
+			}
+		}
+
 		clusters = append(clusters, cluster)
 	}
 
 	// 빈 배열인 경우에도 nil이 아닌 빈 슬라이스 반환 보장
 	if clusters == nil {
-		clusters = []ClusterInfo{}
+		clusters = []BaseClusterInfo{}
 	}
 
 	return &ListClustersResponse{
@@ -362,13 +375,15 @@ func (s *Service) listAWSEKSClusters(ctx context.Context, credential *domain.Cre
 }
 
 // GetEKSCluster: 이름으로 EKS 클러스터 상세 정보를 조회합니다
-func (s *Service) GetEKSCluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (*ClusterInfo, error) {
+// Returns provider-specific cluster info (AWSClusterInfo, GCPClusterInfo, AzureClusterInfo)
+func (s *Service) GetEKSCluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (interface{}, error) {
 	credentialID := credential.ID.String()
 	cacheKey := buildKubernetesClusterItemKey(credential.Provider, credentialID, clusterName)
 
 	// 캐시에서 조회 시도 (Early return)
 	if cachedCluster := s.getClusterFromCache(ctx, cacheKey, credential.Provider, credentialID, clusterName); cachedCluster != nil {
-		return cachedCluster, nil
+		// Convert cached BaseClusterInfo to provider-specific type if needed
+		return s.convertToProviderSpecificCluster(cachedCluster, credential.Provider, clusterName, region)
 	}
 
 	// 캐시 미스 시 실제 API 호출
@@ -377,9 +392,10 @@ func (s *Service) GetEKSCluster(ctx context.Context, credential *domain.Credenti
 		return nil, err
 	}
 
-	// 응답을 캐시에 저장
+	// 응답을 캐시에 저장 (BaseClusterInfo로 저장)
 	if s.cacheService != nil && cluster != nil {
-		if err := s.cacheService.Set(ctx, cacheKey, cluster, defaultK8sTTL); err != nil {
+		baseInfo := s.extractBaseClusterInfo(cluster)
+		if err := s.cacheService.Set(ctx, cacheKey, baseInfo, defaultK8sTTL); err != nil {
 			s.logger.Warn(ctx, "Failed to cache Kubernetes cluster",
 				domain.NewLogField("provider", credential.Provider),
 				domain.NewLogField("credential_id", credentialID),
@@ -391,8 +407,32 @@ func (s *Service) GetEKSCluster(ctx context.Context, credential *domain.Credenti
 	return cluster, nil
 }
 
+// extractBaseClusterInfo extracts BaseClusterInfo from provider-specific cluster types
+func (s *Service) extractBaseClusterInfo(cluster interface{}) *BaseClusterInfo {
+	switch c := cluster.(type) {
+	case *AWSClusterInfo:
+		return &c.BaseClusterInfo
+	case *GCPClusterInfo:
+		return &c.BaseClusterInfo
+	case *AzureClusterInfo:
+		return &c.BaseClusterInfo
+	case *BaseClusterInfo:
+		return c
+	default:
+		return nil
+	}
+}
+
+// convertToProviderSpecificCluster converts cached BaseClusterInfo to provider-specific type
+// Note: This is a fallback - ideally cache should store full provider-specific data
+func (s *Service) convertToProviderSpecificCluster(baseInfo *BaseClusterInfo, provider, clusterName, region string) (interface{}, error) {
+	// For now, return BaseClusterInfo as-is
+	// In production, you might want to re-fetch full details or store provider-specific data in cache
+	return baseInfo, nil
+}
+
 // getAWSEKSCluster: AWS EKS 클러스터 상세 정보를 조회합니다
-func (s *Service) getAWSEKSCluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (*ClusterInfo, error) {
+func (s *Service) getAWSEKSCluster(ctx context.Context, credential *domain.Credential, clusterName, region string) (interface{}, error) {
 	creds, err := s.extractAWSCredentials(ctx, credential, region)
 	if err != nil {
 		return nil, err
@@ -414,14 +454,16 @@ func (s *Service) getAWSEKSCluster(ctx context.Context, credential *domain.Crede
 		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to describe EKS cluster: %v", err), HTTPStatusBadGateway)
 	}
 
-	// Convert to ClusterInfo
-	cluster := ClusterInfo{
-		ID:      aws.ToString(output.Cluster.Arn),
-		Name:    aws.ToString(output.Cluster.Name),
-		Version: aws.ToString(output.Cluster.Version),
-		Status:  string(output.Cluster.Status),
-		Region:  creds.Region,
-		Tags:    output.Cluster.Tags,
+	// Convert to AWSClusterInfo with full AWS-specific details
+	cluster := &AWSClusterInfo{
+		BaseClusterInfo: BaseClusterInfo{
+			ID:      aws.ToString(output.Cluster.Arn),
+			Name:    aws.ToString(output.Cluster.Name),
+			Version: aws.ToString(output.Cluster.Version),
+			Status:  string(output.Cluster.Status),
+			Region:  creds.Region,
+			Tags:    output.Cluster.Tags,
+		},
 	}
 
 	if output.Cluster.Endpoint != nil {
@@ -432,7 +474,102 @@ func (s *Service) getAWSEKSCluster(ctx context.Context, credential *domain.Crede
 		cluster.CreatedAt = output.Cluster.CreatedAt.String()
 	}
 
-	return &cluster, nil
+	// Parse ResourcesVpcConfig
+	if output.Cluster.ResourcesVpcConfig != nil {
+		vpcConfig := output.Cluster.ResourcesVpcConfig
+		subnetIDs := make([]string, 0, len(vpcConfig.SubnetIds))
+		for _, subnetID := range vpcConfig.SubnetIds {
+			subnetIDs = append(subnetIDs, subnetID)
+		}
+
+		securityGroupIDs := make([]string, 0, len(vpcConfig.SecurityGroupIds))
+		for _, sgID := range vpcConfig.SecurityGroupIds {
+			securityGroupIDs = append(securityGroupIDs, sgID)
+		}
+
+		publicAccessCIDRs := make([]string, 0)
+		if vpcConfig.PublicAccessCidrs != nil {
+			for _, cidr := range vpcConfig.PublicAccessCidrs {
+				publicAccessCIDRs = append(publicAccessCIDRs, cidr)
+			}
+		}
+
+		cluster.ResourcesVPCConfig = &AWSResourcesVPCConfig{
+			SubnetIDs:              subnetIDs,
+			SecurityGroupIDs:       securityGroupIDs,
+			ClusterSecurityGroupID: aws.ToString(vpcConfig.ClusterSecurityGroupId),
+			VPCID:                  aws.ToString(vpcConfig.VpcId),
+			EndpointPublicAccess:   vpcConfig.EndpointPublicAccess,
+			EndpointPrivateAccess:  vpcConfig.EndpointPrivateAccess,
+			PublicAccessCIDRs:      publicAccessCIDRs,
+		}
+
+		// Also populate common NetworkConfig for backward compatibility
+		cluster.NetworkConfig = &NetworkConfigInfo{
+			VPCID:           aws.ToString(vpcConfig.VpcId),
+			SubnetID:        "", // Multiple subnets, use first one or empty
+			PrivateEndpoint: vpcConfig.EndpointPrivateAccess,
+		}
+		if len(subnetIDs) > 0 {
+			cluster.NetworkConfig.SubnetID = subnetIDs[0]
+		}
+	}
+
+	// Parse KubernetesNetworkConfig
+	if output.Cluster.KubernetesNetworkConfig != nil {
+		k8sNetConfig := output.Cluster.KubernetesNetworkConfig
+		cluster.KubernetesNetworkConfig = &AWSKubernetesNetworkConfig{
+			ServiceIPv4CIDR: aws.ToString(k8sNetConfig.ServiceIpv4Cidr),
+			ServiceIPv6CIDR: aws.ToString(k8sNetConfig.ServiceIpv6Cidr),
+			IPFamily:        string(k8sNetConfig.IpFamily),
+		}
+
+		if k8sNetConfig.ElasticLoadBalancing != nil {
+			cluster.KubernetesNetworkConfig.ElasticLoadBalancing = &AWSElasticLoadBalancing{
+				Enabled: aws.ToBool(k8sNetConfig.ElasticLoadBalancing.Enabled),
+			}
+		}
+
+		// Also populate common NetworkConfig ServiceCIDR
+		if cluster.NetworkConfig == nil {
+			cluster.NetworkConfig = &NetworkConfigInfo{}
+		}
+		cluster.NetworkConfig.ServiceCIDR = aws.ToString(k8sNetConfig.ServiceIpv4Cidr)
+	}
+
+	// Parse AccessConfig
+	if output.Cluster.AccessConfig != nil {
+		accessConfig := output.Cluster.AccessConfig
+		cluster.AccessConfig = &AWSAccessConfig{
+			BootstrapClusterCreatorAdminPermissions: accessConfig.BootstrapClusterCreatorAdminPermissions,
+			AuthenticationMode:                      string(accessConfig.AuthenticationMode),
+		}
+	}
+
+	// Parse UpgradePolicy
+	if output.Cluster.UpgradePolicy != nil {
+		upgradePolicy := output.Cluster.UpgradePolicy
+		cluster.UpgradePolicy = &AWSUpgradePolicy{
+			SupportType: string(upgradePolicy.SupportType),
+		}
+	}
+
+	// Parse RoleARN
+	if output.Cluster.RoleArn != nil {
+		cluster.RoleARN = *output.Cluster.RoleArn
+	}
+
+	// Parse PlatformVersion
+	if output.Cluster.PlatformVersion != nil {
+		cluster.PlatformVersion = *output.Cluster.PlatformVersion
+	}
+
+	// Parse DeletionProtection
+	if output.Cluster.DeletionProtection != nil {
+		cluster.DeletionProtection = *output.Cluster.DeletionProtection
+	}
+
+	return cluster, nil
 }
 
 // DeleteEKSCluster: Kubernetes 클러스터를 삭제합니다
@@ -736,6 +873,80 @@ func (s *Service) CreateEKSNodePool(ctx context.Context, credential *domain.Cred
 
 // CreateEKSNodeGroup: EKS 노드 그룹을 생성합니다
 func (s *Service) CreateEKSNodeGroup(ctx context.Context, credential *domain.Credential, req CreateNodeGroupRequest) (*CreateNodeGroupResponse, error) {
+	// GPU 인스턴스 타입인지 확인하고 quota validation 수행
+	for _, instanceType := range req.InstanceTypes {
+		quotaCode, isGPU := GetGPUQuotaCode(instanceType)
+		if isGPU {
+			// GPU 인스턴스인 경우 quota 확인
+			// requiredCount는 desired_size 사용 (최소 요구사항)
+			requiredCount := req.ScalingConfig.DesiredSize
+			if requiredCount < req.ScalingConfig.MinSize {
+				requiredCount = req.ScalingConfig.MinSize
+			}
+
+			availability, err := s.CheckGPUQuotaAvailability(ctx, credential, req.Region, instanceType, requiredCount)
+			if err != nil {
+				// Quota 확인 실패 시 경고만 로깅하고 계속 진행 (권한 부족 등의 경우)
+				s.logger.Warn(ctx, "Failed to check GPU quota, proceeding with node group creation",
+					domain.NewLogField("credential_id", credential.ID.String()),
+					domain.NewLogField("region", req.Region),
+					domain.NewLogField("instance_type", instanceType),
+					domain.NewLogField("error", err))
+			} else if availability.QuotaInsufficient {
+				// Quota 부족 시 상세 에러 반환
+				// 사용 가능한 region 조회
+				availableRegions, regionErr := s.GetAvailableRegionsForGPU(ctx, credential, instanceType, requiredCount)
+				if regionErr != nil {
+					s.logger.Warn(ctx, "Failed to get available regions for GPU",
+						domain.NewLogField("credential_id", credential.ID.String()),
+						domain.NewLogField("instance_type", instanceType),
+						domain.NewLogField("error", regionErr))
+				}
+
+				// Quota 증가 요청 URL 생성
+				quotaIncreaseURL := fmt.Sprintf("https://console.aws.amazon.com/servicequotas/home?region=%s#!/services/ec2/quotas/%s", req.Region, quotaCode)
+
+				// 상세 에러 정보 구성
+				errorDetails := map[string]interface{}{
+					"instance_type":      instanceType,
+					"region":             req.Region,
+					"quota_code":         quotaCode,
+					"current_quota":      availability.QuotaValue,
+					"current_usage":      availability.CurrentUsage,
+					"available_quota":    availability.AvailableQuota,
+					"required_count":     requiredCount,
+					"quota_increase_url": quotaIncreaseURL,
+				}
+
+				if len(availableRegions) > 0 {
+					// 사용 가능한 region 목록 추가
+					regionsList := make([]map[string]interface{}, 0, len(availableRegions))
+					for _, region := range availableRegions {
+						regionsList = append(regionsList, map[string]interface{}{
+							"region":          region.Region,
+							"available_quota": region.AvailableQuota,
+							"quota_value":     region.QuotaValue,
+							"current_usage":   region.CurrentUsage,
+						})
+					}
+					errorDetails["available_regions"] = regionsList
+				}
+
+				// DomainError 생성 및 Details 추가
+				err := domain.NewDomainError(
+					domain.ErrCodeProviderQuota,
+					availability.Message,
+					HTTPStatusBadRequest,
+				)
+				for key, value := range errorDetails {
+					err = err.WithDetails(key, value)
+				}
+
+				return nil, err
+			}
+		}
+	}
+
 	creds, err := s.extractAWSCredentials(ctx, credential, req.Region)
 	if err != nil {
 		return nil, err
@@ -784,8 +995,13 @@ func (s *Service) CreateEKSNodeGroup(ctx context.Context, credential *domain.Cre
 		input.DiskSize = aws.Int32(req.DiskSize)
 	}
 
-	if req.AMI != "" {
-		input.AmiType = types.AMITypes(req.AMI)
+	// AMI Type: ami_type 우선, 없으면 ami (하위 호환성)
+	amiType := req.AMIType
+	if amiType == "" && req.AMI != "" {
+		amiType = req.AMI
+	}
+	if amiType != "" {
+		input.AmiType = types.AMITypes(amiType)
 	}
 
 	if req.CapacityType != "" {
@@ -964,7 +1180,8 @@ func (s *Service) listAWSEKSNodeGroups(ctx context.Context, credential *domain.C
 }
 
 // GetNodeGroup: 클러스터의 노드 그룹 상세 정보를 조회합니다
-func (s *Service) GetNodeGroup(ctx context.Context, credential *domain.Credential, req GetNodeGroupRequest) (*NodeGroupInfo, error) {
+// Returns interface{} to support provider-specific types (AWSNodeGroupInfo, etc.)
+func (s *Service) GetNodeGroup(ctx context.Context, credential *domain.Credential, req GetNodeGroupRequest) (interface{}, error) {
 	s.logger.Info(ctx, "GetNodeGroup called",
 		domain.NewLogField("provider", credential.Provider),
 		domain.NewLogField("cluster_name", req.ClusterName),
@@ -986,7 +1203,7 @@ func (s *Service) GetNodeGroup(ctx context.Context, credential *domain.Credentia
 }
 
 // getAWSEKSNodeGroup: AWS EKS 노드 그룹 상세 정보를 조회합니다
-func (s *Service) getAWSEKSNodeGroup(ctx context.Context, credential *domain.Credential, req GetNodeGroupRequest) (*NodeGroupInfo, error) {
+func (s *Service) getAWSEKSNodeGroup(ctx context.Context, credential *domain.Credential, req GetNodeGroupRequest) (*AWSNodeGroupInfo, error) {
 	creds, err := s.extractAWSCredentials(ctx, credential, req.Region)
 	if err != nil {
 		return nil, err
@@ -1013,54 +1230,237 @@ func (s *Service) getAWSEKSNodeGroup(ctx context.Context, credential *domain.Cre
 		return nil, domain.NewDomainError(domain.ErrCodeNotFound, fmt.Sprintf("node group %s not found in cluster %s", req.NodeGroupName, req.ClusterName), HTTPStatusNotFound)
 	}
 
-	nodeGroup := NodeGroupInfo{
-		ID:          aws.ToString(describeOutput.Nodegroup.NodegroupArn),
-		Name:        aws.ToString(describeOutput.Nodegroup.NodegroupName),
-		Status:      string(describeOutput.Nodegroup.Status),
-		ClusterName: aws.ToString(describeOutput.Nodegroup.ClusterName),
-		Region:      req.Region,
-		Tags:        describeOutput.Nodegroup.Tags,
+	ng := describeOutput.Nodegroup
+
+	// Build base NodeGroupInfo
+	nodeGroup := AWSNodeGroupInfo{
+		NodeGroupInfo: NodeGroupInfo{
+			ID:          aws.ToString(ng.NodegroupArn),
+			Name:        aws.ToString(ng.NodegroupName),
+			Status:      string(ng.Status),
+			ClusterName: aws.ToString(ng.ClusterName),
+			Region:      req.Region,
+			Tags:        ng.Tags,
+		},
 	}
 
 	// Add version if available
-	if describeOutput.Nodegroup.Version != nil {
-		nodeGroup.Version = aws.ToString(describeOutput.Nodegroup.Version)
+	if ng.Version != nil {
+		nodeGroup.Version = aws.ToString(ng.Version)
 	}
 
 	// Add instance types
-	if describeOutput.Nodegroup.InstanceTypes != nil {
-		nodeGroup.InstanceTypes = describeOutput.Nodegroup.InstanceTypes
+	if ng.InstanceTypes != nil {
+		nodeGroup.InstanceTypes = ng.InstanceTypes
 	}
 
 	// Add scaling config
-	if describeOutput.Nodegroup.ScalingConfig != nil {
+	if ng.ScalingConfig != nil {
 		nodeGroup.ScalingConfig = NodeGroupScalingConfig{
-			MinSize:     aws.ToInt32(describeOutput.Nodegroup.ScalingConfig.MinSize),
-			MaxSize:     aws.ToInt32(describeOutput.Nodegroup.ScalingConfig.MaxSize),
-			DesiredSize: aws.ToInt32(describeOutput.Nodegroup.ScalingConfig.DesiredSize),
+			MinSize:     aws.ToInt32(ng.ScalingConfig.MinSize),
+			MaxSize:     aws.ToInt32(ng.ScalingConfig.MaxSize),
+			DesiredSize: aws.ToInt32(ng.ScalingConfig.DesiredSize),
 		}
 	}
 
 	// Add capacity type
-	if describeOutput.Nodegroup.CapacityType != "" {
-		nodeGroup.CapacityType = string(describeOutput.Nodegroup.CapacityType)
+	if ng.CapacityType != "" {
+		nodeGroup.CapacityType = string(ng.CapacityType)
 	}
 
 	// Add disk size
-	if describeOutput.Nodegroup.DiskSize != nil {
-		nodeGroup.DiskSize = aws.ToInt32(describeOutput.Nodegroup.DiskSize)
+	if ng.DiskSize != nil {
+		nodeGroup.DiskSize = aws.ToInt32(ng.DiskSize)
 	}
 
 	// Add timestamps
-	if describeOutput.Nodegroup.CreatedAt != nil {
-		nodeGroup.CreatedAt = describeOutput.Nodegroup.CreatedAt.String()
+	if ng.CreatedAt != nil {
+		nodeGroup.CreatedAt = ng.CreatedAt.String()
 	}
 
-	if describeOutput.Nodegroup.ModifiedAt != nil {
-		nodeGroup.UpdatedAt = describeOutput.Nodegroup.ModifiedAt.String()
+	if ng.ModifiedAt != nil {
+		nodeGroup.UpdatedAt = ng.ModifiedAt.String()
+	}
+
+	// AWS-specific fields
+	if ng.NodeRole != nil {
+		nodeGroup.NodeRoleARN = aws.ToString(ng.NodeRole)
+	}
+
+	if ng.AmiType != "" {
+		nodeGroup.AMIType = string(ng.AmiType)
+	}
+
+	if ng.ReleaseVersion != nil {
+		nodeGroup.ReleaseVersion = aws.ToString(ng.ReleaseVersion)
+	}
+
+	if ng.Subnets != nil {
+		nodeGroup.Subnets = ng.Subnets
+	}
+
+	// Remote Access Config
+	// Note: AWS SDK v2 uses RemoteAccess field, not RemoteAccessConfig
+	if ng.RemoteAccess != nil {
+		nodeGroup.RemoteAccessConfig = &AWSRemoteAccessConfig{}
+		if ng.RemoteAccess.Ec2SshKey != nil {
+			nodeGroup.RemoteAccessConfig.EC2SSHKey = aws.ToString(ng.RemoteAccess.Ec2SshKey)
+		}
+		if ng.RemoteAccess.SourceSecurityGroups != nil {
+			nodeGroup.RemoteAccessConfig.SourceSecurityGroups = ng.RemoteAccess.SourceSecurityGroups
+		}
+	}
+
+	// Resources
+	if ng.Resources != nil {
+		nodeGroup.Resources = &AWSNodeGroupResources{}
+		if ng.Resources.AutoScalingGroups != nil {
+			asgs := make([]AWSAutoScalingGroup, 0, len(ng.Resources.AutoScalingGroups))
+			for _, asg := range ng.Resources.AutoScalingGroups {
+				asgs = append(asgs, AWSAutoScalingGroup{
+					Name: aws.ToString(asg.Name),
+				})
+			}
+			nodeGroup.Resources.AutoScalingGroups = asgs
+		}
+		if ng.Resources.RemoteAccessSecurityGroup != nil {
+			nodeGroup.Resources.RemoteAccessSecurityGroup = aws.ToString(ng.Resources.RemoteAccessSecurityGroup)
+		}
+	}
+
+	// Health
+	if ng.Health != nil {
+		nodeGroup.Health = &AWSNodeGroupHealth{}
+		if ng.Health.Issues != nil {
+			issues := make([]AWSNodeGroupHealthIssue, 0, len(ng.Health.Issues))
+			for _, issue := range ng.Health.Issues {
+				issues = append(issues, AWSNodeGroupHealthIssue{
+					Code:        string(issue.Code),
+					Message:     aws.ToString(issue.Message),
+					ResourceIDs: issue.ResourceIds,
+				})
+			}
+			nodeGroup.Health.Issues = issues
+		}
+	}
+
+	// Launch Template
+	if ng.LaunchTemplate != nil {
+		nodeGroup.LaunchTemplate = &AWSLaunchTemplateSpec{}
+		if ng.LaunchTemplate.Id != nil {
+			nodeGroup.LaunchTemplate.ID = aws.ToString(ng.LaunchTemplate.Id)
+		}
+		if ng.LaunchTemplate.Name != nil {
+			nodeGroup.LaunchTemplate.Name = aws.ToString(ng.LaunchTemplate.Name)
+		}
+		if ng.LaunchTemplate.Version != nil {
+			nodeGroup.LaunchTemplate.Version = aws.ToString(ng.LaunchTemplate.Version)
+		}
+	}
+
+	// Update Config
+	if ng.UpdateConfig != nil {
+		nodeGroup.UpdateConfig = &AWSUpdateConfig{}
+		if ng.UpdateConfig.MaxUnavailable != nil {
+			nodeGroup.UpdateConfig.MaxUnavailable = aws.ToInt32(ng.UpdateConfig.MaxUnavailable)
+		}
+		if ng.UpdateConfig.MaxUnavailablePercentage != nil {
+			nodeGroup.UpdateConfig.MaxUnavailablePercentage = aws.ToInt32(ng.UpdateConfig.MaxUnavailablePercentage)
+		}
 	}
 
 	return &nodeGroup, nil
+}
+
+// UpdateNodeGroup: 클러스터의 노드 그룹을 업데이트합니다
+// Returns interface{} to support provider-specific types (AWSNodeGroupInfo, etc.)
+func (s *Service) UpdateNodeGroup(ctx context.Context, credential *domain.Credential, req UpdateNodeGroupRequest) (interface{}, error) {
+	s.logger.Info(ctx, "UpdateNodeGroup called",
+		domain.NewLogField("provider", credential.Provider),
+		domain.NewLogField("cluster_name", req.ClusterName),
+		domain.NewLogField("node_group_name", req.NodeGroupName),
+		domain.NewLogField("region", req.Region))
+
+	switch credential.Provider {
+	case "aws":
+		return s.updateAWSEKSNodeGroup(ctx, credential, req)
+	case "gcp":
+		return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "GCP node group update not implemented yet", HTTPStatusNotImplemented)
+	case "azure":
+		return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "Azure node group update not implemented yet", HTTPStatusNotImplemented)
+	case "ncp":
+		return nil, domain.NewDomainError(domain.ErrCodeNotImplemented, "NCP node groups not implemented yet", HTTPStatusNotImplemented)
+	default:
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("unsupported provider: %s", credential.Provider), HTTPStatusBadRequest)
+	}
+}
+
+// updateAWSEKSNodeGroup: AWS EKS 노드 그룹을 업데이트합니다
+func (s *Service) updateAWSEKSNodeGroup(ctx context.Context, credential *domain.Credential, req UpdateNodeGroupRequest) (*AWSNodeGroupInfo, error) {
+	creds, err := s.extractAWSCredentials(ctx, credential, req.Region)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, err := s.createAWSConfig(ctx, creds)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create EKS client
+	eksClient := eks.NewFromConfig(cfg)
+
+	// Prepare update input
+	input := &eks.UpdateNodegroupConfigInput{
+		ClusterName:   aws.String(req.ClusterName),
+		NodegroupName: aws.String(req.NodeGroupName),
+	}
+
+	// Add scaling config if provided
+	if req.ScalingConfig != nil {
+		input.ScalingConfig = &types.NodegroupScalingConfig{
+			MinSize:     aws.Int32(req.ScalingConfig.MinSize),
+			MaxSize:     aws.Int32(req.ScalingConfig.MaxSize),
+			DesiredSize: aws.Int32(req.ScalingConfig.DesiredSize),
+		}
+	}
+
+	// Add update config if provided
+	if req.UpdateConfig != nil {
+		input.UpdateConfig = &types.NodegroupUpdateConfig{}
+		if req.UpdateConfig.MaxUnavailable != nil {
+			input.UpdateConfig.MaxUnavailable = aws.Int32(*req.UpdateConfig.MaxUnavailable)
+		}
+		if req.UpdateConfig.MaxUnavailablePercentage != nil {
+			input.UpdateConfig.MaxUnavailablePercentage = aws.Int32(*req.UpdateConfig.MaxUnavailablePercentage)
+		}
+	}
+
+	// Update node group
+	output, err := eksClient.UpdateNodegroupConfig(ctx, input)
+	if err != nil {
+		return nil, s.providerErrorConverter.ConvertAWSError(err, "update EKS node group")
+	}
+
+	if output.Update == nil || output.Update.Id == nil {
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, "update initiated but no update ID returned", HTTPStatusInternalServerError)
+	}
+
+	s.logger.Info(ctx, "EKS node group update initiated",
+		domain.NewLogField("cluster_name", req.ClusterName),
+		domain.NewLogField("nodegroup_name", req.NodeGroupName),
+		domain.NewLogField("update_id", aws.ToString(output.Update.Id)),
+		domain.NewLogField("region", req.Region))
+
+	// Return updated node group info
+	getReq := GetNodeGroupRequest{
+		CredentialID:  req.CredentialID,
+		ClusterName:   req.ClusterName,
+		NodeGroupName: req.NodeGroupName,
+		Region:        req.Region,
+	}
+
+	return s.getAWSEKSNodeGroup(ctx, credential, getReq)
 }
 
 // validateEKSSubnetAZs EKS 서브넷이 최소 2개의 다른 AZ에 있는지 검증합니다
@@ -1120,7 +1520,8 @@ func (s *Service) getDefaultRoleName() string {
 }
 
 // getClusterFromCache 캐시에서 클러스터 정보를 조회합니다
-func (s *Service) getClusterFromCache(ctx context.Context, cacheKey, provider, credentialID, clusterName string) *ClusterInfo {
+// Returns BaseClusterInfo (cached as base info for listing compatibility)
+func (s *Service) getClusterFromCache(ctx context.Context, cacheKey, provider, credentialID, clusterName string) *BaseClusterInfo {
 	if s.cacheService == nil {
 		return nil
 	}
@@ -1130,8 +1531,8 @@ func (s *Service) getClusterFromCache(ctx context.Context, cacheKey, provider, c
 		return nil
 	}
 
-	// 타입 단언 시도 (*ClusterInfo)
-	if cachedCluster, ok := cachedValue.(*ClusterInfo); ok {
+	// 타입 단언 시도 (*BaseClusterInfo)
+	if cachedCluster, ok := cachedValue.(*BaseClusterInfo); ok {
 		s.logger.Debug(ctx, "Kubernetes cluster retrieved from cache",
 			domain.NewLogField("provider", provider),
 			domain.NewLogField("credential_id", credentialID),
@@ -1139,8 +1540,8 @@ func (s *Service) getClusterFromCache(ctx context.Context, cacheKey, provider, c
 		return cachedCluster
 	}
 
-	// 타입 단언 시도 (ClusterInfo)
-	if cachedCluster, ok := cachedValue.(ClusterInfo); ok {
+	// 타입 단언 시도 (BaseClusterInfo)
+	if cachedCluster, ok := cachedValue.(BaseClusterInfo); ok {
 		s.logger.Debug(ctx, "Kubernetes cluster retrieved from cache",
 			domain.NewLogField("provider", provider),
 			domain.NewLogField("credential_id", credentialID),
@@ -1148,11 +1549,17 @@ func (s *Service) getClusterFromCache(ctx context.Context, cacheKey, provider, c
 		return &cachedCluster
 	}
 
+	// Backward compatibility: try ClusterInfo (old type)
+	if cachedCluster, ok := cachedValue.(*BaseClusterInfo); ok {
+		return cachedCluster
+	}
+
 	return nil
 }
 
 // getClusterFromProvider 프로바이더별로 클러스터 정보를 조회합니다
-func (s *Service) getClusterFromProvider(ctx context.Context, credential *domain.Credential, clusterName, region string) (*ClusterInfo, error) {
+// Returns provider-specific cluster info (AWSClusterInfo, GCPClusterInfo, AzureClusterInfo)
+func (s *Service) getClusterFromProvider(ctx context.Context, credential *domain.Credential, clusterName, region string) (interface{}, error) {
 	switch credential.Provider {
 	case "aws":
 		return s.getAWSEKSCluster(ctx, credential, clusterName, region)
@@ -1654,7 +2061,7 @@ func (s *Service) listAzureAKSClusters(ctx context.Context, credential *domain.C
 	// Get managed clusters client
 	managedClustersClient := clientFactory.NewManagedClustersClient()
 
-	var clusters []ClusterInfo
+	var clusters []BaseClusterInfo
 
 	// Resource Group이 있으면 해당 Resource Group의 클러스터만 조회 (최적화)
 	if creds.ResourceGroup != "" {
@@ -1704,9 +2111,9 @@ func (s *Service) listAzureAKSClusters(ctx context.Context, credential *domain.C
 	return &ListClustersResponse{Clusters: clusters}, nil
 }
 
-// buildClusterInfoFromAzureCluster: Azure Managed Cluster에서 ClusterInfo를 생성합니다
-func (s *Service) buildClusterInfoFromAzureCluster(cluster *armcontainerservice.ManagedCluster) ClusterInfo {
-	clusterInfo := ClusterInfo{
+// buildClusterInfoFromAzureCluster: Azure Managed Cluster에서 BaseClusterInfo를 생성합니다
+func (s *Service) buildClusterInfoFromAzureCluster(cluster *armcontainerservice.ManagedCluster) BaseClusterInfo {
+	clusterInfo := BaseClusterInfo{
 		ID:      *cluster.ID,
 		Name:    *cluster.Name,
 		Version: "",
@@ -1756,7 +2163,7 @@ func (s *Service) buildClusterInfoFromAzureCluster(cluster *armcontainerservice.
 }
 
 // getAzureAKSCluster: Azure AKS 클러스터 상세 정보를 조회합니다
-func (s *Service) getAzureAKSCluster(ctx context.Context, credential *domain.Credential, clusterName, location string) (*ClusterInfo, error) {
+func (s *Service) getAzureAKSCluster(ctx context.Context, credential *domain.Credential, clusterName, location string) (interface{}, error) {
 	creds, err := s.extractAzureCredentials(ctx, credential)
 	if err != nil {
 		return nil, err
@@ -1807,27 +2214,32 @@ func (s *Service) getAzureAKSCluster(ctx context.Context, credential *domain.Cre
 		return nil, s.providerErrorConverter.ConvertAzureError(err, "get AKS cluster")
 	}
 
-	clusterInfo := ClusterInfo{
-		ID:      *cluster.ID,
-		Name:    *cluster.Name,
-		Version: "",
-		Status:  "",
-		Region:  "",
-	}
-
-	// Extract resource group from cluster ID or use the one from credentials
+	// Extract resource group from cluster ID
+	resourceGroup := ""
 	if cluster.ID != nil {
 		parts := strings.Split(*cluster.ID, "/")
 		for i, part := range parts {
 			if part == "resourceGroups" && i+1 < len(parts) {
-				clusterInfo.ResourceGroup = parts[i+1]
+				resourceGroup = parts[i+1]
 				break
 			}
 		}
 	}
 	// Fallback to credentials resource group if not found in ID
-	if clusterInfo.ResourceGroup == "" {
-		clusterInfo.ResourceGroup = creds.ResourceGroup
+	if resourceGroup == "" {
+		resourceGroup = creds.ResourceGroup
+	}
+
+	// Convert to AzureClusterInfo with full Azure-specific details
+	clusterInfo := &AzureClusterInfo{
+		BaseClusterInfo: BaseClusterInfo{
+			ID:      *cluster.ID,
+			Name:    *cluster.Name,
+			Version: "",
+			Status:  "",
+			Region:  "",
+		},
+		ResourceGroup: resourceGroup,
 	}
 
 	if cluster.Properties != nil {
@@ -1840,7 +2252,72 @@ func (s *Service) getAzureAKSCluster(ctx context.Context, credential *domain.Cre
 		if cluster.Properties.Fqdn != nil {
 			clusterInfo.Endpoint = *cluster.Properties.Fqdn
 		}
-		// Note: Azure SDK doesn't expose CreatedAt directly in ManagedClusterProperties
+
+		// Parse NetworkProfile
+		if cluster.Properties.NetworkProfile != nil {
+			netProfile := cluster.Properties.NetworkProfile
+			clusterInfo.NetworkProfile = &AzureNetworkProfile{
+				NetworkPlugin:    string(*netProfile.NetworkPlugin),
+				NetworkPolicy:    string(*netProfile.NetworkPolicy),
+				PodCIDR:          getStringValue(netProfile.PodCidr),
+				ServiceCIDR:      getStringValue(netProfile.ServiceCidr),
+				DNSServiceIP:     getStringValue(netProfile.DNSServiceIP),
+				DockerBridgeCIDR: "", // DockerBridgeCidr is not available in NetworkProfile
+				LoadBalancerSku:  string(*netProfile.LoadBalancerSKU),
+				NetworkMode:      string(*netProfile.NetworkMode),
+			}
+
+			// Also populate common NetworkConfig for backward compatibility
+			clusterInfo.BaseClusterInfo.NetworkConfig = &NetworkConfigInfo{
+				PodCIDR:     getStringValue(netProfile.PodCidr),
+				ServiceCIDR: getStringValue(netProfile.ServiceCidr),
+			}
+		}
+
+		// Parse ServicePrincipalProfile
+		if cluster.Properties.ServicePrincipalProfile != nil {
+			clusterInfo.ServicePrincipal = &AzureServicePrincipal{
+				ClientID: getStringValue(cluster.Properties.ServicePrincipalProfile.ClientID),
+			}
+		}
+
+		// Parse AddonProfiles
+		if len(cluster.Properties.AddonProfiles) > 0 {
+			addonProfiles := make(map[string]interface{})
+			for key, profile := range cluster.Properties.AddonProfiles {
+				if profile != nil {
+					addonProfiles[key] = map[string]interface{}{
+						"enabled": profile.Enabled != nil && *profile.Enabled,
+					}
+				}
+			}
+			clusterInfo.AddonProfiles = addonProfiles
+		}
+
+		// Parse EnableRBAC
+		if cluster.Properties.EnableRBAC != nil {
+			clusterInfo.EnableRBAC = *cluster.Properties.EnableRBAC
+		}
+
+		// Parse APIServerAccessProfile
+		if cluster.Properties.APIServerAccessProfile != nil {
+			apiServerProfile := cluster.Properties.APIServerAccessProfile
+			if apiServerProfile.EnablePrivateCluster != nil && *apiServerProfile.EnablePrivateCluster {
+				if clusterInfo.BaseClusterInfo.NetworkConfig == nil {
+					clusterInfo.BaseClusterInfo.NetworkConfig = &NetworkConfigInfo{}
+				}
+				clusterInfo.BaseClusterInfo.NetworkConfig.PrivateEndpoint = true
+			}
+			if apiServerProfile.AuthorizedIPRanges != nil {
+				authorizedIPRanges := make([]string, 0, len(apiServerProfile.AuthorizedIPRanges))
+				for _, ipRange := range apiServerProfile.AuthorizedIPRanges {
+					if ipRange != nil {
+						authorizedIPRanges = append(authorizedIPRanges, *ipRange)
+					}
+				}
+				clusterInfo.APIServerAuthorizedIPRanges = authorizedIPRanges
+			}
+		}
 	}
 
 	if cluster.Location != nil {
@@ -1857,7 +2334,15 @@ func (s *Service) getAzureAKSCluster(ctx context.Context, credential *domain.Cre
 		clusterInfo.Tags = tags
 	}
 
-	return &clusterInfo, nil
+	return clusterInfo, nil
+}
+
+// getStringValue safely extracts string value from pointer
+func getStringValue(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // deleteAzureAKSCluster: Azure AKS 클러스터를 삭제합니다

@@ -79,3 +79,43 @@ export function useAvailabilityZones({
   });
 }
 
+/**
+ * EC2 Instance Types 목록 조회 (GPU 정보 포함)
+ */
+export function useInstanceTypes({
+  provider,
+  credentialId,
+  region,
+}: UseKubernetesMetadataOptions) {
+  return useQuery({
+    queryKey: queryKeys.kubernetesMetadata.instanceTypes(provider, credentialId, region),
+    queryFn: async () => {
+      if (!provider || !credentialId || !region || provider !== 'aws') {
+        return [];
+      }
+      return kubernetesService.getInstanceTypes(provider, credentialId, region);
+    },
+    enabled: !!provider && !!credentialId && !!region && provider === 'aws',
+    staleTime: CACHE_TIMES.STATIC, // 1시간 - 인스턴스 유형 목록은 자주 변하지 않음
+    gcTime: GC_TIMES.LONG, // 24시간
+  });
+}
+
+/**
+ * EKS AMI Types 목록 조회
+ */
+export function useEKSAmitTypes({ provider }: UseKubernetesMetadataOptions) {
+  return useQuery({
+    queryKey: queryKeys.kubernetesMetadata.amiTypes(provider),
+    queryFn: async () => {
+      if (!provider || provider !== 'aws') {
+        return [];
+      }
+      return kubernetesService.getEKSAmitTypes(provider);
+    },
+    enabled: provider === 'aws',
+    staleTime: CACHE_TIMES.STATIC, // 1시간 - AMI Type 목록은 고정되어 있음
+    gcTime: GC_TIMES.LONG, // 24시간
+  });
+}
+

@@ -597,11 +597,21 @@ class SSEService {
 
   async unsubscribeFromEvent(eventType: string, filters?: SubscriptionFilters): Promise<void> {
     if (!this.isConnected() || !this.clientId) {
-      log.warn('Cannot unsubscribe: SSE not connected', {
+      log.debug('Cannot unsubscribe: SSE not connected, skipping unsubscribe', {
         eventType,
         connected: this.isConnected(),
         clientId: this.clientId,
       });
+      // 연결이 없으면 구독 정보만 로컬에서 제거
+      const subscriptionKey = this.getSubscriptionKey(eventType, filters);
+      this.activeSubscriptions.delete(subscriptionKey);
+      
+      // 해당 eventType의 다른 구독이 없으면 Set에서도 제거
+      const hasOtherSubscriptions = Array.from(this.activeSubscriptions.values())
+        .some(sub => sub.eventType === eventType);
+      if (!hasOtherSubscriptions) {
+        this.subscribedEvents.delete(eventType);
+      }
       return;
     }
 
@@ -635,13 +645,39 @@ class SSEService {
       
       log.debug('Unsubscribed from event', { eventType, filters, subscriptionKey });
     } catch (error) {
-      logger.logError(error, {
-        service: 'SSE',
-        action: 'unsubscribeFromEvent',
+      // 404 에러는 연결이 끊어진 상태에서 발생할 수 있으므로 조용히 처리
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('404') || errorMessage.includes('Not Found')) {
+        log.debug('Unsubscribe endpoint not found (connection may be closed), cleaning up local subscription', {
+          eventType,
+          filters,
+          subscriptionKey,
+        });
+        // 로컬 구독 정보만 제거
+        this.activeSubscriptions.delete(subscriptionKey);
+        const hasOtherSubscriptions = Array.from(this.activeSubscriptions.values())
+          .some(sub => sub.eventType === eventType);
+        if (!hasOtherSubscriptions) {
+          this.subscribedEvents.delete(eventType);
+        }
+        return;
+      }
+      
+      // 다른 에러는 로깅만 하고 throw하지 않음 (cleanup 중이므로)
+      log.warn('Failed to unsubscribe from event (non-critical)', {
         eventType,
         filters,
+        subscriptionKey,
+        error: errorMessage,
       });
-      throw error;
+      
+      // 로컬 구독 정보는 제거
+      this.activeSubscriptions.delete(subscriptionKey);
+      const hasOtherSubscriptions = Array.from(this.activeSubscriptions.values())
+        .some(sub => sub.eventType === eventType);
+      if (!hasOtherSubscriptions) {
+        this.subscribedEvents.delete(eventType);
+      }
     }
   }
 

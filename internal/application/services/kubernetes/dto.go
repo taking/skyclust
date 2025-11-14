@@ -47,28 +47,160 @@ type ListClustersRequest struct {
 	ResourceGroup string `json:"resource_group,omitempty" form:"resource_group"` // Azure-specific: Resource Group filter
 }
 
-// ClusterInfo represents basic cluster information for listing
-type ClusterInfo struct {
+// BaseClusterInfo represents common cluster information shared across all providers
+// Used for listing clusters and as base for provider-specific cluster info
+type BaseClusterInfo struct {
 	ID            string            `json:"id"`
 	Name          string            `json:"name"`
 	Version       string            `json:"version"`
 	Status        string            `json:"status"`
 	Region        string            `json:"region"`
-	Zone          string            `json:"zone,omitempty"`
+	Zone          string            `json:"zone,omitempty"` // GCP zone
 	Endpoint      string            `json:"endpoint,omitempty"`
-	ResourceGroup string            `json:"resource_group,omitempty"` // Azure-specific: Resource Group name
+	ResourceGroup string            `json:"resource_group,omitempty"` // Azure-specific, but included in base for listing compatibility
+	ProjectID     string            `json:"project_id,omitempty"`     // GCP-specific, but included in base for listing compatibility
 	CreatedAt     string            `json:"created_at,omitempty"`
 	UpdatedAt     string            `json:"updated_at,omitempty"`
 	Tags          map[string]string `json:"tags,omitempty"`
 
-	// Network information
+	// Common network information (basic, provider-agnostic)
 	NetworkConfig *NetworkConfigInfo `json:"network_config,omitempty"`
 
 	// Node pool information
 	NodePoolInfo *NodePoolSummaryInfo `json:"node_pool_info,omitempty"`
 
-	// Security configuration
+	// Security configuration (common)
 	SecurityConfig *SecurityConfigInfo `json:"security_config,omitempty"`
+}
+
+// ClusterInfo is an alias for BaseClusterInfo for backward compatibility
+// In list operations, this is used. For detail operations, provider-specific types are used.
+type ClusterInfo = BaseClusterInfo
+
+// AWSClusterInfo represents AWS EKS cluster information with AWS-specific fields
+type AWSClusterInfo struct {
+	BaseClusterInfo
+	// AWS EKS specific fields
+	ResourcesVPCConfig      *AWSResourcesVPCConfig      `json:"resources_vpc_config,omitempty"`
+	KubernetesNetworkConfig *AWSKubernetesNetworkConfig `json:"kubernetes_network_config,omitempty"`
+	AccessConfig            *AWSAccessConfig            `json:"access_config,omitempty"`
+	UpgradePolicy           *AWSUpgradePolicy           `json:"upgrade_policy,omitempty"`
+	RoleARN                 string                      `json:"role_arn,omitempty"`
+	PlatformVersion         string                      `json:"platform_version,omitempty"`
+	DeletionProtection      bool                        `json:"deletion_protection,omitempty"`
+}
+
+// AWSResourcesVPCConfig represents AWS EKS VPC configuration
+type AWSResourcesVPCConfig struct {
+	SubnetIDs              []string `json:"subnet_ids"`
+	SecurityGroupIDs       []string `json:"security_group_ids"`
+	ClusterSecurityGroupID string   `json:"cluster_security_group_id,omitempty"`
+	VPCID                  string   `json:"vpc_id"`
+	EndpointPublicAccess   bool     `json:"endpoint_public_access"`
+	EndpointPrivateAccess  bool     `json:"endpoint_private_access"`
+	PublicAccessCIDRs      []string `json:"public_access_cidrs"`
+}
+
+// AWSKubernetesNetworkConfig represents AWS EKS Kubernetes network configuration
+type AWSKubernetesNetworkConfig struct {
+	ServiceIPv4CIDR      string                   `json:"service_ipv4_cidr,omitempty"`
+	ServiceIPv6CIDR      string                   `json:"service_ipv6_cidr,omitempty"`
+	IPFamily             string                   `json:"ip_family,omitempty"` // "ipv4" or "ipv6"
+	ElasticLoadBalancing *AWSElasticLoadBalancing `json:"elastic_load_balancing,omitempty"`
+}
+
+// AWSElasticLoadBalancing represents AWS EKS Elastic Load Balancing configuration
+type AWSElasticLoadBalancing struct {
+	Enabled bool `json:"enabled"`
+}
+
+// AWSAccessConfig represents AWS EKS access configuration
+type AWSAccessConfig struct {
+	BootstrapClusterCreatorAdminPermissions *bool  `json:"bootstrap_cluster_creator_admin_permissions,omitempty"`
+	AuthenticationMode                      string `json:"authentication_mode,omitempty"` // "API", "CONFIG_MAP", "API_AND_CONFIG_MAP"
+}
+
+// AWSUpgradePolicy represents AWS EKS upgrade policy
+type AWSUpgradePolicy struct {
+	SupportType string `json:"support_type,omitempty"` // "EXTENDED", "STANDARD"
+}
+
+// GCPClusterInfo represents GCP GKE cluster information with GCP-specific fields
+type GCPClusterInfo struct {
+	BaseClusterInfo
+	// GCP GKE specific fields
+	ProjectID                      string                             `json:"project_id,omitempty"`
+	NetworkConfig                  *GCPNetworkConfig                  `json:"network_config,omitempty"`
+	SecurityConfig                 *GCPSecurityConfig                 `json:"security_config,omitempty"`
+	WorkloadIdentityConfig         *GCPWorkloadIdentityConfig         `json:"workload_identity_config,omitempty"`
+	PrivateClusterConfig           *GCPPrivateClusterConfig           `json:"private_cluster_config,omitempty"`
+	MasterAuthorizedNetworksConfig *GCPMasterAuthorizedNetworksConfig `json:"master_authorized_networks_config,omitempty"`
+}
+
+// GCPNetworkConfig represents GCP GKE network configuration
+type GCPNetworkConfig struct {
+	Network         string `json:"network,omitempty"`      // VPC network name
+	Subnetwork      string `json:"subnetwork,omitempty"`   // Subnet name
+	PodCIDR         string `json:"pod_cidr,omitempty"`     // Pod CIDR range
+	ServiceCIDR     string `json:"service_cidr,omitempty"` // Service CIDR range
+	PrivateNodes    bool   `json:"private_nodes,omitempty"`
+	PrivateEndpoint bool   `json:"private_endpoint,omitempty"`
+}
+
+// GCPSecurityConfig represents GCP GKE security configuration
+type GCPSecurityConfig struct {
+	WorkloadIdentity    bool `json:"workload_identity,omitempty"`
+	BinaryAuthorization bool `json:"binary_authorization,omitempty"`
+	NetworkPolicy       bool `json:"network_policy,omitempty"`
+	PodSecurityPolicy   bool `json:"pod_security_policy,omitempty"`
+}
+
+// GCPWorkloadIdentityConfig represents GCP GKE workload identity configuration
+type GCPWorkloadIdentityConfig struct {
+	WorkloadPool string `json:"workload_pool,omitempty"`
+}
+
+// GCPPrivateClusterConfig represents GCP GKE private cluster configuration
+type GCPPrivateClusterConfig struct {
+	EnablePrivateNodes    bool   `json:"enable_private_nodes"`
+	EnablePrivateEndpoint bool   `json:"enable_private_endpoint"`
+	MasterIPv4CIDR        string `json:"master_ipv4_cidr,omitempty"`
+}
+
+// GCPMasterAuthorizedNetworksConfig represents GCP GKE master authorized networks configuration
+type GCPMasterAuthorizedNetworksConfig struct {
+	Enabled    bool     `json:"enabled"`
+	CIDRBlocks []string `json:"cidr_blocks,omitempty"`
+}
+
+// AzureClusterInfo represents Azure AKS cluster information with Azure-specific fields
+type AzureClusterInfo struct {
+	BaseClusterInfo
+	// Azure AKS specific fields
+	ResourceGroup               string                 `json:"resource_group,omitempty"`
+	NetworkProfile              *AzureNetworkProfile   `json:"network_profile,omitempty"`
+	ServicePrincipal            *AzureServicePrincipal `json:"service_principal,omitempty"`
+	AddonProfiles               map[string]interface{} `json:"addon_profiles,omitempty"`
+	EnableRBAC                  bool                   `json:"enable_rbac,omitempty"`
+	EnablePodSecurityPolicy     bool                   `json:"enable_pod_security_policy,omitempty"`
+	APIServerAuthorizedIPRanges []string               `json:"api_server_authorized_ip_ranges,omitempty"`
+}
+
+// AzureNetworkProfile represents Azure AKS network profile
+type AzureNetworkProfile struct {
+	NetworkPlugin    string `json:"network_plugin,omitempty"` // "azure" or "kubenet"
+	NetworkPolicy    string `json:"network_policy,omitempty"` // "azure" or "calico"
+	PodCIDR          string `json:"pod_cidr,omitempty"`
+	ServiceCIDR      string `json:"service_cidr,omitempty"`
+	DNSServiceIP     string `json:"dns_service_ip,omitempty"`
+	DockerBridgeCIDR string `json:"docker_bridge_cidr,omitempty"`
+	LoadBalancerSku  string `json:"load_balancer_sku,omitempty"`
+	NetworkMode      string `json:"network_mode,omitempty"`
+}
+
+// AzureServicePrincipal represents Azure AKS service principal information
+type AzureServicePrincipal struct {
+	ClientID string `json:"client_id,omitempty"`
 }
 
 // NetworkConfigInfo represents network configuration for a cluster
@@ -98,8 +230,9 @@ type SecurityConfigInfo struct {
 }
 
 // ListClustersResponse represents the response after listing clusters
+// Uses BaseClusterInfo for listing (common fields only)
 type ListClustersResponse struct {
-	Clusters []ClusterInfo `json:"clusters"`
+	Clusters []BaseClusterInfo `json:"clusters"`
 }
 
 // GetClusterRequest represents a request to get cluster details
@@ -143,13 +276,14 @@ type CreateNodeGroupRequest struct {
 	CredentialID  string                 `json:"credential_id" validate:"required,uuid"`
 	ClusterName   string                 `json:"cluster_name" validate:"required"`
 	Region        string                 `json:"region" validate:"required"`
-	NodeGroupName string                 `json:"node_group_name" validate:"required"`
-	NodeRoleARN   string                 `json:"node_role_arn,omitempty"` // Optional: 없으면 자동 생성 (arn:aws:iam::{accountId}:role/EKSNodeRole)
+	NodeGroupName string                 `json:"name" validate:"required"` // Changed from node_group_name to name for frontend consistency
+	NodeRoleARN   string                 `json:"node_role_arn,omitempty"`  // Optional: 없으면 자동 생성 (arn:aws:iam::{accountId}:role/EKSNodeRole)
 	SubnetIDs     []string               `json:"subnet_ids" validate:"required,min=1"`
 	InstanceTypes []string               `json:"instance_types" validate:"required,min=1"`
 	ScalingConfig NodeGroupScalingConfig `json:"scaling_config" validate:"required"`
 	DiskSize      int32                  `json:"disk_size,omitempty"`
-	AMI           string                 `json:"ami,omitempty"`
+	AMIType       string                 `json:"ami_type,omitempty"`      // EKS AMI Type (AL2023_x86_64_STANDARD, AL2023_x86_64_NVIDIA, etc.)
+	AMI           string                 `json:"ami,omitempty"`           // Deprecated: Use ami_type instead
 	CapacityType  string                 `json:"capacity_type,omitempty"` // ON_DEMAND, SPOT
 	Tags          map[string]string      `json:"tags,omitempty"`
 }
@@ -180,6 +314,7 @@ type ListNodeGroupsRequest struct {
 }
 
 // NodeGroupInfo represents basic node group information for listing
+// This is a base struct that can be extended for provider-specific details
 type NodeGroupInfo struct {
 	ID              string                 `json:"id"`
 	Name            string                 `json:"name"`
@@ -207,6 +342,64 @@ type NodeGroupInfo struct {
 	UpdatedAt       string                 `json:"updated_at,omitempty"`
 }
 
+// AWSNodeGroupInfo represents AWS EKS node group detailed information
+// Extends NodeGroupInfo with AWS-specific fields
+type AWSNodeGroupInfo struct {
+	NodeGroupInfo
+	// AWS EKS specific fields
+	NodeRoleARN        string                 `json:"node_role_arn,omitempty"`
+	AMIType            string                 `json:"ami_type,omitempty"`
+	ReleaseVersion     string                 `json:"release_version,omitempty"`
+	Subnets            []string               `json:"subnets,omitempty"`
+	RemoteAccessConfig *AWSRemoteAccessConfig `json:"remote_access_config,omitempty"`
+	Resources          *AWSNodeGroupResources `json:"resources,omitempty"`
+	Health             *AWSNodeGroupHealth    `json:"health,omitempty"`
+	LaunchTemplate     *AWSLaunchTemplateSpec `json:"launch_template,omitempty"`
+	UpdateConfig       *AWSUpdateConfig       `json:"update_config,omitempty"`
+}
+
+// AWSRemoteAccessConfig represents AWS EKS node group remote access configuration
+type AWSRemoteAccessConfig struct {
+	EC2SSHKey            string   `json:"ec2_ssh_key,omitempty"`
+	SourceSecurityGroups []string `json:"source_security_groups,omitempty"`
+}
+
+// AWSNodeGroupResources represents AWS EKS node group resources
+type AWSNodeGroupResources struct {
+	AutoScalingGroups         []AWSAutoScalingGroup `json:"auto_scaling_groups,omitempty"`
+	RemoteAccessSecurityGroup string                `json:"remote_access_security_group,omitempty"`
+}
+
+// AWSAutoScalingGroup represents an Auto Scaling Group
+type AWSAutoScalingGroup struct {
+	Name string `json:"name"`
+}
+
+// AWSNodeGroupHealth represents AWS EKS node group health information
+type AWSNodeGroupHealth struct {
+	Issues []AWSNodeGroupHealthIssue `json:"issues,omitempty"`
+}
+
+// AWSNodeGroupHealthIssue represents a health issue
+type AWSNodeGroupHealthIssue struct {
+	Code        string   `json:"code"`
+	Message     string   `json:"message"`
+	ResourceIDs []string `json:"resource_ids,omitempty"`
+}
+
+// AWSLaunchTemplateSpec represents AWS Launch Template specification
+type AWSLaunchTemplateSpec struct {
+	ID      string `json:"id,omitempty"`
+	Name    string `json:"name,omitempty"`
+	Version string `json:"version,omitempty"`
+}
+
+// AWSUpdateConfig represents AWS EKS node group update configuration
+type AWSUpdateConfig struct {
+	MaxUnavailable           int32 `json:"max_unavailable,omitempty"`
+	MaxUnavailablePercentage int32 `json:"max_unavailable_percentage,omitempty"`
+}
+
 // ListNodeGroupsResponse represents the response after listing node groups
 type ListNodeGroupsResponse struct {
 	NodeGroups []NodeGroupInfo `json:"node_groups"`
@@ -219,6 +412,24 @@ type GetNodeGroupRequest struct {
 	ClusterName   string `json:"cluster_name" validate:"required"`
 	NodeGroupName string `json:"node_group_name" validate:"required"`
 	Region        string `json:"region" validate:"required"`
+}
+
+// UpdateNodeGroupRequest represents a request to update a node group
+type UpdateNodeGroupRequest struct {
+	CredentialID  string                  `json:"credential_id" validate:"required,uuid"`
+	ClusterName   string                  `json:"cluster_name" validate:"required"`
+	NodeGroupName string                  `json:"node_group_name" validate:"required"`
+	Region        string                  `json:"region" validate:"required"`
+	ScalingConfig *NodeGroupScalingConfig `json:"scaling_config,omitempty"`
+	UpdateConfig  *UpdateConfig           `json:"update_config,omitempty"`
+	Labels        map[string]string       `json:"labels,omitempty"`
+	Taints        []NodeTaint             `json:"taints,omitempty"`
+}
+
+// UpdateConfig represents update configuration for node group
+type UpdateConfig struct {
+	MaxUnavailable           *int32 `json:"max_unavailable,omitempty"`
+	MaxUnavailablePercentage *int32 `json:"max_unavailable_percentage,omitempty"`
 }
 
 // DeleteNodeGroupRequest represents a request to delete a node group

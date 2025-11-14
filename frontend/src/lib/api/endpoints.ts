@@ -193,6 +193,29 @@ export const API_ENDPOINTS = {
           { credential_id: credentialId, region }
         );
       },
+      instanceTypes: (provider: CloudProvider, credentialId: string, region: string) => {
+        return buildEndpointWithQuery(
+          `${provider}/kubernetes/metadata/instance-types`,
+          { credential_id: credentialId, region }
+        );
+      },
+      amiTypes: (provider: CloudProvider) => {
+        return `${provider}/kubernetes/metadata/ami-types`;
+      },
+      gpuQuota: (provider: CloudProvider, credentialId: string, region: string, instanceType: string, requiredCount?: number) => {
+        const params: Record<string, string> = {
+          credential_id: credentialId,
+          region,
+          instance_type: instanceType,
+        };
+        if (requiredCount !== undefined) {
+          params.required_count = String(requiredCount);
+        }
+        return buildEndpointWithQuery(
+          `${provider}/kubernetes/metadata/gpu-quota`,
+          params
+        );
+      },
     },
     // Cluster endpoints
     clusters: {
@@ -291,6 +314,12 @@ export const API_ENDPOINTS = {
         );
       },
       create: (provider: CloudProvider, clusterName: string) => `${provider}/kubernetes/clusters/${clusterName}/node-groups`,
+      update: (provider: CloudProvider, clusterName: string, nodeGroupName: string, credentialId: string, region: string) => {
+        return buildEndpointWithQuery(
+          `${provider}/kubernetes/clusters/${clusterName}/node-groups/${nodeGroupName}`,
+          { credential_id: credentialId, region }
+        );
+      },
       delete: (provider: CloudProvider, clusterName: string, nodeGroupName: string, credentialId: string, region: string) => {
         return buildEndpointWithQuery(
           `${provider}/kubernetes/clusters/${clusterName}/node-groups/${nodeGroupName}`,

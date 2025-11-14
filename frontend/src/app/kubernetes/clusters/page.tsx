@@ -7,7 +7,7 @@
 
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useState, useCallback, useRef } from 'react';
 import { useMemo, useEffect } from 'react';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
@@ -34,6 +34,8 @@ import { useResourceListState } from '@/hooks/use-resource-list-state';
 import { sseService } from '@/services/sse';
 import { log } from '@/lib/logging';
 import { useSSEStatus } from '@/hooks/use-sse-status';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query';
 import {
   ClusterPageHeader,
   useKubernetesClusters,
@@ -68,6 +70,7 @@ function KubernetesClustersPageContent() {
   const { success } = useToast();
   const { handleError } = useErrorHandler();
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
 
   // Get workspace from store (consistent with other pages)
   const { currentWorkspace } = useWorkspaceStore();
@@ -84,6 +87,12 @@ function KubernetesClustersPageContent() {
 
   // SSE 상태 확인
   const { status: sseStatus } = useSSEStatus();
+
+  // Refresh 상태 관리
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const lastRefreshTimeRef = useRef<number>(0);
+  const REFRESH_DEBOUNCE_MS = 2000; // 2초 debounce
 
   // SSE 이벤트 구독 (Kubernetes 클러스터 실시간 업데이트)
   useEffect(() => {
@@ -194,6 +203,73 @@ function KubernetesClustersPageContent() {
   // Get selected credential and provider
   const selectedCredential = credentials.find(c => c.id === selectedCredentialId);
   const selectedProvider = selectedCredential?.provider as CloudProvider | undefined;
+
+  // Refresh 핸들러 (debouncing 적용)
+  const handleRefresh = useCallback(async () => {
+    const now = Date.now();
+    const timeSinceLastRefresh = now - lastRefreshTimeRef.current;
+
+    // Debounce: 2초 이내 재요청 방지
+    if (timeSinceLastRefresh < REFRESH_DEBOUNCE_MS) {
+      return;
+    }
+
+    lastRefreshTimeRef.current = now;
+    setIsRefreshing(true);
+
+    try {
+      // 클러스터 목록 쿼리 무효화 및 재요청
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.kubernetesClusters.list(
+          currentWorkspace?.id,
+          selectedProvider,
+          selectedCredentialId,
+          selectedRegion
+        ),
+      });
+      
+      // 관련 쿼리도 무효화 (상세 정보 등)
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.kubernetesClusters.all,
+      });
+
+      // 재요청
+      await queryClient.refetchQueries({
+        queryKey: queryKeys.kubernetesClusters.list(
+          currentWorkspace?.id,
+          selectedProvider,
+          selectedCredentialId,
+          selectedRegion
+        ),
+      });
+
+      setLastUpdated(new Date());
+      success(t('kubernetes.clustersRefreshed') || '클러스터 목록을 새로고침했습니다');
+    } catch (error) {
+      handleError(error, { operation: 'refreshClusters', resource: 'Cluster' });
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [
+    queryClient,
+    currentWorkspace?.id,
+    selectedProvider,
+    selectedCredentialId,
+    selectedRegion,
+    success,
+    t,
+    handleError,
+  ]);
+
+  // 클러스터 데이터가 업데이트될 때마다 lastUpdated 갱신 (SSE 업데이트 포함)
+  useEffect(() => {
+    if (clusters && clusters.length >= 0 && !isLoading) {
+      // SSE 업데이트나 수동 새로고침이 아닌 경우에만 갱신 (초기 로드 시)
+      if (!lastUpdated) {
+        setLastUpdated(new Date());
+      }
+    }
+  }, [clusters, isLoading, lastUpdated]);
 
   // Cluster filters hook
   const {
@@ -382,6 +458,9 @@ function KubernetesClustersPageContent() {
             selectedRegion={selectedRegion || ''}
             onRegionChange={() => {}} // Handled by Header
             selectedProvider={selectedProvider}
+            onRefresh={handleRefresh}
+            isRefreshing={isRefreshing}
+            lastUpdated={lastUpdated}
           />
         }
       items={filteredClusters}

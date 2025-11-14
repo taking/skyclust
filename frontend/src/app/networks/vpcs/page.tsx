@@ -6,7 +6,7 @@
 'use client';
 
 import { Suspense } from 'react';
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
@@ -32,6 +32,10 @@ import { useResourceListState } from '@/hooks/use-resource-list-state';
 import { sseService } from '@/services/sse';
 import { log } from '@/lib/logging';
 import { useSSEStatus } from '@/hooks/use-sse-status';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query';
+import { useToast } from '@/hooks/use-toast';
+import { useErrorHandler } from '@/hooks/use-error-handler';
 import {
   useVPCActions,
   VPCsPageHeader,
@@ -51,6 +55,9 @@ function VPCsPageContent() {
   const router = useRouter();
   const { t } = useTranslation();
   const { currentWorkspace } = useWorkspaceStore();
+  const queryClient = useQueryClient();
+  const { success } = useToast();
+  const { handleError } = useErrorHandler();
 
   const {
     vpcs,
@@ -70,6 +77,76 @@ function VPCsPageContent() {
 
   // SSE 상태 확인
   const { status: sseStatus } = useSSEStatus();
+
+  // Refresh 상태 관리
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const lastRefreshTimeRef = useRef<number>(0);
+  const REFRESH_DEBOUNCE_MS = 2000; // 2초 debounce
+
+  // Refresh 핸들러 (debouncing 적용)
+  const handleRefresh = useCallback(async () => {
+    const now = Date.now();
+    const timeSinceLastRefresh = now - lastRefreshTimeRef.current;
+
+    // Debounce: 2초 이내 재요청 방지
+    if (timeSinceLastRefresh < REFRESH_DEBOUNCE_MS) {
+      return;
+    }
+
+    lastRefreshTimeRef.current = now;
+    setIsRefreshing(true);
+
+    try {
+      // VPC 목록 쿼리 무효화 및 재요청
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.vpcs.list(
+          selectedProvider,
+          selectedCredentialId,
+          selectedRegion
+        ),
+      });
+      
+      // 관련 쿼리도 무효화
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.vpcs.all,
+      });
+
+      // 재요청
+      await queryClient.refetchQueries({
+        queryKey: queryKeys.vpcs.list(
+          selectedProvider,
+          selectedCredentialId,
+          selectedRegion
+        ),
+      });
+
+      setLastUpdated(new Date());
+      success(t('network.vpcsRefreshed') || 'VPC 목록을 새로고침했습니다');
+    } catch (error) {
+      handleError(error, { operation: 'refreshVPCs', resource: 'VPC' });
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [
+    queryClient,
+    selectedProvider,
+    selectedCredentialId,
+    selectedRegion,
+    success,
+    t,
+    handleError,
+  ]);
+
+  // VPC 데이터가 업데이트될 때마다 lastUpdated 갱신 (SSE 업데이트 포함)
+  useEffect(() => {
+    if (vpcs && vpcs.length >= 0 && !isLoadingVPCs) {
+      // SSE 업데이트나 수동 새로고침이 아닌 경우에만 갱신 (초기 로드 시)
+      if (!lastUpdated) {
+        setLastUpdated(new Date());
+      }
+    }
+  }, [vpcs, isLoadingVPCs, lastUpdated]);
 
   // SSE 이벤트 구독 (VPC 실시간 업데이트)
   useEffect(() => {
@@ -277,7 +354,13 @@ function VPCsPageContent() {
         title={t('network.vpcs')}
         resourceName={t('network.vpcs')}
         storageKey="vpcs-page"
-        header={<VPCsPageHeader />}
+        header={
+          <VPCsPageHeader
+            onRefresh={handleRefresh}
+            isRefreshing={isRefreshing}
+            lastUpdated={lastUpdated}
+          />
+        }
         items={filteredVPCs}
         isLoading={isLoadingVPCs}
         isEmpty={isEmpty}

@@ -7,6 +7,7 @@ import { BaseService } from '@/lib/api';
 import { API_ENDPOINTS } from '@/lib/api';
 import type {
   KubernetesCluster,
+  ProviderCluster,
   NodePool,
   NodeGroup,
   Node,
@@ -63,8 +64,8 @@ class KubernetesService extends BaseService {
     clusterName: string,
     credentialId: string,
     region: string
-  ): Promise<KubernetesCluster> {
-    return this.get<KubernetesCluster>(
+  ): Promise<ProviderCluster> {
+    return this.get<ProviderCluster>(
       API_ENDPOINTS.kubernetes.clusters.detail(provider, clusterName, credentialId, region)
     );
   }

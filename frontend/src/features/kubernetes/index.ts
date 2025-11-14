@@ -13,6 +13,9 @@ export { BulkTagDialog } from './components/bulk-tag-dialog';
 export { ClusterMetricsChart } from './components/cluster-metrics-chart';
 export { NodeMetricsChart } from './components/node-metrics-chart';
 export { ClusterOverviewTab } from './components/cluster-overview-tab';
+export { AWSClusterDetailTab } from './components/aws-cluster-detail-tab';
+export { GCPClusterDetailTab } from './components/gcp-cluster-detail-tab';
+export { AzureClusterDetailTab } from './components/azure-cluster-detail-tab';
 export { ClusterMetricsTab } from './components/cluster-metrics-tab';
 export { ClusterNodePoolsTab } from './components/cluster-node-pools-tab';
 export { ClusterNodeGroupsTab } from './components/cluster-node-groups-tab';
@@ -24,6 +27,13 @@ export { ClusterUpgradeStatusCard } from './components/cluster-upgrade-status-ca
 export { UpgradeClusterDialog } from './components/upgrade-cluster-dialog';
 export { CreateNodePoolDialog } from './components/create-node-pool-dialog';
 export { CreateNodeGroupDialog } from './components/create-node-group-dialog';
+export { ClusterOverviewHeader } from './components/cluster-overview-header';
+export { ClusterDetailOverviewTab } from './components/cluster-detail-overview-tab';
+export { ClusterDetailNetworkingTab } from './components/cluster-detail-networking-tab';
+export { ClusterDetailAccessTab } from './components/cluster-detail-access-tab';
+export { ClusterDetailResourcesTab } from './components/cluster-detail-resources-tab';
+export { ClusterDetailTagsTab } from './components/cluster-detail-tags-tab';
+export { ClusterDetailComputingTab } from './components/cluster-detail-computing-tab';
 
 // Hooks
 export { useKubernetesClusters } from './hooks/use-kubernetes-clusters';
