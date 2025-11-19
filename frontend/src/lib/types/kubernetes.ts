@@ -288,44 +288,69 @@ export interface CreateClusterForm {
     authentication_mode?: string;
     bootstrap_cluster_creator_admin_permissions?: boolean;
   };
+  // GCP GKE specific fields
+  project_id?: string;
+  cluster_mode?: {
+    type?: string; // "standard" or "autopilot"
+    remove_default_node_pool?: boolean;
+  };
   // Azure AKS specific fields
   location?: string; // Azure uses 'location' instead of 'region'
   resource_group?: string;
+  deployment_mode?: 'auto' | 'custom'; // Azure deployment mode: 'auto' (skip network step) or 'custom' (full flow)
   network?: {
-    virtual_network_id: string;
-    subnet_id: string;
+    virtual_network_id?: string;
+    subnet_id?: string;
     network_plugin?: string; // "azure" or "kubenet"
     network_policy?: string; // "azure" or "calico"
     pod_cidr?: string;
     service_cidr?: string;
     dns_service_ip?: string;
     docker_bridge_cidr?: string;
+    // GCP GKE specific network fields
+    master_authorized_networks?: string[];
+    private_endpoint?: boolean;
+    private_nodes?: boolean;
   };
   node_pool?: {
     name: string;
-    vm_size: string; // e.g., "Standard_D2s_v3"
-    os_disk_size_gb?: number;
-    os_disk_type?: string; // "Managed" or "Ephemeral"
-    os_type?: string; // "Linux" or "Windows"
-    os_sku?: string; // "Ubuntu" or "CBLMariner"
+    vm_size?: string; // Azure: e.g., "Standard_D2s_v3"
+    machine_type?: string; // GCP: e.g., "e2-medium"
+    os_disk_size_gb?: number; // Azure
+    disk_size_gb?: number; // GCP
+    os_disk_type?: string; // Azure: "Managed" or "Ephemeral"
+    disk_type?: string; // GCP: "pd-standard", "pd-ssd", etc.
+    os_type?: string; // Azure: "Linux" or "Windows"
+    os_sku?: string; // Azure: "Ubuntu" or "CBLMariner"
     node_count: number;
     min_count?: number;
     max_count?: number;
-    enable_auto_scaling?: boolean;
-    max_pods?: number;
+    enable_auto_scaling?: boolean; // Azure
+    auto_scaling?: { // GCP
+      enabled?: boolean;
+      min_node_count?: number;
+      max_node_count?: number;
+    };
+    max_pods?: number; // Azure
     vnet_subnet_id?: string;
     availability_zones?: string[];
     labels?: Record<string, string>;
     taints?: string[];
-    mode?: string; // "System" or "User"
+    mode?: string; // Azure: "System" or "User"
+    preemptible?: boolean; // GCP
+    spot?: boolean; // GCP
   };
   security?: {
-    enable_rbac?: boolean;
-    enable_pod_security_policy?: boolean;
-    enable_private_cluster?: boolean;
-    api_server_authorized_ip_ranges?: string[];
-    enable_azure_policy?: boolean;
-    enable_workload_identity?: boolean;
+    enable_rbac?: boolean; // Azure
+    enable_pod_security_policy?: boolean; // Azure
+    enable_private_cluster?: boolean; // Azure
+    api_server_authorized_ip_ranges?: string[]; // Azure
+    enable_azure_policy?: boolean; // Azure
+    enable_workload_identity?: boolean; // Azure, GCP
+    // GCP GKE specific security fields
+    binary_authorization?: boolean;
+    network_policy?: boolean; // GCP
+    pod_security_policy?: boolean; // GCP
   };
 }
 
@@ -351,6 +376,7 @@ export interface CreateNodeGroupForm {
   name: string;
   cluster_name: string;
   instance_types: string[]; // Changed from instance_type to instance_types (array)
+  availability_zone?: string; // Optional: 선택한 AZ (단일 선택, GPU instance type이 사용 가능한 AZ만)
   ami_type?: string;
   disk_size?: number; // Changed from disk_size_gb to disk_size
   min_size: number;
@@ -358,7 +384,7 @@ export interface CreateNodeGroupForm {
   desired_size: number;
   region: string;
   subnet_ids?: string[];
-  capacity_type?: string; // ON_DEMAND, SPOT
+  capacity_type?: 'ON_DEMAND' | 'SPOT'; // ON_DEMAND, SPOT
   tags?: Record<string, string>;
 }
 

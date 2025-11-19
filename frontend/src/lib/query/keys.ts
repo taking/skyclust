@@ -69,10 +69,21 @@ export const kubernetesClusters = {
     credentialId,
     region,
   ] as const,
+  batch: (
+    workspaceId?: string,
+    queries?: Array<{ credential_id: string; region: string; resource_group?: string }>
+  ) => [
+    ...kubernetesClusters.all,
+    'batch',
+    workspaceId,
+    queries ? JSON.stringify(queries) : null,
+  ] as const,
   details: () => [...kubernetesClusters.all, 'detail'] as const,
   detail: (name: string) => [...kubernetesClusters.details(), name] as const,
   nodePools: (clusterName: string, provider?: string, credentialId?: string, region?: string) =>
     [...kubernetesClusters.detail(clusterName), 'node-pools', provider, credentialId, region] as const,
+  nodeGroups: (clusterName: string, provider?: string, credentialId?: string, region?: string) =>
+    [...kubernetesClusters.detail(clusterName), 'node-groups', provider, credentialId, region] as const,
   nodes: (clusterName: string, provider?: string, credentialId?: string, region?: string) =>
     [...kubernetesClusters.detail(clusterName), 'nodes', provider, credentialId, region] as const,
 } as const;
@@ -94,6 +105,10 @@ export const kubernetesMetadata = {
     [...kubernetesMetadata.all, 'ami-types', provider] as const,
   gpuQuota: (provider?: string, credentialId?: string, region?: string, instanceType?: string, requiredCount?: number) =>
     [...kubernetesMetadata.all, 'gpu-quota', provider, credentialId, region, instanceType, requiredCount] as const,
+  instanceTypeOfferings: (provider?: string, credentialId?: string, region?: string, instanceType?: string) =>
+    [...kubernetesMetadata.all, 'instance-type-offerings', provider, credentialId, region, instanceType] as const,
+  vmSizes: (provider?: string, credentialId?: string, region?: string) =>
+    [...kubernetesMetadata.all, 'vm-sizes', provider, credentialId, region] as const,
 } as const;
 
 /**

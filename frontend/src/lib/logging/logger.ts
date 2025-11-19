@@ -279,6 +279,7 @@ export class Logger {
     if (!this.shouldLog('debug')) return;
 
     if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
+      // eslint-disable-next-line no-console
       console.debug(`[DEBUG] ${message}`, context || '');
     }
   }
@@ -290,6 +291,7 @@ export class Logger {
     if (!this.shouldLog('info')) return;
 
     if (typeof window !== 'undefined') {
+      // eslint-disable-next-line no-console
       console.info(`[INFO] ${message}`, context || '');
     }
   }

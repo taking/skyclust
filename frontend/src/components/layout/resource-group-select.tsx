@@ -96,7 +96,7 @@ export function ResourceGroupSelect({
           )}
         </SelectValue>
       </SelectTrigger>
-      <SelectContent className="p-0" onOpenAutoFocus={(e) => e.preventDefault()}>
+      <SelectContent className="p-0" onCloseAutoFocus={(e) => e.preventDefault()}>
         {/* 검색 입력 필드 */}
         <div className="p-2 border-b sticky top-0 bg-background z-10">
           <div className="relative">

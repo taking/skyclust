@@ -10,6 +10,8 @@ import { Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { log } from '@/lib/logging';
+import { TIMEOUTS } from '@/lib/constants/values';
 
 interface CopyableTextProps {
   text: string;
@@ -40,12 +42,15 @@ export function CopyableText({
       success('Copied to clipboard');
       onCopy?.(text);
       
-      // Reset copied state after 2 seconds
+      // Reset copied state after timeout
       setTimeout(() => {
         setCopied(false);
-      }, 2000);
+      }, TIMEOUTS.COPY_SUCCESS_DURATION);
     } catch (error) {
-      console.error('Failed to copy text:', error);
+      log.error('Failed to copy text', error, {
+        component: 'CopyableText',
+        action: 'copy',
+      });
     }
   }, [text, success, onCopy]);
 

@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useTranslation } from '@/hooks/use-translation';
 
 interface DeleteConfirmationDialogProps {
   open: boolean;
@@ -75,19 +76,26 @@ export function DeleteConfirmationDialog({
   open,
   onOpenChange,
   onConfirm,
-  title = '삭제 확인',
-  description = '이 작업은 되돌릴 수 없습니다. 정말 삭제하시겠습니까?',
-  confirmText = '삭제',
-  cancelText = '취소',
+  title,
+  description,
+  confirmText,
+  cancelText,
   isLoading = false,
   resourceName,
-  resourceNameLabel = '리소스 이름',
+  resourceNameLabel,
   resourceNamePlaceholder,
 }: DeleteConfirmationDialogProps) {
+  const { t } = useTranslation();
   const [inputValue, setInputValue] = useState('');
   const requiresNameConfirmation = !!resourceName;
   const isNameMatch = requiresNameConfirmation ? inputValue.trim() === resourceName.trim() : true;
   const canConfirm = !requiresNameConfirmation || isNameMatch;
+  
+  const defaultTitle = title || t('common.deleteConfirmation.title');
+  const defaultDescription = description || t('common.deleteConfirmation.defaultDescription');
+  const defaultConfirmText = confirmText || t('common.delete');
+  const defaultCancelText = cancelText || t('common.cancel');
+  const defaultResourceNameLabel = resourceNameLabel || t('common.deleteConfirmation.resourceNameLabel');
 
   // 모달이 닫힐 때 입력값 초기화
   useEffect(() => {
@@ -113,14 +121,14 @@ export function DeleteConfirmationDialog({
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
+          <AlertDialogTitle>{defaultTitle}</AlertDialogTitle>
+          <AlertDialogDescription>{defaultDescription}</AlertDialogDescription>
         </AlertDialogHeader>
         
         {requiresNameConfirmation && (
           <div className="space-y-2 py-4">
             <Label htmlFor="resource-name-input" className="text-sm font-medium">
-              {resourceNameLabel}을(를) 입력하여 확인하세요:
+              {t('common.deleteConfirmation.resourceNameInputLabel', { resourceName: defaultResourceNameLabel })}
             </Label>
             <Input
               id="resource-name-input"
@@ -139,20 +147,20 @@ export function DeleteConfirmationDialog({
             />
             {inputValue && !isNameMatch && (
               <p className="text-sm text-destructive">
-                입력한 이름이 일치하지 않습니다.
+                {t('common.deleteConfirmation.nameMismatch')}
               </p>
             )}
           </div>
         )}
 
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isLoading}>{cancelText}</AlertDialogCancel>
+          <AlertDialogCancel disabled={isLoading}>{defaultCancelText}</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
             disabled={isLoading || !canConfirm}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isLoading ? '처리 중...' : confirmText}
+            {isLoading ? t('common.deleteConfirmation.processing') : defaultConfirmText}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -24,7 +24,7 @@ export function invalidateVMQueries(
   eventData: VMEventData,
   action: 'created' | 'updated' | 'deleted' | 'list'
 ): void {
-  const { workspaceId, vmId, provider, credentialId, region } = eventData;
+  const { workspaceId, vmId, provider, region } = eventData;
 
   // workspaceId가 있으면 해당 workspace의 VM 목록만 무효화
   if (workspaceId) {

@@ -10,20 +10,22 @@ import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Pagination } from '@/components/ui/pagination';
 import { SearchBar } from '@/components/ui/search-bar';
 import { Trash2, Edit } from 'lucide-react';
 import { UI } from '@/lib/constants';
-import type { SecurityGroup } from '@/lib/types';
+import { useTranslation } from '@/hooks/use-translation';
+import type { SecurityGroup, CloudProvider } from '@/lib/types';
 
 interface SecurityGroupTableProps {
-  securityGroups: SecurityGroup[];
-  filteredSecurityGroups: SecurityGroup[];
-  paginatedSecurityGroups: SecurityGroup[];
+  securityGroups: Array<SecurityGroup & { provider?: CloudProvider; credential_id?: string }>;
+  filteredSecurityGroups: Array<SecurityGroup & { provider?: CloudProvider; credential_id?: string }>;
+  paginatedSecurityGroups: Array<SecurityGroup & { provider?: CloudProvider; credential_id?: string }>;
   selectedSecurityGroupIds: string[];
   onSelectionChange: (ids: string[]) => void;
-  onDelete: (securityGroupId: string, region: string) => void;
+  onDelete?: (securityGroupId: string, region: string) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onSearchClear: () => void;
@@ -32,6 +34,7 @@ interface SecurityGroupTableProps {
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
   isDeleting?: boolean;
+  showProviderColumn?: boolean;
 }
 
 function SecurityGroupTableComponent({
@@ -49,7 +52,10 @@ function SecurityGroupTableComponent({
   onPageChange,
   onPageSizeChange,
   isDeleting = false,
+  showProviderColumn = false,
 }: SecurityGroupTableProps) {
+  const { t } = useTranslation();
+  const hasMultipleProviders = showProviderColumn || securityGroups.some(sg => sg.provider && sg.provider !== securityGroups[0]?.provider);
   const allSelected = useMemo(
     () => selectedSecurityGroupIds.length === filteredSecurityGroups.length && filteredSecurityGroups.length > 0,
     [selectedSecurityGroupIds.length, filteredSecurityGroups.length]
@@ -80,14 +86,6 @@ function SecurityGroupTableComponent({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="mb-4">
-          <SearchBar
-            value={searchQuery}
-            onChange={onSearchChange}
-            onClear={onSearchClear}
-            placeholder="Search security groups by name, ID, or description..."
-          />
-        </div>
         <Table>
           <TableHeader>
             <TableRow>
@@ -97,10 +95,13 @@ function SecurityGroupTableComponent({
                   onCheckedChange={handleSelectAll}
                 />
               </TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead>VPC</TableHead>
-              <TableHead>Actions</TableHead>
+              {hasMultipleProviders && (
+                <TableHead>{t('common.provider') || 'Provider'}</TableHead>
+              )}
+              <TableHead>{t('common.name') || 'Name'}</TableHead>
+              <TableHead>{t('common.description') || 'Description'}</TableHead>
+              <TableHead>{t('network.vpc') || 'VPC'}</TableHead>
+              <TableHead>{t('common.actions') || 'Actions'}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -115,6 +116,11 @@ function SecurityGroupTableComponent({
                       onCheckedChange={(checked) => handleSelectOne(securityGroup.id, checked === true)}
                     />
                   </TableCell>
+                  {hasMultipleProviders && (
+                    <TableCell>
+                      <Badge variant="outline">{securityGroup.provider || '-'}</Badge>
+                    </TableCell>
+                  )}
                   <TableCell className="font-medium">{securityGroup.name}</TableCell>
                   <TableCell>{securityGroup.description || '-'}</TableCell>
                   <TableCell>{securityGroup.vpc_id || '-'}</TableCell>
@@ -123,14 +129,16 @@ function SecurityGroupTableComponent({
                       <Button variant="ghost" size="sm">
                         <Edit className="h-4 w-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onDelete(securityGroup.id, securityGroup.region)}
-                        disabled={isDeleting}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-600" />
-                      </Button>
+                      {onDelete && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onDelete(securityGroup.id, securityGroup.region)}
+                          disabled={isDeleting}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

@@ -77,7 +77,7 @@ export function useNotificationActions(
   );
 
   const handleMarkAllAsRead = useCallback(async () => {
-    await markAllAsReadMutation.mutateAsync();
+    await markAllAsReadMutation.mutateAsync(undefined);
   }, [markAllAsReadMutation]);
 
   const handleDeleteNotification = useCallback(

@@ -3,8 +3,12 @@
  * VM 상세 페이지의 Overview 탭 컴포넌트
  */
 
+'use client';
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Server, Network, MapPin, Calendar, Monitor } from 'lucide-react';
+import { toLocaleDateString, toLocaleTimeString } from '@/lib/utils/date-format';
+import { useTranslation } from '@/hooks/use-translation';
 import type { VM } from '@/lib/types';
 
 interface VMOverviewTabProps {
@@ -12,6 +16,8 @@ interface VMOverviewTabProps {
 }
 
 export function VMOverviewTab({ vm }: VMOverviewTabProps) {
+  const { locale } = useTranslation();
+  
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       <Card>
@@ -65,10 +71,10 @@ export function VMOverviewTab({ vm }: VMOverviewTabProps) {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">
-            {new Date(vm.created_at).toLocaleDateString()}
+            {toLocaleDateString(vm.created_at, locale as 'ko' | 'en')}
           </div>
           <p className="text-xs text-muted-foreground">
-            {new Date(vm.created_at).toLocaleTimeString()}
+            {toLocaleTimeString(vm.created_at, locale as 'ko' | 'en')}
           </p>
         </CardContent>
       </Card>

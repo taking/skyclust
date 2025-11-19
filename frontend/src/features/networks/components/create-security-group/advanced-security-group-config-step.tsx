@@ -141,7 +141,7 @@ export function AdvancedSecurityGroupConfigStep({
                       />
                     </FormControl>
                     <FormDescription className="mt-1">
-                      Comma-separated CIDR blocks (e.g., "0.0.0.0/0, 10.0.0.0/8")
+                      Comma-separated CIDR blocks (e.g., &quot;0.0.0.0/0, 10.0.0.0/8&quot;)
                     </FormDescription>
                     <FormMessage className="mt-1" />
                   </FormItem>
@@ -169,7 +169,7 @@ export function AdvancedSecurityGroupConfigStep({
                       />
                     </FormControl>
                     <FormDescription className="mt-1">
-                      Comma-separated target tags (e.g., "gke-node, web-server")
+                      Comma-separated target tags (e.g., &quot;gke-node, web-server&quot;)
                     </FormDescription>
                     <FormMessage className="mt-1" />
                   </FormItem>

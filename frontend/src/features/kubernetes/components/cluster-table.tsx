@@ -14,8 +14,13 @@ import { VirtualizedTable } from '@/components/common/virtualized-table';
 import { ClusterRow } from './cluster-row';
 import type { KubernetesCluster, CloudProvider } from '@/lib/types';
 
+interface ClusterWithProvider extends KubernetesCluster {
+  provider?: CloudProvider;
+  credential_id?: string;
+}
+
 interface ClusterTableProps {
-  clusters: KubernetesCluster[];
+  clusters: ClusterWithProvider[];
   provider?: CloudProvider;
   selectedIds: string[];
   onSelectionChange: (ids: string[]) => void;
@@ -28,6 +33,7 @@ interface ClusterTableProps {
   total: number;
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
+  showProviderColumn?: boolean;
 }
 
 function ClusterTableComponent({
@@ -44,8 +50,10 @@ function ClusterTableComponent({
   total,
   onPageChange,
   onPageSizeChange,
+  showProviderColumn = false,
 }: ClusterTableProps) {
   const isAzure = provider === 'azure';
+  const hasMultipleProviders = showProviderColumn || clusters.some(c => c.provider && c.provider !== provider);
   // Virtual scrolling은 50개 이상일 때만 활성화
   const shouldUseVirtualScrolling = clusters.length >= 50;
   const allSelected = useMemo(
@@ -66,26 +74,28 @@ function ClusterTableComponent({
   }, [selectedIds, onSelectionChange]);
 
   // renderRow를 조건문 밖에서 정의 (React Hook 규칙 준수)
-  const renderRow = useCallback((item: KubernetesCluster & { id?: string; [key: string]: unknown }) => {
-    const cluster = item as KubernetesCluster;
+  const renderRow = useCallback((item: ClusterWithProvider & { id?: string; [key: string]: unknown }) => {
+    const cluster = item as ClusterWithProvider;
     const clusterId = cluster.id || cluster.name;
     const isSelected = selectedIds.includes(clusterId);
+    const clusterProvider = cluster.provider || provider;
     
     return (
       <TableRow key={clusterId}>
         <ClusterRow
           cluster={cluster}
-          provider={provider}
+          provider={clusterProvider}
           isSelected={isSelected}
           onSelect={(checked) => handleSelectCluster(clusterId, checked)}
           onDelete={onDelete}
           onDownloadKubeconfig={onDownloadKubeconfig}
           isDeleting={isDeleting}
           isDownloading={isDownloading}
+          showProvider={hasMultipleProviders}
         />
       </TableRow>
     );
-  }, [selectedIds, handleSelectCluster, onDelete, onDownloadKubeconfig, isDeleting, isDownloading, provider]);
+  }, [selectedIds, handleSelectCluster, onDelete, onDownloadKubeconfig, isDeleting, isDownloading, provider, hasMultipleProviders]);
 
   if (shouldUseVirtualScrolling) {
     return (
@@ -103,6 +113,7 @@ function ClusterTableComponent({
                   onCheckedChange={handleSelectAll}
                 />
               </TableHead>
+              {hasMultipleProviders && <TableHead>Provider</TableHead>}
               <TableHead>Name</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Version</TableHead>
@@ -143,6 +154,7 @@ function ClusterTableComponent({
                 onCheckedChange={handleSelectAll}
               />
             </TableHead>
+            {hasMultipleProviders && <TableHead>Provider</TableHead>}
             <TableHead>Name</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Version</TableHead>
@@ -157,18 +169,20 @@ function ClusterTableComponent({
           {clusters.map((cluster) => {
             const clusterId = cluster.id || cluster.name;
             const isSelected = selectedIds.includes(clusterId);
+            const clusterProvider = cluster.provider || provider;
             
             return (
               <TableRow key={clusterId}>
                 <ClusterRow
                   cluster={cluster}
-                  provider={provider}
+                  provider={clusterProvider}
                   isSelected={isSelected}
                   onSelect={(checked) => handleSelectCluster(clusterId, checked)}
                   onDelete={onDelete}
                   onDownloadKubeconfig={onDownloadKubeconfig}
                   isDeleting={isDeleting}
                   isDownloading={isDownloading}
+                  showProvider={hasMultipleProviders}
                 />
               </TableRow>
             );

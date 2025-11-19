@@ -19,6 +19,8 @@ import { useTranslation } from '@/hooks/use-translation';
 import { createValidationSchemas } from '@/lib/validation';
 import { useSystemInitialized } from '@/hooks/use-system-initialized';
 import { useAuthStore } from '@/store/auth';
+import { useWorkspaceStore } from '@/store/workspace';
+import { buildManagementPath } from '@/lib/routing/helpers';
 import { Spinner } from '@/components/ui/loading-states';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
@@ -71,7 +73,12 @@ export default function SetupPage() {
         
         // 성공 후 대시보드로 리다이렉트
         setTimeout(() => {
-          router.push('/dashboard');
+          const { currentWorkspace } = useWorkspaceStore.getState();
+          if (currentWorkspace?.id) {
+            router.push(buildManagementPath(currentWorkspace.id, 'dashboard'));
+          } else {
+            router.push('/dashboard');
+          }
         }, 2000);
       } catch (err) {
         // 에러는 hook에서 처리됨

@@ -8,7 +8,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Form } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,6 +25,7 @@ import { createValidationSchemas } from '@/lib/validation';
 export default function LoginPage() {
   const { login } = useAuthStore();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { t } = useTranslation();
   const { isHydrated, isAuthenticated, isLoading: isAuthLoading } = useAuthHydration({
     hydrationDelay: 300,
@@ -33,16 +34,58 @@ export default function LoginPage() {
   
   const { loginSchema } = createValidationSchemas(t);
 
-  // Check if already authenticated - only redirect if definitely authenticated
+  // Check if already authenticated - redirect to returnUrl, lastPath, or dashboard
   useEffect(() => {
     if (!isHydrated || isAuthLoading) {
       return;
     }
 
     if (isAuthenticated) {
-      router.replace('/dashboard');
+      // 1. returnUrl이 있으면 해당 페이지로 리다이렉트
+      const returnUrl = searchParams.get('returnUrl');
+      if (returnUrl) {
+        try {
+          const decodedUrl = decodeURIComponent(returnUrl);
+          // 세션 스토리지의 리다이렉트 플래그 제거
+          sessionStorage.removeItem('authRedirected');
+          router.replace(decodedUrl);
+        } catch {
+          // URL 디코딩 실패 시 dashboard로 리다이렉트
+          sessionStorage.removeItem('authRedirected');
+          router.replace('/dashboard');
+        }
+        return;
+      }
+
+      // 2. returnUrl이 없으면 세션 스토리지에서 마지막 경로 확인
+      if (typeof window !== 'undefined') {
+        const lastPath = sessionStorage.getItem('lastPath');
+        if (lastPath && lastPath !== '/login' && lastPath !== '/register' && lastPath !== '/setup') {
+          sessionStorage.removeItem('authRedirected');
+          router.replace(lastPath);
+          return;
+        }
+      }
+
+      // 3. 마지막 경로도 없으면 workspace가 있으면 해당 workspace의 dashboard로, 없으면 /workspaces로 리다이렉트
+      sessionStorage.removeItem('authRedirected');
+      if (typeof window !== 'undefined') {
+        import('@/store/workspace').then(({ useWorkspaceStore }) => {
+          const { currentWorkspace } = useWorkspaceStore.getState();
+          
+          if (currentWorkspace?.id) {
+            import('@/lib/routing/helpers').then(({ buildManagementPath }) => {
+              router.replace(buildManagementPath(currentWorkspace.id, 'dashboard'));
+            });
+          } else {
+            router.replace('/workspaces');
+          }
+        });
+      } else {
+        router.replace('/dashboard');
+      }
     }
-  }, [router, isHydrated, isAuthenticated, isAuthLoading]);
+  }, [router, searchParams, isHydrated, isAuthenticated, isAuthLoading]);
 
   const {
     form,
@@ -60,7 +103,64 @@ export default function LoginPage() {
     onSubmit: async (data) => {
       const response = await authService.login(data);
       login(response);
-      router.push('/dashboard');
+      
+      // 1. returnUrl이 있으면 해당 페이지로 리다이렉트
+      const returnUrl = searchParams.get('returnUrl');
+      if (returnUrl) {
+        try {
+          const decodedUrl = decodeURIComponent(returnUrl);
+          // 세션 스토리지의 리다이렉트 플래그 제거
+          sessionStorage.removeItem('authRedirected');
+          router.push(decodedUrl);
+        } catch {
+          // URL 디코딩 실패 시 workspace가 있으면 해당 workspace의 dashboard로, 없으면 /workspaces로 리다이렉트
+          sessionStorage.removeItem('authRedirected');
+          if (typeof window !== 'undefined') {
+            import('@/store/workspace').then(({ useWorkspaceStore }) => {
+              const { currentWorkspace } = useWorkspaceStore.getState();
+              
+              if (currentWorkspace?.id) {
+                import('@/lib/routing/helpers').then(({ buildManagementPath }) => {
+                  router.push(buildManagementPath(currentWorkspace.id, 'dashboard'));
+                });
+              } else {
+                router.push('/workspaces');
+              }
+            });
+          } else {
+            router.push('/dashboard');
+          }
+        }
+        return;
+      }
+
+      // 2. returnUrl이 없으면 세션 스토리지에서 마지막 경로 확인
+      if (typeof window !== 'undefined') {
+        const lastPath = sessionStorage.getItem('lastPath');
+        if (lastPath && lastPath !== '/login' && lastPath !== '/register' && lastPath !== '/setup') {
+          sessionStorage.removeItem('authRedirected');
+          router.push(lastPath);
+          return;
+        }
+      }
+
+      // 3. 마지막 경로도 없으면 workspace가 있으면 해당 workspace의 dashboard로, 없으면 /workspaces로 리다이렉트
+      sessionStorage.removeItem('authRedirected');
+      if (typeof window !== 'undefined') {
+        import('@/store/workspace').then(({ useWorkspaceStore }) => {
+          const { currentWorkspace } = useWorkspaceStore.getState();
+          
+          if (currentWorkspace?.id) {
+            import('@/lib/routing/helpers').then(({ buildManagementPath }) => {
+              router.push(buildManagementPath(currentWorkspace.id, 'dashboard'));
+            });
+          } else {
+            router.push('/workspaces');
+          }
+        });
+      } else {
+        router.push('/dashboard');
+      }
     },
         onError: (_error) => {
       // Error is handled by the hook's error state

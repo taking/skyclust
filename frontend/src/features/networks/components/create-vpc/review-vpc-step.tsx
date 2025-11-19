@@ -49,7 +49,7 @@ export function ReviewVPCStep({
       {/* Alert Banner */}
       <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
         <p className="text-sm text-blue-800 dark:text-blue-200">
-          Please review all settings before creating the VPC. Once created, some settings cannot be changed.
+          {t('network.review.alertMessage')}
         </p>
       </div>
 
@@ -60,7 +60,7 @@ export function ReviewVPCStep({
         <CardHeader>
           <div className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-muted-foreground" />
-            <CardTitle className="text-lg font-semibold">Basic Configuration</CardTitle>
+            <CardTitle className="text-lg font-semibold">{t('network.review.basicConfiguration')}</CardTitle>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -68,7 +68,7 @@ export function ReviewVPCStep({
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                 <Network className="h-4 w-4" />
-                VPC Name
+                {t('network.review.vpcName')}
               </div>
               <p className="text-sm font-semibold ml-6">{formData.name || 'N/A'}</p>
             </div>
@@ -76,7 +76,7 @@ export function ReviewVPCStep({
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <FileText className="h-4 w-4" />
-                  Description
+                  {t('network.review.description')}
                 </div>
                 <p className="text-sm font-semibold ml-6">{formData.description}</p>
               </div>
@@ -85,7 +85,7 @@ export function ReviewVPCStep({
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Network className="h-4 w-4" />
-                  CIDR Block
+                  {t('network.review.cidrBlock')}
                 </div>
                 <p className="text-sm font-semibold ml-6">{formData.cidr_block}</p>
               </div>
@@ -93,7 +93,7 @@ export function ReviewVPCStep({
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                 <Globe className="h-4 w-4" />
-                Region
+                {t('network.review.region')}
               </div>
               <p className="text-sm font-semibold ml-6">{formData.region || formData.location || 'N/A'}</p>
             </div>
@@ -101,7 +101,7 @@ export function ReviewVPCStep({
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Cloud className="h-4 w-4" />
-                  Provider
+                  {t('network.review.provider')}
                 </div>
                 <div className="ml-6">
                   <Badge className={getProviderColor(selectedProvider)}>
@@ -114,7 +114,7 @@ export function ReviewVPCStep({
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Network className="h-4 w-4" />
-                  Resource Group
+                  {t('network.review.resourceGroup')}
                 </div>
                 <p className="text-sm font-semibold ml-6">{formData.resource_group}</p>
               </div>
@@ -123,7 +123,7 @@ export function ReviewVPCStep({
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Network className="h-4 w-4" />
-                  Address Space
+                  {t('network.review.addressSpace')}
                 </div>
                 <p className="text-sm font-semibold ml-6">{formData.address_space.join(', ')}</p>
               </div>
@@ -143,7 +143,7 @@ export function ReviewVPCStep({
           <CardHeader>
             <div className="flex items-center gap-2">
               <Settings className="h-5 w-5 text-muted-foreground" />
-              <CardTitle className="text-lg font-semibold">Advanced Settings</CardTitle>
+              <CardTitle className="text-lg font-semibold">{t('network.review.advancedSettings')}</CardTitle>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -151,7 +151,7 @@ export function ReviewVPCStep({
               <div>
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-2">
                   <Tag className="h-4 w-4" />
-                  Tags ({Object.keys(formData.tags).length})
+                  {t('network.review.tags')} ({Object.keys(formData.tags).length})
                 </div>
                 <div className="flex flex-wrap gap-2 ml-6">
                   {Object.entries(formData.tags).map(([key, value]) => (
@@ -166,16 +166,16 @@ export function ReviewVPCStep({
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Network className="h-4 w-4" />
-                  Auto-create Subnets
+                  {t('network.review.autoCreateSubnets')}
                 </div>
-                <p className="text-sm font-semibold ml-6">Enabled</p>
+                <p className="text-sm font-semibold ml-6">{t('network.review.enabled')}</p>
               </div>
             )}
             {formData.routing_mode && (
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Network className="h-4 w-4" />
-                  Routing Mode
+                  {t('network.review.routingMode')}
                 </div>
                 <p className="text-sm font-semibold ml-6">{formData.routing_mode}</p>
               </div>
@@ -184,7 +184,7 @@ export function ReviewVPCStep({
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Network className="h-4 w-4" />
-                  MTU
+                  {t('network.review.mtu')}
                 </div>
                 <p className="text-sm font-semibold ml-6">{formData.mtu}</p>
               </div>

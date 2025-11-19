@@ -25,6 +25,7 @@ interface ClusterPageHeaderProps {
   onRefresh?: () => void;
   isRefreshing?: boolean;
   lastUpdated?: Date | null;
+  onCreateClick?: () => void;
 }
 
 // GCP regions list
@@ -126,6 +127,7 @@ function ClusterPageHeaderComponent({
   onRefresh,
   isRefreshing = false,
   lastUpdated,
+  onCreateClick,
 }: ClusterPageHeaderProps) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -150,7 +152,12 @@ function ClusterPageHeaderComponent({
   const _regions = getRegions();
 
   const handleCreateClick = () => {
-    router.push('/kubernetes/clusters/create');
+    if (onCreateClick) {
+      onCreateClick();
+    } else {
+      // Fallback: use legacy path if onCreateClick not provided
+      router.push('/kubernetes/clusters/create');
+    }
   };
 
   // 마지막 업데이트 시간 포맷팅
@@ -178,7 +185,7 @@ function ClusterPageHeaderComponent({
   return (
     <div className="flex items-center justify-between">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">{t('kubernetes.clusters')}</h1>
+        <h1 className="text-3xl font-bold text-gray-900">{t('kubernetes.clusters.label')}</h1>
         <div className="flex items-center gap-2">
           <p className="text-gray-600">
             {workspaceName 

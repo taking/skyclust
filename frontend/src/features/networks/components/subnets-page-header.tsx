@@ -10,6 +10,8 @@ import { useTranslation } from '@/hooks/use-translation';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import { Plus } from 'lucide-react';
 
 interface SubnetsPageHeaderProps {
   selectedProvider?: string;
@@ -17,6 +19,8 @@ interface SubnetsPageHeaderProps {
   selectedVPCId?: string;
   vpcs: Array<{ id: string; name?: string }>;
   onVPCChange: (vpcId: string) => void;
+  onCreateClick?: () => void;
+  disabled?: boolean;
 }
 
 export function SubnetsPageHeader({
@@ -25,6 +29,8 @@ export function SubnetsPageHeader({
   selectedVPCId,
   vpcs,
   onVPCChange,
+  onCreateClick,
+  disabled = false,
 }: SubnetsPageHeaderProps) {
   const { currentWorkspace } = useWorkspaceStore();
   const { t } = useTranslation();
@@ -42,7 +48,15 @@ export function SubnetsPageHeader({
           </p>
         </div>
         <div className="flex items-center space-x-2">
-          {/* Credential selection is now handled in Header */}
+          {onCreateClick && (
+            <Button
+              onClick={onCreateClick}
+              disabled={disabled || !selectedVPCId}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              {t('network.createSubnet') || 'Create Subnet'}
+            </Button>
+          )}
         </div>
       </div>
       

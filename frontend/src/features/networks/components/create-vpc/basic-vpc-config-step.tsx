@@ -203,7 +203,7 @@ export function BasicVPCConfigStep({
                       />
                     </FormControl>
                     <FormDescription className="mt-1">
-                      Comma-separated CIDR blocks (e.g., "10.0.0.0/16, 10.1.0.0/16")
+                      Comma-separated CIDR blocks (e.g., &quot;10.0.0.0/16, 10.1.0.0/16&quot;)
                     </FormDescription>
                     <FormMessage className="mt-1" />
                   </FormItem>

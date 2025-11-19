@@ -44,15 +44,27 @@ export function CreateCredentialDialog({
     setValue,
     watch,
   } = useForm<CreateCredentialForm>({
+    // File Upload 모드일 때는 validation 스킵 (임시 주석 처리)
+    // resolver: gcpInputMode === 'file' && selectedProvider === 'gcp' ? undefined : zodResolver(schemas.createCredentialSchema),
     resolver: zodResolver(schemas.createCredentialSchema),
   });
 
   const selectedProvider = watch('provider');
 
-  const handleFormSubmit = handleSubmit((data) => {
-    onSubmit(data);
-    reset();
-  });
+  const handleFormSubmit = handleSubmit(
+    (data) => {
+      onSubmit(data);
+      reset();
+    },
+    // File Upload 모드일 때는 validation 에러를 무시 (임시 주석 처리)
+    // (errors) => {
+    //   if (gcpInputMode === 'file' && selectedProvider === 'gcp') {
+    //     // File Upload 모드에서는 validation 스킵하고 바로 submit
+    //     onSubmit(data as CreateCredentialForm);
+    //     reset();
+    //   }
+    // }
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

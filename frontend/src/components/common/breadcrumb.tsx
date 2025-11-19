@@ -67,28 +67,37 @@ export function Breadcrumb({ items, className, resourceName, linkLast = false }:
 
     // 6. 경로 세그먼트를 번역된 라벨로 매핑
     const pathLabels: Record<string, string> = {
+      // 새로운 라우팅 구조 지원
+      'w': '', // workspace 경로 구조의 일부이므로 라벨 없음
+      'c': '', // credential 경로 구조의 일부이므로 라벨 없음
+      'k8s': t('nav.kubernetes'),
+      'kubernetes': t('nav.kubernetes'),
       'compute': t('nav.compute'),
+      'networks': t('nav.networks'),
+      'azure': t('nav.azure'),
+      // 리소스 타입
       'vms': t('nav.vms'),
       'images': t('nav.images'),
       'snapshots': t('nav.snapshots'),
-      'kubernetes': t('nav.kubernetes'),
       'clusters': t('nav.clusters'),
-      'create': t('common.create'),
       'node-pools': t('nav.nodePools'),
+      'node-groups': t('nav.nodeGroups'),
       'nodes': t('nav.nodes'),
-      'networks': t('nav.networks'),
       'vpcs': t('nav.vpcs'),
       'subnets': t('nav.subnets'),
       'security-groups': t('nav.securityGroups'),
+      // 관리 페이지
       'credentials': t('nav.credentials'),
       'workspaces': t('workspace.title'),
       'settings': t('common.settings'),
       'members': t('workspace.members'),
+      'overview': t('workspace.overview') || 'Overview',
       'dashboard': t('nav.dashboard'),
       'profile': t('user.profile'),
       'cost-analysis': t('nav.costAnalysis'),
       'exports': t('nav.exports'),
       'notifications': t('nav.notifications'),
+      'create': t('common.create'),
     };
 
     // 7. 현재 경로 추적 및 중복 href 방지를 위한 Set
@@ -97,37 +106,43 @@ export function Breadcrumb({ items, className, resourceName, linkLast = false }:
     
     // 8. 각 경로 세그먼트를 순회하며 breadcrumb 항목 생성
     paths.forEach((segment) => {
-      // 8-1. 현재 경로에 세그먼트 추가
-      currentPath += `/${segment}`;
-      
-      // 8-2. 세그먼트에 대한 라벨 가져오기 (번역된 라벨이 없으면 첫 글자 대문자로 변환)
-      const label = pathLabels[segment] || segment.charAt(0).toUpperCase() + segment.slice(1);
-      
-      // 8-3. UUID 형식의 세그먼트는 breadcrumb에 추가하지 않음 (동적 라우트 파라미터)
+      // 8-1. UUID 형식의 세그먼트는 breadcrumb에 추가하지 않음 (동적 라우트 파라미터)
       if (segment.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
         return;
       }
+      
+      // 8-2. 라벨이 빈 문자열인 세그먼트는 건너뛰기 (w, c 등 경로 구조의 일부)
+      const label = pathLabels[segment];
+      if (label === '') {
+        return;
+      }
+      
+      // 8-3. 현재 경로에 세그먼트 추가
+      currentPath += `/${segment}`;
+      
+      // 8-4. 라벨이 없으면 첫 글자 대문자로 변환
+      const displayLabel = label || segment.charAt(0).toUpperCase() + segment.slice(1);
 
-      // 8-4. 1 depth 경로인지 확인하고 기본 하위 경로로 리다이렉트
+      // 8-5. 1 depth 경로인지 확인하고 기본 하위 경로로 리다이렉트
       let href = currentPath;
       if (defaultPaths[currentPath]) {
         href = defaultPaths[currentPath];
       }
 
-      // 8-5. 워크스페이스 ID가 있으면 쿼리 파라미터로 추가
+      // 8-6. 워크스페이스 ID가 있으면 쿼리 파라미터로 추가
       if (workspaceId && (defaultPaths[currentPath] || currentPath.startsWith('/compute') || currentPath.startsWith('/kubernetes') || currentPath.startsWith('/networks'))) {
         href = `${href}?workspaceId=${workspaceId}`;
       }
 
-      // 8-6. 중복 href 방지: 이미 추가된 href면 스킵
+      // 8-7. 중복 href 방지: 이미 추가된 href면 스킵
       if (seenHrefs.has(href)) {
         return;
       }
 
-      // 8-7. href를 Set에 추가하고 breadcrumb 항목에 추가
+      // 8-8. href를 Set에 추가하고 breadcrumb 항목에 추가
       seenHrefs.add(href);
       result.push({
-        label,
+        label: displayLabel,
         href,
       });
     });
@@ -208,4 +223,6 @@ export function Breadcrumb({ items, className, resourceName, linkLast = false }:
     </nav>
   );
 }
+
+
 

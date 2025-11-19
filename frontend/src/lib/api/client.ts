@@ -3,6 +3,7 @@ import { NetworkError, ServerError, BaseErrorHandler } from '../error-handling';
 import { getOfflineQueue } from '../offline/queue';
 import { useAuthStore } from '@/store/auth';
 import { API_CONFIG } from './config';
+import { authService } from '@/services/auth';
 
 export const api = axios.create({
   baseURL: API_CONFIG.BASE_URL,
@@ -74,7 +75,7 @@ api.interceptors.request.use(
 // Response interceptor for error handling
 api.interceptors.response.use(
   (response) => response,
-  (error: AxiosError) => {
+  async (error: AxiosError) => {
     // Check if offline
     if (BaseErrorHandler.isOffline()) {
       return Promise.reject(new NetworkError('No internet connection'));
@@ -93,14 +94,55 @@ api.interceptors.response.use(
     const data = error.response.data as { error?: { message?: string; code?: string }; message?: string };
 
     // Handle 401 - Unauthorized
-    // Only redirect if not already on login page
-    if (status === 401 && !window.location.pathname.includes('/login')) {
-      // Clear auth-storage (Zustand persist) and legacy token
-      useAuthStore.getState().logout();
-      // Delay redirect to allow error message to be shown
-      setTimeout(() => {
-        window.location.href = '/login';
-      }, 100);
+    if (status === 401) {
+      // Try to refresh token if we have a refresh token
+      const authState = useAuthStore.getState();
+      const refreshToken = authState.refreshToken;
+      const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+      
+      // If we have a refresh token and this is not a refresh request, try to refresh
+      if (refreshToken && !error.config?.url?.includes('/auth/refresh')) {
+        try {
+          const refreshResponse = await authService.refreshToken(refreshToken);
+          
+          // Update tokens in store
+          authState.setTokens(refreshResponse.access_token, refreshResponse.refresh_token);
+          
+          // Retry the original request with new token
+          if (error.config) {
+            error.config.headers.Authorization = `Bearer ${refreshResponse.access_token}`;
+            return api.request(error.config);
+          }
+        } catch (refreshError) {
+          // Refresh failed, logout and redirect
+          // 현재 페이지가 로그인 페이지가 아닌 경우에만 리다이렉트
+          useAuthStore.getState().logout();
+          if (currentPath && !currentPath.includes('/login')) {
+            // 현재 페이지를 유지하기 위해 router를 사용하지 않고
+            // 로그인 페이지로만 리다이렉트 (필요한 경우)
+            // 로그인 모달이나 토스트 메시지로 처리하는 것이 더 나을 수 있음
+            setTimeout(() => {
+              // 세션이 만료되었으므로 로그인 페이지로 이동
+              // 하지만 사용자가 보고 있던 페이지 정보는 유지 (쿼리 파라미터 등)
+              const returnUrl = encodeURIComponent(currentPath + (window.location.search || ''));
+              window.location.href = `/login?returnUrl=${returnUrl}`;
+            }, 100);
+          }
+          return Promise.reject(new ServerError('Session expired. Please login again.', 401));
+        }
+      } else {
+        // No refresh token or refresh request failed, logout and redirect
+        // 현재 페이지가 로그인 페이지가 아닌 경우에만 리다이렉트
+        useAuthStore.getState().logout();
+        if (currentPath && !currentPath.includes('/login')) {
+          // 현재 페이지 정보를 유지하여 로그인 후 복귀 가능하도록
+          const returnUrl = encodeURIComponent(currentPath + (window.location.search || ''));
+          setTimeout(() => {
+            window.location.href = `/login?returnUrl=${returnUrl}`;
+          }, 100);
+        }
+        return Promise.reject(new ServerError('Session expired. Please login again.', 401));
+      }
     }
 
     const message = data?.error?.message || data?.message || `Server error (${status})`;

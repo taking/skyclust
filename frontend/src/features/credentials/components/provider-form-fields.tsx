@@ -46,14 +46,6 @@ export function ProviderFormFields({
             {...register('credentials.secret_key')}
           />
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="region">Region</Label>
-          <Input
-            id="region"
-            placeholder="us-east-1"
-            {...register('credentials.region')}
-          />
-        </div>
       </div>
     );
   }

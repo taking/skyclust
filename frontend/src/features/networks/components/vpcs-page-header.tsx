@@ -8,7 +8,7 @@
 import { useWorkspaceStore } from '@/store/workspace';
 import { useTranslation } from '@/hooks/use-translation';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, Info } from 'lucide-react';
+import { RefreshCw, Info, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
@@ -16,9 +16,17 @@ interface VPCsPageHeaderProps {
   onRefresh?: () => void;
   isRefreshing?: boolean;
   lastUpdated?: Date | null;
+  onCreateClick?: () => void;
+  disabled?: boolean;
 }
 
-export function VPCsPageHeader({ onRefresh, isRefreshing = false, lastUpdated }: VPCsPageHeaderProps) {
+export function VPCsPageHeader({ 
+  onRefresh, 
+  isRefreshing = false, 
+  lastUpdated,
+  onCreateClick,
+  disabled = false,
+}: VPCsPageHeaderProps) {
   const { currentWorkspace } = useWorkspaceStore();
   const { t } = useTranslation();
 
@@ -121,6 +129,15 @@ export function VPCsPageHeader({ onRefresh, isRefreshing = false, lastUpdated }:
           >
             <RefreshCw className={cn('mr-2 h-4 w-4', isRefreshing && 'animate-spin')} />
             {isRefreshing ? (t('common.refreshing') || '새로고침 중...') : (t('common.refresh') || '새로고침')}
+          </Button>
+        )}
+        {onCreateClick && (
+          <Button
+            onClick={onCreateClick}
+            disabled={disabled}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            {t('network.createVPC') || 'Create VPC'}
           </Button>
         )}
       </div>

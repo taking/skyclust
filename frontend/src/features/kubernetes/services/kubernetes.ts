@@ -31,6 +31,44 @@ class KubernetesService extends BaseService {
     return Array.isArray(data) ? data : [];
   }
 
+  async batchListClusters(
+    provider: CloudProvider,
+    queries: Array<{
+      credential_id: string;
+      region: string;
+      resource_group?: string;
+    }>
+  ): Promise<{
+    results: Array<{
+      credential_id: string;
+      region: string;
+      provider: string;
+      clusters: KubernetesCluster[];
+      error?: {
+        code: string;
+        message: string;
+      };
+    }>;
+    total: number;
+  }> {
+    return this.post<{
+      results: Array<{
+        credential_id: string;
+        region: string;
+        provider: string;
+        clusters: KubernetesCluster[];
+        error?: {
+          code: string;
+          message: string;
+        };
+      }>;
+      total: number;
+    }>(
+      API_ENDPOINTS.kubernetes.clusters.batch(provider),
+      { queries }
+    );
+  }
+
   async getCluster(
     provider: CloudProvider,
     clusterName: string,
@@ -46,9 +84,26 @@ class KubernetesService extends BaseService {
     provider: CloudProvider,
     data: CreateClusterForm
   ): Promise<KubernetesCluster> {
+    // Transform data based on provider
+    let payload: CreateClusterForm | Record<string, unknown> = data;
+    
+    if (provider === 'gcp') {
+      // Import and use GCP payload builder
+      const { buildGCPPayload } = await import('../components/create-cluster/providers/gcp/gcp-review-payload');
+      payload = buildGCPPayload(data);
+    } else if (provider === 'aws') {
+      // Import and use AWS payload builder
+      const { buildAWSPayload } = await import('../components/create-cluster/providers/aws/aws-review-payload');
+      payload = buildAWSPayload(data);
+    } else if (provider === 'azure') {
+      // Import and use Azure payload builder
+      const { buildAzurePayload } = await import('../components/create-cluster/providers/azure/azure-review-payload');
+      payload = buildAzurePayload(data);
+    }
+    
     return this.post<KubernetesCluster>(
       API_ENDPOINTS.kubernetes.clusters.create(provider),
-      data
+      payload
     );
   }
 
@@ -233,8 +288,8 @@ class KubernetesService extends BaseService {
   ): Promise<NodeGroup> {
     // Transform CreateNodeGroupForm to backend DTO structure
     // Backend expects scaling_config as nested object, not flat structure
-    const { min_size, max_size, desired_size, ...rest } = data;
-    const backendPayload = {
+    const { min_size, max_size, desired_size, availability_zone, ...rest } = data;
+    const backendPayload: Record<string, unknown> = {
       ...rest,
       scaling_config: {
         min_size,
@@ -242,6 +297,11 @@ class KubernetesService extends BaseService {
         desired_size,
       },
     };
+    
+    // Convert single availability_zone to availability_zones array for backend
+    if (availability_zone) {
+      backendPayload.availability_zones = [availability_zone];
+    }
     
     return this.post<NodeGroup>(
       API_ENDPOINTS.kubernetes.nodeGroups.create(provider, clusterName),
@@ -259,7 +319,7 @@ class KubernetesService extends BaseService {
   ): Promise<NodeGroup | AWSNodeGroup> {
     // Transform data to backend DTO structure
     const { min_size, max_size, desired_size, ...rest } = data;
-    const backendPayload: any = { ...rest };
+    const backendPayload: Record<string, unknown> = { ...rest };
     
     if (min_size !== undefined || max_size !== undefined || desired_size !== undefined) {
       backendPayload.scaling_config = {
@@ -300,24 +360,36 @@ class KubernetesService extends BaseService {
     return data.nodes || [];
   }
 
-  // Metadata endpoints (AWS only)
-  async getEKSVersions(
+  // Metadata endpoints - Kubernetes versions (AWS, GCP, Azure)
+  async getKubernetesVersions(
     provider: CloudProvider,
     credentialId: string,
-    region: string
+    region: string,
+    workspaceId?: string
   ): Promise<string[]> {
     const data = await this.get<{ versions: string[] }>(
-      API_ENDPOINTS.kubernetes.metadata.versions(provider, credentialId, region)
+      API_ENDPOINTS.kubernetes.metadata.versions(provider, credentialId, region, workspaceId)
     );
     return data.versions || [];
   }
 
+  // Legacy method name for backward compatibility (AWS only)
+  async getEKSVersions(
+    provider: CloudProvider,
+    credentialId: string,
+    region: string,
+    workspaceId?: string
+  ): Promise<string[]> {
+    return this.getKubernetesVersions(provider, credentialId, region, workspaceId);
+  }
+
   async getAWSRegions(
     provider: CloudProvider,
-    credentialId: string
+    credentialId: string,
+    workspaceId?: string
   ): Promise<string[]> {
     const data = await this.get<{ regions: string[] }>(
-      API_ENDPOINTS.kubernetes.metadata.regions(provider, credentialId)
+      API_ENDPOINTS.kubernetes.metadata.regions(provider, credentialId, workspaceId)
     );
     return data.regions || [];
   }
@@ -325,10 +397,11 @@ class KubernetesService extends BaseService {
   async getAvailabilityZones(
     provider: CloudProvider,
     credentialId: string,
-    region: string
+    region: string,
+    workspaceId?: string
   ): Promise<string[]> {
     const data = await this.get<{ zones: string[] }>(
-      API_ENDPOINTS.kubernetes.metadata.availabilityZones(provider, credentialId, region)
+      API_ENDPOINTS.kubernetes.metadata.availabilityZones(provider, credentialId, region, workspaceId)
     );
     return data.zones || [];
   }
@@ -349,6 +422,30 @@ class KubernetesService extends BaseService {
       API_ENDPOINTS.kubernetes.metadata.amiTypes(provider)
     );
     return data.ami_types || [];
+  }
+
+  async getAzureVMSizes(
+    provider: CloudProvider,
+    credentialId: string,
+    region: string,
+    workspaceId?: string
+  ): Promise<string[]> {
+    const data = await this.get<{ vm_sizes: string[] }>(
+      API_ENDPOINTS.kubernetes.metadata.vmSizes(provider, credentialId, region, workspaceId)
+    );
+    return data.vm_sizes || [];
+  }
+
+  async getInstanceTypeOfferings(
+    provider: CloudProvider,
+    credentialId: string,
+    region: string,
+    instanceType: string
+  ): Promise<Array<{ instance_type: string; availability_zone: string; location_type: string }>> {
+    const data = await this.get<{ offerings: Array<{ instance_type: string; availability_zone: string; location_type: string }> }>(
+      API_ENDPOINTS.kubernetes.metadata.instanceTypeOfferings(provider, credentialId, region, instanceType)
+    );
+    return data.offerings || [];
   }
 
   async checkGPUQuota(

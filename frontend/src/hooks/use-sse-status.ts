@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { sseService } from '@/services/sse';
 import type { SSECallbacks } from '@/lib/types/sse';
+import { INTERVALS } from '@/lib/constants/values';
 
 export interface SSEStatus {
   isConnected: boolean;
@@ -213,7 +214,7 @@ export function useSSEStatus() {
           eventCountLast5Minutes,
         }));
       }
-    }, 1000); // 1초마다 업데이트
+    }, INTERVALS.SSE_STATUS_UPDATE);
 
     return () => clearInterval(interval);
   }, []);
@@ -247,7 +248,12 @@ export function useSSEStatus() {
         sseService.connect(token);
       }
     } catch (error) {
-      console.error('Failed to reconnect SSE', error);
+      import('@/lib/logging').then(({ log }) => {
+        log.error('Failed to reconnect SSE', error, {
+          service: 'SSE',
+          action: 'reconnect',
+        });
+      });
       setStatus((prev) => ({ ...prev, isConnecting: false }));
     }
   }, []);

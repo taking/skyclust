@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 import type { Credential } from '@/lib/types/credential';
 import type { CloudProvider } from '@/lib/types/kubernetes';
 import { getRegionsByProvider, supportsRegionSelection } from '@/lib/regions';
+import { buildManagementPath } from '@/lib/routing/helpers';
 
 interface CredentialIndicatorProps {
   /**
@@ -108,7 +109,13 @@ export function CredentialIndicator({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => router.push('/credentials')}
+            onClick={() => {
+              if (currentWorkspace?.id) {
+                router.push(buildManagementPath(currentWorkspace.id, 'credentials'));
+              } else {
+                router.push('/credentials');
+              }
+            }}
           >
             <Plus className="mr-2 h-4 w-4" />
             {t('credential.create')}
@@ -146,7 +153,13 @@ export function CredentialIndicator({
                 </DropdownMenuItem>
               ))}
               <div className="h-px bg-border my-1" />
-              <DropdownMenuItem onClick={() => router.push('/credentials')}>
+              <DropdownMenuItem onClick={() => {
+                if (currentWorkspace?.id) {
+                  router.push(buildManagementPath(currentWorkspace.id, 'credentials'));
+                } else {
+                  router.push('/credentials');
+                }
+              }}>
                 <Plus className="mr-2 h-4 w-4" />
                 {t('credential.create')}
               </DropdownMenuItem>
@@ -230,7 +243,13 @@ export function CredentialIndicator({
               </>
             )}
             <div className="h-px bg-border my-1" />
-            <DropdownMenuItem onClick={() => router.push('/credentials')}>
+            <DropdownMenuItem onClick={() => {
+              if (currentWorkspace?.id) {
+                router.push(buildManagementPath(currentWorkspace.id, 'credentials'));
+              } else {
+                router.push('/credentials');
+              }
+            }}>
               <Plus className="mr-2 h-4 w-4" />
               {t('credential.create')}
             </DropdownMenuItem>

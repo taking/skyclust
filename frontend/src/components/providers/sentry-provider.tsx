@@ -20,6 +20,13 @@ export function SentryProvider({ children }: { children: React.ReactNode }) {
       } else {
         log.warn('[Sentry] Provider: DSN not configured. Check your .env.local file.');
       }
+
+      // 개발 환경에서 Sentry 테스트 함수 로드
+      if (process.env.NODE_ENV === 'development') {
+        import('@/lib/test').catch((err) => {
+          log.warn('[Sentry] Failed to load test functions', err);
+        });
+      }
     }
   }, []);
 

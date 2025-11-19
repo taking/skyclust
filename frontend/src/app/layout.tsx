@@ -8,10 +8,7 @@ import { AppErrorBoundary } from '@/components/error-boundary';
 import { OfflineBanner } from '@/components/common/offline-banner';
 import { SentryProvider } from '@/components/providers/sentry-provider';
 import { I18nProvider } from '@/components/providers/i18n-provider';
-// 개발 환경에서 Sentry 테스트 함수 로드
-if (process.env.NODE_ENV === 'development') {
-  import('@/lib/test');
-}
+// 개발 환경에서 Sentry 테스트 함수는 클라이언트 컴포넌트에서 로드됩니다
 
 // 개발 환경에서 개발 도구 관련 경고 필터링
 if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {

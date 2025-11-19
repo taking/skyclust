@@ -39,13 +39,12 @@ import { useAuthStore } from '@/store/auth';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useCredentialContextStore } from '@/store/credential-context';
 import { useRouter } from 'next/navigation';
-import { LogOut, User, Settings, Plus } from 'lucide-react';
+import { LogOut, User, Settings, Plus, Check } from 'lucide-react';
 import { useCredentials } from '@/hooks/use-credentials';
 import { MobileNav } from './mobile-nav';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { ScreenReaderOnly } from '@/components/accessibility/screen-reader-only';
 import { getActionAriaLabel } from '@/lib/accessibility';
-import { Breadcrumb } from '@/components/common/breadcrumb';
 import { SSEStatusBadge } from '@/components/sse/sse-status-badge';
 import { SSEStatusTooltip } from '@/components/sse/sse-status-tooltip';
 import { SSEStatusDialog } from '@/components/sse/sse-status-dialog';
@@ -55,6 +54,10 @@ import { getRegionsByProvider, supportsRegionSelection, getDefaultRegionForProvi
 import type { CloudProvider } from '@/lib/types/kubernetes';
 import { useTranslation } from '@/hooks/use-translation';
 import { locales, localeNames, type Locale } from '@/i18n/config';
+import { useResourceContext } from '@/hooks/use-resource-context';
+import { buildResourcePath, buildManagementPath, updatePathFilters } from '@/lib/routing/helpers';
+import { WorkspaceSwitcher } from './workspace-switcher';
+import { MoreVertical } from 'lucide-react';
 
 function HeaderComponent() {
   const { user, logout } = useAuthStore();
@@ -66,13 +69,19 @@ function HeaderComponent() {
   const { t, locale, setLocale } = useTranslation();
   const [sseDialogOpen, setSSEDialogOpen] = useState(false);
 
+  // Path Parameter에서 컨텍스트 추출 (새로운 라우팅 구조)
+  const resourceContext = useResourceContext();
+  
   // 자격 증명/리전 선택기를 표시할 경로인지 확인 (URL 동기화용)
   const shouldShowSelectors = React.useMemo(() => {
-    return pathname.startsWith('/compute') || 
+    // 새로운 라우팅 구조: /{workspaceId}/{credentialId}/resource-type/... 또는 /{workspaceId}/dashboard
+    return resourceContext.isResourcePage || 
+           resourceContext.isManagementPage ||
+           pathname.startsWith('/compute') || 
            pathname.startsWith('/kubernetes') || 
            pathname.startsWith('/networks') ||
            pathname.startsWith('/dashboard');
-  }, [pathname]);
+  }, [pathname, resourceContext]);
 
   // 현재 워크스페이스의 자격 증명 조회 (URL 동기화용)
   const { credentials, isLoading: isLoadingCredentials } = useCredentials({
@@ -157,8 +166,9 @@ function HeaderComponent() {
     if (!shouldShowSelectors || !currentWorkspace || isLoadingCredentials) return;
 
     // 2. URL에서 자격 증명 ID와 리전 가져오기
-    const urlCredentialId = searchParams.get('credentialId');
-    const urlRegion = searchParams.get('region');
+    // 새로운 라우팅 구조: path parameter 또는 query parameter에서 추출
+    const urlCredentialId = resourceContext.credentialId || searchParams.get('credentialId');
+    const urlRegion = resourceContext.region || searchParams.get('region');
 
     // 3. URL이 변경되지 않았으면 스킵 (무한 루프 방지)
     if (urlCredentialId === prevUrlCredentialIdRef.current && urlRegion === prevUrlRegionRef.current) {
@@ -289,120 +299,185 @@ function HeaderComponent() {
     router.push('/login');
   };
 
+
   return (
-    <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60" role="banner">
+    <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60" role="banner">
       <div className="flex flex-col">
         {/* Main Header Row */}
         <div className="flex h-16 items-center justify-between px-4 sm:px-6">
           <div className="flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0 overflow-hidden">
             <MobileNav />
-            <div className="flex-1 min-w-0 overflow-hidden">
-              <Breadcrumb className="text-sm truncate" />
-            </div>
+            {currentWorkspace && (
+              <WorkspaceSwitcher />
+            )}
           </div>
 
           <div className="flex items-center space-x-1 sm:space-x-2 md:space-x-4 flex-shrink-0">
+            {/* 데스크톱: 개별 요소 표시 */}
+            <div className="hidden md:flex items-center space-x-2">
+              {/* SSE Status Badge */}
+              {user && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setSSEDialogOpen(true)}
+                      className="focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-md"
+                      aria-label={t('sse.connectionStatus') || 'SSE Connection Status'}
+                    >
+                      <SSEStatusBadge />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs">
+                    <SSEStatusTooltip />
+                  </TooltipContent>
+                </Tooltip>
+              )}
 
-            {/* SSE Status Badge */}
-            {user && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => setSSEDialogOpen(true)}
-                    className="focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded-md"
-                    aria-label={t('sse.connectionStatus') || 'SSE Connection Status'}
-                  >
-                    <SSEStatusBadge />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="max-w-xs">
-                  <SSEStatusTooltip />
-                </TooltipContent>
-              </Tooltip>
-            )}
+              {/* Language Selector */}
+              <Select
+                value={locale}
+                onValueChange={(value) => setLocale(value as Locale)}
+              >
+                <SelectTrigger className="w-[120px] h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {locales.map((loc) => (
+                    <SelectItem key={loc} value={loc} className="text-xs">
+                      {localeNames[loc]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-            {/* Language Selector */}
-            <Select
-              value={locale}
-              onValueChange={(value) => setLocale(value as Locale)}
-            >
-              <SelectTrigger className="w-[120px] h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {locales.map((loc) => (
-                  <SelectItem key={loc} value={loc} className="text-xs">
-                    {localeNames[loc]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <ThemeToggle />
-            {user ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button 
-                  variant="ghost" 
-                  className="relative h-8 w-8 rounded-full"
-                  aria-label={`User menu for ${user.username}`}
-                  aria-haspopup="menu"
-                >
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src="" alt={`${user.username}'s avatar`} />
-                    <AvatarFallback>
-                      {user.username.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56" align="end" forceMount role="menu">
-                <DropdownMenuLabel className="font-normal">
-                  <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">{user.username}</p>
-                    <p className="text-xs leading-none text-muted-foreground">
-                      {user.email}
-                    </p>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem 
-                  onClick={() => router.push('/profile')}
-                  role="menuitem"
-                  aria-label="Go to profile page"
-                >
-                  <User className="mr-2 h-4 w-4" aria-hidden="true" />
-                  <span>{typeof t === 'function' ? t('user.profile') : 'Profile'}</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  onClick={() => router.push('/settings')}
-                  role="menuitem"
-                  aria-label="Go to settings page"
-                >
-                  <Settings className="mr-2 h-4 w-4" aria-hidden="true" />
-                  <span>{typeof t === 'function' ? t('user.settings') : 'Settings'}</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem 
-                  onClick={handleLogout}
-                  role="menuitem"
-                  aria-label="Log out of account"
-                >
-                  <LogOut className="mr-2 h-4 w-4" aria-hidden="true" />
-                  <span>{typeof t === 'function' ? t('user.logout') : 'Log out'}</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <div className="flex items-center space-x-2">
-              <Button variant="ghost" onClick={() => router.push('/login')}>
-                {typeof t === 'function' ? t('user.login') : 'Login'}
-              </Button>
-              <Button onClick={() => router.push('/register')}>
-                {typeof t === 'function' ? t('user.signUp') : 'Sign Up'}
-              </Button>
+              <ThemeToggle />
             </div>
-          )}
+
+            {/* 모바일: 통합 메뉴 */}
+            <div className="md:hidden">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    aria-label="More options"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  {/* SSE Status */}
+                  {user && (
+                    <>
+                      <DropdownMenuItem
+                        onClick={() => setSSEDialogOpen(true)}
+                        className="flex items-center justify-between"
+                      >
+                        <span>{t('sse.connectionStatus') || 'SSE Status'}</span>
+                        <SSEStatusBadge />
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  
+                  {/* Language Selector */}
+                  <DropdownMenuLabel>{t('common.language') || 'Language'}</DropdownMenuLabel>
+                  {locales.map((loc) => (
+                    <DropdownMenuItem
+                      key={loc}
+                      onClick={() => setLocale(loc as Locale)}
+                      className={locale === loc ? 'bg-accent' : ''}
+                    >
+                      {localeNames[loc]}
+                      {locale === loc && <Check className="ml-auto h-4 w-4" />}
+                    </DropdownMenuItem>
+                  ))}
+                  
+                  <DropdownMenuSeparator />
+                  
+                  {/* Theme Toggle */}
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.preventDefault();
+                      // ThemeToggle의 토글 기능을 직접 호출
+                      const themeToggle = document.querySelector('[data-theme-toggle]');
+                      if (themeToggle) {
+                        (themeToggle as HTMLElement).click();
+                      }
+                    }}
+                  >
+                    <span>{t('common.theme') || 'Theme'}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            {/* 사용자 메뉴 (모든 화면 크기) */}
+            {user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    className="relative h-8 w-8 rounded-full"
+                    aria-label={`User menu for ${user.username}`}
+                    aria-haspopup="menu"
+                  >
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src="" alt={`${user.username}'s avatar`} />
+                      <AvatarFallback>
+                        {user.username.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56" align="end" forceMount role="menu">
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">{user.username}</p>
+                      <p className="text-xs leading-none text-muted-foreground">
+                        {user.email}
+                      </p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onClick={() => router.push('/profile')}
+                    role="menuitem"
+                    aria-label="Go to profile page"
+                  >
+                    <User className="mr-2 h-4 w-4" aria-hidden="true" />
+                    <span>{typeof t === 'function' ? t('user.profile') : 'Profile'}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => router.push('/settings')}
+                    role="menuitem"
+                    aria-label="Go to settings page"
+                  >
+                    <Settings className="mr-2 h-4 w-4" aria-hidden="true" />
+                    <span>{typeof t === 'function' ? t('user.settings') : 'Settings'}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onClick={handleLogout}
+                    role="menuitem"
+                    aria-label="Log out of account"
+                  >
+                    <LogOut className="mr-2 h-4 w-4" aria-hidden="true" />
+                    <span>{typeof t === 'function' ? t('user.logout') : 'Log out'}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <div className="hidden md:flex items-center space-x-2">
+                <Button variant="ghost" onClick={() => router.push('/login')}>
+                  {typeof t === 'function' ? t('user.login') : 'Login'}
+                </Button>
+                <Button onClick={() => router.push('/register')}>
+                  {typeof t === 'function' ? t('user.signUp') : 'Sign Up'}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </div>

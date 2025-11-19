@@ -15,6 +15,8 @@ export const API_ENDPOINTS = {
   auth: {
     login: () => 'auth/login',
     register: () => 'auth/register',
+    refresh: () => 'auth/refresh',
+    revoke: () => 'auth/revoke',
     logout: () => 'auth/logout',
     me: () => 'auth/me',
   },
@@ -28,7 +30,12 @@ export const API_ENDPOINTS = {
   // Credential endpoints
   credentials: {
     list: (workspaceId: string) => buildEndpointWithQuery('credentials', { workspace_id: workspaceId }),
-    detail: (id: string) => `credentials/${id}`,
+    detail: (id: string, workspaceId?: string) => {
+      if (workspaceId) {
+        return buildEndpointWithQuery(`credentials/${id}`, { workspace_id: workspaceId });
+      }
+      return `credentials/${id}`;
+    },
     create: () => 'credentials',
     update: (id: string) => `credentials/${id}`,
     delete: (id: string) => `credentials/${id}`,
@@ -173,36 +180,77 @@ export const API_ENDPOINTS = {
 
   // Kubernetes endpoints
   kubernetes: {
-    // Metadata endpoints (AWS only)
+    // Metadata endpoints (AWS, GCP, Azure)
     metadata: {
-      versions: (provider: CloudProvider, credentialId: string, region: string) => {
+      versions: (provider: CloudProvider, credentialId: string, region: string, workspaceId?: string) => {
+        const params: Record<string, string> = {
+          credential_id: credentialId,
+          region,
+        };
+        if (workspaceId) {
+          params.workspace_id = workspaceId;
+        }
         return buildEndpointWithQuery(
           `${provider}/kubernetes/metadata/versions`,
-          { credential_id: credentialId, region }
+          params
         );
       },
-      regions: (provider: CloudProvider, credentialId: string) => {
+      regions: (provider: CloudProvider, credentialId: string, workspaceId?: string) => {
+        const params: Record<string, string> = {
+          credential_id: credentialId,
+        };
+        if (workspaceId) {
+          params.workspace_id = workspaceId;
+        }
         return buildEndpointWithQuery(
           `${provider}/kubernetes/metadata/regions`,
-          { credential_id: credentialId }
+          params
         );
       },
-      availabilityZones: (provider: CloudProvider, credentialId: string, region: string) => {
+      availabilityZones: (provider: CloudProvider, credentialId: string, region: string, workspaceId?: string) => {
+        const params: Record<string, string> = {
+          credential_id: credentialId,
+          region,
+        };
+        if (workspaceId) {
+          params.workspace_id = workspaceId;
+        }
         return buildEndpointWithQuery(
           `${provider}/kubernetes/metadata/availability-zones`,
-          { credential_id: credentialId, region }
+          params
         );
       },
-      instanceTypes: (provider: CloudProvider, credentialId: string, region: string) => {
+      instanceTypes: (provider: CloudProvider, credentialId: string, region: string, workspaceId?: string) => {
+        const params: Record<string, string> = {
+          credential_id: credentialId,
+          region,
+        };
+        if (workspaceId) {
+          params.workspace_id = workspaceId;
+        }
         return buildEndpointWithQuery(
           `${provider}/kubernetes/metadata/instance-types`,
-          { credential_id: credentialId, region }
+          params
+        );
+      },
+      instanceTypeOfferings: (provider: CloudProvider, credentialId: string, region: string, instanceType: string, workspaceId?: string) => {
+        const params: Record<string, string> = {
+          credential_id: credentialId,
+          region,
+          instance_type: instanceType,
+        };
+        if (workspaceId) {
+          params.workspace_id = workspaceId;
+        }
+        return buildEndpointWithQuery(
+          `${provider}/kubernetes/metadata/instance-type-offerings`,
+          params
         );
       },
       amiTypes: (provider: CloudProvider) => {
         return `${provider}/kubernetes/metadata/ami-types`;
       },
-      gpuQuota: (provider: CloudProvider, credentialId: string, region: string, instanceType: string, requiredCount?: number) => {
+      gpuQuota: (provider: CloudProvider, credentialId: string, region: string, instanceType: string, requiredCount?: number, workspaceId?: string) => {
         const params: Record<string, string> = {
           credential_id: credentialId,
           region,
@@ -211,8 +259,24 @@ export const API_ENDPOINTS = {
         if (requiredCount !== undefined) {
           params.required_count = String(requiredCount);
         }
+        if (workspaceId) {
+          params.workspace_id = workspaceId;
+        }
         return buildEndpointWithQuery(
           `${provider}/kubernetes/metadata/gpu-quota`,
+          params
+        );
+      },
+      vmSizes: (provider: CloudProvider, credentialId: string, region: string, workspaceId?: string) => {
+        const params: Record<string, string> = {
+          credential_id: credentialId,
+          region,
+        };
+        if (workspaceId) {
+          params.workspace_id = workspaceId;
+        }
+        return buildEndpointWithQuery(
+          `${provider}/kubernetes/metadata/vm-sizes`,
           params
         );
       },
@@ -232,6 +296,7 @@ export const API_ENDPOINTS = {
         );
       },
       create: (provider: CloudProvider) => `${provider}/kubernetes/clusters`,
+      batch: (provider: CloudProvider) => `${provider}/kubernetes/clusters/batch`,
       delete: (provider: CloudProvider, clusterName: string, credentialId: string, region: string) => {
         return buildEndpointWithQuery(
           `${provider}/kubernetes/clusters/${clusterName}`,

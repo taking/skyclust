@@ -25,3 +25,7 @@ export {
   getVPCDeletionErrorMessage,
 } from './network-messages';
 
+// 통합 에러 핸들러 훅
+export { useUnifiedErrorHandler } from '../../hooks/use-unified-error-handler';
+export type { ErrorContext, UseUnifiedErrorHandlerOptions, UseUnifiedErrorHandlerReturn } from '../../hooks/use-unified-error-handler';
+

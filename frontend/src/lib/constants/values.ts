@@ -111,6 +111,9 @@ export const CONNECTION = {
     MAX_RECONNECT_ATTEMPTS: 10,
     BASE_RECONNECT_DELAY: TIME.DELAY.MIN_RECONNECT,
     MAX_RECONNECT_DELAY: TIME.DELAY.MAX_RECONNECT,
+    JITTER_MIN: 0,
+    JITTER_MAX: 1000, // 0-1000ms jitter for exponential backoff
+    SERVER_RETRY_JITTER_MAX: 500, // 0-500ms jitter for server-specified retry interval
   },
   // Offline Queue
   OFFLINE_QUEUE: {
@@ -190,5 +193,77 @@ export const VALIDATION = {
     MIN_DISK_SIZE_GB: 10,
     MAX_DISK_SIZE_GB: 16384,
   },
+} as const;
+
+/**
+ * Timeout Constants
+ * 타임아웃 관련 상수 (밀리초 단위)
+ */
+export const TIMEOUTS = {
+  /**
+   * SSE 재연결 타임아웃
+   */
+  SSE_RECONNECT: 5000,
+  
+  /**
+   * 쿼리 리패치 타임아웃
+   */
+  QUERY_REFETCH: 10000,
+  
+  /**
+   * 토스트 표시 지속 시간
+   */
+  TOAST_DURATION: 3000,
+  
+  /**
+   * 복사 성공 표시 지속 시간
+   */
+  COPY_SUCCESS_DURATION: 2000,
+  
+  /**
+   * API 요청 타임아웃
+   */
+  API_REQUEST: 30000,
+  
+  /**
+   * 인증 하이드레이션 지연
+   */
+  AUTH_HYDRATION: 300,
+  
+  /**
+   * 등록 성공 리다이렉트 지연
+   */
+  REGISTER_REDIRECT: 2000,
+} as const;
+
+/**
+ * Interval Constants
+ * 인터벌 관련 상수 (밀리초 단위)
+ */
+export const INTERVALS = {
+  /**
+   * 실시간 폴링 간격
+   */
+  REALTIME_POLLING: 30000,
+  
+  /**
+   * 모니터링 폴링 간격
+   */
+  MONITORING_POLLING: 60000,
+  
+  /**
+   * 표준 폴링 간격
+   */
+  STANDARD_POLLING: 300000,
+  
+  /**
+   * SSE 상태 업데이트 간격
+   */
+  SSE_STATUS_UPDATE: 1000,
+  
+  /**
+   * 이벤트 타임스탬프 정리 간격
+   */
+  EVENT_TIMESTAMP_CLEANUP: 300000,
 } as const;
 

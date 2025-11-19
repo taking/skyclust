@@ -1,63 +1,152 @@
 /**
  * Credential Context Store
- * Credential과 Region 선택 상태를 전역으로 관리하는 스토어
+ * Multi-provider 지원을 위한 Credential 상태 관리
  * 
- * Zustand persist를 사용하여 새로고침 시에도 상태 유지
+ * 개선 사항:
+ * - Multi-credential 선택 지원 (배열)
+ * - Provider별 credential 그룹화
+ * - Region 필터링 지원
  */
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { devtools } from 'zustand/middleware';
 import type { StateCreator } from 'zustand';
+import type { CloudProvider } from '@/lib/types/kubernetes';
+import type { ProviderRegionSelection } from '@/hooks/use-provider-region-filter';
 
-/**
- * 개발 환경 확인
- */
 const isDevelopment = process.env.NODE_ENV === 'development';
 
 interface CredentialContextState {
   selectedCredentialId: string | null;
+  
+  selectedCredentialIds: string[];
+  isMultiSelectMode: boolean;
+  
   selectedRegion: string | null;
-  selectedResourceGroup: string | null; // Azure-specific: Resource Group selection
+  selectedResourceGroup: string | null;
+  
+  // Provider별 Region 선택 (localStorage에 저장)
+  providerSelectedRegions: ProviderRegionSelection;
+  
   setSelectedCredential: (credentialId: string | null) => void;
+  
+  setSelectedCredentials: (credentialIds: string[]) => void;
+  addCredential: (credentialId: string) => void;
+  removeCredential: (credentialId: string) => void;
+  toggleCredential: (credentialId: string) => void;
+  setMultiSelectMode: (enabled: boolean) => void;
+  
   setSelectedRegion: (region: string | null) => void;
   setSelectedResourceGroup: (resourceGroup: string | null) => void;
+  
+  // Provider별 Region 선택 관리
+  setProviderSelectedRegions: (regions: ProviderRegionSelection) => void;
+  
   clearSelection: () => void;
+  getSelectedCredentialsByProvider: (credentials: Array<{ id: string; provider: CloudProvider }>) => Record<CloudProvider, string[]>;
 }
 
-const storeCreator: StateCreator<CredentialContextState> = (set) => ({
-  // 초기 상태
+const storeCreator: StateCreator<CredentialContextState> = (set, get) => ({
   selectedCredentialId: null,
+  selectedCredentialIds: [],
+  isMultiSelectMode: false,
   selectedRegion: null,
   selectedResourceGroup: null,
+  providerSelectedRegions: {
+    aws: [],
+    gcp: [],
+    azure: [],
+  },
   
-  /**
-   * 선택된 자격 증명 ID 설정
-   * @param credentialId - 자격 증명 ID (null이면 선택 해제)
-   */
   setSelectedCredential: (credentialId) => 
-    set({ selectedCredentialId: credentialId }),
+    set({ 
+      selectedCredentialId: credentialId,
+      selectedCredentialIds: credentialId ? [credentialId] : [],
+      isMultiSelectMode: false,
+    }),
   
-  /**
-   * 선택된 리전 설정
-   * @param region - 리전 (null이면 선택 해제)
-   */
+  setSelectedCredentials: (credentialIds) =>
+    set({
+      selectedCredentialIds: credentialIds,
+      selectedCredentialId: credentialIds.length === 1 ? credentialIds[0] : null,
+      isMultiSelectMode: credentialIds.length > 1,
+    }),
+  
+  addCredential: (credentialId) =>
+    set((state) => {
+      if (state.selectedCredentialIds.includes(credentialId)) {
+        return state;
+      }
+      return {
+        selectedCredentialIds: [...state.selectedCredentialIds, credentialId],
+        isMultiSelectMode: true,
+        selectedCredentialId: state.selectedCredentialIds.length === 0 ? credentialId : null,
+      };
+    }),
+  
+  removeCredential: (credentialId) =>
+    set((state) => {
+      const updated = state.selectedCredentialIds.filter(id => id !== credentialId);
+      return {
+        selectedCredentialIds: updated,
+        isMultiSelectMode: updated.length > 1,
+        selectedCredentialId: updated.length === 1 ? updated[0] : null,
+      };
+    }),
+  
+  toggleCredential: (credentialId) => {
+    const { selectedCredentialIds } = get();
+    if (selectedCredentialIds.includes(credentialId)) {
+      get().removeCredential(credentialId);
+    } else {
+      get().addCredential(credentialId);
+    }
+  },
+  
+  setMultiSelectMode: (enabled) =>
+    set({ isMultiSelectMode: enabled }),
+  
   setSelectedRegion: (region) => 
     set({ selectedRegion: region }),
   
-  /**
-   * 선택된 Resource Group 설정 (Azure 전용)
-   * @param resourceGroup - Resource Group (null이면 선택 해제)
-   */
   setSelectedResourceGroup: (resourceGroup) => 
     set({ selectedResourceGroup: resourceGroup }),
   
-  /**
-   * 선택 초기화
-   * 자격 증명, 리전, Resource Group 선택을 모두 초기화합니다.
-   */
+  setProviderSelectedRegions: (regions) =>
+    set({ providerSelectedRegions: regions }),
+  
   clearSelection: () => 
-    set({ selectedCredentialId: null, selectedRegion: null, selectedResourceGroup: null }),
+    set({ 
+      selectedCredentialId: null,
+      selectedCredentialIds: [],
+      isMultiSelectMode: false,
+      selectedRegion: null,
+      selectedResourceGroup: null,
+      providerSelectedRegions: {
+        aws: [],
+        gcp: [],
+        azure: [],
+      },
+    }),
+  
+  getSelectedCredentialsByProvider: (credentials) => {
+    const { selectedCredentialIds } = get();
+    const result: Record<CloudProvider, string[]> = {
+      aws: [],
+      gcp: [],
+      azure: [],
+    };
+    
+    selectedCredentialIds.forEach(credentialId => {
+      const credential = credentials.find(c => c.id === credentialId);
+      if (credential && credential.provider in result) {
+        result[credential.provider as CloudProvider].push(credentialId);
+      }
+    });
+    
+    return result;
+  },
 });
 
 const persistedStore = persist(
@@ -67,18 +156,17 @@ const persistedStore = persist(
     storage: createJSONStorage(() => localStorage),
     partialize: (state) => ({
       selectedCredentialId: state.selectedCredentialId,
+      selectedCredentialIds: state.selectedCredentialIds,
       selectedRegion: state.selectedRegion,
       selectedResourceGroup: state.selectedResourceGroup,
+      providerSelectedRegions: state.providerSelectedRegions,
     }),
   }
 );
 
-// 개발 환경에서만 devtools 적용
-export const useCredentialContextStore = (isDevelopment 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ? create<CredentialContextState>()(devtools(persistedStore as any, { name: 'CredentialContextStore' }) as any)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  : create<CredentialContextState>()(persistedStore as any)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-) as any;
+export const useCredentialContextStore = create<CredentialContextState>()(
+  isDevelopment 
+    ? (devtools(persistedStore as StateCreator<CredentialContextState>, { name: 'CredentialContextStore' }) as StateCreator<CredentialContextState>)
+    : persistedStore
+);
 

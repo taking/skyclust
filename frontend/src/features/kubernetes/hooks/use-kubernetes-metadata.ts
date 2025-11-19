@@ -12,28 +12,46 @@ interface UseKubernetesMetadataOptions {
   provider?: CloudProvider;
   credentialId?: string;
   region?: string;
+  workspaceId?: string;
 }
 
 /**
- * EKS Kubernetes 버전 목록 조회
+ * Kubernetes 버전 목록 조회 (AWS, GCP, Azure 지원)
+ */
+export function useKubernetesVersions({
+  provider,
+  credentialId,
+  region,
+  workspaceId,
+}: UseKubernetesMetadataOptions) {
+  return useQuery({
+    queryKey: queryKeys.kubernetesMetadata.versions(provider, credentialId, region),
+    queryFn: async () => {
+      if (!provider || !credentialId || !region) {
+        return [];
+      }
+      // AWS, GCP, Azure 모두 지원
+      if (provider === 'aws' || provider === 'gcp' || provider === 'azure') {
+        return kubernetesService.getKubernetesVersions(provider, credentialId, region, workspaceId);
+      }
+      return [];
+    },
+    enabled: !!provider && !!credentialId && !!region && (provider === 'aws' || provider === 'gcp' || provider === 'azure'),
+    staleTime: CACHE_TIMES.STATIC, // 1시간 - 버전 목록은 자주 변하지 않음
+    gcTime: GC_TIMES.LONG, // 24시간
+  });
+}
+
+/**
+ * EKS Kubernetes 버전 목록 조회 (Legacy - AWS only, useKubernetesVersions 사용 권장)
  */
 export function useEKSVersions({
   provider,
   credentialId,
   region,
+  workspaceId,
 }: UseKubernetesMetadataOptions) {
-  return useQuery({
-    queryKey: queryKeys.kubernetesMetadata.versions(provider, credentialId, region),
-    queryFn: async () => {
-      if (!provider || !credentialId || !region || provider !== 'aws') {
-        return [];
-      }
-      return kubernetesService.getEKSVersions(provider, credentialId, region);
-    },
-    enabled: !!provider && !!credentialId && !!region && provider === 'aws',
-    staleTime: CACHE_TIMES.STATIC, // 1시간 - 버전 목록은 자주 변하지 않음
-    gcTime: GC_TIMES.LONG, // 24시간
-  });
+  return useKubernetesVersions({ provider, credentialId, region, workspaceId });
 }
 
 /**
@@ -42,6 +60,7 @@ export function useEKSVersions({
 export function useAWSRegions({
   provider,
   credentialId,
+  workspaceId,
 }: UseKubernetesMetadataOptions) {
   return useQuery({
     queryKey: queryKeys.kubernetesMetadata.regions(provider, credentialId),
@@ -49,7 +68,7 @@ export function useAWSRegions({
       if (!provider || !credentialId || provider !== 'aws') {
         return [];
       }
-      return kubernetesService.getAWSRegions(provider, credentialId);
+      return kubernetesService.getAWSRegions(provider, credentialId, workspaceId);
     },
     enabled: !!provider && !!credentialId && provider === 'aws',
     staleTime: CACHE_TIMES.STATIC, // 1시간 - Region 목록은 매우 자주 변하지 않음
@@ -58,22 +77,23 @@ export function useAWSRegions({
 }
 
 /**
- * Availability Zone 목록 조회
+ * Availability Zone 목록 조회 (AWS, GCP, Azure 지원)
  */
 export function useAvailabilityZones({
   provider,
   credentialId,
   region,
+  workspaceId,
 }: UseKubernetesMetadataOptions) {
   return useQuery({
     queryKey: queryKeys.kubernetesMetadata.availabilityZones(provider, credentialId, region),
     queryFn: async () => {
-      if (!provider || !credentialId || !region || provider !== 'aws') {
+      if (!provider || !credentialId || !region) {
         return [];
       }
-      return kubernetesService.getAvailabilityZones(provider, credentialId, region);
+      return kubernetesService.getAvailabilityZones(provider, credentialId, region, workspaceId);
     },
-    enabled: !!provider && !!credentialId && !!region && provider === 'aws',
+    enabled: !!provider && !!credentialId && !!region,
     staleTime: CACHE_TIMES.STATIC, // 1시간 - Zone 목록은 자주 변하지 않음
     gcTime: GC_TIMES.LONG, // 24시간
   });
@@ -115,6 +135,29 @@ export function useEKSAmitTypes({ provider }: UseKubernetesMetadataOptions) {
     },
     enabled: provider === 'aws',
     staleTime: CACHE_TIMES.STATIC, // 1시간 - AMI Type 목록은 고정되어 있음
+    gcTime: GC_TIMES.LONG, // 24시간
+  });
+}
+
+/**
+ * Azure VM Sizes 목록 조회
+ */
+export function useAzureVMSizes({
+  provider,
+  credentialId,
+  region,
+  workspaceId,
+}: UseKubernetesMetadataOptions) {
+  return useQuery({
+    queryKey: queryKeys.kubernetesMetadata.vmSizes(provider, credentialId, region),
+    queryFn: async () => {
+      if (!provider || !credentialId || !region || provider !== 'azure') {
+        return [];
+      }
+      return kubernetesService.getAzureVMSizes(provider, credentialId, region, workspaceId);
+    },
+    enabled: !!provider && !!credentialId && !!region && provider === 'azure',
+    staleTime: CACHE_TIMES.STATIC, // 1시간 - VM Size 목록은 자주 변하지 않음
     gcTime: GC_TIMES.LONG, // 24시간
   });
 }

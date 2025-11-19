@@ -31,15 +31,16 @@ class CredentialService extends BaseService {
    * ID로 자격 증명 조회
    * 
    * @param id - 자격 증명 ID
+   * @param workspaceId - 워크스페이스 ID (선택사항)
    * @returns 자격 증명 정보
    * 
    * @example
    * ```tsx
-   * const credential = await credentialService.getCredential('credential-id');
+   * const credential = await credentialService.getCredential('credential-id', 'workspace-id');
    * ```
    */
-  async getCredential(id: string): Promise<Credential> {
-    return this.get<Credential>(API_ENDPOINTS.credentials.detail(id));
+  async getCredential(id: string, workspaceId?: string): Promise<Credential> {
+    return this.get<Credential>(API_ENDPOINTS.credentials.detail(id, workspaceId));
   }
 
   /**

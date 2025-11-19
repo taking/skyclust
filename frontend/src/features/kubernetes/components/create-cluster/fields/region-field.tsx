@@ -1,19 +1,20 @@
 /**
  * Region Selection Field Component
- * 리전 선택 필드 컴포넌트 (Dashboard 값 처리 포함)
+ * 리전 선택 필드 컴포넌트
  */
 
 'use client';
 
-import { useEffect } from 'react';
+import { useMemo } from 'react';
 import { UseFormReturn } from 'react-hook-form';
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Sparkles, AlertCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import type { CreateClusterForm } from '@/lib/types';
 import { useTranslation } from '@/hooks/use-translation';
 import { getRegionsByProvider } from '@/lib/regions';
-import { useCredentialContext } from '@/hooks/use-credential-context';
 
 export interface RegionFieldProps {
   /** React Hook Form 인스턴스 */
@@ -30,13 +31,15 @@ export interface RegionFieldProps {
   regionsError?: Error | null;
   /** 메타데이터 로딩 가능 여부 */
   canLoadMetadata?: boolean;
+  /** Credential이 변경되었는지 여부 */
+  isCredentialChanged?: boolean;
   /** 리전 변경 시 추가 처리 (예: zone 초기화) */
   onRegionChange?: (region: string) => void;
 }
 
 /**
  * 리전 선택 필드 컴포넌트
- * Dashboard에서 선택된 값이 있으면 자동 적용 (비활성화), 없으면 선택 가능
+ * 항상 선택 가능한 필드로 표시
  */
 export function RegionField({
   form,
@@ -46,38 +49,32 @@ export function RegionField({
   isLoadingRegions = false,
   regionsError = null,
   canLoadMetadata = false,
+  isCredentialChanged = false,
   onRegionChange,
 }: RegionFieldProps) {
   const { t } = useTranslation();
-  const { selectedRegion: dashboardRegion } = useCredentialContext();
   const formRegion = form.watch('region');
   
-  // Dashboard에서 Region이 선택되어 있는지 확인
-  const hasDashboardRegion = !!dashboardRegion;
-  
-  // Dashboard에서 선택된 Region이 있으면 form에 자동 설정
-  useEffect(() => {
-    if (dashboardRegion && !formRegion) {
-      form.setValue('region', dashboardRegion);
-      onFieldChange('region', dashboardRegion);
-      
-      // Azure의 경우 location 필드도 업데이트
-      if (provider === 'azure') {
-        form.setValue('location', dashboardRegion);
-        onFieldChange('location', dashboardRegion);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dashboardRegion, formRegion, provider]);
-  
-  // Dashboard에서 선택된 Region 또는 Form의 Region 사용
-  const currentRegion = formRegion || dashboardRegion || '';
+  // Form의 Region 사용
+  const currentRegion = formRegion || '';
   
   // Static regions for non-AWS providers
   const staticRegions = provider ? getRegionsByProvider(provider) : [];
   
   // Use AWS regions if available, otherwise use static regions
   const regions = canLoadMetadata && awsRegions.length > 0 ? awsRegions : staticRegions;
+
+  // 추천 Region 계산 (첫 번째 Region)
+  const recommendedRegion = useMemo(() => {
+    if (regions.length === 0) return null;
+    if (!canLoadMetadata && staticRegions.length > 0) {
+      return staticRegions[0].value;
+    }
+    if (canLoadMetadata && awsRegions.length > 0) {
+      return awsRegions[0].value;
+    }
+    return null;
+  }, [regions, canLoadMetadata, awsRegions, staticRegions]);
 
   const handleRegionChange = (value: string) => {
     form.setValue('region', value);
@@ -116,23 +113,40 @@ export function RegionField({
             <Select
               value={currentRegion}
               onValueChange={handleRegionChange}
-              disabled={isLoadingRegions || hasDashboardRegion}
+              disabled={isLoadingRegions}
             >
               <FormControl>
-                <SelectTrigger>
-                  <SelectValue>
+                <SelectTrigger
+                  className={cn(
+                    isCredentialChanged && !currentRegion && 'border-amber-300 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-800'
+                  )}
+                >
+                  <SelectValue
+                    placeholder={
+                      isLoadingRegions
+                        ? t('kubernetes.loadingRegionsForCredential') || 'Loading regions for new credential...'
+                        : isCredentialChanged
+                        ? t('kubernetes.selectRegionAfterCredentialChange') || 'Select region (credential changed)'
+                        : 'Select region'
+                    }
+                  >
                     {currentRegion ? (
-                      <div className="flex items-center gap-2">
-                        <span>{currentRegion}</span>
-                        {selectedRegionInfo && (
-                          <Badge variant="secondary" className="text-xs">
-                            {selectedRegionInfo.label}
-                          </Badge>
-                        )}
-                      </div>
-                    ) : (
-                      isLoadingRegions ? 'Loading regions...' : 'Select region'
-                    )}
+                      <span className="flex items-center gap-2">
+                        <span>
+                          {currentRegion}
+                          {selectedRegionInfo?.label && (
+                            <span className="text-muted-foreground ml-1.5 text-xs">
+                              ({selectedRegionInfo.label})
+                            </span>
+                          )}
+                        </span>
+                      </span>
+                    ) : isCredentialChanged ? (
+                      <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
+                        <AlertCircle className="h-3.5 w-3.5" />
+                        <span>{t('kubernetes.selectRegionAfterCredentialChange') || 'Select region (credential changed)'}</span>
+                      </span>
+                    ) : null}
                   </SelectValue>
                 </SelectTrigger>
               </FormControl>
@@ -142,16 +156,29 @@ export function RegionField({
                     No regions available
                   </SelectItem>
                 ) : (
-                  regions.map((region) => (
-                    <SelectItem key={region.value} value={region.value}>
-                      <div className="flex items-center gap-2">
-                        <span>{region.value}</span>
-                        <Badge variant="secondary" className="text-xs">
-                          {region.label}
-                        </Badge>
-                      </div>
-                    </SelectItem>
-                  ))
+                  regions.map((region) => {
+                    const isRecommended = recommendedRegion === region.value;
+                    return (
+                      <SelectItem key={region.value} value={region.value} title={isRecommended ? `${region.value} (Recommended)` : region.value}>
+                        <div className="flex items-center gap-2 w-full">
+                          <span className="flex-1">
+                            {region.value}
+                            {region.label && (
+                              <span className="text-muted-foreground ml-1.5 text-xs">
+                                ({region.label})
+                              </span>
+                            )}
+                          </span>
+                          {isRecommended && (
+                            <Badge variant="secondary" className="text-xs py-0 px-1.5 shrink-0">
+                              <Sparkles className="h-3 w-3 mr-1" />
+                              Recommended
+                            </Badge>
+                          )}
+                        </div>
+                      </SelectItem>
+                    );
+                  })
                 )}
               </SelectContent>
             </Select>
@@ -162,43 +189,74 @@ export function RegionField({
                 field.onChange(value);
                 handleRegionChange(value);
               }}
-              disabled={hasDashboardRegion}
             >
               <FormControl>
-                <SelectTrigger>
-                  <SelectValue>
+                <SelectTrigger
+                  className={cn(
+                    isCredentialChanged && !currentRegion && 'border-amber-300 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-800'
+                  )}
+                >
+                  <SelectValue
+                    placeholder={
+                      isCredentialChanged
+                        ? t('kubernetes.selectRegionAfterCredentialChange') || 'Select region (credential changed)'
+                        : 'Select region'
+                    }
+                  >
                     {currentRegion ? (
-                      <div className="flex items-center gap-2">
-                        <span>{currentRegion}</span>
-                        {selectedRegionInfo && (
-                          <Badge variant="secondary" className="text-xs">
-                            {selectedRegionInfo.label}
-                          </Badge>
+                      <span>
+                        {currentRegion}
+                        {selectedRegionInfo?.label && (
+                          <span className="text-muted-foreground ml-1.5 text-xs">
+                            ({selectedRegionInfo.label})
+                          </span>
                         )}
-                      </div>
-                    ) : (
-                      'Select region'
-                    )}
+                      </span>
+                    ) : isCredentialChanged ? (
+                      <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
+                        <AlertCircle className="h-3.5 w-3.5" />
+                        <span>{t('kubernetes.selectRegionAfterCredentialChange') || 'Select region (credential changed)'}</span>
+                      </span>
+                    ) : null}
                   </SelectValue>
                 </SelectTrigger>
               </FormControl>
               <SelectContent>
-                {regions.map((region) => (
-                  <SelectItem key={region.value} value={region.value}>
-                    <div className="flex items-center gap-2">
-                      <span>{region.value}</span>
-                      <Badge variant="secondary" className="text-xs">
-                        {region.label}
-                      </Badge>
-                    </div>
-                  </SelectItem>
-                ))}
+                {regions.map((region) => {
+                  const isRecommended = recommendedRegion === region.value;
+                  return (
+                    <SelectItem key={region.value} value={region.value} title={isRecommended ? `${region.value} (Recommended)` : region.value}>
+                      <div className="flex items-center gap-2 w-full">
+                        <span className="flex-1">
+                          {region.value}
+                          {region.label && (
+                            <span className="text-muted-foreground ml-1.5 text-xs">
+                              ({region.label})
+                            </span>
+                          )}
+                        </span>
+                        {isRecommended && (
+                          <Badge variant="secondary" className="text-xs py-0 px-1.5 shrink-0">
+                            <Sparkles className="h-3 w-3 mr-1" />
+                            Recommended
+                          </Badge>
+                        )}
+                      </div>
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           )}
           <FormDescription>
-            {hasDashboardRegion
-              ? `Region selected from Dashboard: ${dashboardRegion}. Change in Sidebar if needed.`
+            {isLoadingRegions && !currentRegion
+              ? t('kubernetes.loadingRegionsForCredential') || 'Loading regions for new credential...'
+              : !currentRegion && isCredentialChanged
+              ? t('kubernetes.selectRegionAfterCredentialChangeDescription') || 'Credential has been changed. Please select a region again.'
+              : !currentRegion && recommendedRegion
+              ? `Recommended: ${recommendedRegion} (first region for optimal performance)`
+              : !currentRegion
+              ? t('common.selectRegionFirst') || 'Please select a region to continue.'
               : t('kubernetes.regionDescription')}
           </FormDescription>
           {canLoadMetadata && regionsError && (

@@ -5,7 +5,8 @@
 import { User } from './user';
 
 export interface AuthResponse {
-  token: string;
+  token: string; // Access Token
+  refreshToken?: string; // Refresh Token (optional for backward compatibility)
   expires_at: string;
   user: User;
 }

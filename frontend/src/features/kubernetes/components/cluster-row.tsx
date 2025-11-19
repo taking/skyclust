@@ -13,6 +13,11 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Download, Settings, Trash2, Copy, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { formatDateOnly } from '@/lib/utils/date-format';
+import { useTranslation } from '@/hooks/use-translation';
+import { ProviderBadge } from './provider-badge';
+import { log } from '@/lib/logging';
+import { TIMEOUTS } from '@/lib/constants/values';
 import type { KubernetesCluster, CloudProvider } from '@/lib/types';
 
 interface ClusterRowProps {
@@ -24,21 +29,13 @@ interface ClusterRowProps {
   onDownloadKubeconfig: (clusterName: string, region: string) => void;
   isDeleting?: boolean;
   isDownloading?: boolean;
+  showProvider?: boolean;
 }
 
 function getStatusVariant(status: string): 'default' | 'secondary' | 'destructive' {
   if (status === 'ACTIVE') return 'default';
   if (status === 'CREATING') return 'secondary';
   return 'destructive';
-}
-
-function formatDate(dateString?: string): string {
-  if (!dateString) return '-';
-  try {
-    return new Date(dateString).toLocaleDateString();
-  } catch {
-    return '-';
-  }
 }
 
 function ClusterRowComponent({
@@ -50,11 +47,14 @@ function ClusterRowComponent({
   onDownloadKubeconfig,
   isDeleting = false,
   isDownloading = false,
+  showProvider = false,
 }: ClusterRowProps) {
   const router = useRouter();
   const { success } = useToast();
+  const { locale } = useTranslation();
   const [copiedEndpoint, setCopiedEndpoint] = React.useState(false);
   const isAzure = provider === 'azure';
+  const clusterProvider = (cluster as KubernetesCluster & { provider?: CloudProvider }).provider || provider;
 
   return (
     <>
@@ -64,6 +64,11 @@ function ClusterRowComponent({
           onCheckedChange={onSelect}
         />
       </TableCell>
+      {showProvider && clusterProvider && (
+        <TableCell>
+          <ProviderBadge provider={clusterProvider} />
+        </TableCell>
+      )}
       <TableCell className="font-medium">
         <Button
           variant="link"
@@ -117,9 +122,13 @@ function ClusterRowComponent({
                     success('Endpoint copied to clipboard');
                     setTimeout(() => {
                       setCopiedEndpoint(false);
-                    }, 2000);
+                    }, TIMEOUTS.COPY_SUCCESS_DURATION);
                   } catch (error) {
-                    console.error('Failed to copy endpoint:', error);
+                    log.error('Failed to copy endpoint', error, {
+                      component: 'ClusterRow',
+                      action: 'copyEndpoint',
+                      clusterName: cluster.name,
+                    });
                   }
                 }
               }}
@@ -138,7 +147,7 @@ function ClusterRowComponent({
         )}
       </TableCell>
       <TableCell>
-        {formatDate(cluster.created_at)}
+        {formatDateOnly(cluster.created_at, locale as 'ko' | 'en')}
       </TableCell>
       <TableCell>
         <div className="flex items-center space-x-2">

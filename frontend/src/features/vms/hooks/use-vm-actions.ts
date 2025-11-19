@@ -3,10 +3,13 @@
  * VM 액션 (시작, 중지, 삭제) 로직 및 실시간 업데이트
  */
 
+import { useCallback } from 'react';
 import { useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import type { VM } from '@/lib/types';
 import { getLiveRegionMessage } from '@/lib/accessibility';
 import { queryKeys } from '@/lib/query';
+import { useToast } from '@/hooks/use-toast';
+import { useErrorHandler } from '@/hooks/use-error-handler';
 
 interface UseVMActionsOptions {
   workspaceId?: string;
@@ -28,6 +31,8 @@ export function useVMActions({
   setLiveMessage,
 }: UseVMActionsOptions) {
   const queryClient = useQueryClient();
+  const { success } = useToast();
+  const { handleError } = useErrorHandler();
 
   const handleDeleteVM = (vmId: string, vms: VM[]) => {
     const vm = vms.find(v => v.id === vmId);
@@ -118,10 +123,99 @@ export function useVMActions({
     });
   };
 
+  // Bulk delete VMs
+  const handleBulkDelete = useCallback(async (vmIds: string[], vms: VM[]) => {
+    if (!workspaceId) return;
+    
+    const vmsToDelete = vms.filter(vm => vmIds.includes(vm.id));
+    const deletePromises = vmsToDelete.map(vm =>
+      deleteMutation.mutateAsync(vm.id)
+    );
+
+    try {
+      await Promise.all(deletePromises);
+      queryClient.invalidateQueries({ queryKey: queryKeys.vms.list(workspaceId) });
+      success(`Successfully deleted ${vmIds.length} VM(s)`);
+    } catch (error) {
+      handleError(error, { operation: 'bulkDeleteVMs', resource: 'VM' });
+      throw error;
+    }
+  }, [workspaceId, deleteMutation, queryClient, success, handleError]);
+
+  // Bulk start VMs
+  const handleBulkStart = useCallback(async (vmIds: string[], vms: VM[]) => {
+    if (!workspaceId) return;
+    
+    const vmsToStart = vms.filter(vm => vmIds.includes(vm.id));
+    const startPromises = vmsToStart.map(vm =>
+      startMutation.mutateAsync(vm.id)
+    );
+
+    try {
+      await Promise.all(startPromises);
+      queryClient.invalidateQueries({ queryKey: queryKeys.vms.list(workspaceId) });
+      success(`Successfully started ${vmIds.length} VM(s)`);
+    } catch (error) {
+      handleError(error, { operation: 'bulkStartVMs', resource: 'VM' });
+      throw error;
+    }
+  }, [workspaceId, startMutation, queryClient, success, handleError]);
+
+  // Bulk stop VMs
+  const handleBulkStop = useCallback(async (vmIds: string[], vms: VM[]) => {
+    if (!workspaceId) return;
+    
+    const vmsToStop = vms.filter(vm => vmIds.includes(vm.id));
+    const stopPromises = vmsToStop.map(vm =>
+      stopMutation.mutateAsync(vm.id)
+    );
+
+    try {
+      await Promise.all(stopPromises);
+      queryClient.invalidateQueries({ queryKey: queryKeys.vms.list(workspaceId) });
+      success(`Successfully stopped ${vmIds.length} VM(s)`);
+    } catch (error) {
+      handleError(error, { operation: 'bulkStopVMs', resource: 'VM' });
+      throw error;
+    }
+  }, [workspaceId, stopMutation, queryClient, success, handleError]);
+
+  // Bulk restart VMs (stop then start)
+  const handleBulkRestart = useCallback(async (vmIds: string[], vms: VM[]) => {
+    if (!workspaceId) return;
+    
+    const vmsToRestart = vms.filter(vm => vmIds.includes(vm.id));
+    
+    // First stop all VMs
+    const stopPromises = vmsToRestart.map(vm =>
+      stopMutation.mutateAsync(vm.id)
+    );
+    
+    try {
+      await Promise.all(stopPromises);
+      
+      // Then start all VMs
+      const startPromises = vmsToRestart.map(vm =>
+        startMutation.mutateAsync(vm.id)
+      );
+      
+      await Promise.all(startPromises);
+      queryClient.invalidateQueries({ queryKey: queryKeys.vms.list(workspaceId) });
+      success(`Successfully restarted ${vmIds.length} VM(s)`);
+    } catch (error) {
+      handleError(error, { operation: 'bulkRestartVMs', resource: 'VM' });
+      throw error;
+    }
+  }, [workspaceId, stopMutation, startMutation, queryClient, success, handleError]);
+
   return {
     handleDeleteVM,
     handleStartVM,
     handleStopVM,
+    handleBulkDelete,
+    handleBulkStart,
+    handleBulkStop,
+    handleBulkRestart,
   };
 }
 

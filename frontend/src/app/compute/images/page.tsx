@@ -1,72 +1,55 @@
 /**
- * VM Images Page
- * VM 이미지 관리 페이지
+ * Legacy Route Redirect
+ * 기존 라우트를 새로운 구조로 리다이렉트
+ * /compute/images -> /{workspaceId}/{credentialId}/compute/images
  */
 
 'use client';
 
-import { Card, CardContent } from '@/components/ui/card';
-import { Image } from 'lucide-react';
-import { useRequireAuth } from '@/hooks/use-auth';
+import { useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useWorkspaceStore } from '@/store/workspace';
-import { WorkspaceRequired } from '@/components/common/workspace-required';
+import { useCredentialContextStore } from '@/store/credential-context';
+import { buildResourcePath } from '@/lib/routing/helpers';
+import { Spinner } from '@/components/ui/spinner';
 import { Layout } from '@/components/layout/layout';
-// import { useCredentialContext } from '@/hooks/use-credential-context'; // Not used yet
-import { useTranslation } from '@/hooks/use-translation';
 
-export default function ImagesPage() {
+export default function ImagesRedirectPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { currentWorkspace } = useWorkspaceStore();
-  const { isLoading: authLoading } = useRequireAuth();
-  const { t } = useTranslation();
-  
-  // Get credential context from global store (header에서 관리)
-  // const { selectedCredentialId } = useCredentialContext(); // Not used yet
+  const { selectedCredentialId, selectedRegion } = useCredentialContextStore.getState();
 
-  if (authLoading) {
-    return (
-      <WorkspaceRequired>
-        <Layout>
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-              <p className="mt-2 text-gray-600">{t('common.loading')}</p>
-            </div>
-          </div>
-        </Layout>
-      </WorkspaceRequired>
-    );
-  }
+  useEffect(() => {
+    if (currentWorkspace?.id && selectedCredentialId) {
+      const filters: Record<string, string | undefined> = {};
+      if (selectedRegion) filters.region = selectedRegion;
+      
+      const region = searchParams.get('region');
+      if (region) filters.region = region;
+
+      const newPath = buildResourcePath(
+        currentWorkspace.id,
+        selectedCredentialId,
+        'compute',
+        '/images',
+        filters
+      );
+      router.replace(newPath);
+    } else if (currentWorkspace?.id) {
+      router.replace(`/${currentWorkspace.id}/credentials`);
+    } else {
+      router.replace('/workspaces');
+    }
+  }, [currentWorkspace, selectedCredentialId, router, searchParams, selectedRegion]);
 
   return (
-    <WorkspaceRequired>
-      <Layout>
-        <div className="space-y-6">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">{t('vm.imagesTitle')}</h1>
-              <p className="text-gray-600 mt-1">
-                {currentWorkspace 
-                  ? t('vm.imagesDescriptionWithWorkspace', { workspaceName: currentWorkspace.name })
-                  : t('vm.imagesDescription')
-                }
-              </p>
-            </div>
-          </div>
-
-          {/* Empty State - API not implemented yet */}
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Image className="h-12 w-12 text-gray-400 mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">{t('vm.imagesComingSoon')}</h3>
-              <p className="text-sm text-gray-500 text-center">
-                {t('vm.imagesComingSoonDescription')}
-              </p>
-            </CardContent>
-          </Card>
+    <Layout>
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <Spinner size="lg" label="Redirecting..." />
         </div>
-      </Layout>
-    </WorkspaceRequired>
+      </div>
+    </Layout>
   );
 }
-

@@ -7,6 +7,8 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CopyableText } from '@/components/common/copyable-text';
+import { toLocaleString } from '@/lib/utils/date-format';
+import { useTranslation } from '@/hooks/use-translation';
 import type { ProviderCluster, BaseCluster } from '@/lib/types';
 import { isAWSCluster } from '@/lib/types';
 
@@ -15,6 +17,8 @@ interface ClusterDetailOverviewTabProps {
 }
 
 export function ClusterDetailOverviewTab({ cluster }: ClusterDetailOverviewTabProps) {
+  const { locale } = useTranslation();
+  
   return (
     <div className="space-y-4">
       <Card>
@@ -53,7 +57,7 @@ export function ClusterDetailOverviewTab({ cluster }: ClusterDetailOverviewTabPr
             <label className="text-sm font-medium text-muted-foreground">생성일자</label>
             <p className="text-sm">
               {cluster.created_at
-                ? new Date(cluster.created_at).toLocaleString('ko-KR', {
+                ? toLocaleString(cluster.created_at, locale as 'ko' | 'en', {
                     year: 'numeric',
                     month: '2-digit',
                     day: '2-digit',

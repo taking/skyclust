@@ -16,12 +16,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Pagination } from '@/components/ui/pagination';
 import { Trash2, Edit } from 'lucide-react';
 import { UI } from '@/lib/constants';
-import type { VPC } from '@/lib/types';
+import { useTranslation } from '@/hooks/use-translation';
+import type { VPC, CloudProvider } from '@/lib/types';
 
 interface VPCTableProps {
-  vpcs: VPC[];
-  filteredVPCs: VPC[];
-  paginatedVPCs: VPC[];
+  vpcs: Array<VPC & { provider?: CloudProvider; credential_id?: string }>;
+  filteredVPCs: Array<VPC & { provider?: CloudProvider; credential_id?: string }>;
+  paginatedVPCs: Array<VPC & { provider?: CloudProvider; credential_id?: string }>;
   selectedVPCIds: string[];
   onSelectionChange: (ids: string[]) => void;
   onDelete: (vpcId: string, region?: string) => void;
@@ -31,6 +32,7 @@ interface VPCTableProps {
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
   isDeleting?: boolean;
+  showProviderColumn?: boolean;
 }
 
 function VPCTableComponent({
@@ -46,7 +48,10 @@ function VPCTableComponent({
   onPageChange,
   onPageSizeChange,
   isDeleting = false,
+  showProviderColumn = false,
 }: VPCTableProps) {
+  const { t } = useTranslation();
+  const hasMultipleProviders = showProviderColumn || vpcs.some(v => v.provider && v.provider !== vpcs[0]?.provider);
   const allSelected = useMemo(
     () => selectedVPCIds.length === filteredVPCs.length && filteredVPCs.length > 0,
     [selectedVPCIds.length, filteredVPCs.length]
@@ -86,11 +91,14 @@ function VPCTableComponent({
                   onCheckedChange={handleSelectAll}
                 />
               </TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>State</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead>Default</TableHead>
-              <TableHead>Actions</TableHead>
+              {hasMultipleProviders && (
+                <TableHead>{t('common.provider') || 'Provider'}</TableHead>
+              )}
+              <TableHead>{t('common.name') || 'Name'}</TableHead>
+              <TableHead>{t('common.state') || 'State'}</TableHead>
+              <TableHead>{t('common.description') || 'Description'}</TableHead>
+              <TableHead>{t('common.default') || 'Default'}</TableHead>
+              <TableHead>{t('common.actions') || 'Actions'}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -105,6 +113,11 @@ function VPCTableComponent({
                       onCheckedChange={(checked) => handleSelectOne(vpc.id, checked === true)}
                     />
                   </TableCell>
+                  {hasMultipleProviders && (
+                    <TableCell>
+                      <Badge variant="outline">{vpc.provider || '-'}</Badge>
+                    </TableCell>
+                  )}
                   <TableCell className="font-medium">{vpc.name}</TableCell>
                   <TableCell>
                     <Badge variant={vpc.state === 'available' ? 'default' : 'secondary'}>
@@ -114,7 +127,7 @@ function VPCTableComponent({
                   <TableCell>{vpc.description || '-'}</TableCell>
                   <TableCell>
                     {vpc.is_default ? (
-                      <Badge variant="outline">Default</Badge>
+                      <Badge variant="outline">{t('common.default') || 'Default'}</Badge>
                     ) : (
                       <span className="text-gray-400">-</span>
                     )}

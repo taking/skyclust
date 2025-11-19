@@ -7,7 +7,14 @@
 export { ResourceGroupTable } from './components/resource-group-table';
 export { ResourceGroupsPageHeader } from './components/resource-groups-page-header';
 
+// Resource Group Create Steps
+export { BasicResourceGroupConfigStep } from './components/create-resource-group/basic-resource-group-config-step';
+export { ReviewResourceGroupStep } from './components/create-resource-group/review-resource-group-step';
+
+// Page Content Components
+export { CreateResourceGroupPageContent } from './components/create-resource-group-page-content';
+
 // Hooks
-export { useResourceGroupActions } from './hooks/use-resource-group-actions';
+export { useResourceGroupActions, type CreateResourceGroupForm } from './hooks/use-resource-group-actions';
 export { useResourceGroups } from './hooks/use-resource-groups';
 

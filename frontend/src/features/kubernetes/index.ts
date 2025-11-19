@@ -10,6 +10,26 @@ export { ClusterRow } from './components/cluster-row';
 export { ClusterEmptyState } from './components/cluster-empty-state';
 export { CreateClusterDialog } from './components/create-cluster-dialog';
 export { BulkTagDialog } from './components/bulk-tag-dialog';
+export { ClustersPageHeaderSection } from './components/clusters-page-header-section';
+export { ClustersPageContent } from './components/clusters-page-content';
+export { CreateClusterPageContent } from './components/create-cluster-page-content';
+export { NodesPageContent } from './components/nodes-page-content';
+export { NodesPageHeaderSection } from './components/nodes-page-header-section';
+export { NodesTable } from './components/nodes-table';
+export { NodePoolsPageContent } from './components/node-pools-page-content';
+export { NodePoolsGroupsPage } from './components/node-pools-groups-page';
+export { NodePoolsGroupsTable } from './components/node-pools-groups-table';
+export { NodePoolGroupRow } from './components/node-pool-group-row';
+export { NodePoolsGroupsPageHeaderSection } from './components/node-pools-groups-page-header-section';
+export { NodePoolsGroupsPageContent as NodePoolsGroupsPageContentComponent } from './components/node-pools-groups-page-content';
+export { useNodePoolsGroupsFilters } from './hooks/use-node-pools-groups-filters';
+export { useNodePoolsGroups } from './hooks/use-node-pools-groups';
+export { CredentialMultiSelect } from './components/credential-multi-select';
+export { CredentialMultiSelectCompact } from './components/credential-multi-select-compact';
+export { RegionFilter } from './components/region-filter';
+export { ProviderRegionFilter } from './components/provider-region-filter';
+export { UnifiedFilterPanel } from './components/unified-filter-panel';
+export { CredentialListFilter } from './components/credential-list-filter';
 export { ClusterMetricsChart } from './components/cluster-metrics-chart';
 export { NodeMetricsChart } from './components/node-metrics-chart';
 export { ClusterOverviewTab } from './components/cluster-overview-tab';
@@ -37,7 +57,9 @@ export { ClusterDetailComputingTab } from './components/cluster-detail-computing
 
 // Hooks
 export { useKubernetesClusters } from './hooks/use-kubernetes-clusters';
+export { useProviderRegionFilter } from '@/hooks/use-provider-region-filter';
 export { useClusterFilters } from './hooks/use-cluster-filters';
+export { useNodesFilters } from './hooks/use-nodes-filters';
 export { useClusterBulkActions } from './hooks/use-cluster-bulk-actions';
 export { useClusterDetail } from './hooks/use-cluster-detail';
 export { useClusterTagDialog } from './hooks/use-cluster-tag-dialog';

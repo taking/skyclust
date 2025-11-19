@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Home } from 'lucide-react';
 import type { Workspace } from '@/lib/types';
 import { useTranslation } from '@/hooks/use-translation';
+import { useWorkspaceStore } from '@/store/workspace';
+import { buildManagementPath } from '@/lib/routing/helpers';
 
 interface CredentialsPageHeaderProps {
   workspace: Workspace | undefined;
@@ -24,6 +26,7 @@ export function CredentialsPageHeader({
 }: CredentialsPageHeaderProps) {
   const router = useRouter();
   const { t } = useTranslation();
+  const { currentWorkspace } = useWorkspaceStore();
 
   return (
     <div className="flex flex-col space-y-4 md:flex-row md:justify-between md:items-center md:space-y-0 mb-6 md:mb-8">
@@ -37,7 +40,13 @@ export function CredentialsPageHeader({
         </p>
       </div>
       <div className="flex items-center space-x-2">
-        <Button variant="outline" onClick={() => router.push('/dashboard')}>
+        <Button variant="outline" onClick={() => {
+          if (currentWorkspace?.id) {
+            router.push(buildManagementPath(currentWorkspace.id, 'dashboard'));
+          } else {
+            router.push('/dashboard');
+          }
+        }}>
           <Home className="mr-2 h-4 w-4" />
           {t('common.home')}
         </Button>

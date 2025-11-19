@@ -175,29 +175,44 @@ function ResourceEmptyStateComponent({
       <div className="mt-6 flex flex-col sm:flex-row gap-2 justify-center">
         {/* 권한 문제인 경우 */}
         {isPermissionError && onCheckCredentials && (
-          <Button onClick={onCheckCredentials} variant="default">
+          <Button 
+            onClick={onCheckCredentials} 
+            variant="default"
+            aria-label={t('emptyState.checkCredentials') || 'Check credentials'}
+          >
             {t('emptyState.checkCredentials')}
           </Button>
         )}
         
         {/* 필터가 적용된 경우 */}
         {hasFilters && onClearFilters && (
-          <Button onClick={onClearFilters} variant="outline">
+          <Button 
+            onClick={onClearFilters} 
+            variant="outline"
+            aria-label={t('emptyState.clearFilters') || 'Clear filters'}
+          >
             {t('emptyState.clearFilters')}
           </Button>
         )}
         
         {/* 검색 중인 경우 */}
         {isSearching && searchQuery && onClearSearch && (
-          <Button onClick={onClearSearch} variant="outline">
+          <Button 
+            onClick={onClearSearch} 
+            variant="outline"
+            aria-label={t('emptyState.clearSearch') || 'Clear search'}
+          >
             {t('emptyState.clearSearch')}
           </Button>
         )}
         
         {/* 생성 버튼 */}
         {showCreateButton && onCreateClick && !isPermissionError && (
-          <Button onClick={onCreateClick}>
-            <Plus className="mr-2 h-4 w-4" />
+          <Button 
+            onClick={onCreateClick}
+            aria-label={defaultCreateButtonText}
+          >
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
             {defaultCreateButtonText}
           </Button>
         )}

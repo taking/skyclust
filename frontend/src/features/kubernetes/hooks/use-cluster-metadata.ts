@@ -2,7 +2,10 @@
  * Cluster Metadata Hook
  * 클러스터 생성 시 필요한 메타데이터 (버전, 리전, 존) 로딩 훅
  * 
- * AWS 클러스터 생성 시 필요한 Kubernetes 버전, 리전, 가용 영역 정보를 통합 관리합니다.
+ * 클러스터 생성 시 필요한 Kubernetes 버전, 리전, 가용 영역 정보를 통합 관리합니다.
+ * - AWS: 버전, 리전, Zone 지원
+ * - GCP: Zone 지원
+ * - Azure: Zone 지원
  * 
  * @example
  * ```tsx
@@ -24,9 +27,10 @@
  * ```
  */
 
-import { useEKSVersions, useAWSRegions, useAvailabilityZones } from './use-kubernetes-metadata';
+import { useKubernetesVersions, useAWSRegions, useAvailabilityZones } from './use-kubernetes-metadata';
 import type { CloudProvider } from '@/lib/types';
 import type { RegionOption } from '@/lib/regions';
+import { AWS_REGIONS } from '@/lib/regions';
 
 export interface UseClusterMetadataOptions {
   /** 클라우드 프로바이더 */
@@ -35,6 +39,8 @@ export interface UseClusterMetadataOptions {
   credentialId: string;
   /** 선택된 리전 */
   region?: string;
+  /** Workspace ID */
+  workspaceId?: string;
 }
 
 export interface UseClusterMetadataReturn {
@@ -56,7 +62,7 @@ export interface UseClusterMetadataReturn {
   regionsError: Error | null;
   /** 존 로딩 에러 */
   zonesError: Error | null;
-  /** 메타데이터 로딩 가능 여부 (AWS이고 credentialId가 있는 경우) */
+  /** 메타데이터 로딩 가능 여부 (provider와 credentialId가 있는 경우) */
   canLoadMetadata: boolean;
 }
 
@@ -66,21 +72,21 @@ export interface UseClusterMetadataReturn {
 export function useClusterMetadata(
   options: UseClusterMetadataOptions
 ): UseClusterMetadataReturn {
-  const { provider, credentialId, region = '' } = options;
+  const { provider, credentialId, region = '', workspaceId } = options;
 
-  const isAWS = provider === 'aws';
-  const canLoadMetadata = isAWS && !!credentialId;
+  const canLoadMetadata = !!provider && !!credentialId;
 
-  // Fetch Kubernetes versions (AWS only)
+  // Fetch Kubernetes versions (AWS, GCP, Azure)
   const {
     data: versions = [],
     isLoading: isLoadingVersions,
     isError: isVersionsError,
     error: versionsError,
-  } = useEKSVersions({
+  } = useKubernetesVersions({
     provider,
     credentialId,
     region,
+    workspaceId,
   });
 
   // Fetch AWS regions (AWS only)
@@ -92,15 +98,20 @@ export function useClusterMetadata(
   } = useAWSRegions({
     provider,
     credentialId,
+    workspaceId,
   });
 
-  // Convert string[] to RegionOption[]
-  const regions: RegionOption[] = awsRegionsData.map(region => ({
-    value: region,
-    label: region,
-  }));
+  // Convert string[] to RegionOption[] with city names from AWS_REGIONS
+  const regions: RegionOption[] = awsRegionsData.map(region => {
+    // AWS_REGIONS에서 해당 region을 찾아서 label(도시명) 매핑
+    const regionInfo = AWS_REGIONS.find(r => r.value === region);
+    return {
+      value: region,
+      label: regionInfo?.label || region, // 도시명이 있으면 사용, 없으면 region 값 사용
+    };
+  });
 
-  // Fetch availability zones (AWS only, when region is selected)
+  // Fetch availability zones (AWS, GCP, Azure - when region is selected)
   const {
     data: zones = [],
     isLoading: isLoadingZones,
@@ -110,6 +121,7 @@ export function useClusterMetadata(
     provider,
     credentialId,
     region,
+    workspaceId,
   });
 
   return {

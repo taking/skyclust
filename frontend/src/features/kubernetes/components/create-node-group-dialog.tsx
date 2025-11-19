@@ -18,7 +18,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { CreateNodeGroupForm } from '@/lib/types';
-import { useInstanceTypes, useEKSAmitTypes } from '../hooks/use-kubernetes-metadata';
+import { useInstanceTypes, useEKSAmitTypes, useAvailabilityZones } from '../hooks/use-kubernetes-metadata';
 import { useNetworkResources } from '@/features/networks/hooks/use-network-resources';
 import { Sparkles, AlertCircle } from 'lucide-react';
 import { createNodeGroupSchema } from '@/lib/validation/schemas';
@@ -178,7 +178,7 @@ export function CreateNodeGroupDialog({
     if ('resources_vpc_config' in cluster && cluster.resources_vpc_config?.vpc_id) {
       return cluster.resources_vpc_config.vpc_id;
     }
-    if (cluster.network_config?.vpc_id) {
+    if (cluster.network_config && 'vpc_id' in cluster.network_config) {
       return cluster.network_config.vpc_id;
     }
     return '';
@@ -197,7 +197,7 @@ export function CreateNodeGroupDialog({
     return [];
   }, [cluster, initialData]);
 
-  const [selectedVPCId, setSelectedVPCId] = React.useState<string>(clusterVPCId);
+  const [selectedVPCId, setSelectedVPCId] = React.useState<string>(clusterVPCId || '');
 
   const form = useForm<CreateNodeGroupForm>({
     resolver: zodResolver(createNodeGroupSchema),
@@ -207,6 +207,7 @@ export function CreateNodeGroupDialog({
       credential_id: initialData?.credential_id || defaultCredentialId,
       name: initialData?.name || '',
       instance_types: initialData?.instance_types || [],
+      availability_zone: initialData?.availability_zone || undefined,
       ami_type: initialData?.ami_type,
       disk_size: initialData?.disk_size,
       min_size: initialData?.min_size ?? 1,
@@ -226,6 +227,7 @@ export function CreateNodeGroupDialog({
         credential_id: initialData.credential_id || defaultCredentialId,
         name: initialData.name || '',
         instance_types: initialData.instance_types || [],
+        availability_zone: initialData.availability_zone || undefined,
         ami_type: initialData.ami_type,
         disk_size: initialData.disk_size,
         min_size: initialData.min_size ?? 1,
@@ -303,19 +305,119 @@ export function CreateNodeGroupDialog({
       );
     },
     enabled: !!debouncedInstanceType && !!selectedCredentialId && !!selectedRegion && isGPUInstance,
-    staleTime: CACHE_TIMES.SHORT, // 5분 - quota는 자주 변하지 않지만 사용량은 변할 수 있음
-    gcTime: CACHE_TIMES.MEDIUM, // 30분
+    staleTime: CACHE_TIMES.MONITORING, // 5분 - quota는 자주 변하지 않지만 사용량은 변할 수 있음
+    gcTime: CACHE_TIMES.STABLE, // 30분
   });
 
+  // Fetch availability zones for the selected region
+  const { data: regionAvailabilityZones = [], isLoading: isLoadingRegionAZs } = useAvailabilityZones({
+    provider: 'aws',
+    credentialId: selectedCredentialId,
+    region: selectedRegion,
+  });
+
+  // Instance type offerings query (인스턴스 타입이 사용 가능한 AZ 조회)
+  const { 
+    data: instanceTypeOfferings, 
+    isLoading: isLoadingOfferings,
+    isError: isOfferingsError,
+    error: offeringsError
+  } = useQuery({
+    queryKey: queryKeys.kubernetesMetadata.instanceTypeOfferings(
+      'aws',
+      selectedCredentialId,
+      selectedRegion,
+      selectedInstanceType || undefined
+    ),
+    queryFn: async () => {
+      if (!selectedInstanceType || !selectedCredentialId || !selectedRegion) {
+        return null;
+      }
+      return kubernetesService.getInstanceTypeOfferings(
+        'aws',
+        selectedCredentialId,
+        selectedRegion,
+        selectedInstanceType
+      );
+    },
+    enabled: !!selectedInstanceType && !!selectedCredentialId && !!selectedRegion,
+    staleTime: CACHE_TIMES.STABLE, // 24시간 - AZ 가용성은 자주 변하지 않음
+    gcTime: CACHE_TIMES.STABLE,
+  });
+
+  // 사용 가능한 AZ 목록 (Region AZ와 Instance Type Offerings의 교집합)
+  const availableAZs = React.useMemo(() => {
+    // 인스턴스 타입이 선택되지 않았으면 빈 배열 반환 (AZ 선택 UI가 표시되지 않음)
+    if (!selectedInstanceType) {
+      return [];
+    }
+
+    // instanceTypeOfferings가 아직 로드되지 않았거나 로딩 중이면 빈 배열 반환
+    if (!instanceTypeOfferings) {
+      return [];
+    }
+
+    // instanceTypeOfferings가 빈 배열이면 해당 인스턴스 타입이 모든 AZ에서 사용 불가능
+    if (instanceTypeOfferings.length === 0) {
+      return [];
+    }
+
+    const instanceTypeAZs = new Set(
+      instanceTypeOfferings.map(offering => offering.availability_zone)
+    );
+
+    // Region AZ와 Instance Type AZ의 교집합
+    return regionAvailabilityZones.filter(az => instanceTypeAZs.has(az));
+  }, [regionAvailabilityZones, instanceTypeOfferings, selectedInstanceType]);
+
   // Fetch subnets for the selected VPC
-  const { subnets = [], isLoading: isLoadingSubnets, setSelectedVPCId: setSubnetVPCId } = useNetworkResources({
+  const { subnets = [], isLoadingSubnets = false, setSelectedVPCId: setSubnetVPCId } = useNetworkResources({
     resourceType: 'subnets',
     requireVPC: true,
   });
 
+  // Instance type offerings query (AZ 호환성 검증용 - 기존 로직 유지)
+  const selectedSubnetIds = form.watch('subnet_ids') || [];
+  const selectedSubnets = React.useMemo(() => {
+    return subnets.filter(s => selectedSubnetIds.includes(s.id));
+  }, [subnets, selectedSubnetIds]);
+
+  const selectedSubnetAZs = React.useMemo(() => {
+    return selectedSubnets
+      .map(s => s.availability_zone)
+      .filter((az): az is string => !!az);
+  }, [selectedSubnets]);
+
+  // AZ 호환성 검증
+  const azCompatibilityIssues = React.useMemo(() => {
+    if (!selectedInstanceType || !instanceTypeOfferings || selectedSubnetAZs.length === 0) {
+      return null;
+    }
+
+    const availableAZs = new Set(
+      instanceTypeOfferings.map(offering => offering.availability_zone)
+    );
+
+    const incompatibleAZs = selectedSubnetAZs.filter(az => !availableAZs.has(az));
+    const incompatibleSubnets = selectedSubnets.filter(s => 
+      s.availability_zone && incompatibleAZs.includes(s.availability_zone)
+    );
+
+    if (incompatibleAZs.length > 0) {
+      return {
+        instanceType: selectedInstanceType,
+        incompatibleAZs,
+        incompatibleSubnets: incompatibleSubnets.map(s => ({ id: s.id, name: s.name, az: s.availability_zone })),
+        availableAZs: Array.from(availableAZs),
+      };
+    }
+
+    return null;
+  }, [selectedInstanceType, instanceTypeOfferings, selectedSubnetAZs, selectedSubnets]);
+
   // VPC ID가 변경되면 서브넷 목록 업데이트
   React.useEffect(() => {
-    if (selectedVPCId) {
+    if (selectedVPCId && setSubnetVPCId) {
       setSubnetVPCId(selectedVPCId);
     }
   }, [selectedVPCId, setSubnetVPCId]);
@@ -380,6 +482,22 @@ export function CreateNodeGroupDialog({
     }
   }, [recommendedAMIType, selectedInstanceType, form]);
 
+  // Auto-select first available AZ when instance type changes and no AZ is selected
+  React.useEffect(() => {
+    if (availableAZs.length > 0 && selectedInstanceType) {
+      const currentAZ = form.watch('availability_zone');
+      if (!currentAZ) {
+        // 첫 번째 사용 가능한 AZ를 자동 선택
+        form.setValue('availability_zone', availableAZs[0]);
+      } else {
+        // 선택된 AZ가 사용 가능한 AZ 목록에 없으면 첫 번째 사용 가능한 AZ로 변경
+        if (!availableAZs.includes(currentAZ)) {
+          form.setValue('availability_zone', availableAZs[0]);
+        }
+      }
+    }
+  }, [availableAZs, selectedInstanceType, form]);
+
   // Sync form values when props change
   React.useEffect(() => {
     if (defaultCredentialId) {
@@ -407,6 +525,7 @@ export function CreateNodeGroupDialog({
       region: defaultRegion,
       credential_id: defaultCredentialId,
       instance_types: [],
+      availability_zone: undefined,
       min_size: 1,
       max_size: 10,
       desired_size: 1,
@@ -414,7 +533,9 @@ export function CreateNodeGroupDialog({
       subnet_ids: defaultSubnetIds,
     });
     setUseGPU(false);
-    setSelectedVPCId(clusterVPCId);
+    if (clusterVPCId) {
+      setSelectedVPCId(clusterVPCId);
+    }
   });
 
   const handleGPUChange = (checked: boolean) => {
@@ -426,7 +547,7 @@ export function CreateNodeGroupDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] sm:max-w-2xl md:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEditMode ? 'Edit Node Group' : 'Create Node Group'}</DialogTitle>
           <DialogDescription>
@@ -454,7 +575,7 @@ export function CreateNodeGroupDialog({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="ng-name">Name *</Label>
               <Input 
@@ -483,7 +604,7 @@ export function CreateNodeGroupDialog({
                 <SelectTrigger id="ng-instance-type" className="w-full">
                   <SelectValue placeholder={isLoadingInstanceTypes ? 'Loading...' : 'Select instance type'} />
                 </SelectTrigger>
-                <SelectContent className="min-w-[400px] max-w-[500px]">
+                <SelectContent className="min-w-[280px] sm:min-w-[400px] max-w-[90vw] sm:max-w-[500px]">
                   {filteredInstanceTypes.map((it) => (
                     <SelectItem key={it.instance_type} value={it.instance_type} className="py-3">
                       <div className="flex flex-col gap-1 w-full">
@@ -542,6 +663,80 @@ export function CreateNodeGroupDialog({
             </div>
           </div>
 
+          {/* Availability Zone Single Select */}
+          {selectedInstanceType && (
+            <div className="space-y-2">
+              <Label htmlFor="ng-availability-zone">Availability Zone *</Label>
+              {isLoadingRegionAZs || isLoadingOfferings ? (
+                <div className="text-sm text-muted-foreground">Loading availability zones...</div>
+              ) : isOfferingsError ? (
+                <div className="space-y-2">
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      <div className="space-y-1">
+                        <p className="font-medium">Availability Zone 조회 실패</p>
+                        <p className="text-sm">
+                          선택한 인스턴스 타입({selectedInstanceType})의 사용 가능한 Availability Zone을 조회하는 중 오류가 발생했습니다.
+                        </p>
+                        {offeringsError && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {offeringsError instanceof Error ? offeringsError.message : String(offeringsError)}
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-2">
+                          IAM 권한을 확인하거나 잠시 후 다시 시도해주세요.
+                        </p>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              ) : availableAZs.length === 0 ? (
+                <div className="space-y-2">
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      <div className="space-y-1">
+                        <p className="font-medium">사용 가능한 Availability Zone 없음</p>
+                        <p className="text-sm">
+                          선택한 인스턴스 타입({selectedInstanceType})이 이 region({selectedRegion})에서 사용 가능한 Availability Zone이 없습니다.
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          다른 인스턴스 타입을 선택하거나 다른 region을 선택해주세요.
+                        </p>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              ) : (
+                <Select
+                  value={form.watch('availability_zone') || ''}
+                  onValueChange={(value) => form.setValue('availability_zone', value)}
+                  disabled={isLoadingRegionAZs || isLoadingOfferings || availableAZs.length === 0}
+                >
+                  <SelectTrigger id="ng-availability-zone" className="w-full">
+                    <SelectValue placeholder="Select availability zone" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableAZs.map((az) => (
+                      <SelectItem key={az} value={az} className="font-mono">
+                        {az}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {form.formState.errors.availability_zone && (
+                <p className="text-sm text-red-600">{form.formState.errors.availability_zone.message}</p>
+              )}
+              {availableAZs.length > 0 && !isOfferingsError && (
+                <p className="text-xs text-muted-foreground">
+                  선택한 인스턴스 타입({selectedInstanceType})이 사용 가능한 Availability Zone입니다.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="ng-ami-type">AMI Type</Label>
             <Select
@@ -552,7 +747,7 @@ export function CreateNodeGroupDialog({
               <SelectTrigger id="ng-ami-type" className="w-full">
                 <SelectValue placeholder={isLoadingAMITypes ? 'Loading...' : compatibleAMITypes.length === 0 ? 'No compatible AMI types' : 'Select AMI type'} />
               </SelectTrigger>
-              <SelectContent className="min-w-[400px] max-w-[500px]">
+              <SelectContent className="min-w-[280px] sm:min-w-[400px] max-w-[90vw] sm:max-w-[500px]">
                 {compatibleAMITypes.map((amiType) => (
                   <SelectItem key={amiType} value={amiType} className="py-2">
                     <div className="flex items-center gap-2 w-full">
@@ -597,7 +792,7 @@ export function CreateNodeGroupDialog({
               </div>
             ) : (
               <div className="space-y-2">
-                <div className="border rounded-md p-3 max-h-[200px] overflow-y-auto">
+                <div className="border rounded-md p-2 sm:p-3 max-h-[200px] overflow-y-auto">
                   {isLoadingSubnets ? (
                     <div className="text-sm text-muted-foreground text-center py-4">서브넷 목록을 불러오는 중...</div>
                   ) : subnets.length === 0 ? (
@@ -605,13 +800,27 @@ export function CreateNodeGroupDialog({
                   ) : (
                     <div className="space-y-2">
                       {subnets.map((subnet) => {
-                        const selectedSubnetIds = form.watch('subnet_ids') || [];
-                        const isSelected = selectedSubnetIds.includes(subnet.id);
+                        const currentSelectedSubnetIds = form.watch('subnet_ids') || [];
+                        const isSelected = currentSelectedSubnetIds.includes(subnet.id);
+                        
+                        // AZ 호환성 확인
+                        const isIncompatible = selectedInstanceType && instanceTypeOfferings && subnet.availability_zone
+                          ? !instanceTypeOfferings.some(offering => offering.availability_zone === subnet.availability_zone)
+                          : false;
+
                         return (
-                          <div key={subnet.id} className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
+                          <div 
+                            key={subnet.id} 
+                            className={`flex items-start sm:items-center space-x-2 p-2 rounded-md transition-colors ${
+                              isIncompatible && selectedInstanceType
+                                ? 'bg-red-50 border border-red-200'
+                                : 'hover:bg-muted/50'
+                            }`}
+                          >
                             <Checkbox
                               id={`subnet-${subnet.id}`}
                               checked={isSelected}
+                              disabled={!!(isIncompatible && selectedInstanceType)}
                               onCheckedChange={(checked) => {
                                 const currentIds = form.getValues('subnet_ids') || [];
                                 if (checked) {
@@ -620,25 +829,41 @@ export function CreateNodeGroupDialog({
                                   form.setValue('subnet_ids', currentIds.filter(id => id !== subnet.id));
                                 }
                               }}
+                              className="mt-1 sm:mt-0"
                             />
                             <Label
                               htmlFor={`subnet-${subnet.id}`}
-                              className="flex-1 cursor-pointer font-normal"
+                              className={`flex-1 cursor-pointer font-normal ${
+                                isIncompatible && selectedInstanceType ? 'opacity-60' : ''
+                              }`}
                             >
-                              <div className="flex items-center justify-between">
-                                <span className="font-mono text-sm">{subnet.id}</span>
-                                {subnet.name && (
-                                  <span className="text-xs text-muted-foreground ml-2">{subnet.name}</span>
-                                )}
+                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-mono text-xs sm:text-sm break-all">{subnet.id}</span>
+                                  {subnet.name && (
+                                    <span className="text-xs text-muted-foreground">{subnet.name}</span>
+                                  )}
+                                </div>
                                 {subnet.availability_zone && (
-                                  <Badge variant="outline" className="ml-2 text-xs shrink-0">
+                                  <Badge 
+                                    variant={isIncompatible && selectedInstanceType ? "destructive" : "outline"} 
+                                    className="text-xs shrink-0 w-fit"
+                                  >
                                     {subnet.availability_zone}
+                                    {isIncompatible && selectedInstanceType && (
+                                      <span className="ml-1">⚠️</span>
+                                    )}
                                   </Badge>
                                 )}
                               </div>
                               {subnet.cidr_block && (
                                 <span className="text-xs text-muted-foreground block mt-1">
                                   {subnet.cidr_block}
+                                </span>
+                              )}
+                              {isIncompatible && selectedInstanceType && (
+                                <span className="text-xs text-red-600 block mt-1">
+                                  {selectedInstanceType} 인스턴스 타입이 이 AZ에서 지원되지 않습니다.
                                 </span>
                               )}
                             </Label>
@@ -651,6 +876,30 @@ export function CreateNodeGroupDialog({
                 <p className="text-xs text-muted-foreground">
                   최소 2개의 서브넷을 선택해야 하며, 서로 다른 Availability Zone에 있어야 합니다.
                 </p>
+                {azCompatibilityIssues && (
+                  <Alert variant="destructive" className="mt-2">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      <div className="space-y-1">
+                        <p className="font-medium">
+                          선택한 인스턴스 타입({azCompatibilityIssues.instanceType})이 다음 Availability Zone에서 지원되지 않습니다:
+                        </p>
+                        <ul className="list-disc list-inside text-sm space-y-1">
+                          {azCompatibilityIssues.incompatibleSubnets.map(subnet => (
+                            <li key={subnet.id}>
+                              {subnet.name || subnet.id} ({subnet.az})
+                            </li>
+                          ))}
+                        </ul>
+                        {azCompatibilityIssues.availableAZs.length > 0 && (
+                          <p className="text-sm mt-2">
+                            사용 가능한 AZ: {azCompatibilityIssues.availableAZs.join(', ')}
+                          </p>
+                        )}
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
               </div>
             )}
             {form.formState.errors.subnet_ids && (
@@ -658,7 +907,7 @@ export function CreateNodeGroupDialog({
             )}
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="ng-min-size">Min Size</Label>
               <Input
@@ -685,7 +934,7 @@ export function CreateNodeGroupDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="ng-disk-size">Disk Size (GB)</Label>
               <Input
@@ -712,11 +961,11 @@ export function CreateNodeGroupDialog({
             </div>
           </div>
 
-          <div className="flex justify-end space-x-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:space-x-2">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending} className="w-full sm:w-auto">
               Cancel
             </Button>
-            <Button type="submit" disabled={isPending}>
+            <Button type="submit" disabled={isPending} className="w-full sm:w-auto">
               {isPending ? 'Creating...' : 'Create Node Group'}
             </Button>
           </div>

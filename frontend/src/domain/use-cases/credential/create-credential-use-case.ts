@@ -10,13 +10,14 @@ export interface CreateCredentialUseCaseInput {
   workspaceId: string;
   data: CreateCredentialForm;
   name?: string;
+  skipValidation?: boolean; // JSON Input 방식일 때 validation 스킵
 }
 
 export class CreateCredentialUseCase {
   constructor(private credentialRepository: ICredentialRepository) {}
 
   async execute(input: CreateCredentialUseCaseInput): Promise<Credential> {
-    const { workspaceId, data, name } = input;
+    const { workspaceId, data, name, skipValidation = false } = input;
 
     // Validation
     if (!workspaceId || workspaceId.trim().length === 0) {
@@ -27,8 +28,11 @@ export class CreateCredentialUseCase {
       throw new Error('Provider is required');
     }
 
-    // Business logic: Provider별 validation
-    this.validateProviderData(data.provider, data.credentials || {});
+    // Business logic: Provider별 validation (skipValidation이 false일 때만)
+    // JSON Input 방식에서는 이미 완전한 JSON이 입력되므로 backend에서 validation하므로 frontend validation 스킵
+    if (!skipValidation) {
+      this.validateProviderData(data.provider, data.credentials || {});
+    }
 
     // Business logic: 기본 이름 생성
     const credentialName = name || `${data.provider.toUpperCase()} Credential`;

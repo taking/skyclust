@@ -31,7 +31,8 @@ export function useBudgetAlerts(workspaceId: string, budgetLimit: number) {
     enabled: !!workspaceId && budgetLimit > 0,
     staleTime: CACHE_TIMES.MONITORING, // 2 minutes - 알림은 더 자주 업데이트 필요
     gcTime: GC_TIMES.SHORT, // 5 minutes - GC 시간
-    refetchInterval: 60000, // 1분마다 refetch (알림 중요성)
+    // refetchInterval 제거: SSE system-alert 이벤트로 자동 업데이트
+    // Budget alert는 SSE system-alert 이벤트를 통해 실시간으로 수신됩니다.
   });
 }
 

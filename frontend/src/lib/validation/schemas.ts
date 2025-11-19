@@ -35,10 +35,18 @@ export function createValidationSchemas(t: TranslationFunction) {
     name: z.string().min(VALIDATION.STRING.MIN_LENGTH, t('form.validation.nameRequired')).max(VALIDATION.STRING.MAX_NAME_LENGTH, t('form.validation.nameMaxLength', { max: String(VALIDATION.STRING.MAX_NAME_LENGTH) })),
     version: z.string().min(VALIDATION.STRING.MIN_LENGTH, t('form.validation.versionRequired')),
     region: z.string().min(VALIDATION.STRING.MIN_LENGTH, t('form.validation.regionRequired')),
-    zone: z.string().min(VALIDATION.STRING.MIN_LENGTH, t('form.validation.required', { field: 'Availability Zone' })),
+    zone: z.string().min(VALIDATION.STRING.MIN_LENGTH, t('form.validation.required', { field: 'Availability Zone' })).optional(),
+    location: z.string().optional(), // Azure uses 'location' instead of 'region'
     subnet_ids: z.array(z.string()).min(VALIDATION.ARRAY.MIN_SUBNET_COUNT, t('form.validation.atLeastOneSubnet')),
     vpc_id: z.string().optional(),
     role_arn: z.string().optional(),
+    resource_group: z.string().optional(), // Azure에만 필요
+    deployment_mode: z.enum(['auto', 'custom']).optional(), // Azure deployment mode
+    project_id: z.string().optional(), // GCP에만 필요
+    network: z.any().optional(), // Provider-specific network config
+    node_pool: z.any().optional(), // Provider-specific node pool config
+    security: z.any().optional(), // Provider-specific security config
+    cluster_mode: z.any().optional(), // Provider-specific cluster mode
     tags: z.record(z.string(), z.string()).optional(),
     access_config: z.object({
       authentication_mode: z.string().optional(),
@@ -83,12 +91,17 @@ export function createValidationSchemas(t: TranslationFunction) {
     credential_id: z.string().uuid(t('form.validation.invalidCredentialId')),
     name: z.string().min(1, t('form.validation.nameRequired')),
     cluster_name: z.string().min(1, t('form.validation.clusterNameRequired')),
-    instance_type: z.string().min(1, t('form.validation.instanceTypeRequired')),
+    instance_types: z.array(z.string()).min(1, t('form.validation.instanceTypeRequired')),
+    instance_type: z.string().min(1, t('form.validation.instanceTypeRequired')).optional(),
     disk_size_gb: z.number().min(10).optional(),
     min_size: z.number().min(0),
     max_size: z.number().min(1),
     desired_size: z.number().min(0),
     region: z.string().min(VALIDATION.STRING.MIN_LENGTH, t('form.validation.regionRequired')),
+    availability_zone: z.string().optional(),
+    subnet_ids: z.array(z.string()).optional(),
+    ami_type: z.string().optional(),
+    capacity_type: z.enum(['ON_DEMAND', 'SPOT']).optional(),
     tags: z.record(z.string(), z.string()).optional(),
   });
 
@@ -250,7 +263,7 @@ export function createValidationSchemas(t: TranslationFunction) {
 
   const createWorkspaceSchema = z.object({
     name: z.string().min(VALIDATION.STRING.MIN_LENGTH, t('form.validation.nameRequired')).max(VALIDATION.STRING.MAX_NAME_LENGTH, t('form.validation.nameMaxLength', { max: String(VALIDATION.STRING.MAX_NAME_LENGTH) })),
-    description: z.string().min(1, t('form.validation.descriptionRequired')).max(500, t('form.validation.descriptionMaxLength', { max: '500' })),
+    description: z.string().max(500, t('form.validation.descriptionMaxLength', { max: '500' })).optional(),
   });
 
   const updateWorkspaceSchema = z.object({
@@ -355,6 +368,7 @@ export const createNodeGroupSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   cluster_name: z.string().min(1, 'Cluster name is required'),
   instance_types: z.array(z.string()).min(1, 'At least one instance type is required'),
+  availability_zone: z.string().min(1, 'Availability zone is required').optional(),
   ami_type: z.string().optional(),
   disk_size: z.number().min(10).optional(),
   min_size: z.number().min(0),

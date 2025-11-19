@@ -125,6 +125,22 @@ export function getAllRegions(): RegionOption[] {
 }
 
 /**
+ * 특정 프로바이더와 리전 값으로 리전 라벨 반환
+ * @param provider 프로바이더 이름 (gcp, aws, azure)
+ * @param regionValue 리전 값
+ * @returns 리전 라벨 또는 원본 값 (찾지 못한 경우)
+ */
+export function getRegionLabel(provider: string | undefined, regionValue: string | null | undefined): string {
+  if (!provider || !regionValue) {
+    return regionValue || '';
+  }
+  
+  const regions = getRegionsByProvider(provider);
+  const region = regions.find(r => r.value === regionValue);
+  return region?.label || regionValue;
+}
+
+/**
  * 프로바이더가 리전 선택을 지원하는지 확인
  * @param provider 프로바이더 이름
  * @returns 리전 선택 지원 여부

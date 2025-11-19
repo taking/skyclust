@@ -12,7 +12,11 @@ import { useWorkspaceStore } from '@/store/workspace';
 import { useCredentialContextStore } from '@/store/credential-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CredentialSelector } from './credential-selector';
-import { Menu, Home, Server, Key, Plus, Container, Network, Settings, Image, HardDrive, Layers, Shield, Building2 } from 'lucide-react';
+import { buildResourcePath, buildManagementPath } from '@/lib/routing/helpers';
+import { useResourceContext } from '@/hooks/use-resource-context';
+import { useCredentials } from '@/hooks/use-credentials';
+import { useTranslation } from '@/hooks/use-translation';
+import { Menu, Settings, Plus } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { workspaceService } from '@/features/workspaces';
 import { useToast } from '@/hooks/use-toast';
@@ -21,6 +25,7 @@ import { useFormWithValidation, EnhancedField } from '@/hooks/use-form-with-vali
 import { CreateWorkspaceForm } from '@/lib/types';
 import * as z from 'zod';
 import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
+import { getNavigation } from './sidebar';
 
 const createWorkspaceSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),
@@ -34,38 +39,6 @@ interface NavigationItem {
   icon: React.ComponentType<{ className?: string }>;
   children?: NavigationItem[];
 }
-
-const navigation: NavigationItem[] = [
-  { name: 'Dashboard', href: '/dashboard', icon: Home },
-  {
-    name: 'Compute',
-    icon: Server,
-    children: [
-      { name: 'VMs', href: '/compute/vms', icon: Server },
-      { name: 'Images', href: '/compute/images', icon: Image },
-      { name: 'Snapshots', href: '/compute/snapshots', icon: HardDrive },
-    ],
-  },
-  {
-    name: 'Kubernetes',
-    icon: Container,
-    children: [
-      { name: 'Clusters', href: '/kubernetes/clusters', icon: Container },
-      { name: 'Node Pools', href: '/kubernetes/node-pools', icon: Layers },
-      { name: 'Nodes', href: '/kubernetes/nodes', icon: Building2 },
-    ],
-  },
-  {
-    name: 'Networks',
-    icon: Network,
-    children: [
-      { name: 'VPCs', href: '/networks/vpcs', icon: Network },
-      { name: 'Subnets', href: '/networks/subnets', icon: Layers },
-      { name: 'Security Groups', href: '/networks/security-groups', icon: Shield },
-    ],
-  },
-  { name: 'Credentials', href: '/credentials', icon: Key },
-];
 
 /**
  * MobileNav 컴포넌트
@@ -90,6 +63,34 @@ export function MobileNav() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { success, error: showError } = useToast();
+  const { t } = useTranslation();
+  
+  // 현재 선택된 credential의 provider 확인
+  const { selectedCredentialId } = useCredentialContextStore();
+  const { selectedProvider } = useCredentials({
+    workspaceId: currentWorkspace?.id,
+    selectedCredentialId: selectedCredentialId || undefined,
+    enabled: !!currentWorkspace,
+  });
+
+  // Path Parameter에서 컨텍스트 추출 (새로운 라우팅 구조)
+  const resourceContext = useResourceContext();
+  const finalWorkspaceId = resourceContext.workspaceId || currentWorkspace?.id;
+  const finalCredentialId = resourceContext.credentialId || selectedCredentialId;
+  
+  // 네비게이션 메뉴 생성
+  const navigation = React.useMemo(() => {
+    if (typeof t === 'function') {
+      return getNavigation(t, selectedProvider, finalWorkspaceId, finalCredentialId);
+    }
+    // Fallback: 기본 영어 메뉴
+    return getNavigation(
+      (key: string) => key,
+      selectedProvider,
+      finalWorkspaceId,
+      finalCredentialId
+    );
+  }, [t, selectedProvider, finalWorkspaceId, finalCredentialId]);
 
   // 1. 키보드 단축키 이벤트 리스너 (Shift + M으로 사이드바 토글)
   React.useEffect(() => {
@@ -309,21 +310,37 @@ export function MobileNav() {
       });
       
       // 5-4. Settings/Members 페이지인 경우 해당 페이지로 리다이렉트
-      if (pathname.startsWith('/workspaces/') && (pathname.includes('/settings') || pathname.includes('/members'))) {
+      if (pathname.includes('/workspaces/') && (pathname.includes('/settings') || pathname.includes('/members'))) {
         const pageType = pathname.includes('/settings') ? 'settings' : 'members';
-        handleNavigation(`/workspaces/${workspaceId}/${pageType}`);
+        router.replace(buildManagementPath(workspaceId, `workspaces/${workspaceId}/${pageType}`));
         return;
       }
       
-      // 5-5. 현재 경로에 업데이트된 파라미터 적용
-      const currentPath = pathname;
-      router.replace(`${currentPath}?${params.toString()}`, { scroll: false });
+      // 5-5. 새로운 라우팅 구조에 맞게 경로 업데이트
+      if (pathname.includes('/kubernetes') || pathname.includes('/networks') || pathname.includes('/compute') || pathname.includes('/azure')) {
+        // 리소스 페이지: credentialId가 필요하므로 credentials 페이지로 리다이렉트
+        router.replace(buildManagementPath(workspaceId, 'credentials'));
+      } else if (pathname.includes('/dashboard') || pathname.includes('/credentials')) {
+        // 관리 페이지: workspaceId만 업데이트
+        const managementType = pathname.split('/').pop() || 'dashboard';
+        router.replace(buildManagementPath(workspaceId, managementType));
+      } else {
+        // 기타 페이지: dashboard로 리다이렉트
+        router.replace(buildManagementPath(workspaceId, 'dashboard'));
+      }
     } else {
-      // 6. 같은 워크스페이스인 경우 URL에 workspaceId만 업데이트
-      const currentPath = pathname;
-      const params = new URLSearchParams(window.location.search);
-      params.set('workspaceId', workspace.id);
-      router.replace(`${currentPath}?${params.toString()}`, { scroll: false });
+      // 6. 같은 워크스페이스인 경우 새로운 라우팅 구조에 맞게 경로 업데이트
+      if (pathname.includes('/kubernetes') || pathname.includes('/networks') || pathname.includes('/compute') || pathname.includes('/azure')) {
+        // 리소스 페이지: credentialId가 필요하므로 credentials 페이지로 리다이렉트
+        router.replace(buildManagementPath(workspaceId, 'credentials'));
+      } else if (pathname.includes('/dashboard') || pathname.includes('/credentials')) {
+        // 관리 페이지: workspaceId만 업데이트
+        const managementType = pathname.split('/').pop() || 'dashboard';
+        router.replace(buildManagementPath(workspaceId, managementType));
+      } else {
+        // 기타 페이지: dashboard로 리다이렉트
+        router.replace(buildManagementPath(workspaceId, 'dashboard'));
+      }
     }
   };
 
@@ -332,9 +349,11 @@ export function MobileNav() {
   // 현재 경로에 따라 열려야 할 accordion 항목 결정
   const getDefaultOpenItems = () => {
     const openItems: string[] = [];
-    if (pathname.startsWith('/compute')) openItems.push('compute');
-    if (pathname.startsWith('/kubernetes')) openItems.push('kubernetes');
-    if (pathname.startsWith('/networks')) openItems.push('networks');
+    // 새로운 라우팅 구조와 기존 구조 모두 지원
+    if (pathname.includes('/compute')) openItems.push('compute');
+    if (pathname.includes('/kubernetes') || pathname.includes('/k8s')) openItems.push('kubernetes');
+    if (pathname.includes('/networks')) openItems.push('networks');
+    if (pathname.includes('/azure/iam') || pathname.includes('/azure')) openItems.push('iam');
     return openItems;
   };
 

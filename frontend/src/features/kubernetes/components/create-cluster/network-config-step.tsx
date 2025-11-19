@@ -10,13 +10,15 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { UseFormReturn } from 'react-hook-form';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useNetworkResources } from '@/features/networks/hooks/use-network-resources';
 import dynamic from 'next/dynamic';
 import { RefreshCw, Plus, X } from 'lucide-react';
@@ -24,6 +26,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query';
 import type { CreateClusterForm, CloudProvider, CreateVPCForm, CreateSubnetForm } from '@/lib/types';
 import { useTranslation } from '@/hooks/use-translation';
+import { AWSNetworkConfig } from './providers/aws/aws-network-config';
+import { GCPNetworkConfig } from './providers/gcp/gcp-network-config';
+import { AzureNetworkConfig } from './providers/azure/azure-network-config';
 
 // Dynamic imports for Dialog components (lazy loading)
 const CreateVPCDialog = dynamic(
@@ -47,6 +52,8 @@ interface NetworkConfigStepProps {
   selectedProvider?: CloudProvider;
   selectedCredentialId: string;
   selectedRegion: string;
+  selectedZone?: string;
+  selectedProjectId?: string;
   onDataChange: (data: Partial<CreateClusterForm>) => void;
 }
 
@@ -55,6 +62,8 @@ export function NetworkConfigStep({
   selectedProvider,
   selectedCredentialId,
   selectedRegion,
+  selectedZone,
+  selectedProjectId,
   onDataChange,
 }: NetworkConfigStepProps) {
   const { t } = useTranslation();
@@ -63,8 +72,21 @@ export function NetworkConfigStep({
   const [isCreateVPCDialogOpen, setIsCreateVPCDialogOpen] = useState(false);
   const [isCreateSubnetDialogOpen, setIsCreateSubnetDialogOpen] = useState(false);
 
-  const { vpcs, isLoadingVPCs } = useNetworkResources({ resourceType: 'vpcs' });
-  const { subnets = [], isLoadingSubnets = false, setSelectedVPCId: setSubnetVPCId = () => {} } = useNetworkResources({ resourceType: 'subnets', requireVPC: true });
+  const { vpcs, isLoadingVPCs } = useNetworkResources({ 
+    resourceType: 'vpcs',
+    credentialId: selectedCredentialId,
+    region: selectedRegion,
+    useProps: true,
+  });
+  
+  const { subnets = [], isLoadingSubnets = false, setSelectedVPCId: setSubnetVPCId = () => {} } = useNetworkResources({ 
+    resourceType: 'subnets', 
+    requireVPC: true,
+    credentialId: selectedCredentialId,
+    region: selectedRegion,
+    zone: selectedZone,
+    useProps: true,
+  });
 
   // VPC 목록 새로고침
   const handleRefreshVPCs = useCallback(() => {
@@ -95,6 +117,79 @@ export function NetworkConfigStep({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formVPCId, selectedVPCId]);
+
+  // Credential/Region/Zone 변경 시 VPC/Subnet 데이터 동기화
+  const previousCredentialRef = useRef<string>(selectedCredentialId);
+  const previousRegionRef = useRef<string>(selectedRegion);
+  const previousZoneRef = useRef<string | undefined>(selectedZone);
+  
+  // Form의 credential_id와 region도 추적하여 변경 감지
+  const formCredentialId = form.watch('credential_id');
+  const formRegion = form.watch('region');
+  const previousFormCredentialRef = useRef<string>(formCredentialId || '');
+  const previousFormRegionRef = useRef<string>(formRegion || '');
+  
+  useEffect(() => {
+    const credentialChanged = previousCredentialRef.current !== selectedCredentialId;
+    const regionChanged = previousRegionRef.current !== selectedRegion;
+    const zoneChanged = previousZoneRef.current !== selectedZone;
+    const formCredentialChanged = previousFormCredentialRef.current !== formCredentialId;
+    const formRegionChanged = previousFormRegionRef.current !== formRegion;
+    
+    // Props 또는 Form의 credential/region이 변경된 경우 서브넷 초기화
+    if ((credentialChanged || regionChanged || zoneChanged || formCredentialChanged || formRegionChanged) && selectedCredentialId && selectedRegion) {
+      // Form의 credential/region과 props의 credential/region이 일치하지 않으면 서브넷 초기화
+      if (formCredentialId && formRegion && (formCredentialId !== selectedCredentialId || formRegion !== selectedRegion)) {
+        // VPC 선택 초기화
+        setSelectedVPCId('');
+        form.setValue('vpc_id', '');
+        form.setValue('subnet_ids', []);
+        
+        // Azure의 경우 network 객체도 초기화
+        if (selectedProvider === 'azure') {
+          form.setValue('network', undefined);
+        }
+        
+        // GCP의 경우 network 객체도 초기화
+        if (selectedProvider === 'gcp') {
+          form.setValue('network', undefined);
+        }
+      }
+      
+      // Props의 credential/region이 변경된 경우
+      if (credentialChanged || regionChanged || zoneChanged) {
+        // VPC 선택 초기화
+        setSelectedVPCId('');
+        form.setValue('vpc_id', '');
+        form.setValue('subnet_ids', []);
+        
+        // Azure의 경우 network 객체도 초기화
+        if (selectedProvider === 'azure') {
+          form.setValue('network', undefined);
+        }
+        
+        // GCP의 경우 network 객체도 초기화
+        if (selectedProvider === 'gcp') {
+          form.setValue('network', undefined);
+        }
+        
+        // Query 무효화하여 새로 로드
+        if (selectedProvider) {
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.vpcs.list(selectedProvider, selectedCredentialId, selectedRegion),
+          });
+        }
+      }
+      
+      // 이전 값 업데이트
+      previousCredentialRef.current = selectedCredentialId;
+      previousRegionRef.current = selectedRegion;
+      previousZoneRef.current = selectedZone;
+      previousFormCredentialRef.current = formCredentialId || '';
+      previousFormRegionRef.current = formRegion || '';
+    }
+  }, [selectedCredentialId, selectedRegion, selectedZone, selectedProvider, form, queryClient, formCredentialId, formRegion]);
+
 
   // VPC 선택 시 Subnet 목록 로드
   const handleVPCChange = useCallback((vpcId: string) => {
@@ -151,7 +246,24 @@ export function NetworkConfigStep({
 
   // Subnet 선택 (Multi-select with checkbox)
   const selectedSubnetIds = form.watch('subnet_ids') || [];
+  
+  // 서브넷 선택 시 현재 credential/region과 일치하는지 검증
   const handleSubnetToggle = (subnetId: string, checked: boolean) => {
+    // 현재 form의 credential_id와 region 확인
+    const formCredentialId = form.watch('credential_id');
+    const formRegion = form.watch('region');
+    
+    // 서브넷 선택 시 사용한 credential/region과 form의 credential/region이 다른 경우 경고
+    if (formCredentialId && formRegion) {
+      if (formCredentialId !== selectedCredentialId || formRegion !== selectedRegion) {
+        // Credential 또는 Region이 변경되었으므로 서브넷 선택 초기화
+        form.setValue('subnet_ids', []);
+        form.setValue('vpc_id', '');
+        setSelectedVPCId('');
+        return;
+      }
+    }
+    
     let newIds: string[];
     
     if (checked) {
@@ -200,6 +312,23 @@ export function NetworkConfigStep({
         service_cidr: currentNetwork?.service_cidr,
         dns_service_ip: currentNetwork?.dns_service_ip,
         docker_bridge_cidr: currentNetwork?.docker_bridge_cidr,
+      };
+      form.setValue('network', updatedNetwork);
+      onDataChange({ 
+        subnet_ids: newIds,
+        network: updatedNetwork,
+      });
+    } else if (selectedProvider === 'gcp' && newIds.length > 0) {
+      // GCP의 경우 network 객체에 기본값 설정
+      const currentNetwork = form.getValues('network') || {} as CreateClusterForm['network'];
+      const updatedNetwork: NonNullable<CreateClusterForm['network']> = {
+        subnet_id: currentNetwork?.subnet_id || newIds[0] || '',
+        pod_cidr: currentNetwork?.pod_cidr || t('kubernetes.gcp.podCidrDefault'),
+        service_cidr: currentNetwork?.service_cidr || t('kubernetes.gcp.serviceCidrDefault'),
+        master_authorized_networks: currentNetwork?.master_authorized_networks || [],
+        private_endpoint: currentNetwork?.private_endpoint || false,
+        private_nodes: currentNetwork?.private_nodes || false,
+        ...currentNetwork,
       };
       form.setValue('network', updatedNetwork);
       onDataChange({ 
@@ -355,8 +484,11 @@ export function NetworkConfigStep({
                               )}
                             </div>
                             {subnet.availability_zone && (
-                              <div className="text-xs text-muted-foreground mt-1">
-                                Zone: {subnet.availability_zone}
+                              <div className="text-xs mt-1">
+                                <span className="text-muted-foreground">Zone: </span>
+                                <span className="text-muted-foreground">
+                                  {subnet.availability_zone}
+                                </span>
                               </div>
                             )}
                           </label>
@@ -368,12 +500,35 @@ export function NetworkConfigStep({
               </FormControl>
               
               <FormDescription>
-                {selectedProvider === 'aws' 
-                  ? 'Select at least one subnet. You can select multiple subnets for high availability.'
-                  : selectedProvider === 'gcp' || selectedProvider === 'azure'
-                  ? 'Select one subnet for your cluster.'
-                  : 'Select at least one subnet.'
-                }
+                {selectedProvider === 'aws' ? (
+                  <>
+                    Select at least two subnets from different availability zones for high availability. 
+                    AWS EKS requires subnets from at least two different availability zones.
+                    {subnets.length > 0 && (
+                      <span className="block mt-1 text-xs text-muted-foreground">
+                        Showing {subnets.length} subnet{subnets.length !== 1 ? 's' : ''} across all availability zones in the selected VPC.
+                      </span>
+                    )}
+                  </>
+                ) : selectedProvider === 'gcp' || selectedProvider === 'azure' ? (
+                  <>
+                    Select one subnet for your cluster.
+                    {subnets.length > 0 && (
+                      <span className="block mt-1 text-xs text-muted-foreground">
+                        Showing {subnets.length} subnet{subnets.length !== 1 ? 's' : ''} in the selected VPC.
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    Select at least one subnet.
+                    {subnets.length > 0 && (
+                      <span className="block mt-1 text-xs text-muted-foreground">
+                        Showing {subnets.length} subnet{subnets.length !== 1 ? 's' : ''} in the selected VPC.
+                      </span>
+                    )}
+                  </>
+                )}
               </FormDescription>
               
               {/* Selected Subnets Display */}
@@ -446,109 +601,31 @@ export function NetworkConfigStep({
           />
         )}
 
-        {/* Azure specific: Network and Node Pool Configuration */}
-        {selectedProvider === 'azure' && selectedVPCId && selectedSubnetIds.length > 0 && (
-          <div className="space-y-6 mt-6 pt-6 border-t">
-            <h3 className="text-lg font-semibold">Azure Network Configuration</h3>
-            
-            {/* Network Plugin */}
-            <FormField
-              control={form.control}
-              name="network.network_plugin"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Network Plugin</FormLabel>
-                  <Select
-                    value={field.value || 'azure'}
-                    onValueChange={(value) => {
-                      field.onChange(value);
-                      const currentNetwork = form.getValues('network') || {} as CreateClusterForm['network'];
-                      const updatedNetwork: NonNullable<CreateClusterForm['network']> = {
-                        virtual_network_id: currentNetwork?.virtual_network_id || selectedVPCId || '',
-                        subnet_id: currentNetwork?.subnet_id || selectedSubnetIds[0] || '',
-                        network_plugin: value,
-                        network_policy: currentNetwork?.network_policy,
-                        pod_cidr: currentNetwork?.pod_cidr,
-                        service_cidr: currentNetwork?.service_cidr,
-                        dns_service_ip: currentNetwork?.dns_service_ip,
-                        docker_bridge_cidr: currentNetwork?.docker_bridge_cidr,
-                      };
-                      form.setValue('network', updatedNetwork);
-                      onDataChange({ network: updatedNetwork });
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select network plugin" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="azure">Azure</SelectItem>
-                      <SelectItem value="kubenet">Kubenet</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormDescription>
-                    Network plugin to use for the cluster
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Network Policy */}
-            <FormField
-              control={form.control}
-              name="network.network_policy"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Network Policy</FormLabel>
-                  <Select
-                    value={field.value || ''}
-                    onValueChange={(value) => {
-                      field.onChange(value);
-                      const currentNetwork = form.getValues('network') || {} as CreateClusterForm['network'];
-                      const updatedNetwork: NonNullable<CreateClusterForm['network']> = {
-                        virtual_network_id: currentNetwork?.virtual_network_id || selectedVPCId || '',
-                        subnet_id: currentNetwork?.subnet_id || selectedSubnetIds[0] || '',
-                        network_plugin: currentNetwork?.network_plugin || 'azure',
-                        network_policy: value,
-                        pod_cidr: currentNetwork?.pod_cidr,
-                        service_cidr: currentNetwork?.service_cidr,
-                        dns_service_ip: currentNetwork?.dns_service_ip,
-                        docker_bridge_cidr: currentNetwork?.docker_bridge_cidr,
-                      };
-                      form.setValue('network', updatedNetwork);
-                      onDataChange({ network: updatedNetwork });
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select network policy (optional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">None</SelectItem>
-                      <SelectItem value="azure">Azure</SelectItem>
-                      <SelectItem value="calico">Calico</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormDescription>
-                    Network policy to use for the cluster (optional)
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Virtual Network ID and Subnet ID (from selected VPC/Subnet) */}
-            {selectedVPCId && selectedSubnetIds.length > 0 && (
-              <div className="space-y-2">
-                <FormDescription>
-                  Virtual Network ID and Subnet ID will be set automatically from your selection above.
-                </FormDescription>
-                <div className="text-sm text-muted-foreground">
-                  <p>Virtual Network ID: {selectedVPCId}</p>
-                  <p>Subnet ID: {selectedSubnetIds[0]}</p>
-                </div>
-              </div>
-            )}
-          </div>
+        {/* Provider-specific Network Configuration */}
+        {selectedProvider === 'aws' && (
+          <AWSNetworkConfig
+            form={form}
+            onDataChange={onDataChange}
+            selectedVPCId={selectedVPCId}
+            selectedSubnetIds={selectedSubnetIds}
+          />
+        )}
+        {selectedProvider === 'gcp' && (
+          <GCPNetworkConfig
+            form={form}
+            onDataChange={onDataChange}
+            selectedVPCId={selectedVPCId}
+            selectedSubnetIds={selectedSubnetIds}
+            selectedProjectId={selectedProjectId}
+          />
+        )}
+        {selectedProvider === 'azure' && (
+          <AzureNetworkConfig
+            form={form}
+            onDataChange={onDataChange}
+            selectedVPCId={selectedVPCId}
+            selectedSubnetIds={selectedSubnetIds}
+          />
         )}
       </div>
     </Form>

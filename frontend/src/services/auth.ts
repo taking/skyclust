@@ -24,14 +24,20 @@ class AuthService extends BaseService {
    */
   async login(data: LoginForm): Promise<AuthResponse> {
     // 1. 로그인 API 호출
-    const responseData = await this.post<{ token: string; user: User }>(API_ENDPOINTS.auth.login(), data);
+    const responseData = await this.post<{ 
+      access_token: string; 
+      refresh_token: string; 
+      expires_in: number;
+      token_type: string;
+      user: User;
+    }>(API_ENDPOINTS.auth.login(), data);
     
     // 2. 응답 데이터를 AuthResponse 형식으로 변환
-    // 백엔드에서 expires_at을 반환하지 않으므로 빈 문자열로 설정
-    // 필요시 토큰 만료 시간을 계산할 수 있음
+    const expiresAt = new Date(Date.now() + (responseData.expires_in * 1000)).toISOString();
     return {
-      token: responseData.token,
-      expires_at: '', // 백엔드에서 expires_at을 반환하지 않지만, 필요시 계산할 수 있음
+      token: responseData.access_token,
+      refreshToken: responseData.refresh_token,
+      expires_at: expiresAt,
       user: responseData.user,
     };
   }
@@ -58,12 +64,33 @@ class AuthService extends BaseService {
       email: data.email,
       password: data.password,
     };
-    const responseData = await this.post<{ token: string; user: User }>(API_ENDPOINTS.auth.register(), requestData);
+    const responseData = await this.post<{ 
+      access_token: string; 
+      refresh_token: string; 
+      expires_in: number;
+      token_type: string;
+      user: User;
+    }>(API_ENDPOINTS.auth.register(), requestData);
+    const expiresAt = new Date(Date.now() + (responseData.expires_in * 1000)).toISOString();
     return {
-      token: responseData.token,
-      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7일
+      token: responseData.access_token,
+      refreshToken: responseData.refresh_token,
+      expires_at: expiresAt,
       user: responseData.user,
     };
+  }
+
+  /**
+   * Refresh Token을 사용하여 새로운 Access Token과 Refresh Token을 발급합니다
+   * 
+   * @param refreshToken - Refresh Token
+   * @returns 새로운 Access Token과 Refresh Token
+   */
+  async refreshToken(refreshToken: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+    return this.post<{ access_token: string; refresh_token: string; expires_in: number }>(
+      API_ENDPOINTS.auth.refresh(),
+      { refresh_token: refreshToken }
+    );
   }
 
   /**

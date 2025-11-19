@@ -15,6 +15,8 @@ import { kubernetesService } from '../services/kubernetes';
 import { queryKeys, CACHE_TIMES, GC_TIMES } from '@/lib/query';
 import { downloadKubeconfig } from '@/utils/kubeconfig';
 import type { CreateNodePoolForm, CreateNodeGroupForm, CloudProvider } from '@/lib/types';
+import { useSSEStatus } from '@/hooks/use-sse-status';
+import { useSSESubscription } from '@/hooks/use-sse-subscription';
 
 export interface UseClusterDetailOptions {
   clusterName: string;
@@ -62,6 +64,27 @@ export function useClusterDetail({ clusterName }: UseClusterDetailOptions) {
     ? credentials.filter((c) => c.provider === effectiveProvider)
     : credentials;
 
+  // SSE 상태 확인
+  const { status: sseStatus } = useSSEStatus();
+
+  // SSE 이벤트 구독 (클러스터 상세 정보 실시간 업데이트)
+  useSSESubscription({
+    eventTypes: [
+      'kubernetes-cluster-updated',
+      'kubernetes-node-pool-created',
+      'kubernetes-node-pool-updated',
+      'kubernetes-node-pool-deleted',
+      'kubernetes-node-created',
+      'kubernetes-node-updated',
+      'kubernetes-node-deleted',
+    ],
+    filters: {
+      credential_ids: activeCredentialId ? [activeCredentialId] : undefined,
+      regions: selectedRegion ? [selectedRegion] : undefined,
+    },
+    enabled: sseStatus.isConnected && !!effectiveProvider && !!activeCredentialId && !!clusterName,
+  });
+
   // Fetch cluster details
   const { data: cluster, isLoading: isLoadingCluster } = useQuery({
     queryKey: queryKeys.kubernetesClusters.detail(clusterName),
@@ -72,7 +95,8 @@ export function useClusterDetail({ clusterName }: UseClusterDetailOptions) {
     enabled: !!effectiveProvider && !!activeCredentialId && !!clusterName && !!currentWorkspace,
     staleTime: CACHE_TIMES.REALTIME,
     gcTime: GC_TIMES.SHORT,
-    refetchInterval: 5000,
+    // refetchInterval 제거: SSE 이벤트로 자동 업데이트
+    // 진행 중인 작업(IN_PROGRESS, PENDING)은 SSE 이벤트로 처리
   });
 
   // Fetch node pools (GKE, AKS, NKS)
@@ -85,7 +109,7 @@ export function useClusterDetail({ clusterName }: UseClusterDetailOptions) {
     enabled: !!effectiveProvider && !!activeCredentialId && !!clusterName && !!currentWorkspace && !!cluster,
     staleTime: CACHE_TIMES.REALTIME,
     gcTime: GC_TIMES.SHORT,
-    refetchInterval: 10000,
+    // refetchInterval 제거: SSE 이벤트로 자동 업데이트
   });
 
   // Fetch node groups (EKS)
@@ -98,7 +122,7 @@ export function useClusterDetail({ clusterName }: UseClusterDetailOptions) {
     enabled: !!effectiveProvider && !!activeCredentialId && !!clusterName && !!currentWorkspace && effectiveProvider === 'aws' && !!cluster,
     staleTime: CACHE_TIMES.REALTIME,
     gcTime: GC_TIMES.SHORT,
-    refetchInterval: 10000,
+    // refetchInterval 제거: SSE 이벤트로 자동 업데이트
   });
 
   // Fetch nodes
@@ -111,10 +135,11 @@ export function useClusterDetail({ clusterName }: UseClusterDetailOptions) {
     enabled: !!effectiveProvider && !!activeCredentialId && !!clusterName && !!currentWorkspace && !!cluster,
     staleTime: CACHE_TIMES.REALTIME,
     gcTime: GC_TIMES.SHORT,
-    refetchInterval: 10000,
+    // refetchInterval 제거: SSE 이벤트로 자동 업데이트
   });
 
   // Fetch upgrade status
+  // 진행 중인 작업은 조건부 refetchInterval 사용 (SSE가 모든 상태 변경을 보장하지 않을 수 있음)
   const { data: upgradeStatus, isLoading: isLoadingUpgradeStatus } = useQuery({
     queryKey: ['upgrade-status', effectiveProvider, clusterName, activeCredentialId, selectedRegion],
     queryFn: async () => {
@@ -122,9 +147,15 @@ export function useClusterDetail({ clusterName }: UseClusterDetailOptions) {
       return kubernetesService.getUpgradeStatus(effectiveProvider, clusterName, activeCredentialId, selectedRegion);
     },
     enabled: !!effectiveProvider && !!activeCredentialId && !!clusterName && !!currentWorkspace && !!cluster,
+    // SSE가 연결되어 있으면 refetchInterval 비활성화, 없으면 진행 중인 작업만 polling
     refetchInterval: (query) => {
+      // SSE가 연결되어 있으면 polling 비활성화
+      if (sseStatus.isConnected) {
+        return false;
+      }
+      // SSE가 없을 때만 진행 중인 작업에 대해 polling
       const data = query.state.data as { status?: string } | undefined;
-      return data?.status === 'IN_PROGRESS' || data?.status === 'PENDING' ? 5000 : 30000;
+      return data?.status === 'IN_PROGRESS' || data?.status === 'PENDING' ? 5000 : false;
     },
   });
 

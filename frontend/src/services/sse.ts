@@ -29,6 +29,9 @@ class SSEService {
   private maxReconnectAttempts = CONNECTION.SSE.MAX_RECONNECT_ATTEMPTS;
   private baseReconnectDelay = CONNECTION.SSE.BASE_RECONNECT_DELAY;
   private maxReconnectDelay = CONNECTION.SSE.MAX_RECONNECT_DELAY;
+  private jitterMin = CONNECTION.SSE.JITTER_MIN;
+  private jitterMax = CONNECTION.SSE.JITTER_MAX;
+  private serverRetryJitterMax = CONNECTION.SSE.SERVER_RETRY_JITTER_MAX;
   private isConnecting = false;
   private clientId: string | null = null;
   private subscribedEvents = new Set<string>();
@@ -450,12 +453,12 @@ class SSEService {
     let delay: number;
     if (this.retryInterval > 0) {
       // 서버에서 지정한 재연결 간격 사용 (jitter 추가)
-      const jitter = Math.random() * 500; // 0-500ms jitter
+      const jitter = this.jitterMin + Math.random() * (this.serverRetryJitterMax - this.jitterMin);
       delay = this.retryInterval + jitter;
     } else {
       // Exponential backoff with jitter and max delay
       const exponentialDelay = this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
-      const jitter = Math.random() * 1000; // 0-1000ms jitter
+      const jitter = this.jitterMin + Math.random() * (this.jitterMax - this.jitterMin);
       delay = Math.min(exponentialDelay + jitter, this.maxReconnectDelay);
     }
 
@@ -892,20 +895,46 @@ class SSEService {
 
   /**
    * 토큰 갱신 시 재연결합니다.
+   * 연결이 활성화되어 있으면 즉시 재연결하고,
+   * 연결이 끊어진 상태면 토큰만 업데이트하여 다음 연결 시 사용합니다.
+   * 
    * @param newToken - 새로운 토큰
    */
   async refreshToken(newToken: string): Promise<void> {
+    if (!newToken || newToken.trim() === '') {
+      log.warn('SSE refreshToken called with empty token, skipping');
+      return;
+    }
+
     const savedLastEventId = this.lastEventId;
+    const wasConnected = this.isConnected();
     
     log.info('Refreshing SSE token', {
       hasLastEventId: !!savedLastEventId,
+      wasConnected,
+      reconnectAttempts: this.reconnectAttempts,
     });
 
-    // 기존 연결 종료
-    this.disconnect();
+    // 현재 토큰 업데이트 (연결 상태와 관계없이)
+    this.currentToken = newToken;
 
-    // 새 토큰으로 재연결 (Last-Event-ID 포함)
-    this.connect(newToken, this.callbacks);
+    // 연결이 활성화되어 있으면 즉시 재연결
+    if (wasConnected) {
+      // 기존 연결 종료
+      this.disconnect();
+
+      // 재연결 시도 횟수 리셋 (토큰 갱신은 정상적인 재연결이므로)
+      this.reconnectAttempts = 0;
+
+      // 새 토큰으로 재연결 (Last-Event-ID 포함)
+      this.connect(newToken, this.callbacks);
+    } else {
+      // 연결이 끊어진 상태면 토큰만 업데이트
+      // 다음 자동 재연결 시 새 토큰이 사용됨
+      log.debug('SSE not connected, token updated for next connection', {
+        hasLastEventId: !!savedLastEventId,
+      });
+    }
 
     // Last-Event-ID는 connect() 내부에서 자동으로 로드됨
   }

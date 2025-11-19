@@ -21,13 +21,20 @@ export const useExportData = () => {
 };
 
 export const useExportStatus = (exportId: string, enabled: boolean = true) => {
+  // Export 진행 상황 추적은 refetchInterval 사용 (SSE 이벤트가 없을 수 있음)
+  // 진행 중인 작업만 polling하고, 완료되면 polling 중지
   return useQuery({
     queryKey: queryKeys.exports.status(exportId),
     queryFn: () => exportService.getExportStatus(exportId),
     enabled: enabled && !!exportId,
-    staleTime: 0, // 항상 최신 상태 확인 필요
+    staleTime: CACHE_TIMES.REALTIME, // 실시간 데이터이지만 캐싱으로 불필요한 요청 방지
     gcTime: GC_TIMES.SHORT, // 5 minutes - GC 시간
-    refetchInterval: 2000, // 2초마다 refetch (진행 상황 추적)
+    // 진행 중인 작업만 polling (완료되면 중지)
+    refetchInterval: (query) => {
+      const data = query.state.data as { status?: string } | undefined;
+      // 진행 중인 상태일 때만 polling
+      return data?.status === 'IN_PROGRESS' || data?.status === 'PENDING' ? 2000 : false;
+    },
     refetchIntervalInBackground: false, // 백그라운드 polling 비활성화
   });
 };

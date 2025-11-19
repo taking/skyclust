@@ -9,9 +9,12 @@ import { ReactNode } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Stepper } from '@/components/ui/stepper';
 import { StepContent } from '@/components/ui/stepper';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Loader2 } from 'lucide-react';
 import { useTranslation } from '@/hooks/use-translation';
 import { CreateResourcePageHeader, CreateResourcePageHeaderProps } from './create-resource-page-header';
 import { StepperNavigationButtons, StepperNavigationButtonsProps } from './stepper-navigation-buttons';
+import { StepperSelectedValues, type SelectedValue } from './stepper-selected-values';
 
 export interface StepConfig {
   /**
@@ -55,6 +58,11 @@ export interface CreateResourceStepperLayoutProps extends Omit<CreateResourcePag
    * Advanced Step 번호 (선택적)
    */
   advancedStepNumber?: number;
+  
+  /**
+   * 선택된 값들 (선택적, StepperSelectedValues 컴포넌트에 전달)
+   */
+  selectedValues?: SelectedValue[];
 }
 
 export function CreateResourceStepperLayout({
@@ -68,6 +76,7 @@ export function CreateResourceStepperLayout({
   navigationProps,
   onCancel,
   advancedStepNumber,
+  selectedValues,
 }: CreateResourceStepperLayoutProps) {
   const { t } = useTranslation();
 
@@ -123,6 +132,19 @@ export function CreateResourceStepperLayout({
             )}
           </CardHeader>
           <CardContent className="pt-0">
+            {/* Creation Status Alert */}
+            {navigationProps.isLoading && (
+              <div className="mb-6">
+                <Alert>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <AlertTitle>{t('actions.creating') || 'Creating...'}</AlertTitle>
+                  <AlertDescription>
+                    {t('kubernetes.clusterCreationInProgress') || 'Your cluster is being created. This may take a few minutes.'}
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )}
+
             <StepContent>{renderStepContent()}</StepContent>
 
             {/* Navigation Buttons */}
@@ -132,6 +154,11 @@ export function CreateResourceStepperLayout({
               totalSteps={steps.length}
               advancedStepNumber={advancedStepNumber}
             />
+
+            {/* Selected Values Display */}
+            {selectedValues && selectedValues.length > 0 && (
+              <StepperSelectedValues values={selectedValues} />
+            )}
           </CardContent>
         </Card>
       </div>

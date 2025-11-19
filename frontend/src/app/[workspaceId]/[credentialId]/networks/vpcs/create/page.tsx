@@ -1,0 +1,49 @@
+/**
+ * Create VPC Page
+ * VPC 생성 페이지
+ * 
+ * 새로운 라우팅 구조: /{workspaceId}/{credentialId}/networks/vpcs/create
+ */
+
+'use client';
+
+import { Suspense } from 'react';
+import { useRequiredResourceContext } from '@/hooks/use-resource-context';
+import { buildResourcePath } from '@/lib/routing/helpers';
+import { CreateVPCPageContent } from '@/features/networks';
+
+function CreateVPCPage() {
+  const { workspaceId, credentialId, region } = useRequiredResourceContext();
+
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-2 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <CreateVPCPageContent
+        workspaceId={workspaceId}
+        credentialId={credentialId}
+        region={region}
+        onCancel={() => {
+          if (workspaceId && credentialId) {
+            const path = buildResourcePath(
+              workspaceId,
+              credentialId,
+              'networks',
+              '/vpcs',
+              { region: region || undefined }
+            );
+            // router.push will be handled by the component
+          }
+        }}
+      />
+    </Suspense>
+  );
+}
+
+export default CreateVPCPage;
+

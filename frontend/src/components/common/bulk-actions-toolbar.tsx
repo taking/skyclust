@@ -91,14 +91,20 @@ function BulkActionsToolbarComponent<T extends { id: string }>({
       <div className="flex items-center space-x-4">
         {hasSelection && (
           <>
-            <Button variant="ghost" size="sm" onClick={handleClearSelection}>
-              <X className="h-4 w-4 mr-2" />
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={handleClearSelection}
+              aria-label="Clear selection"
+            >
+              <X className="h-4 w-4 mr-2" aria-hidden="true" />
               Clear
             </Button>
             <Checkbox
               checked={selectedIds.length === items.length && items.length > 0}
               onCheckedChange={toggleSelectAll}
               id="select-all"
+              aria-label={`Select all ${items.length} items`}
             />
             <label htmlFor="select-all" className="text-sm font-medium cursor-pointer">
               Select All ({items.length})
@@ -122,8 +128,9 @@ function BulkActionsToolbarComponent<T extends { id: string }>({
               variant="destructive"
               size="sm"
               onClick={handleBulkDelete}
+              aria-label={`Delete ${selectedIds.length} selected items`}
             >
-              <Trash2 className="h-4 w-4 mr-2" />
+              <Trash2 className="h-4 w-4 mr-2" aria-hidden="true" />
               Delete ({selectedIds.length})
             </Button>
           )}
@@ -132,15 +139,16 @@ function BulkActionsToolbarComponent<T extends { id: string }>({
               variant="outline"
               size="sm"
               onClick={handleBulkTag}
+              aria-label={`Tag ${selectedIds.length} selected items`}
             >
-              <Tag className="h-4 w-4 mr-2" />
+              <Tag className="h-4 w-4 mr-2" aria-hidden="true" />
               Tag ({selectedIds.length})
             </Button>
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <MoreVertical className="h-4 w-4" />
+              <Button variant="outline" size="sm" aria-label="More actions">
+                <MoreVertical className="h-4 w-4" aria-hidden="true" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">

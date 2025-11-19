@@ -16,10 +16,12 @@ const isDevelopment = process.env.NODE_ENV === 'development';
 
 interface AuthState {
   user: User | null;
-  token: string | null;
+  token: string | null; // Access Token
+  refreshToken: string | null; // Refresh Token
   isAuthenticated: boolean;
   login: (authResponse: AuthResponse) => void;
   logout: () => void;
+  setTokens: (accessToken: string, refreshToken: string) => void;
   updateUser: (user: User) => void;
   initialize: () => void;
 }
@@ -30,6 +32,7 @@ const persistedStore = persist<AuthState>(
     // 초기 상태
     user: null,
     token: null,
+    refreshToken: null,
     isAuthenticated: false,
     
     /**
@@ -41,10 +44,42 @@ const persistedStore = persist<AuthState>(
       set({
         user: authResponse.user,
         token: authResponse.token,
+        refreshToken: authResponse.refreshToken || null,
         isAuthenticated: true,
       });
       // Zustand persist가 자동으로 auth-storage에 저장함
       // localStorage에 토큰을 수동으로 저장할 필요 없음
+    },
+    
+    /**
+     * 토큰 설정
+     * Access Token과 Refresh Token을 업데이트합니다.
+     * SSE 연결이 활성화되어 있으면 토큰 갱신을 수행합니다.
+     */
+    setTokens: (accessToken: string, refreshToken: string) => {
+      set({
+        token: accessToken,
+        refreshToken: refreshToken,
+        isAuthenticated: true,
+      });
+      
+      // SSE 연결이 활성화되어 있으면 토큰 갱신
+      if (typeof window !== 'undefined') {
+        // 동적 import로 순환 참조 방지
+        import('@/services/sse').then(({ sseService }) => {
+          // 연결 상태와 관계없이 토큰 갱신 시도 (재연결 로직에서 처리)
+          // 연결이 끊어진 상태에서도 토큰을 갱신하여 다음 연결 시 사용
+          sseService.refreshToken(accessToken).catch((error) => {
+            // SSE 토큰 갱신 실패는 조용히 로깅만 (연결은 재시도 로직에서 처리)
+            import('@/lib/logging').then(({ log }) => {
+              log.warn('Failed to refresh SSE token', error, {
+                service: 'Auth',
+                action: 'refreshSSEToken',
+              });
+            });
+          });
+        });
+      }
     },
     
     /**
@@ -56,6 +91,7 @@ const persistedStore = persist<AuthState>(
       set({
         user: null,
         token: null,
+        refreshToken: null,
         isAuthenticated: false,
       });
       // Zustand persist가 자동으로 auth-storage에서 제거함
@@ -125,6 +161,7 @@ const persistedStore = persist<AuthState>(
     partialize: (state: AuthState): any => ({
       user: state.user,
       token: state.token,
+      refreshToken: state.refreshToken,
       isAuthenticated: state.isAuthenticated,
     }),
     /**

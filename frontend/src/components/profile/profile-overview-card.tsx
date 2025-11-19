@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { User } from 'lucide-react';
 import { useTranslation } from '@/hooks/use-translation';
+import { toLocaleDateString } from '@/lib/utils/date-format';
 import type { User as UserType } from '@/lib/types';
 
 interface ProfileOverviewCardProps {
@@ -14,7 +15,7 @@ interface ProfileOverviewCardProps {
 }
 
 export function ProfileOverviewCard({ user }: ProfileOverviewCardProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
 
   if (!user) {
     return null;
@@ -43,7 +44,7 @@ export function ProfileOverviewCard({ user }: ProfileOverviewCardProps) {
           {user.created_at && (
             <div className="pt-4 border-t">
               <p className="text-sm text-gray-600">
-                {t('auth.memberSince', { date: new Date(user.created_at).toLocaleDateString() })}
+                {t('auth.memberSince', { date: toLocaleDateString(user.created_at, locale as 'ko' | 'en') })}
               </p>
             </div>
           )}

@@ -9,6 +9,9 @@ export interface Workspace {
   name: string;
   description: string;
   owner_id: string;
+  credential_count?: number;
+  member_count?: number;
+  settings?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
   is_active: boolean;

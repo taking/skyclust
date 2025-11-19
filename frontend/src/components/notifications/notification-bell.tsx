@@ -82,7 +82,7 @@ export function NotificationBell({ className }: NotificationBellProps) {
   };
 
   const handleMarkAllAsRead = () => {
-    markAllAsRead.mutate();
+    markAllAsRead.mutate(undefined);
   };
 
   return (

@@ -7,6 +7,7 @@ import { Layout } from '@/components/layout/layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTranslation } from '@/hooks/use-translation';
+import { buildManagementPath } from '@/lib/routing/helpers';
 
 interface WorkspaceRequiredProps {
   children: React.ReactNode;
@@ -29,7 +30,7 @@ export function WorkspaceRequired({ children, allowAutoSelect = false }: Workspa
     if (allowAutoSelect && !currentWorkspace) {
       const timer = setTimeout(() => {
         // 리다이렉트 전 워크스페이스가 여전히 설정되지 않았는지 재확인
-        if (!currentWorkspace && pathname !== '/workspaces' && !hasRedirected) {
+        if (!currentWorkspace && !pathname.includes('/workspaces') && !hasRedirected) {
           setHasRedirected(true);
           router.replace('/workspaces');
         }
@@ -38,7 +39,7 @@ export function WorkspaceRequired({ children, allowAutoSelect = false }: Workspa
       return () => clearTimeout(timer);
     } else if (!allowAutoSelect && !currentWorkspace) {
       // 다른 페이지는 즉시 리다이렉트
-      if (pathname !== '/workspaces' && !hasRedirected) {
+      if (!pathname.includes('/workspaces') && !hasRedirected) {
         setHasRedirected(true);
         router.replace('/workspaces');
       }
@@ -61,7 +62,16 @@ export function WorkspaceRequired({ children, allowAutoSelect = false }: Workspa
             </CardHeader>
             {!isChecking && (
               <CardContent>
-                <Button onClick={() => router.push('/workspaces')} className="w-full">
+                <Button 
+                  onClick={() => {
+                    if (currentWorkspace?.id) {
+                      router.push(buildManagementPath(currentWorkspace.id, 'workspaces'));
+                    } else {
+                      router.push('/workspaces');
+                    }
+                  }} 
+                  className="w-full"
+                >
                   {t('workspace.goToWorkspaces')}
                 </Button>
               </CardContent>

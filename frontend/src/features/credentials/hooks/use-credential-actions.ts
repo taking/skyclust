@@ -31,6 +31,7 @@ export function useCredentialActions({ workspaceId, onSuccess }: UseCredentialAc
         workspaceId,
         data,
         name: data.name,
+        skipValidation: true, // JSON Input 방식: backend에서 validation하므로 frontend validation 스킵
       });
     },
     invalidateQueries: [queryKeys.credentials.list(workspaceId)],

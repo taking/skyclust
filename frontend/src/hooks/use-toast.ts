@@ -44,7 +44,7 @@ export const useToast = () => {
    * @param message - 표시할 메시지 (문자열 또는 React 컴포넌트)
    */
   const error = (message: string | React.ReactNode) => {
-    toast.error(message);
+    toast.error(message as string);
   };
 
   /**

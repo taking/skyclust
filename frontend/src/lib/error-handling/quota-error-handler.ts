@@ -50,7 +50,7 @@ export function extractGPUQuotaErrorDetails(error: unknown): GPUQuotaErrorDetail
   let details: Record<string, unknown> | undefined;
 
   if (error instanceof ServiceError) {
-    details = error.details as Record<string, unknown> | undefined;
+    details = error.data as Record<string, unknown> | undefined;
   } else if (error instanceof ServerError) {
     details = error.details;
   } else if (error && typeof error === 'object' && 'details' in error) {

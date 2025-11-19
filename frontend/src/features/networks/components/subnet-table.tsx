@@ -16,12 +16,13 @@ import { Pagination } from '@/components/ui/pagination';
 import { SearchBar } from '@/components/ui/search-bar';
 import { Trash2, Edit } from 'lucide-react';
 import { UI } from '@/lib/constants';
-import type { Subnet } from '@/lib/types';
+import { useTranslation } from '@/hooks/use-translation';
+import type { Subnet, CloudProvider } from '@/lib/types';
 
 interface SubnetTableProps {
-  subnets: Subnet[];
-  filteredSubnets: Subnet[];
-  paginatedSubnets: Subnet[];
+  subnets: Array<Subnet & { provider?: CloudProvider; credential_id?: string }>;
+  filteredSubnets: Array<Subnet & { provider?: CloudProvider; credential_id?: string }>;
+  paginatedSubnets: Array<Subnet & { provider?: CloudProvider; credential_id?: string }>;
   selectedSubnetIds: string[];
   onSelectionChange: (ids: string[]) => void;
   onDelete: (subnetId: string, region: string) => void;
@@ -33,6 +34,7 @@ interface SubnetTableProps {
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
   isDeleting?: boolean;
+  showProviderColumn?: boolean;
 }
 
 function SubnetTableComponent({
@@ -50,7 +52,10 @@ function SubnetTableComponent({
   onPageChange,
   onPageSizeChange,
   isDeleting = false,
+  showProviderColumn = false,
 }: SubnetTableProps) {
+  const { t } = useTranslation();
+  const hasMultipleProviders = showProviderColumn || subnets.some(s => s.provider && s.provider !== subnets[0]?.provider);
   const allSelected = useMemo(
     () => selectedSubnetIds.length === filteredSubnets.length && filteredSubnets.length > 0,
     [selectedSubnetIds.length, filteredSubnets.length]
@@ -98,12 +103,15 @@ function SubnetTableComponent({
                   onCheckedChange={handleSelectAll}
                 />
               </TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>CIDR Block</TableHead>
-              <TableHead>Availability Zone</TableHead>
-              <TableHead>State</TableHead>
-              <TableHead>Public</TableHead>
-              <TableHead>Actions</TableHead>
+              {hasMultipleProviders && (
+                <TableHead>{t('common.provider') || 'Provider'}</TableHead>
+              )}
+              <TableHead>{t('common.name') || 'Name'}</TableHead>
+              <TableHead>{t('network.cidrBlock') || 'CIDR Block'}</TableHead>
+              <TableHead>{t('common.availabilityZone') || 'Availability Zone'}</TableHead>
+              <TableHead>{t('common.state') || 'State'}</TableHead>
+              <TableHead>{t('common.public') || 'Public'}</TableHead>
+              <TableHead>{t('common.actions') || 'Actions'}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -118,9 +126,14 @@ function SubnetTableComponent({
                       onCheckedChange={(checked) => handleSelectOne(subnet.id, checked === true)}
                     />
                   </TableCell>
+                  {hasMultipleProviders && (
+                    <TableCell>
+                      <Badge variant="outline">{subnet.provider || '-'}</Badge>
+                    </TableCell>
+                  )}
                   <TableCell className="font-medium">{subnet.name}</TableCell>
                   <TableCell>{subnet.cidr_block}</TableCell>
-                  <TableCell>{subnet.availability_zone}</TableCell>
+                  <TableCell>{subnet.availability_zone || '-'}</TableCell>
                   <TableCell>
                     <Badge variant={subnet.state === 'available' ? 'default' : 'secondary'}>
                       {subnet.state}
@@ -128,9 +141,9 @@ function SubnetTableComponent({
                   </TableCell>
                   <TableCell>
                     {subnet.is_public ? (
-                      <Badge variant="outline">Public</Badge>
+                      <Badge variant="outline">{t('common.public') || 'Public'}</Badge>
                     ) : (
-                      <Badge variant="secondary">Private</Badge>
+                      <Badge variant="secondary">{t('common.private') || 'Private'}</Badge>
                     )}
                   </TableCell>
                   <TableCell>

@@ -53,7 +53,7 @@ export function ReviewSubnetStep({
       {/* Alert Banner */}
       <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
         <p className="text-sm text-blue-800 dark:text-blue-200">
-          Please review all settings before creating the subnet. Once created, some settings cannot be changed.
+          {t('network.review.alertMessage')}
         </p>
       </div>
 
@@ -64,7 +64,7 @@ export function ReviewSubnetStep({
         <CardHeader>
           <div className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-muted-foreground" />
-            <CardTitle className="text-lg font-semibold">Basic Configuration</CardTitle>
+            <CardTitle className="text-lg font-semibold">{t('network.review.basicConfiguration')}</CardTitle>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -72,7 +72,7 @@ export function ReviewSubnetStep({
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                 <Network className="h-4 w-4" />
-                Subnet Name
+                {t('network.review.subnetName')}
               </div>
               <p className="text-sm font-semibold ml-6">{formData.name || 'N/A'}</p>
             </div>
@@ -80,7 +80,7 @@ export function ReviewSubnetStep({
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Network className="h-4 w-4" />
-                  VPC
+                  {t('network.review.vpc')}
                 </div>
                 <div className="ml-6">
                   <Badge variant="secondary">
@@ -92,14 +92,14 @@ export function ReviewSubnetStep({
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                 <Network className="h-4 w-4" />
-                CIDR Block
+                {t('network.review.cidrBlock')}
               </div>
               <p className="text-sm font-semibold ml-6">{formData.cidr_block || 'N/A'}</p>
             </div>
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                 <Globe className="h-4 w-4" />
-                Region
+                {t('network.review.region')}
               </div>
               <p className="text-sm font-semibold ml-6">{formData.region || 'N/A'}</p>
             </div>
@@ -107,7 +107,7 @@ export function ReviewSubnetStep({
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <MapPin className="h-4 w-4" />
-                  {selectedProvider === 'gcp' ? 'Zone' : 'Availability Zone'}
+                  {selectedProvider === 'gcp' ? t('network.review.zone') : t('network.review.availabilityZone')}
                 </div>
                 <p className="text-sm font-semibold ml-6">
                   {formData.availability_zone || formData.zone || 'N/A'}
@@ -118,7 +118,7 @@ export function ReviewSubnetStep({
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Cloud className="h-4 w-4" />
-                  Provider
+                  {t('network.review.provider')}
                 </div>
                 <div className="ml-6">
                   <Badge className={getProviderColor(selectedProvider)}>
@@ -141,7 +141,7 @@ export function ReviewSubnetStep({
           <CardHeader>
             <div className="flex items-center gap-2">
               <Settings className="h-5 w-5 text-muted-foreground" />
-              <CardTitle className="text-lg font-semibold">Advanced Settings</CardTitle>
+              <CardTitle className="text-lg font-semibold">{t('network.review.advancedSettings')}</CardTitle>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -149,7 +149,7 @@ export function ReviewSubnetStep({
               <div>
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-2">
                   <Tag className="h-4 w-4" />
-                  Tags ({Object.keys(formData.tags).length})
+                  {t('network.review.tags')} ({Object.keys(formData.tags).length})
                 </div>
                 <div className="flex flex-wrap gap-2 ml-6">
                   {Object.entries(formData.tags).map(([key, value]) => (
@@ -164,18 +164,18 @@ export function ReviewSubnetStep({
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Network className="h-4 w-4" />
-                  Private IP Google Access
+                  {t('network.review.privateIPGoogleAccess')}
                 </div>
-                <p className="text-sm font-semibold ml-6">Enabled</p>
+                <p className="text-sm font-semibold ml-6">{t('network.review.enabled')}</p>
               </div>
             )}
             {formData.flow_logs && (
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Network className="h-4 w-4" />
-                  Flow Logs
+                  {t('network.review.flowLogs')}
                 </div>
-                <p className="text-sm font-semibold ml-6">Enabled</p>
+                <p className="text-sm font-semibold ml-6">{t('network.review.enabled')}</p>
               </div>
             )}
           </CardContent>
