@@ -30,21 +30,29 @@ SkyClust는 Clean Architecture 기반의 멀티 클라우드 통합 관리 플�
 ## 아키텍처
 
 ### 백엔드 (Go)
+- **언어**: Go 1.24+
 - **프레임워크**: Gin (HTTP), GORM (ORM)
 - **데이터베이스**: PostgreSQL 15
-- **메시징**: NATS (이벤트 버스)
+- **메시징**: NATS (이벤트 버스, Outbox 패턴)
 - **캐싱**: Redis
 - **인증**: JWT 기반 인증 및 RBAC
 - **암호화**: AES 암호화를 통한 민감 데이터 보호
 - **로깅**: Zap 구조화 로깅
 - **모니터링**: OpenTelemetry 기반 추적 및 메트릭
+- **클라우드 SDK**: 
+  - AWS SDK v2 (EKS, EC2, Cost Explorer)
+  - GCP SDK (GKE, Compute, Billing)
+  - Azure SDK v5 (AKS, Compute, Network, Resources)
 
 ### 프론트엔드 (Next.js + TypeScript)
-- **프레임워크**: Next.js 14 (App Router)
+- **프레임워크**: Next.js 15 (App Router, Turbopack)
+- **언어**: TypeScript
 - **UI 라이브러리**: shadcn/ui + Tailwind CSS
-- **상태 관리**: React Query (서버 상태)
+- **상태 관리**: React Query (서버 상태, 캐싱)
+- **폼 관리**: React Hook Form + Zod (validation)
 - **HTTP 클라이언트**: Axios (인터셉터 포함)
 - **실시간 통신**: Server-Sent Events (SSE)
+- **국제화**: i18next (다국어 지원)
 - **접근성**: WCAG 2.1 준수
 
 ### 인프라
@@ -96,10 +104,11 @@ skyclust/
 
 ### 필수 요구사항
 - Go 1.24 이상
-- Node.js 18 이상
+- Node.js 18 이상 (또는 Bun)
 - PostgreSQL 15 이상
 - Redis 7 이상
 - Docker & Docker Compose
+- NATS 2.10 이상
 
 ### 설치 및 실행
 
@@ -167,14 +176,30 @@ npm run dev
 
 **자격증명 관리:**
 - `GET /api/v1/credentials` - 자격증명 목록 (workspace_id 필수)
-- `POST /api/v1/credentials` - 자격증명 생성
+- `POST /api/v1/credentials` - 자격증명 생성 (JSON Input)
+- `POST /api/v1/credentials/upload` - 자격증명 생성 (File Upload, multipart/form-data)
 - `GET /api/v1/credentials/:id` - 자격증명 상세
+- `PUT /api/v1/credentials/:id` - 자격증명 업데이트
+- `DELETE /api/v1/credentials/:id` - 자격증명 삭제
 
 **Kubernetes 관리:**
-- `GET /api/v1/aws/kubernetes/clusters` - EKS 클러스터 목록
-- `POST /api/v1/aws/kubernetes/clusters` - EKS 클러스터 생성
-- `GET /api/v1/gcp/kubernetes/clusters` - GKE 클러스터 목록
-- `POST /api/v1/gcp/kubernetes/clusters` - GKE 클러스터 생성
+- `GET /api/v1/{provider}/kubernetes/clusters` - 클러스터 목록 (aws, gcp, azure)
+- `POST /api/v1/{provider}/kubernetes/clusters` - 클러스터 생성
+- `GET /api/v1/{provider}/kubernetes/metadata/versions` - Kubernetes 버전 조회
+- `GET /api/v1/{provider}/kubernetes/metadata/availability-zones` - Availability Zone 조회
+- `GET /api/v1/azure/kubernetes/metadata/vm-sizes` - Azure VM Size 조회
+- `GET /api/v1/{provider}/kubernetes/metadata/regions` - 리전 조회
+
+**네트워크 관리:**
+- `GET /api/v1/{provider}/networks` - VPC/VNet 목록 (aws, gcp, azure)
+- `POST /api/v1/{provider}/networks` - VPC/VNet 생성
+- `GET /api/v1/{provider}/networks/{id}/subnets` - 서브넷 목록
+- `POST /api/v1/{provider}/networks/{id}/subnets` - 서브넷 생성
+- `GET /api/v1/{provider}/networks/{id}/security-groups` - 보안 그룹/NSG 목록
+
+**리소스 그룹 관리 (Azure):**
+- `GET /api/v1/azure/resource-groups` - Resource Group 목록
+- `POST /api/v1/azure/resource-groups` - Resource Group 생성
 
 **비용 분석:**
 - `GET /api/v1/cost-analysis/workspaces/:workspaceId/summary` - 비용 요약
@@ -246,8 +271,40 @@ npm run dev
   "name": "GCP Production",
   "provider": "gcp",
   "data": {
+    "type": "service_account",
     "project_id": "my-project",
-    "service_account_key": {...}
+    "private_key_id": "...",
+    "private_key": "-----BEGIN PRIVATE KEY-----...",
+    "client_email": "service-account@project.iam.gserviceaccount.com",
+    "client_id": "...",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token"
+  }
+}
+```
+
+또는 File Upload 방식:
+```bash
+POST /api/v1/credentials/upload
+Content-Type: multipart/form-data
+
+workspace_id=workspace-uuid
+name=GCP Production
+provider=gcp
+file=@service-account-key.json
+```
+
+**Azure 자격증명:**
+```json
+{
+  "workspace_id": "workspace-uuid",
+  "name": "Azure Production",
+  "provider": "azure",
+  "data": {
+    "subscription_id": "subscription-uuid",
+    "client_id": "client-uuid",
+    "client_secret": "client-secret",
+    "tenant_id": "tenant-uuid"
   }
 }
 ```
@@ -292,21 +349,31 @@ make clean         # 빌드 아티팩트 정리
 
 ### Clean Architecture
 프로젝트는 Clean Architecture 원칙을 따릅니다:
-- **Domain Layer**: 비즈니스 로직 및 엔티티
-- **Application Layer**: 유스케이스 및 서비스
-- **Infrastructure Layer**: 데이터베이스, 외부 API 통합
-- **Presentation Layer**: HTTP 핸들러 및 라우트
+- **Domain Layer** (`internal/domain/`): 비즈니스 로직 및 엔티티, 인터페이스 정의
+- **Application Layer** (`internal/application/`): 유스케이스 및 서비스, 핸들러
+- **Infrastructure Layer** (`internal/infrastructure/`): 데이터베이스, 외부 API 통합, 메시징
+- **Presentation Layer** (`internal/application/handlers/`): HTTP 핸들러 및 라우트
 
 ### RESTful API 설계
 - Kebab-case URL 사용
 - 복수형 리소스 이름
 - 적절한 HTTP 메서드 사용
+- Provider별 라우팅: `/api/v1/{provider}/resource`
 - 중첩 리소스는 쿼리 파라미터로 처리
 
 ### 도메인 타입과 DTO 분리
 - `domain/`: 핵심 비즈니스 엔티티
-- `internal/application/handlers/<feature>/types.go`: API DTO
-- `internal/api/common/types.go`: 공통 DTO
+- `internal/application/handlers/<feature>/types.go`: API DTO (Request/Response)
+- Provider별 핸들러: `internal/application/handlers/<feature>/providers/`
+
+### 의존성 주입
+- `internal/di/`: 의존성 주입 컨테이너
+- 인터페이스 기반 설계로 테스트 용이성 확보
+
+### 이벤트 기반 아키텍처
+- NATS를 통한 이벤트 버스
+- Outbox 패턴으로 이벤트 전달 보장
+- 비동기 워커를 통한 리소스 동기화
 
 ## 보안
 
