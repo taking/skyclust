@@ -1,0 +1,76 @@
+meta {
+  name: 토큰 무효화
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/auth/revoke
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "refresh_token": "{{refresh_token}}"
+  }
+}
+
+docs {
+  # 토큰 무효화 (Revoke Refresh Token)
+
+  Refresh Token을 무효화하여 해당 세션을 종료합니다.
+
+  ## 요청
+
+  - **Method**: `POST`
+  - **URL**: `/api/v1/auth/revoke`
+  - **Headers**:
+    - `Authorization: Bearer {access_token}`
+  - **Body**:
+    ```json
+    {
+      "refresh_token": "your-refresh-token"
+    }
+    ```
+
+  ## 응답
+
+  ### 성공 (200 OK)
+
+  ```json
+  {
+    "success": true,
+    "data": {
+      "message": "Refresh token revoked successfully"
+    },
+    "request_id": "uuid",
+    "timestamp": "2025-01-14T12:00:00Z"
+  }
+  ```
+
+  ### 실패 (401 Unauthorized)
+
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "UNAUTHORIZED",
+      "message": "invalid or expired refresh token"
+    },
+    "request_id": "uuid",
+    "timestamp": "2025-01-14T12:00:00Z"
+  }
+  ```
+
+  ## 참고
+
+  - 이 엔드포인트는 인증이 필요합니다 (Access Token 필요).
+  - Refresh Token이 무효화되면 해당 세션의 모든 토큰이 더 이상 사용할 수 없습니다.
+  - 다른 기기나 브라우저의 세션을 종료할 때 유용합니다.
+}
+

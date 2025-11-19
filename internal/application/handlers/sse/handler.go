@@ -386,6 +386,8 @@ func (h *SSEHandler) handleSSECore() handlers.HandlerFunc {
 		if exists && clientToDelete != nil {
 			ctx := c.Request.Context()
 			h.deleteConnectionState(ctx, clientToDelete)
+			// Cleanup subscription tracking
+			h.cleanupSubscriptionTracking(ctx, conn.ID)
 		}
 
 		h.LogInfo(c, "SSE client disconnected", zap.String("client_id", conn.ID))
@@ -904,6 +906,10 @@ func (h *SSEHandler) subscribeToEventHandler() handlers.HandlerFunc {
 				}
 			}
 			h.clientsMux.Unlock()
+
+			// Update subscription tracking in Redis
+			ctx := c.Request.Context()
+			h.updateSubscriptionTracking(ctx, clientID, req.EventType, req.Filters, true)
 		}
 
 		h.OK(c, gin.H{
@@ -980,10 +986,25 @@ func (h *SSEHandler) unsubscribeFromEventHandler() handlers.HandlerFunc {
 			return
 		}
 
+		// Get client filters before unsubscribing
+		var filters map[string]interface{}
+		h.clientsMux.RLock()
+		client, exists := h.clients[clientID]
+		if exists {
+			filters = h.getClientFilters(client)
+		}
+		h.clientsMux.RUnlock()
+
 		// 이벤트 구독 해제
 		if err := h.UnsubscribeFromEvent(clientID, req.EventType); err != nil {
 			h.HandleError(c, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("Failed to unsubscribe: %v", err), 500), "unsubscribe_from_event")
 			return
+		}
+
+		// Update subscription tracking in Redis
+		if filters != nil {
+			ctx := c.Request.Context()
+			h.updateSubscriptionTracking(ctx, clientID, req.EventType, filters, false)
 		}
 
 		h.OK(c, gin.H{

@@ -27,11 +27,11 @@ body:json {
            "0.0.0.0/0"
         ],
         "pod_cidr": "10.0.0.0/16",
-        "private_endpoint": false,
-        "private_nodes": false,
         "service_cidr": "10.1.0.0/16",
         "subnet_id": "{{subnetId}}",
-        "vpc_id": "{{vpcId}}"
+        "vpc_id": "{{vpcId}}",
+        "private_endpoint": false,
+        "private_nodes": false
      },
      "node_pool": {
         "auto_scaling": {
@@ -53,6 +53,8 @@ body:json {
      },
      "project_id": "{{gcp_project_id}}",
      "region": "asia-northeast3",
+     "zone": "asia-northeast3-a",
+     "version": "1.33",
      "security": {
         "binary_authorization": false,
         "network_policy": true,
@@ -64,9 +66,7 @@ body:json {
         "created_by": "bruno-api-test",
         "environment": "development",
         "project": "skyclust"
-     },
-     "version": "1.33",
-     "zone": "asia-northeast3-a"
+     }
   }
 }
 

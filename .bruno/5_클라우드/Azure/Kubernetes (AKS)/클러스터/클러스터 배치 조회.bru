@@ -1,0 +1,224 @@
+meta {
+  name: 클러스터 배치 조회
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/kubernetes/clusters/batch
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "queries": [
+      {
+        "credential_id": "{{azure_credentialsId}}",
+        "region": "eastus",
+        "resource_group": "skyclust-rg"
+      },
+      {
+        "credential_id": "{{azure_credentialsId}}",
+        "region": "koreacentral",
+        "resource_group": "skyclust-rg"
+      },
+      {
+        "credential_id": "{{azure_credentialsId_2}}",
+        "region": "westus2",
+        "resource_group": "another-rg"
+      }
+    ]
+  }
+}
+
+script:post-response {
+  const results = res.body.data?.results || [];
+  
+  const allClusters = [];
+  results.forEach(result => {
+    if (result.clusters && result.clusters.length > 0) {
+      result.clusters.forEach(cluster => {
+        allClusters.push({
+          ...cluster,
+          provider: result.provider,
+          credential_id: result.credential_id,
+          region: result.region
+        });
+      });
+    }
+  });
+  
+  if (allClusters.length > 0) {
+    bru.setEnvVar("aksClusterName", allClusters[0].name);
+    bru.setEnvVar("aksResourceGroup", allClusters[0].resource_group);
+    bru.setEnvVar("aksLocation", allClusters[0].location);
+  }
+  
+  const rowData = allClusters;
+  
+  const columnDefinitions = [
+    { field: "provider", filter: true, floatingFilter: true },
+    { field: "credential_id", filter: true, floatingFilter: true },
+    { field: "region", filter: true, floatingFilter: true },
+    { field: "id", filter: true, floatingFilter: true },
+    { field: "name", filter: true, floatingFilter: true },
+    { field: "version", filter: true, floatingFilter: true },
+    { field: "status", filter: true, floatingFilter: true },
+    { field: "location", filter: true, floatingFilter: true },
+    { field: "resource_group", filter: true, floatingFilter: true },
+    { field: "endpoint", filter: true, floatingFilter: true },
+    { field: "created_at", filter: true, floatingFilter: true }
+  ];
+   
+  bru.visualize('table', {
+    name: 'table',
+    provider: 'ag-grid',
+    props: { rowData, columnDefinitions }
+  });
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has success field", function() {
+    expect(res.getBody().success).to.equal(true);
+  });
+  
+  test("Response has results array", function() {
+    expect(res.getBody().data.results).to.be.an('array');
+  });
+  
+  test("Response has total count", function() {
+    expect(res.getBody().data.total).to.be.a('number');
+  });
+  
+  test("Each result has required fields", function() {
+    const results = res.getBody().data.results;
+    results.forEach(result => {
+      expect(result).to.have.property('credential_id');
+      expect(result).to.have.property('region');
+      expect(result).to.have.property('provider');
+      expect(result).to.have.property('clusters');
+      expect(result.clusters).to.be.an('array');
+    });
+  });
+}
+
+settings {
+  encodeUrl: true
+  timeout: 60000
+}
+
+docs {
+  # AKS 클러스터 배치 조회
+  
+  여러 credential과 region에 대해 AKS 클러스터를 한 번에 조회합니다.
+  
+  ## Request Body
+  
+  ```json
+  {
+    "queries": [
+      {
+        "credential_id": "uuid-1",
+        "region": "eastus",
+        "resource_group": "skyclust-rg"
+      },
+      {
+        "credential_id": "uuid-1",
+        "region": "koreacentral",
+        "resource_group": "skyclust-rg"
+      },
+      {
+        "credential_id": "uuid-2",
+        "region": "westus2",
+        "resource_group": "another-rg"
+      }
+    ]
+  }
+  ```
+  
+  ### Query 필드
+  
+  - `credential_id`: Azure credential ID (필수, UUID)
+  - `region`: Azure 리전 (필수, 예: "eastus", "koreacentral", "westus2")
+  - `resource_group`: Azure 리소스 그룹 (선택사항, 지정하지 않으면 모든 리소스 그룹에서 조회)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "results": [
+        {
+          "credential_id": "uuid-1",
+          "region": "eastus",
+          "provider": "azure",
+          "clusters": [
+            {
+              "id": "/subscriptions/xxx/resourceGroups/skyclust-rg/providers/Microsoft.ContainerService/managedClusters/cluster-1",
+              "name": "cluster-1",
+              "version": "1.28",
+              "status": "Succeeded",
+              "location": "eastus",
+              "resource_group": "skyclust-rg",
+              "endpoint": "https://cluster-1-xxx.eastus.azmk8s.io",
+              "created_at": "2025-10-21T17:00:00Z"
+            }
+          ],
+          "error": null
+        },
+        {
+          "credential_id": "uuid-1",
+          "region": "koreacentral",
+          "provider": "azure",
+          "clusters": [],
+          "error": null
+        },
+        {
+          "credential_id": "uuid-2",
+          "region": "westus2",
+          "provider": "azure",
+          "clusters": [],
+          "error": {
+            "code": "CREDENTIAL_NOT_FOUND",
+            "message": "Credential not found: uuid-2"
+          }
+        }
+      ],
+      "total": 1
+    },
+    "message": "Batch clusters retrieved successfully"
+  }
+  ```
+  
+  ## 특징
+  
+  - **병렬 처리**: 모든 쿼리가 동시에 실행되어 빠른 응답 시간
+  - **부분 실패 허용**: 일부 쿼리가 실패해도 나머지 결과는 반환
+  - **에러 처리**: 각 쿼리별로 독립적인 에러 정보 제공
+  - **Resource Group 지원**: Azure의 경우 resource_group 필터링 지원
+  
+  ## 사용 사례
+  
+  1. **Multi-region 조회**: 하나의 credential로 여러 region 조회
+  2. **Multi-credential 조회**: 여러 credential의 클러스터를 한 번에 조회
+  3. **Multi-resource-group 조회**: 여러 리소스 그룹의 클러스터를 한 번에 조회
+  4. **통합 대시보드**: 모든 클러스터를 한 번에 조회하여 대시보드 구성
+  
+  ## 주의사항
+  
+  - 최대 쿼리 개수 제한: 권장 50개 이하
+  - 타임아웃: 60초 (많은 쿼리 시 시간이 걸릴 수 있음)
+  - 에러가 발생한 쿼리는 `error` 필드에 상세 정보 포함
+  - Azure의 경우 `resource_group`을 지정하지 않으면 모든 리소스 그룹에서 조회 (느릴 수 있음)
+}
+

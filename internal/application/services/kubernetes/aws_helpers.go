@@ -42,9 +42,6 @@ func (s *Service) extractAWSCredentials(ctx context.Context, credential *domain.
 	}
 
 	region := defaultRegion
-	if r, ok := credData["region"].(string); ok && r != "" {
-		region = r
-	}
 	if region == "" {
 		region = AWSDefaultRegionForEKS
 	}

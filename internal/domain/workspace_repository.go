@@ -20,4 +20,5 @@ type WorkspaceRepository interface {
 	GetWorkspaceWithMembers(ctx context.Context, workspaceID string) (*Workspace, []*User, error)
 	GetWorkspaceMembersWithRoles(ctx context.Context, workspaceID string) ([]*WorkspaceUser, error)
 	GetUserWorkspacesOptimized(ctx context.Context, userID string) ([]*Workspace, error)
+	CountMembers(ctx context.Context, workspaceID string) (int64, error)
 }

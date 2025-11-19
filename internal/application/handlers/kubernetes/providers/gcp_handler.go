@@ -5,8 +5,11 @@ import (
 
 	kubernetesservice "skyclust/internal/application/services/kubernetes"
 	"skyclust/internal/domain"
+	"skyclust/internal/shared/handlers"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // GCPHandler handles GCP GKE-related HTTP requests
@@ -81,6 +84,48 @@ func (h *GCPHandler) ListClusters(c *gin.Context) {
 	page, limit := h.ParsePageLimitParams(c)
 	total := int64(len(clusters.Clusters))
 	h.BuildPaginatedResponse(c, clusters.Clusters, page, limit, total, "GKE clusters retrieved successfully")
+}
+
+// BatchListClusters handles batch listing clusters from multiple credentials and regions
+func (h *GCPHandler) BatchListClusters(c *gin.Context) {
+	handler := h.Compose(
+		h.batchListClustersHandler(),
+		h.StandardCRUDDecorators("batch_list_clusters")...,
+	)
+
+	handler(c)
+}
+
+func (h *GCPHandler) batchListClustersHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		var req kubernetesservice.BatchListClustersRequest
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "batch_list_clusters")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "batch_list_clusters")
+			return
+		}
+
+		h.LogInfo(c, "Batch cluster listing requested",
+			zap.String("user_id", userID.String()),
+			zap.Int("query_count", len(req.Queries)))
+
+		result, err := h.GetK8sService().BatchListClusters(c.Request.Context(), req, h.GetCredentialService())
+		if err != nil {
+			h.HandleError(c, err, "batch_list_clusters")
+			return
+		}
+
+		h.LogInfo(c, "Batch cluster listing completed",
+			zap.String("user_id", userID.String()),
+			zap.Int("total_clusters", result.Total))
+
+		h.Success(c, http.StatusOK, result, "Batch clusters retrieved successfully")
+	}
 }
 
 // GetCluster handles getting GKE cluster details
@@ -406,9 +451,75 @@ func (h *GCPHandler) ExecuteNodeCommand(c *gin.Context) {
 	h.NotImplemented(c, "execute_node_command")
 }
 
+// GetGKEVersions handles GKE versions listing using decorator pattern
+func (h *GCPHandler) GetGKEVersions(c *gin.Context) {
+	handler := h.Compose(
+		h.getGKEVersionsHandler(),
+		h.StandardCRUDDecorators("get_gke_versions")...,
+	)
+	handler(c)
+}
+
+func (h *GCPHandler) getGKEVersionsHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
+		if err != nil {
+			h.HandleError(c, err, "get_gke_versions")
+			return
+		}
+
+		region := c.Query("region")
+		if region == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region is required", 400), "get_gke_versions")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_gke_versions")
+			return
+		}
+
+		h.logGKEVersionsGetAttempt(c, userID, credential.ID, region)
+
+		versions, err := h.GetK8sService().GetGKEVersions(c.Request.Context(), credential, region)
+		if err != nil {
+			h.HandleError(c, err, "get_gke_versions")
+			return
+		}
+
+		h.logGKEVersionsGetSuccess(c, userID, len(versions))
+		h.OK(c, gin.H{
+			"versions": versions,
+		}, "GKE versions retrieved successfully")
+	}
+}
+
+func (h *GCPHandler) logGKEVersionsGetAttempt(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID, region string) {
+	h.LogBusinessEvent(c, "gke_versions_get_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "get_gke_versions",
+		"provider":      domain.ProviderGCP,
+		"credential_id": credentialID.String(),
+		"region":        region,
+	})
+}
+
+func (h *GCPHandler) logGKEVersionsGetSuccess(c *gin.Context, userID uuid.UUID, count int) {
+	h.LogBusinessEvent(c, "gke_versions_retrieved", userID.String(), "", map[string]interface{}{
+		"operation": "get_gke_versions",
+		"provider":  domain.ProviderGCP,
+		"count":     count,
+	})
+}
+
 // GetEKSVersions handles EKS versions listing (AWS only)
 func (h *GCPHandler) GetEKSVersions(c *gin.Context) {
 	h.NotImplemented(c, "get_eks_versions")
+}
+
+// GetAKSVersions handles AKS versions listing (Azure only)
+func (h *GCPHandler) GetAKSVersions(c *gin.Context) {
+	h.NotImplemented(c, "get_aks_versions")
 }
 
 // GetAWSRegions handles AWS regions listing (AWS only)
@@ -416,14 +527,75 @@ func (h *GCPHandler) GetAWSRegions(c *gin.Context) {
 	h.NotImplemented(c, "get_aws_regions")
 }
 
-// GetAvailabilityZones handles availability zones listing (AWS only)
+// GetAvailabilityZones handles availability zones listing for GCP
 func (h *GCPHandler) GetAvailabilityZones(c *gin.Context) {
-	h.NotImplemented(c, "get_availability_zones")
+	handler := h.Compose(
+		h.getAvailabilityZonesHandler(),
+		h.StandardCRUDDecorators("get_availability_zones")...,
+	)
+	handler(c)
+}
+
+func (h *GCPHandler) getAvailabilityZonesHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderGCP)
+		if err != nil {
+			h.HandleError(c, err, "get_availability_zones")
+			return
+		}
+
+		region := c.Query("region")
+		if region == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region is required", 400), "get_availability_zones")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_availability_zones")
+			return
+		}
+
+		h.logAvailabilityZonesGetAttempt(c, userID, credential.ID, region)
+
+		zones, err := h.GetK8sService().GetGCPAvailabilityZones(c.Request.Context(), credential, region)
+		if err != nil {
+			h.HandleError(c, err, "get_availability_zones")
+			return
+		}
+
+		h.logAvailabilityZonesGetSuccess(c, userID, len(zones))
+		h.OK(c, gin.H{
+			"zones": zones,
+		}, "GCP availability zones retrieved successfully")
+	}
+}
+
+func (h *GCPHandler) logAvailabilityZonesGetAttempt(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID, region string) {
+	h.LogBusinessEvent(c, "gcp_zones_get_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "get_availability_zones",
+		"provider":      domain.ProviderGCP,
+		"credential_id": credentialID.String(),
+		"region":        region,
+	})
+}
+
+func (h *GCPHandler) logAvailabilityZonesGetSuccess(c *gin.Context, userID uuid.UUID, count int) {
+	h.LogBusinessEvent(c, "gcp_zones_retrieved", userID.String(), "", map[string]interface{}{
+		"operation": "get_availability_zones",
+		"provider":  domain.ProviderGCP,
+		"count":     count,
+	})
 }
 
 // GetInstanceTypes handles instance types listing (AWS only)
 func (h *GCPHandler) GetInstanceTypes(c *gin.Context) {
 	h.NotImplemented(c, "get_instance_types")
+}
+
+// GetInstanceTypeOfferings handles instance type offerings listing (AWS only)
+func (h *GCPHandler) GetInstanceTypeOfferings(c *gin.Context) {
+	h.NotImplemented(c, "get_instance_type_offerings")
 }
 
 // GetEKSAmitTypes handles EKS AMI types listing (AWS only)
@@ -433,5 +605,15 @@ func (h *GCPHandler) GetEKSAmitTypes(c *gin.Context) {
 
 // CheckGPUQuota handles GPU quota checking (AWS only)
 func (h *GCPHandler) CheckGPUQuota(c *gin.Context) {
-	h.NotImplemented(c, "check_gpu_quota")
+	h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotImplemented, "GPU quota check is only available for AWS", 501), "check_gpu_quota")
+}
+
+// GetVMSizes handles VM sizes listing (Azure only)
+func (h *GCPHandler) GetVMSizes(c *gin.Context) {
+	h.NotImplemented(c, "get_vm_sizes")
+}
+
+// CheckCPUQuota handles CPU quota checking (AWS only)
+func (h *GCPHandler) CheckCPUQuota(c *gin.Context) {
+	h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotImplemented, "CPU quota check is only available for AWS", 501), "check_cpu_quota")
 }

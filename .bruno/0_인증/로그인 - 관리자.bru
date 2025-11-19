@@ -22,7 +22,8 @@ body:json {
 }
 
 script:post-response {
-  bru.setEnvVar("token", res.body.data.token);
+  bru.setEnvVar("token", res.body.data.access_token);
+  bru.setEnvVar("refresh_token", res.body.data.refresh_token);
   bru.setEnvVar("userId", res.body.data.user.id);
 }
 
@@ -31,12 +32,20 @@ tests {
     expect(res.getStatus()).to.equal(200);
   });
   
-  test("Response contains token", function() {
-    expect(res.getBody()).to.have.property('token');
+  test("Response contains access_token", function() {
+    expect(res.getBody().data).to.have.property('access_token');
   });
   
-  test("Token is not empty", function() {
-    expect(res.getBody().token).to.not.be.empty;
+  test("Response contains refresh_token", function() {
+    expect(res.getBody().data).to.have.property('refresh_token');
+  });
+  
+  test("Access token is not empty", function() {
+    expect(res.getBody().data.access_token).to.not.be.empty;
+  });
+  
+  test("Refresh token is not empty", function() {
+    expect(res.getBody().data.refresh_token).to.not.be.empty;
   });
 }
 
@@ -60,7 +69,10 @@ docs {
   {
     "success": true,
     "data": {
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NjEyNjkzNjIsImlhdCI6MTc2MTE4Mjk2Miwicm9sZSI6ImFkbWluIiwidXNlcl9pZCI6IjgzOTczZjZiLTVkOTAtNGU0ZS05Y2Y2LTA5ZTMzZjY4NWEzMiIsInVzZXJuYW1lIjoidGVzdHVzZXIifQ.O__1_kjqJxvEBYpiG_uKJ8YyEuGX3taSTpMg6DYDMRo",
+      "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NjEyNjkzNjIsImlhdCI6MTc2MTE4Mjk2Miwicm9sZSI6ImFkbWluIiwidXNlcl9pZCI6IjgzOTczZjZiLTVkOTAtNGU0ZS05Y2Y2LTA5ZTMzZjY4NWEzMiIsInVzZXJuYW1lIjoidGVzdHVzZXIifQ.O__1_kjqJxvEBYpiG_uKJ8YyEuGX3taSTpMg6DYDMRo",
+      "refresh_token": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2",
+      "expires_in": 900,
+      "token_type": "Bearer",
       "user": {
         "id": "83973f6b-5d90-4e4e-9cf6-09e33f685a32",
         "username": "testuser",
@@ -90,5 +102,11 @@ docs {
   
   ## 토큰 사용
   
-  발급받은 토큰은 `Authorization: Bearer <token>` 헤더로 다른 API 호출에 사용됩니다.
+  - **Access Token**: `Authorization: Bearer <access_token>` 헤더로 다른 API 호출에 사용됩니다.
+  - **Refresh Token**: Access Token이 만료되었을 때 새로운 토큰을 발급받기 위해 사용됩니다.
+  - **expires_in**: Access Token의 만료 시간(초)입니다. Production 환경에서는 900초(15분), Development 환경에서는 86400초(24시간)입니다.
+  
+  ## 토큰 갱신
+  
+  Access Token이 만료되면 `/api/v1/auth/refresh` 엔드포인트를 사용하여 새로운 토큰을 발급받을 수 있습니다.
 }

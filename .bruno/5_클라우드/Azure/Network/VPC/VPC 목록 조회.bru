@@ -5,14 +5,14 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/azure/network/vpcs?credential_id={{azure_credentialsId}}&location=eastus
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/network/vpcs?credential_id={{azure_credentialsId}}&region=eastus
   body: none
   auth: bearer
 }
 
 params:query {
   credential_id: {{azure_credentialsId}}
-  location: eastus
+  region: eastus
 }
 
 auth:bearer {
@@ -51,7 +51,7 @@ docs {
   ## Query Parameters
   
   - `credential_id`: Azure credential ID (필수)
-  - `location`: Azure 리전 (선택, 예: "eastus")
+  - `region`: Azure 리전 (선택, 예: "eastus")
   
   ## Response
   

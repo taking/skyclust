@@ -1,0 +1,71 @@
+meta {
+  name: GPU Quota 확인
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/kubernetes/metadata/gpu-quota?credential_id={{aws_credentialsId}}&region=ap-northeast-3&instance_type=g4dn.xlarge&required_count=1
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{aws_credentialsId}}
+  region: ap-northeast-3
+  instance_type: g4dn.xlarge
+  required_count: 1
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # GPU Quota 확인
+  
+  지정된 GPU 인스턴스 타입에 대한 할당량(Quota)을 확인합니다.
+  
+  ## Query Parameters
+  
+  - `credential_id`: AWS credential ID (필수)
+  - `region`: AWS 리전 (필수)
+  - `instance_type`: GPU 인스턴스 타입 (필수, 예: g4dn.xlarge)
+  - `required_count`: 필요한 인스턴스 개수 (선택, 기본값: 1)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "availability": {
+        "available": true,
+        "quota_insufficient": false,
+        "available_quota": 10,
+        "required_count": 1,
+        "current_usage": 0,
+        "message": "GPU quota is sufficient"
+      }
+    },
+    "message": "GPU quota checked successfully",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
+  }
+  ```
+  
+  ## Response Fields
+  
+  - `available`: 할당량 사용 가능 여부
+  - `quota_insufficient`: 할당량 부족 여부
+  - `available_quota`: 사용 가능한 할당량
+  - `required_count`: 필요한 인스턴스 개수
+  - `current_usage`: 현재 사용 중인 할당량
+  - `message`: 상태 메시지
+}
+

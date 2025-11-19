@@ -13,9 +13,11 @@ func SetupRoutes(router *gin.RouterGroup, authService domain.AuthService, userSe
 	// Public authentication routes (no authentication required)
 	router.POST("/register", authHandler.Register)
 	router.POST("/login", authHandler.Login)
+	router.POST("/refresh", authHandler.RefreshToken)
 	router.POST("/logout", authHandler.Logout)
 
 	// Protected authentication routes (authentication required)
+	router.POST("/revoke", authHandler.RevokeToken)
 	router.GET("/me", authHandler.Me)
 }
 

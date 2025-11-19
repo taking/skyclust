@@ -20,6 +20,8 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/eks/types"
+	"github.com/google/uuid"
+	"sync"
 )
 
 // Service: Kubernetes 서비스 구현체
@@ -83,18 +85,45 @@ func (s *Service) createAWSEKSCluster(ctx context.Context, credential *domain.Cr
 	// AWS EKS: 서브넷이 최소 2개의 다른 AZ에 있는지 사전 검증
 	if len(req.SubnetIDs) > 0 {
 		// EC2 클라이언트 생성 (서브넷 정보 조회용)
-		ec2Client := ec2.NewFromConfig(cfg)
+		// req.Region을 명시적으로 설정하여 올바른 리전에서 서브넷 조회
+		ec2Client := ec2.NewFromConfig(cfg, func(o *ec2.Options) {
+			o.Region = req.Region
+		})
 
 		// 서브넷 정보 조회
 		describeSubnetsOutput, err := ec2Client.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
 			SubnetIds: req.SubnetIDs,
 		})
 		if err != nil {
-			return nil, domain.NewDomainError(
-				domain.ErrCodeProviderError,
-				fmt.Sprintf("failed to describe subnets for validation: %v", err),
-				502,
-			)
+			// AWS 에러를 변환하여 더 명확한 메시지 제공
+			convertedErr := s.providerErrorConverter.ConvertAWSError(err, fmt.Sprintf("describe subnets in region %s", req.Region))
+
+			// 에러에 추가 정보 포함
+			if domainErr, ok := convertedErr.(*domain.DomainError); ok {
+				domainErr = domainErr.WithDetails("region", req.Region)
+				domainErr = domainErr.WithDetails("subnet_ids", req.SubnetIDs)
+				domainErr = domainErr.WithDetails("operation", "validate_subnets_for_cluster_creation")
+
+				// InvalidSubnetID.NotFound 에러인 경우 더 명확한 메시지
+				if strings.Contains(err.Error(), "InvalidSubnetID.NotFound") {
+					// 에러 메시지에서 서브넷 ID 추출 시도
+					errorMsg := err.Error()
+					invalidSubnets := []string{}
+					for _, subnetID := range req.SubnetIDs {
+						if strings.Contains(errorMsg, subnetID) {
+							invalidSubnets = append(invalidSubnets, subnetID)
+						}
+					}
+					if len(invalidSubnets) > 0 {
+						domainErr = domainErr.WithDetails("invalid_subnet_ids", invalidSubnets)
+						domainErr = domainErr.WithDetails("help_message", fmt.Sprintf("The following subnet IDs were not found in region %s: %v. Please verify that these subnets exist in the specified region and that you have the correct AWS credentials.", req.Region, invalidSubnets))
+					}
+				}
+
+				return nil, domainErr
+			}
+
+			return nil, convertedErr
 		}
 
 		// 고유한 Availability Zone 추출
@@ -277,17 +306,119 @@ func (s *Service) ListEKSClusters(ctx context.Context, credential *domain.Creden
 
 	// 응답을 캐시에 저장 (캐시 실패해도 계속 진행)
 	if s.cacheService != nil && response != nil {
-		if err := s.cacheService.Set(ctx, cacheKey, response, defaultK8sTTL); err != nil {
+		if err := s.cacheService.Set(ctx, cacheKey, response, ClusterListTTL); err != nil {
 			s.logger.Warn(ctx, "Failed to cache Kubernetes clusters, continuing without cache",
 				domain.NewLogField("provider", credential.Provider),
 				domain.NewLogField("credential_id", credentialID),
 				domain.NewLogField("region", region),
 				domain.NewLogField("error", err))
 			// 캐시 실패는 치명적이지 않으므로 계속 진행
+		} else {
+			s.logger.Debug(ctx, "Kubernetes clusters cached successfully",
+				domain.NewLogField("provider", credential.Provider),
+				domain.NewLogField("credential_id", credentialID),
+				domain.NewLogField("region", region),
+				domain.NewLogField("cluster_count", len(response.Clusters)),
+				domain.NewLogField("ttl_seconds", int(ClusterListTTL.Seconds())))
 		}
 	}
 
 	return response, nil
+}
+
+// BatchListClusters: 여러 credential과 region에 대해 클러스터를 배치로 조회합니다
+func (s *Service) BatchListClusters(ctx context.Context, req BatchListClustersRequest, credentialService domain.CredentialService) (*BatchListClustersResponse, error) {
+	if len(req.Queries) == 0 {
+		return &BatchListClustersResponse{
+			Results: []BatchClusterResult{},
+			Total:   0,
+		}, nil
+	}
+
+	type queryResult struct {
+		index  int
+		result BatchClusterResult
+	}
+
+	resultChan := make(chan queryResult, len(req.Queries))
+	var wg sync.WaitGroup
+
+	for i, query := range req.Queries {
+		wg.Add(1)
+		go func(idx int, q BatchClusterQuery) {
+			defer wg.Done()
+
+			result := BatchClusterResult{
+				CredentialID: q.CredentialID,
+				Region:       q.Region,
+				Clusters:     []BaseClusterInfo{},
+			}
+
+			credentialUUID, err := uuid.Parse(q.CredentialID)
+			if err != nil {
+				result.Error = &BatchError{
+					Code:    "INVALID_CREDENTIAL_ID",
+					Message: fmt.Sprintf("Invalid credential ID: %s", err.Error()),
+				}
+				resultChan <- queryResult{index: idx, result: result}
+				return
+			}
+
+			credential, err := credentialService.GetCredentialByIDDirect(ctx, credentialUUID)
+			if err != nil {
+				result.Error = &BatchError{
+					Code:    "CREDENTIAL_NOT_FOUND",
+					Message: fmt.Sprintf("Credential not found: %s", err.Error()),
+				}
+				resultChan <- queryResult{index: idx, result: result}
+				return
+			}
+
+			result.Provider = credential.Provider
+
+			var clusters *ListClustersResponse
+			if q.ResourceGroup != "" {
+				clusters, err = s.ListEKSClusters(ctx, credential, q.Region, q.ResourceGroup)
+			} else {
+				clusters, err = s.ListEKSClusters(ctx, credential, q.Region)
+			}
+
+			if err != nil {
+				result.Error = &BatchError{
+					Code:    "LIST_CLUSTERS_ERROR",
+					Message: err.Error(),
+				}
+			} else if clusters != nil {
+				result.Clusters = clusters.Clusters
+			}
+
+			resultChan <- queryResult{index: idx, result: result}
+		}(i, query)
+	}
+
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
+	results := make([]BatchClusterResult, len(req.Queries))
+	for res := range resultChan {
+		results[res.index] = res.result
+	}
+
+	total := 0
+	for _, res := range results {
+		total += len(res.Clusters)
+	}
+
+	s.logger.Info(ctx, "Batch cluster listing completed",
+		domain.NewLogField("total_queries", len(req.Queries)),
+		domain.NewLogField("total_clusters", total))
+
+	return &BatchListClustersResponse{
+		Results: results,
+		Total:   total,
+	}, nil
 }
 
 // listAWSEKSClusters: AWS EKS 클러스터 목록을 조회합니다
@@ -296,6 +427,8 @@ func (s *Service) listAWSEKSClusters(ctx context.Context, credential *domain.Cre
 	if err != nil {
 		return nil, err
 	}
+
+	creds.Region = region
 
 	s.logger.Debug(ctx, "AWS credentials extracted",
 		domain.NewLogField("access_key_prefix", creds.AccessKey[:min(10, len(creds.AccessKey))]),
@@ -308,8 +441,9 @@ func (s *Service) listAWSEKSClusters(ctx context.Context, credential *domain.Cre
 		return nil, err
 	}
 
-	// Create EKS client
-	eksClient := eks.NewFromConfig(cfg)
+	eksClient := eks.NewFromConfig(cfg, func(o *eks.Options) {
+		o.Region = region
+	})
 
 	// List clusters
 	output, err := eksClient.ListClusters(ctx, &eks.ListClustersInput{})
@@ -395,7 +529,7 @@ func (s *Service) GetEKSCluster(ctx context.Context, credential *domain.Credenti
 	// 응답을 캐시에 저장 (BaseClusterInfo로 저장)
 	if s.cacheService != nil && cluster != nil {
 		baseInfo := s.extractBaseClusterInfo(cluster)
-		if err := s.cacheService.Set(ctx, cacheKey, baseInfo, defaultK8sTTL); err != nil {
+		if err := s.cacheService.Set(ctx, cacheKey, baseInfo, ClusterDetailTTL); err != nil {
 			s.logger.Warn(ctx, "Failed to cache Kubernetes cluster",
 				domain.NewLogField("provider", credential.Provider),
 				domain.NewLogField("credential_id", credentialID),
@@ -873,77 +1007,163 @@ func (s *Service) CreateEKSNodePool(ctx context.Context, credential *domain.Cred
 
 // CreateEKSNodeGroup: EKS 노드 그룹을 생성합니다
 func (s *Service) CreateEKSNodeGroup(ctx context.Context, credential *domain.Credential, req CreateNodeGroupRequest) (*CreateNodeGroupResponse, error) {
-	// GPU 인스턴스 타입인지 확인하고 quota validation 수행
+	// requiredCount 계산
+	requiredCount := req.ScalingConfig.DesiredSize
+	if requiredCount < req.ScalingConfig.MinSize {
+		requiredCount = req.ScalingConfig.MinSize
+	}
+
+	// GPU 인스턴스와 일반 인스턴스 분리
+	var gpuInstanceTypes []string
+	var standardInstanceTypes []string
+
 	for _, instanceType := range req.InstanceTypes {
-		quotaCode, isGPU := GetGPUQuotaCode(instanceType)
-		if isGPU {
-			// GPU 인스턴스인 경우 quota 확인
-			// requiredCount는 desired_size 사용 (최소 요구사항)
-			requiredCount := req.ScalingConfig.DesiredSize
-			if requiredCount < req.ScalingConfig.MinSize {
-				requiredCount = req.ScalingConfig.MinSize
-			}
+		if _, isGPU := GetGPUQuotaCode(instanceType); isGPU {
+			gpuInstanceTypes = append(gpuInstanceTypes, instanceType)
+		} else {
+			standardInstanceTypes = append(standardInstanceTypes, instanceType)
+		}
+	}
 
-			availability, err := s.CheckGPUQuotaAvailability(ctx, credential, req.Region, instanceType, requiredCount)
-			if err != nil {
-				// Quota 확인 실패 시 경고만 로깅하고 계속 진행 (권한 부족 등의 경우)
-				s.logger.Warn(ctx, "Failed to check GPU quota, proceeding with node group creation",
+	// GPU 인스턴스 타입에 대한 GPU quota 확인
+	for _, instanceType := range gpuInstanceTypes {
+		gpuQuotaCode, _ := GetGPUQuotaCode(instanceType)
+
+		availability, err := s.CheckGPUQuotaAvailability(ctx, credential, req.Region, instanceType, requiredCount)
+		if err != nil {
+			s.logger.Warn(ctx, "Failed to check GPU quota, proceeding with node group creation",
+				domain.NewLogField("credential_id", credential.ID.String()),
+				domain.NewLogField("region", req.Region),
+				domain.NewLogField("instance_type", instanceType),
+				domain.NewLogField("error", err))
+		} else if availability.QuotaInsufficient {
+			// GPU Quota 부족 시 상세 에러 반환
+			availableRegions, regionErr := s.GetAvailableRegionsForGPU(ctx, credential, instanceType, requiredCount)
+			if regionErr != nil {
+				s.logger.Warn(ctx, "Failed to get available regions for GPU",
 					domain.NewLogField("credential_id", credential.ID.String()),
-					domain.NewLogField("region", req.Region),
 					domain.NewLogField("instance_type", instanceType),
-					domain.NewLogField("error", err))
-			} else if availability.QuotaInsufficient {
-				// Quota 부족 시 상세 에러 반환
-				// 사용 가능한 region 조회
-				availableRegions, regionErr := s.GetAvailableRegionsForGPU(ctx, credential, instanceType, requiredCount)
-				if regionErr != nil {
-					s.logger.Warn(ctx, "Failed to get available regions for GPU",
-						domain.NewLogField("credential_id", credential.ID.String()),
-						domain.NewLogField("instance_type", instanceType),
-						domain.NewLogField("error", regionErr))
-				}
-
-				// Quota 증가 요청 URL 생성
-				quotaIncreaseURL := fmt.Sprintf("https://console.aws.amazon.com/servicequotas/home?region=%s#!/services/ec2/quotas/%s", req.Region, quotaCode)
-
-				// 상세 에러 정보 구성
-				errorDetails := map[string]interface{}{
-					"instance_type":      instanceType,
-					"region":             req.Region,
-					"quota_code":         quotaCode,
-					"current_quota":      availability.QuotaValue,
-					"current_usage":      availability.CurrentUsage,
-					"available_quota":    availability.AvailableQuota,
-					"required_count":     requiredCount,
-					"quota_increase_url": quotaIncreaseURL,
-				}
-
-				if len(availableRegions) > 0 {
-					// 사용 가능한 region 목록 추가
-					regionsList := make([]map[string]interface{}, 0, len(availableRegions))
-					for _, region := range availableRegions {
-						regionsList = append(regionsList, map[string]interface{}{
-							"region":          region.Region,
-							"available_quota": region.AvailableQuota,
-							"quota_value":     region.QuotaValue,
-							"current_usage":   region.CurrentUsage,
-						})
-					}
-					errorDetails["available_regions"] = regionsList
-				}
-
-				// DomainError 생성 및 Details 추가
-				err := domain.NewDomainError(
-					domain.ErrCodeProviderQuota,
-					availability.Message,
-					HTTPStatusBadRequest,
-				)
-				for key, value := range errorDetails {
-					err = err.WithDetails(key, value)
-				}
-
-				return nil, err
+					domain.NewLogField("error", regionErr))
 			}
+
+			quotaIncreaseURL := fmt.Sprintf("https://console.aws.amazon.com/servicequotas/home?region=%s#!/services/ec2/quotas/%s", req.Region, gpuQuotaCode)
+
+			errorDetails := map[string]interface{}{
+				"quota_type":         "GPU",
+				"instance_type":      instanceType,
+				"region":             req.Region,
+				"quota_code":         gpuQuotaCode,
+				"current_quota":      availability.QuotaValue,
+				"current_usage":      availability.CurrentUsage,
+				"available_quota":    availability.AvailableQuota,
+				"required_count":     requiredCount,
+				"quota_increase_url": quotaIncreaseURL,
+			}
+
+			if len(availableRegions) > 0 {
+				regionsList := make([]map[string]interface{}, 0, len(availableRegions))
+				for _, region := range availableRegions {
+					regionsList = append(regionsList, map[string]interface{}{
+						"region":          region.Region,
+						"available_quota": region.AvailableQuota,
+						"quota_value":     region.QuotaValue,
+						"current_usage":   region.CurrentUsage,
+					})
+				}
+				errorDetails["available_regions"] = regionsList
+			}
+
+			err := domain.NewDomainError(
+				domain.ErrCodeProviderQuota,
+				fmt.Sprintf("GPU quota insufficient: %s", availability.Message),
+				HTTPStatusBadRequest,
+			)
+			for key, value := range errorDetails {
+				err = err.WithDetails(key, value)
+			}
+
+			return nil, err
+		}
+	}
+
+	// GPU 인스턴스 타입에 대한 vCPU quota 확인 (패밀리별)
+	if len(gpuInstanceTypes) > 0 {
+		availability, err := s.CheckCPUQuotaAvailability(ctx, credential, req.Region, gpuInstanceTypes, requiredCount)
+		if err != nil {
+			s.logger.Warn(ctx, "Failed to check vCPU quota for GPU instances, proceeding with node group creation",
+				domain.NewLogField("credential_id", credential.ID.String()),
+				domain.NewLogField("region", req.Region),
+				domain.NewLogField("instance_types", gpuInstanceTypes),
+				domain.NewLogField("error", err))
+		} else if availability.QuotaInsufficient {
+			// GPU 인스턴스의 vCPU Quota 부족 시 상세 에러 반환
+			// 첫 번째 GPU 인스턴스 타입의 vCPU quota 코드 사용
+			vCPUQuotaCode := GetInstanceFamilyVCPUQuotaCode(gpuInstanceTypes[0])
+			quotaIncreaseURL := fmt.Sprintf("https://console.aws.amazon.com/servicequotas/home?region=%s#!/services/ec2/quotas/%s", req.Region, vCPUQuotaCode)
+
+			errorDetails := map[string]interface{}{
+				"quota_type":         "vCPU",
+				"instance_types":     gpuInstanceTypes,
+				"region":             req.Region,
+				"quota_code":         vCPUQuotaCode,
+				"current_quota":      availability.QuotaValue,
+				"current_usage":      availability.CurrentUsage,
+				"available_quota":    availability.AvailableQuota,
+				"required_vcpu":      availability.RequiredVCPU,
+				"desired_size":       req.ScalingConfig.DesiredSize,
+				"quota_increase_url": quotaIncreaseURL,
+			}
+
+			err := domain.NewDomainError(
+				domain.ErrCodeProviderQuota,
+				fmt.Sprintf("vCPU quota insufficient for GPU instances: %s", availability.Message),
+				HTTPStatusBadRequest,
+			)
+			for key, value := range errorDetails {
+				err = err.WithDetails(key, value)
+			}
+
+			return nil, err
+		}
+	}
+
+	// 일반 인스턴스 타입에 대한 vCPU quota 확인 (Standard 패밀리)
+	if len(standardInstanceTypes) > 0 {
+		availability, err := s.CheckCPUQuotaAvailability(ctx, credential, req.Region, standardInstanceTypes, requiredCount)
+		if err != nil {
+			s.logger.Warn(ctx, "Failed to check vCPU quota for standard instances, proceeding with node group creation",
+				domain.NewLogField("credential_id", credential.ID.String()),
+				domain.NewLogField("region", req.Region),
+				domain.NewLogField("instance_types", standardInstanceTypes),
+				domain.NewLogField("error", err))
+		} else if availability.QuotaInsufficient {
+			// 일반 인스턴스의 vCPU Quota 부족 시 상세 에러 반환
+			vCPUQuotaCode := GetInstanceFamilyVCPUQuotaCode(standardInstanceTypes[0])
+			quotaIncreaseURL := fmt.Sprintf("https://console.aws.amazon.com/servicequotas/home?region=%s#!/services/ec2/quotas/%s", req.Region, vCPUQuotaCode)
+
+			errorDetails := map[string]interface{}{
+				"quota_type":         "vCPU",
+				"instance_types":     standardInstanceTypes,
+				"region":             req.Region,
+				"quota_code":         vCPUQuotaCode,
+				"current_quota":      availability.QuotaValue,
+				"current_usage":      availability.CurrentUsage,
+				"available_quota":    availability.AvailableQuota,
+				"required_vcpu":      availability.RequiredVCPU,
+				"desired_size":       req.ScalingConfig.DesiredSize,
+				"quota_increase_url": quotaIncreaseURL,
+			}
+
+			err := domain.NewDomainError(
+				domain.ErrCodeProviderQuota,
+				fmt.Sprintf("vCPU quota insufficient for standard instances: %s", availability.Message),
+				HTTPStatusBadRequest,
+			)
+			for key, value := range errorDetails {
+				err = err.WithDetails(key, value)
+			}
+
+			return nil, err
 		}
 	}
 
@@ -955,6 +1175,112 @@ func (s *Service) CreateEKSNodeGroup(ctx context.Context, credential *domain.Cre
 	cfg, err := s.createAWSConfig(ctx, creds)
 	if err != nil {
 		return nil, err
+	}
+
+	// Create EC2 client for subnet and AZ validation
+	ec2Client := ec2.NewFromConfig(cfg)
+
+	// Validate instance type availability in selected availability zones
+	// AvailabilityZones가 제공된 경우 해당 AZ에서 인스턴스 타입 사용 가능 여부 검증
+	if len(req.AvailabilityZones) > 0 && len(req.InstanceTypes) > 0 {
+		validationResult, err := s.ValidateInstanceTypeAvailabilityZones(ctx, credential, req.Region, req.InstanceTypes, req.AvailabilityZones)
+		if err != nil {
+			// 에러에 상세 정보 추가
+			errorDetails := make(map[string]interface{})
+			if domainErr, ok := err.(*domain.DomainError); ok {
+				// DomainError의 Details를 errorDetails에 추가
+				if domainErr.Details != nil {
+					for k, v := range domainErr.Details {
+						errorDetails[k] = v
+					}
+				}
+			}
+
+			// 추가 정보: 선택된 AZ와 인스턴스 타입
+			errorDetails["selected_availability_zones"] = req.AvailabilityZones
+			errorDetails["instance_types"] = req.InstanceTypes
+
+			// DomainError에 Details 추가
+			if domainErr, ok := err.(*domain.DomainError); ok {
+				for key, value := range errorDetails {
+					err = domainErr.WithDetails(key, value)
+				}
+			}
+
+			return nil, err
+		}
+
+		// 검증 성공 시 로깅
+		s.logger.Debug(ctx, "Instance type availability zones validated",
+			domain.NewLogField("credential_id", credential.ID.String()),
+			domain.NewLogField("region", req.Region),
+			domain.NewLogField("instance_types", req.InstanceTypes),
+			domain.NewLogField("availability_zones", req.AvailabilityZones),
+			domain.NewLogField("validation_result", validationResult))
+	} else if len(req.SubnetIDs) > 0 && len(req.InstanceTypes) > 0 {
+		// AvailabilityZones가 제공되지 않은 경우, 기존 방식으로 Subnet의 AZ 추출하여 검증 (하위 호환성)
+		describeSubnetsOutput, err := ec2Client.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
+			SubnetIds: req.SubnetIDs,
+		})
+		if err != nil {
+			return nil, domain.NewDomainError(
+				domain.ErrCodeProviderError,
+				fmt.Sprintf("failed to describe subnets for validation: %v", err),
+				HTTPStatusBadGateway,
+			)
+		}
+
+		// 서브넷의 AZ 추출
+		subnetAZs := make([]string, 0)
+		azSet := make(map[string]bool)
+		for _, subnet := range describeSubnetsOutput.Subnets {
+			if subnet.AvailabilityZone != nil {
+				az := *subnet.AvailabilityZone
+				if !azSet[az] {
+					subnetAZs = append(subnetAZs, az)
+					azSet[az] = true
+				}
+			}
+		}
+
+		// 인스턴스 타입이 선택된 AZ에서 사용 가능한지 검증
+		if len(subnetAZs) > 0 {
+			validationResult, err := s.ValidateInstanceTypeAvailabilityZones(ctx, credential, req.Region, req.InstanceTypes, subnetAZs)
+			if err != nil {
+				// 에러에 상세 정보 추가
+				errorDetails := make(map[string]interface{})
+				if domainErr, ok := err.(*domain.DomainError); ok {
+					// DomainError의 Details를 errorDetails에 추가
+					if domainErr.Details != nil {
+						for k, v := range domainErr.Details {
+							errorDetails[k] = v
+						}
+					}
+				}
+
+				// 추가 정보: 선택된 서브넷과 AZ
+				errorDetails["selected_subnets"] = req.SubnetIDs
+				errorDetails["selected_availability_zones"] = subnetAZs
+				errorDetails["instance_types"] = req.InstanceTypes
+
+				// DomainError에 Details 추가
+				if domainErr, ok := err.(*domain.DomainError); ok {
+					for key, value := range errorDetails {
+						err = domainErr.WithDetails(key, value)
+					}
+				}
+
+				return nil, err
+			}
+
+			// 검증 성공 시 로깅
+			s.logger.Debug(ctx, "Instance type availability zones validated (from subnets)",
+				domain.NewLogField("credential_id", credential.ID.String()),
+				domain.NewLogField("region", req.Region),
+				domain.NewLogField("instance_types", req.InstanceTypes),
+				domain.NewLogField("availability_zones", subnetAZs),
+				domain.NewLogField("validation_result", validationResult))
+		}
 	}
 
 	// Create EKS client
@@ -1015,6 +1341,49 @@ func (s *Service) CreateEKSNodeGroup(ctx context.Context, credential *domain.Cre
 	// Create node group
 	output, err := eksClient.CreateNodegroup(ctx, input)
 	if err != nil {
+		// VcpuLimitExceeded 에러 처리
+		errorMsg := err.Error()
+		if strings.Contains(errorMsg, "VcpuLimitExceeded") {
+			// CPU quota 확인 및 상세 에러 정보 제공 (패밀리별)
+			availability, quotaErr := s.CheckCPUQuotaAvailability(ctx, credential, req.Region, req.InstanceTypes, req.ScalingConfig.DesiredSize)
+			if quotaErr == nil && availability != nil {
+				// 첫 번째 인스턴스 타입의 vCPU quota 코드 사용
+				vCPUQuotaCode := GetInstanceFamilyVCPUQuotaCode(req.InstanceTypes[0])
+				quotaIncreaseURL := fmt.Sprintf("https://console.aws.amazon.com/servicequotas/home?region=%s#!/services/ec2/quotas/%s", req.Region, vCPUQuotaCode)
+
+				// 상세 에러 정보 구성
+				errorDetails := map[string]interface{}{
+					"quota_type":         "vCPU",
+					"instance_types":     req.InstanceTypes,
+					"region":             req.Region,
+					"quota_code":         vCPUQuotaCode,
+					"current_quota":      availability.QuotaValue,
+					"current_usage":      availability.CurrentUsage,
+					"available_quota":    availability.AvailableQuota,
+					"required_vcpu":      availability.RequiredVCPU,
+					"desired_size":       req.ScalingConfig.DesiredSize,
+					"quota_increase_url": quotaIncreaseURL,
+				}
+
+				// DomainError 생성 및 Details 추가
+				err := domain.NewDomainError(
+					domain.ErrCodeProviderQuota,
+					availability.Message,
+					HTTPStatusBadRequest,
+				)
+				for key, value := range errorDetails {
+					err = err.WithDetails(key, value)
+				}
+
+				return nil, err
+			}
+		}
+
+		// 다른 에러는 변환하여 반환
+		err = s.providerErrorConverter.ConvertAWSError(err, "create node group")
+		if err != nil {
+			return nil, err
+		}
 		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to create node group: %v", err), HTTPStatusBadGateway)
 	}
 
@@ -1691,9 +2060,11 @@ func (s *Service) deleteAzureNodePool(ctx context.Context, credential *domain.Cr
 
 		for _, cluster := range clusters.Clusters {
 			if cluster.Name == req.ClusterName {
+				// Azure API는 resourceGroups 또는 resourcegroups (대소문자 구분 없음)를 사용할 수 있음
 				parts := strings.Split(cluster.ID, "/")
 				for i, part := range parts {
-					if part == "resourceGroups" && i+1 < len(parts) {
+					// 대소문자 구분 없이 비교
+					if strings.EqualFold(part, "resourceGroups") && i+1 < len(parts) {
 						creds.ResourceGroup = parts[i+1]
 						break
 					}
@@ -1762,8 +2133,29 @@ func (s *Service) createAzureAKSCluster(ctx context.Context, credential *domain.
 	// Get managed clusters client
 	managedClustersClient := clientFactory.NewManagedClustersClient()
 
+	// Kubernetes 버전 처리: 지정되지 않으면 지원되는 최신 버전 자동 선택
+	kubernetesVersion := req.Version
+	if kubernetesVersion == "" {
+		// 지원되는 버전 목록에서 최신 버전 가져오기
+		availableVersions, err := s.GetAKSVersions(ctx, credential, req.Location)
+		if err != nil {
+			s.logger.Warn(ctx, "Failed to get available AKS versions, using default",
+				domain.NewLogField("location", req.Location),
+				domain.NewLogField("error", err))
+			// 버전 목록을 가져올 수 없으면 빈 문자열로 설정 (Azure가 자동 선택)
+			kubernetesVersion = ""
+		} else if len(availableVersions) > 0 {
+			// 최신 버전 사용 (목록은 내림차순 정렬되어 있음)
+			kubernetesVersion = availableVersions[0]
+			s.logger.Info(ctx, "Auto-selected Kubernetes version",
+				domain.NewLogField("location", req.Location),
+				domain.NewLogField("version", kubernetesVersion))
+		}
+	}
+
 	// Build network profile
-	networkPlugin := armcontainerservice.NetworkPluginAzure
+	// Network가 nil이거나 NetworkPlugin이 지정되지 않으면 Kubenet 모드로 자동 생성 (VNet/Subnet 자동 생성)
+	networkPlugin := armcontainerservice.NetworkPluginKubenet
 	if req.Network != nil && req.Network.NetworkPlugin != "" {
 		switch req.Network.NetworkPlugin {
 		case "azure":
@@ -1771,7 +2163,25 @@ func (s *Service) createAzureAKSCluster(ctx context.Context, credential *domain.
 		case "kubenet":
 			networkPlugin = armcontainerservice.NetworkPluginKubenet
 		default:
-			networkPlugin = armcontainerservice.NetworkPluginAzure
+			networkPlugin = armcontainerservice.NetworkPluginKubenet
+		}
+	}
+
+	// Azure CNI 모드일 때는 VNet/Subnet ID 필수
+	if networkPlugin == armcontainerservice.NetworkPluginAzure {
+		if req.Network == nil {
+			return nil, domain.NewDomainError(
+				domain.ErrCodeValidationFailed,
+				"network configuration is required when using Azure CNI mode. Please provide virtual_network_id and subnet_id, or use kubenet mode for automatic VNet creation",
+				HTTPStatusBadRequest,
+			)
+		}
+		if req.Network.SubnetID == "" {
+			return nil, domain.NewDomainError(
+				domain.ErrCodeValidationFailed,
+				"subnet_id is required when using Azure CNI mode. Please provide subnet_id in network configuration, or use kubenet mode for automatic VNet creation",
+				HTTPStatusBadRequest,
+			)
 		}
 	}
 
@@ -1858,10 +2268,14 @@ func (s *Service) createAzureAKSCluster(ctx context.Context, credential *domain.
 			agentPoolProfile.MaxPods = to.Ptr(int32(req.NodePool.MaxPods))
 		}
 
-		if req.NodePool.VnetSubnetID != "" {
-			agentPoolProfile.VnetSubnetID = to.Ptr(req.NodePool.VnetSubnetID)
-		} else if req.Network != nil && req.Network.SubnetID != "" {
-			agentPoolProfile.VnetSubnetID = to.Ptr(req.Network.SubnetID)
+		// VNetSubnetID는 Azure CNI 모드일 때만 설정
+		// Kubenet 모드는 Azure가 자동으로 VNet/Subnet을 생성하므로 설정하지 않음
+		if networkPlugin == armcontainerservice.NetworkPluginAzure {
+			if req.NodePool.VnetSubnetID != "" {
+				agentPoolProfile.VnetSubnetID = to.Ptr(req.NodePool.VnetSubnetID)
+			} else if req.Network != nil && req.Network.SubnetID != "" {
+				agentPoolProfile.VnetSubnetID = to.Ptr(req.Network.SubnetID)
+			}
 		}
 
 		if len(req.NodePool.AvailabilityZones) > 0 {
@@ -1934,17 +2348,31 @@ func (s *Service) createAzureAKSCluster(ctx context.Context, credential *domain.
 		}
 	}
 
+	// Build service principal profile
+	// Azure AKS는 Service Principal 또는 Managed Identity가 필수입니다
+	// credential의 client_id와 client_secret을 Service Principal로 사용
+	servicePrincipalProfile := &armcontainerservice.ManagedClusterServicePrincipalProfile{
+		ClientID: to.Ptr(creds.ClientID),
+		Secret:   to.Ptr(creds.ClientSecret),
+	}
+
 	// Build managed cluster
 	managedCluster := armcontainerservice.ManagedCluster{
 		Location: to.Ptr(req.Location),
 		Properties: &armcontainerservice.ManagedClusterProperties{
-			KubernetesVersion: to.Ptr(req.Version),
-			DNSPrefix:         to.Ptr(req.Name),
-			AgentPoolProfiles: agentPoolProfiles,
-			NetworkProfile:    networkProfile,
-			EnableRBAC:        to.Ptr(enableRBAC),
+			DNSPrefix:               to.Ptr(req.Name),
+			AgentPoolProfiles:       agentPoolProfiles,
+			NetworkProfile:          networkProfile,
+			EnableRBAC:              to.Ptr(enableRBAC),
+			ServicePrincipalProfile: servicePrincipalProfile,
 		},
 		Tags: req.Tags,
+	}
+
+	// KubernetesVersion은 지정된 경우에만 설정
+	// nil이면 Azure가 자동으로 지원되는 최신 버전을 선택
+	if kubernetesVersion != "" {
+		managedCluster.Properties.KubernetesVersion = to.Ptr(kubernetesVersion)
 	}
 
 	if apiServerAccessProfile != nil {
@@ -2123,10 +2551,12 @@ func (s *Service) buildClusterInfoFromAzureCluster(cluster *armcontainerservice.
 
 	// Extract resource group from cluster ID
 	// Format: /subscriptions/{sub}/resourceGroups/{rg}/providers/...
+	// Azure API는 resourceGroups 또는 resourcegroups (대소문자 구분 없음)를 사용할 수 있음
 	if cluster.ID != nil {
 		parts := strings.Split(*cluster.ID, "/")
 		for i, part := range parts {
-			if part == "resourceGroups" && i+1 < len(parts) {
+			// 대소문자 구분 없이 비교
+			if strings.EqualFold(part, "resourceGroups") && i+1 < len(parts) {
 				clusterInfo.ResourceGroup = parts[i+1]
 				break
 			}
@@ -2183,9 +2613,11 @@ func (s *Service) getAzureAKSCluster(ctx context.Context, credential *domain.Cre
 			if cluster.Name == clusterName {
 				// Extract resource group from cluster ID
 				// Format: /subscriptions/{sub}/resourceGroups/{rg}/providers/...
+				// Azure API는 resourceGroups 또는 resourcegroups (대소문자 구분 없음)를 사용할 수 있음
 				parts := strings.Split(cluster.ID, "/")
 				for i, part := range parts {
-					if part == "resourceGroups" && i+1 < len(parts) {
+					// 대소문자 구분 없이 비교
+					if strings.EqualFold(part, "resourceGroups") && i+1 < len(parts) {
 						creds.ResourceGroup = parts[i+1]
 						break
 					}
@@ -2215,11 +2647,13 @@ func (s *Service) getAzureAKSCluster(ctx context.Context, credential *domain.Cre
 	}
 
 	// Extract resource group from cluster ID
+	// Azure API는 resourceGroups 또는 resourcegroups (대소문자 구분 없음)를 사용할 수 있음
 	resourceGroup := ""
 	if cluster.ID != nil {
 		parts := strings.Split(*cluster.ID, "/")
 		for i, part := range parts {
-			if part == "resourceGroups" && i+1 < len(parts) {
+			// 대소문자 구분 없이 비교
+			if strings.EqualFold(part, "resourceGroups") && i+1 < len(parts) {
 				resourceGroup = parts[i+1]
 				break
 			}
@@ -2364,9 +2798,11 @@ func (s *Service) deleteAzureAKSCluster(ctx context.Context, credential *domain.
 		for _, cluster := range clusters.Clusters {
 			if cluster.Name == clusterName {
 				// Extract resource group from cluster ID
+				// Azure API는 resourceGroups 또는 resourcegroups (대소문자 구분 없음)를 사용할 수 있음
 				parts := strings.Split(cluster.ID, "/")
 				for i, part := range parts {
-					if part == "resourceGroups" && i+1 < len(parts) {
+					// 대소문자 구분 없이 비교
+					if strings.EqualFold(part, "resourceGroups") && i+1 < len(parts) {
 						creds.ResourceGroup = parts[i+1]
 						break
 					}
@@ -2477,9 +2913,11 @@ func (s *Service) getAzureAKSKubeconfig(ctx context.Context, credential *domain.
 		for _, cluster := range clusters.Clusters {
 			if cluster.Name == clusterName {
 				// Extract resource group from cluster ID
+				// Azure API는 resourceGroups 또는 resourcegroups (대소문자 구분 없음)를 사용할 수 있음
 				parts := strings.Split(cluster.ID, "/")
 				for i, part := range parts {
-					if part == "resourceGroups" && i+1 < len(parts) {
+					// 대소문자 구분 없이 비교
+					if strings.EqualFold(part, "resourceGroups") && i+1 < len(parts) {
 						creds.ResourceGroup = parts[i+1]
 						break
 					}
@@ -2534,9 +2972,11 @@ func (s *Service) listAzureNodePools(ctx context.Context, credential *domain.Cre
 
 		for _, cluster := range clusters.Clusters {
 			if cluster.Name == req.ClusterName {
+				// Azure API는 resourceGroups 또는 resourcegroups (대소문자 구분 없음)를 사용할 수 있음
 				parts := strings.Split(cluster.ID, "/")
 				for i, part := range parts {
-					if part == "resourceGroups" && i+1 < len(parts) {
+					// 대소문자 구분 없이 비교
+					if strings.EqualFold(part, "resourceGroups") && i+1 < len(parts) {
 						creds.ResourceGroup = parts[i+1]
 						break
 					}
@@ -2640,9 +3080,11 @@ func (s *Service) getAzureNodePool(ctx context.Context, credential *domain.Crede
 
 		for _, cluster := range clusters.Clusters {
 			if cluster.Name == req.ClusterName {
+				// Azure API는 resourceGroups 또는 resourcegroups (대소문자 구분 없음)를 사용할 수 있음
 				parts := strings.Split(cluster.ID, "/")
 				for i, part := range parts {
-					if part == "resourceGroups" && i+1 < len(parts) {
+					// 대소문자 구분 없이 비교
+					if strings.EqualFold(part, "resourceGroups") && i+1 < len(parts) {
 						creds.ResourceGroup = parts[i+1]
 						break
 					}

@@ -1,0 +1,94 @@
+meta {
+  name: CPU Quota 확인
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/kubernetes/metadata/cpu-quota?credential_id={{aws_credentialsId}}&region=ap-northeast-2&instance_types=g4dn.xlarge&required_count=3
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{aws_credentialsId}}
+  region: ap-northeast-2
+  instance_types: g4dn.xlarge
+  required_count: 3
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # CPU Quota 확인
+  
+  지정된 인스턴스 타입들에 대한 vCPU 할당량(Quota)을 확인합니다.
+  
+  ## Query Parameters
+  
+  - `credential_id`: AWS credential ID (필수)
+  - `region`: AWS 리전 (필수)
+  - `instance_types`: 인스턴스 타입 목록 (필수, 쉼표로 구분, 예: t3.medium,t3.large)
+  - `required_count`: 필요한 인스턴스 개수 (선택, 기본값: 1)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "availability": {
+        "region": "ap-northeast-3",
+        "available": true,
+        "quota_insufficient": false,
+        "quota_value": 1152,
+        "current_usage": 0,
+        "available_quota": 1152,
+        "required_vcpu": 8,
+        "message": "vCPU quota is sufficient. Available: 1152 vCPU, Required: 8 vCPU"
+      }
+    },
+    "message": "CPU quota checked successfully",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
+  }
+  ```
+  
+  ## Response Fields
+  
+  - `region`: AWS 리전
+  - `available`: 할당량 사용 가능 여부
+  - `quota_insufficient`: 할당량 부족 여부
+  - `quota_value`: 현재 설정된 vCPU 할당량
+  - `current_usage`: 현재 사용 중인 vCPU 수
+  - `available_quota`: 사용 가능한 vCPU 할당량
+  - `required_vcpu`: 필요한 총 vCPU 수 (인스턴스 타입별 vCPU * required_count)
+  - `message`: 상태 메시지
+  
+  ## 에러 응답 (할당량 부족)
+  
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "PROVIDER_QUOTA",
+      "message": "Insufficient vCPU quota in region ap-northeast-3. Current quota: 0 vCPU, Current usage: 0 vCPU, Available: 0 vCPU, Required: 8 vCPU. Please request a quota increase at http://aws.amazon.com/contact-us/ec2-request"
+    },
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
+  }
+  ```
+  
+  ## 참고
+  
+  - vCPU quota는 AWS Service Quotas의 "Running On-Demand Standard instances" (L-34B43A08) quota code를 사용합니다.
+  - 할당량이 0인 경우 AWS Support에 할당량 설정을 요청해야 합니다.
+  - 할당량 증가 요청: http://aws.amazon.com/contact-us/ec2-request
+}

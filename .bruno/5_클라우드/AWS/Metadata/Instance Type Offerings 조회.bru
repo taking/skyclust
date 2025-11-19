@@ -1,0 +1,69 @@
+meta {
+  name: Instance Type Offerings 조회
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/kubernetes/metadata/instance-type-offerings?credential_id={{aws_credentialsId}}&region=ap-northeast-3&instance_type=g4dn.xlarge
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{aws_credentialsId}}
+  region: ap-northeast-3
+  instance_type: g4dn.xlarge
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Instance Type Offerings 조회
+  
+  지정된 인스턴스 타입이 사용 가능한 Availability Zone 목록을 조회합니다.
+  
+  ## Query Parameters
+  
+  - `credential_id`: AWS credential ID (필수)
+  - `region`: AWS 리전 (필수)
+  - `instance_type`: EC2 인스턴스 타입 (필수, 예: g4dn.xlarge)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "offerings": [
+        {
+          "instance_type": "g4dn.xlarge",
+          "availability_zone": "ap-northeast-3b",
+          "location_type": "availability-zone"
+        },
+        {
+          "instance_type": "g4dn.xlarge",
+          "availability_zone": "ap-northeast-3c",
+          "location_type": "availability-zone"
+        }
+      ]
+    },
+    "message": "Instance type offerings retrieved successfully",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
+  }
+  ```
+  
+  ## 참고
+  
+  - 특정 인스턴스 타입이 모든 AZ에서 사용 가능하지 않을 수 있습니다.
+  - 예를 들어, `g4dn.xlarge`는 `ap-northeast-3a`에서 사용 불가능할 수 있습니다.
+}
+

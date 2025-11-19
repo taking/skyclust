@@ -116,12 +116,14 @@ func (c *Container) Initialize(ctx context.Context, cfg *config.Config) error {
 	logger.Info("Creating service configuration...")
 
 	serviceConfig := ServiceConfig{
-		JWTSecret:     cfg.Security.JWTSecret,
-		JWTExpiry:     cfg.Security.JWTExpiration,
-		EncryptionKey: cfg.Security.EncryptionKey,
-		RedisClient:   redisClient,  // Pass Redis client for TokenBlacklist
-		Cache:         c.cache,      // Pass cache for OIDC state storage
-		MessagingBus:  messagingBus, // Pass messaging bus (NATS or LocalBus)
+		JWTSecret:           cfg.Security.JWTSecret,
+		JWTExpiry:           cfg.Security.JWTExpiration,
+		RefreshTokenExpiry:  cfg.Security.RefreshTokenExpiry,
+		EnableTokenRotation: cfg.Security.EnableTokenRotation,
+		EncryptionKey:       cfg.Security.EncryptionKey,
+		RedisClient:         redisClient,  // Pass Redis client for TokenBlacklist and RefreshTokenStore
+		Cache:               c.cache,      // Pass cache for OIDC state storage
+		MessagingBus:        messagingBus, // Pass messaging bus (NATS or LocalBus)
 	}
 
 	logger.Info("Initializing domain module...")

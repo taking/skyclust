@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -9,7 +10,9 @@ import (
 	"skyclust/internal/application/services/common"
 	"skyclust/internal/domain"
 
+	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/container/v1"
+	"google.golang.org/api/option"
 )
 
 // GCP Kubernetes Functions
@@ -112,8 +115,10 @@ func (s *Service) createGCPGKEClusterWithAdvanced(ctx context.Context, credentia
 	}
 
 	// Determine location (zone or region)
-	location := req.Region
+	// Normalize region format (AWS format -> GCP format)
+	location := s.normalizeGCPRegion(req.Region)
 	if req.Zone != "" {
+		// Zone is already in GCP format (from frontend API response)
 		location = req.Zone
 	}
 
@@ -405,6 +410,9 @@ func (s *Service) listGCPGKEClusters(ctx context.Context, credential *domain.Cre
 		return nil, err
 	}
 
+	// Normalize region format (AWS format -> GCP format)
+	normalizedRegion := s.normalizeGCPRegion(region)
+
 	// List clusters in the region and all zones of the specified region
 	locations := s.getGCPLocations(region)
 
@@ -434,7 +442,7 @@ func (s *Service) listGCPGKEClusters(ctx context.Context, credential *domain.Cre
 		for _, cluster := range clustersResp.Clusters {
 			// Determine if this is a region or zone
 			var clusterZone string
-			if location == region {
+			if location == normalizedRegion {
 				// Region level cluster - extract zone from cluster location
 				clusterZone = extractZoneFromLocation(cluster.Location)
 			} else {
@@ -683,12 +691,69 @@ func extractZoneFromLocation(location string) string {
 	return ""
 }
 
+// normalizeGCPRegion converts AWS-style region format to GCP format
+// AWS format: us-east-1, us-west-2, ap-northeast-2
+// GCP format: us-east1, us-west2, asia-northeast2
+// Some regions are already in GCP format: asia-northeast3, europe-west1, us-east1
+func (s *Service) normalizeGCPRegion(region string) string {
+	if region == "" {
+		return region
+	}
+
+	parts := strings.Split(region, "-")
+
+	// Check if region is already in GCP format
+	// GCP format patterns:
+	// - 2 parts: us-east1, asia-northeast3 (last part ends with number)
+	// - 3+ parts: europe-west1, asia-northeast3 (last part ends with number)
+	if len(parts) >= 2 {
+		lastPart := parts[len(parts)-1]
+		// Check if last part ends with a number (GCP format)
+		// Examples: "east1", "northeast3", "west1"
+		if len(lastPart) > 0 {
+			lastChar := lastPart[len(lastPart)-1]
+			if lastChar >= '0' && lastChar <= '9' {
+				// Already in GCP format
+				return region
+			}
+		}
+	}
+
+	// Convert AWS format to GCP format
+	// Pattern: {area}-{direction}-{number} -> {area}-{direction}{number}
+	// Examples: us-east-1 -> us-east1, ap-northeast-2 -> asia-northeast2
+	if len(parts) >= 3 {
+		// Check if last part is a single digit number (AWS format)
+		lastPart := parts[len(parts)-1]
+		if len(lastPart) == 1 && lastPart[0] >= '0' && lastPart[0] <= '9' {
+			// Remove the last hyphen and merge direction and number
+			// us-east-1 -> us-east1
+			// ap-northeast-2 -> asia-northeast2
+
+			// Special case: ap -> asia
+			if parts[0] == "ap" {
+				parts[0] = "asia"
+			}
+
+			// Reconstruct: {area}-{direction}{number}
+			result := strings.Join(parts[:len(parts)-1], "-") + lastPart
+			return result
+		}
+	}
+
+	// If pattern doesn't match, return as is
+	return region
+}
+
 func (s *Service) getGCPLocations(region string) []string {
+	// Normalize region format (AWS format -> GCP format)
+	normalizedRegion := s.normalizeGCPRegion(region)
+
 	return []string{
-		region,                      // Region level (e.g., asia-northeast3)
-		fmt.Sprintf("%s-a", region), // Zone level (e.g., asia-northeast3-a)
-		fmt.Sprintf("%s-b", region), // Zone level (e.g., asia-northeast3-b)
-		fmt.Sprintf("%s-c", region), // Zone level (e.g., asia-northeast3-c)
+		normalizedRegion,                      // Region level (e.g., us-east1)
+		fmt.Sprintf("%s-a", normalizedRegion), // Zone level (e.g., us-east1-a)
+		fmt.Sprintf("%s-b", normalizedRegion), // Zone level (e.g., us-east1-b)
+		fmt.Sprintf("%s-c", normalizedRegion), // Zone level (e.g., us-east1-c)
 	}
 }
 
@@ -979,4 +1044,264 @@ func (s *Service) deleteGCPGKECluster(ctx context.Context, credential *domain.Cr
 	}
 
 	return nil
+}
+
+// GetGKEVersions returns available Kubernetes versions for GKE in the specified region
+func (s *Service) GetGKEVersions(ctx context.Context, credential *domain.Credential, region string) ([]string, error) {
+	credentialID := credential.ID.String()
+	cacheKey := fmt.Sprintf("gke:versions:%s:%s", credentialID, region)
+
+	// 캐시에서 조회 시도
+	if s.cacheService != nil {
+		cachedValue, err := s.cacheService.Get(ctx, cacheKey)
+		if err == nil && cachedValue != nil {
+			if cachedVersions, ok := cachedValue.([]string); ok {
+				s.logger.Debug(ctx, "GKE versions retrieved from cache",
+					domain.NewLogField("credential_id", credentialID),
+					domain.NewLogField("region", region))
+				return cachedVersions, nil
+			}
+		}
+	}
+
+	containerService, projectID, err := s.getGCPContainerServiceAndProjectID(ctx, credential)
+	if err != nil {
+		return nil, err
+	}
+
+	// GetServerConfig API를 사용하여 사용 가능한 Kubernetes 버전 조회
+	// location은 region 또는 zone 형식일 수 있음
+	location := region
+	serverConfigPath := fmt.Sprintf("projects/%s/locations/%s", projectID, location)
+
+	serverConfig, err := containerService.Projects.Locations.GetServerConfig(serverConfigPath).Context(ctx).Do()
+	if err != nil {
+		return nil, domain.NewDomainError(domain.ErrCodeProviderError, fmt.Sprintf("failed to get GKE server config: %v", err), 502)
+	}
+
+	var versions []string
+	if serverConfig.ValidMasterVersions != nil {
+		// ValidMasterVersions는 사용 가능한 마스터 버전 목록
+		// GKE 버전은 정규화 없이 그대로 사용 (예: "1.28.5-gke.123")
+		// major.minor.patch가 동일하더라도 gke-specific suffix가 다를 수 있으므로 원본 유지
+		for _, version := range serverConfig.ValidMasterVersions {
+			if version != "" {
+				versions = append(versions, version)
+			}
+		}
+	}
+
+	// 중복 제거 및 정렬 (GKE suffix를 고려한 정렬)
+	versions = removeDuplicatesAndSortGKE(versions)
+
+	// 캐시에 저장 (1시간 TTL)
+	if s.cacheService != nil && len(versions) > 0 {
+		ttl := 1 * time.Hour
+		if err := s.cacheService.Set(ctx, cacheKey, versions, ttl); err != nil {
+			s.logger.Warn(ctx, "Failed to cache GKE versions",
+				domain.NewLogField("credential_id", credentialID),
+				domain.NewLogField("region", region),
+				domain.NewLogField("error", err))
+		}
+	}
+
+	s.logger.Info(ctx, "GKE versions retrieved",
+		domain.NewLogField("credential_id", credentialID),
+		domain.NewLogField("region", region),
+		domain.NewLogField("version_count", len(versions)))
+
+	return versions, nil
+}
+
+// removeDuplicatesAndSortGKE removes duplicates and sorts GKE versions in descending order
+// GKE versions are in format "major.minor.patch-gke.suffix" (e.g., "1.28.5-gke.123")
+// We keep the full version string including GKE suffix to avoid duplicates
+func removeDuplicatesAndSortGKE(versions []string) []string {
+	seen := make(map[string]bool)
+	var unique []string
+
+	for _, v := range versions {
+		if !seen[v] {
+			seen[v] = true
+			unique = append(unique, v)
+		}
+	}
+
+	// Sort in descending order (newest first) using semantic version comparison
+	// Compare base version (major.minor.patch) first, then GKE suffix
+	for i := 0; i < len(unique)-1; i++ {
+		for j := i + 1; j < len(unique); j++ {
+			if compareGKEVersions(unique[i], unique[j]) < 0 {
+				unique[i], unique[j] = unique[j], unique[i]
+			}
+		}
+	}
+
+	return unique
+}
+
+// compareGKEVersions compares two GKE version strings with GKE suffix
+// Format: "major.minor.patch-gke.suffix" (e.g., "1.28.5-gke.123")
+// Returns: -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2
+func compareGKEVersions(v1, v2 string) int {
+	// Split by "-" to separate base version and GKE suffix
+	parts1 := strings.SplitN(v1, "-", 2)
+	parts2 := strings.SplitN(v2, "-", 2)
+
+	base1 := parts1[0]
+	base2 := parts2[0]
+
+	// Compare base version (major.minor.patch)
+	baseComparison := compareBaseVersion(base1, base2)
+	if baseComparison != 0 {
+		return baseComparison
+	}
+
+	// If base versions are equal, compare GKE suffix
+	suffix1 := ""
+	suffix2 := ""
+	if len(parts1) > 1 {
+		suffix1 = parts1[1]
+	}
+	if len(parts2) > 1 {
+		suffix2 = parts2[1]
+	}
+
+	// Compare suffixes (e.g., "gke.123" vs "gke.100")
+	if suffix1 < suffix2 {
+		return -1
+	} else if suffix1 > suffix2 {
+		return 1
+	}
+
+	return 0
+}
+
+// compareBaseVersion compares base version strings (major.minor.patch)
+func compareBaseVersion(v1, v2 string) int {
+	parts1 := strings.Split(v1, ".")
+	parts2 := strings.Split(v2, ".")
+
+	maxLen := len(parts1)
+	if len(parts2) > maxLen {
+		maxLen = len(parts2)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		var num1, num2 int
+		if i < len(parts1) {
+			fmt.Sscanf(parts1[i], "%d", &num1)
+		}
+		if i < len(parts2) {
+			fmt.Sscanf(parts2[i], "%d", &num2)
+		}
+
+		if num1 < num2 {
+			return -1
+		} else if num1 > num2 {
+			return 1
+		}
+	}
+
+	return 0
+}
+
+// GetGCPAvailabilityZones returns available zones for the specified region
+func (s *Service) GetGCPAvailabilityZones(ctx context.Context, credential *domain.Credential, region string) ([]string, error) {
+	credentialID := credential.ID.String()
+	cacheKey := fmt.Sprintf("gcp:availability-zones:%s:%s", credentialID, region)
+
+	if s.cacheService != nil {
+		cachedValue, err := s.cacheService.Get(ctx, cacheKey)
+		if err == nil && cachedValue != nil {
+			if cachedZones, ok := cachedValue.([]string); ok {
+				s.logger.Debug(ctx, "GCP zones retrieved from cache",
+					domain.NewLogField("credential_id", credentialID),
+					domain.NewLogField("region", region))
+				return cachedZones, nil
+			}
+		}
+	}
+
+	credData, err := s.credentialService.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to decrypt credential: %v", err), 500)
+	}
+
+	jsonData, err := json.Marshal(credData)
+	if err != nil {
+		return nil, domain.NewDomainError(domain.ErrCodeInternalError, fmt.Sprintf("failed to marshal credential data: %v", err), 500)
+	}
+
+	computeService, err := compute.NewService(ctx, option.WithCredentialsJSON(jsonData))
+	if err != nil {
+		return nil, s.providerErrorConverter.ConvertGCPError(err, "create GCP compute service")
+	}
+
+	projectID, ok := credData["project_id"].(string)
+	if !ok {
+		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, "project_id not found in credential", 400)
+	}
+
+	// Normalize region format (AWS format -> GCP format)
+	normalizedRegion := s.normalizeGCPRegion(region)
+
+	// GCP Compute API의 filter 파라미터를 사용하여 region으로 필터링
+	// filter 형식: "region eq 'projects/{project}/regions/{region}'" 또는 zone name prefix 사용
+	// zone name은 "region-zone" 형식이므로 region prefix로 필터링
+	filter := fmt.Sprintf("name eq '.*%s-.*'", normalizedRegion)
+
+	zones, err := computeService.Zones.List(projectID).Filter(filter).Context(ctx).Do()
+	if err != nil {
+		// Filter가 지원되지 않거나 실패한 경우, 전체 목록을 가져온 후 필터링
+		zones, err = computeService.Zones.List(projectID).Context(ctx).Do()
+		if err != nil {
+			err = s.providerErrorConverter.ConvertGCPError(err, "get GCP zones")
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	var regionZones []string
+	if zones != nil && zones.Items != nil {
+		for _, zone := range zones.Items {
+			if zone.Name == "" {
+				continue
+			}
+
+			zoneName := zone.Name
+			if strings.Contains(zoneName, "/") {
+				parts := strings.Split(zoneName, "/")
+				zoneName = parts[len(parts)-1]
+			}
+
+			// Region prefix로 필터링 (예: "us-east1-a"는 "us-east1" region에 속함)
+			// normalizedRegion을 사용하여 필터링
+			if strings.HasPrefix(zoneName, normalizedRegion+"-") {
+				regionZones = append(regionZones, zoneName)
+			}
+		}
+	}
+
+	if regionZones == nil {
+		regionZones = []string{}
+	}
+
+	if s.cacheService != nil && len(regionZones) > 0 {
+		ttl := 1 * time.Hour
+		if err := s.cacheService.Set(ctx, cacheKey, regionZones, ttl); err != nil {
+			s.logger.Warn(ctx, "Failed to cache GCP zones",
+				domain.NewLogField("credential_id", credentialID),
+				domain.NewLogField("region", region),
+				domain.NewLogField("error", err))
+		}
+	}
+
+	s.logger.Info(ctx, "GCP zones retrieved",
+		domain.NewLogField("credential_id", credentialID),
+		domain.NewLogField("region", region),
+		domain.NewLogField("zone_count", len(regionZones)))
+
+	return regionZones, nil
 }

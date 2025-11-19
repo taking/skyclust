@@ -4,6 +4,7 @@ import (
 	"skyclust/internal/domain"
 	"skyclust/internal/shared/handlers"
 	"skyclust/internal/shared/readability"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -98,7 +99,7 @@ func (h *Handler) registerHandler(req domain.CreateUserRequest) handlers.Handler
 		ctx := h.EnrichContextWithRequestMetadata(c)
 		_ = ctx // Register는 context를 받지 않으므로 사용하지 않음 (향후 개선 시 사용)
 
-		user, token, err := h.authService.Register(req)
+		user, accessToken, refreshToken, err := h.authService.Register(req)
 		if err != nil {
 			h.HandleError(c, err, "register")
 			return
@@ -106,8 +107,11 @@ func (h *Handler) registerHandler(req domain.CreateUserRequest) handlers.Handler
 
 		h.logUserRegistrationSuccess(c, user)
 		h.Created(c, gin.H{
-			"token": token,
-			"user":  user,
+			"access_token":  accessToken,
+			"refresh_token": refreshToken,
+			"expires_in":    int(h.getJWTExpiry().Seconds()),
+			"token_type":    "Bearer",
+			"user":          user,
 		}, readability.SuccessMsgUserCreated)
 	}
 }
@@ -150,7 +154,7 @@ func (h *Handler) loginHandler(req struct {
 		clientIP := c.ClientIP()
 		userAgent := c.GetHeader("User-Agent")
 
-		user, token, err := h.authService.LoginWithContext(req.Email, req.Password, clientIP, userAgent)
+		user, accessToken, refreshToken, err := h.authService.LoginWithContext(req.Email, req.Password, clientIP, userAgent)
 		if err != nil {
 			h.HandleError(c, err, "login")
 			return
@@ -158,8 +162,11 @@ func (h *Handler) loginHandler(req struct {
 
 		h.logUserLoginSuccess(c, user)
 		h.OK(c, gin.H{
-			"token": token,
-			"user":  user,
+			"access_token":  accessToken,
+			"refresh_token": refreshToken,
+			"expires_in":    int(h.getJWTExpiry().Seconds()),
+			"token_type":    "Bearer",
+			"user":          user,
 		}, readability.SuccessMsgLoginSuccess)
 	}
 }
@@ -271,6 +278,103 @@ func (h *Handler) getSessionHandler() handlers.HandlerFunc {
 			"active":   user.IsActive(),
 		}, "Session retrieved successfully")
 	}
+}
+
+// RefreshToken: Refresh Token을 사용하여 새로운 Access Token과 Refresh Token을 발급합니다
+func (h *Handler) RefreshToken(c *gin.Context) {
+	handler := h.Compose(
+		h.refreshTokenHandler(struct {
+			RefreshToken string `json:"refresh_token" binding:"required"`
+		}{}),
+		h.PublicDecorators("refresh_token")...,
+	)
+
+	handler(c)
+}
+
+// refreshTokenHandler: Refresh Token 핵심 비즈니스 로직을 처리합니다
+func (h *Handler) refreshTokenHandler(req struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}) handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			RefreshToken string `json:"refresh_token" binding:"required"`
+		}
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "refresh_token")
+			return
+		}
+
+		if h.authService == nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeServiceUnavailable, "Authentication service is not available", 503), "refresh_token")
+			return
+		}
+
+		accessToken, refreshToken, err := h.authService.RefreshToken(req.RefreshToken)
+		if err != nil {
+			h.HandleError(c, err, "refresh_token")
+			return
+		}
+
+		h.OK(c, gin.H{
+			"access_token":  accessToken,
+			"refresh_token": refreshToken,
+			"expires_in":    int(h.getJWTExpiry().Seconds()),
+			"token_type":    "Bearer",
+		}, "Token refreshed successfully")
+	}
+}
+
+// RevokeToken: Refresh Token을 무효화합니다
+func (h *Handler) RevokeToken(c *gin.Context) {
+	handler := h.Compose(
+		h.revokeTokenHandler(struct {
+			RefreshToken string `json:"refresh_token" binding:"required"`
+		}{}),
+		h.StandardCRUDDecorators("revoke_token")...,
+	)
+
+	handler(c)
+}
+
+// revokeTokenHandler: Refresh Token 무효화 핵심 비즈니스 로직을 처리합니다
+func (h *Handler) revokeTokenHandler(req struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}) handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			RefreshToken string `json:"refresh_token" binding:"required"`
+		}
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "revoke_token")
+			return
+		}
+
+		if h.authService == nil {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeServiceUnavailable, "Authentication service is not available", 503), "revoke_token")
+			return
+		}
+
+		err := h.authService.RevokeRefreshToken(req.RefreshToken)
+		if err != nil {
+			h.HandleError(c, err, "revoke_token")
+			return
+		}
+
+		h.OK(c, gin.H{
+			"message": "Refresh token revoked successfully",
+		}, "Token revoked successfully")
+	}
+}
+
+// getJWTExpiry: JWT 만료 시간을 가져옵니다 (helper method)
+func (h *Handler) getJWTExpiry() time.Duration {
+	// Try to get expiry from auth service if it implements the interface
+	if expiryGetter, ok := h.authService.(interface{ GetJWTExpiry() time.Duration }); ok {
+		return expiryGetter.GetJWTExpiry()
+	}
+	// Default to 15 minutes if not available
+	return 15 * time.Minute
 }
 
 // Me: 현재 사용자 정보를 반환합니다 (데코레이터 패턴 사용)

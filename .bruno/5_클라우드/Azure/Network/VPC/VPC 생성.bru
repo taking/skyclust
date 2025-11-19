@@ -23,7 +23,7 @@ body:json {
     "credential_id": "{{azure_credentialsId}}",
     "name": "skyclust-vnet-{{$timestamp}}",
     "description": "Skyclust Azure Virtual Network",
-    "location": "eastus",
+    "region": "eastus",
     "resource_group": "skyclust-rg",
     "address_space": [
       "10.0.0.0/16"
@@ -67,7 +67,7 @@ docs {
   - `credential_id`: Azure credential ID (필수)
   - `name`: Virtual Network 이름 (필수)
   - `description`: 설명 (선택)
-  - `location`: Azure 리전 (필수, 예: "eastus", "westus2", "koreacentral")
+  - `region`: Azure 리전 (필수, 예: "eastus", "westus2", "koreacentral")
   - `resource_group`: Azure Resource Group 이름 (필수)
   - `address_space`: 주소 공간 CIDR 블록 배열 (선택, 예: ["10.0.0.0/16"])
   - `tags`: 리소스 태그 (선택)
@@ -99,4 +99,3 @@ docs {
   2. **Address Space**: CIDR 블록은 Azure에서 사용 가능한 범위여야 합니다
   3. **비용**: Virtual Network 자체는 무료입니다
 }
-

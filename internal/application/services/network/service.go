@@ -513,7 +513,8 @@ func (s *Service) getNCPVPC(ctx context.Context, credential *domain.Credential, 
 
 // createAzureVPC: Azure Virtual Network를 생성합니다
 func (s *Service) createAzureVPC(ctx context.Context, credential *domain.Credential, req CreateVPCRequest) (*VPCInfo, error) {
-	creds, err := s.extractAzureCredentials(ctx, credential)
+	// Extract Azure credentials with resource group from request
+	creds, err := s.extractAzureCredentials(ctx, credential, req.ResourceGroup)
 	if err != nil {
 		return nil, err
 	}
@@ -523,13 +524,22 @@ func (s *Service) createAzureVPC(ctx context.Context, credential *domain.Credent
 		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, ErrMsgResourceGroupRequired, 400)
 	}
 
-	// Location is required for Azure
+	// Region is required for Azure
 	if req.Region == "" {
 		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, ErrMsgRegionRequiredAzure, 400)
 	}
 
-	// CIDR block is required for Azure
-	if req.CIDRBlock == "" {
+	// CIDR block or address space is required for Azure
+	// Priority: 1) address_space array, 2) cidr_block
+	var addressPrefixes []*string
+	if len(req.AddressSpace) > 0 {
+		addressPrefixes = make([]*string, len(req.AddressSpace))
+		for i, addr := range req.AddressSpace {
+			addressPrefixes[i] = to.Ptr(addr)
+		}
+	} else if req.CIDRBlock != "" {
+		addressPrefixes = []*string{to.Ptr(req.CIDRBlock)}
+	} else {
 		return nil, domain.NewDomainError(domain.ErrCodeValidationFailed, ErrMsgCIDRBlockRequired, 400)
 	}
 
@@ -547,7 +557,7 @@ func (s *Service) createAzureVPC(ctx context.Context, credential *domain.Credent
 		Location: to.Ptr(req.Region),
 		Properties: &armnetwork.VirtualNetworkPropertiesFormat{
 			AddressSpace: &armnetwork.AddressSpace{
-				AddressPrefixes: []*string{to.Ptr(req.CIDRBlock)},
+				AddressPrefixes: addressPrefixes,
 			},
 		},
 	}
@@ -598,7 +608,7 @@ func (s *Service) createAzureVPC(ctx context.Context, credential *domain.Credent
 	s.logger.Info(ctx, "Azure Virtual Network creation completed",
 		domain.NewLogField("vpc_name", req.Name),
 		domain.NewLogField("resource_group", creds.ResourceGroup),
-		domain.NewLogField("location", req.Region))
+		domain.NewLogField("region", req.Region))
 
 	// 캐시 무효화: VPC 목록 캐시 삭제
 	credentialID := credential.ID.String()

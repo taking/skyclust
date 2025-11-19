@@ -1,0 +1,54 @@
+meta {
+  name: AWS 리전 조회
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/kubernetes/metadata/regions?credential_id={{aws_credentialsId}}
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{aws_credentialsId}}
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # AWS 리전 조회
+  
+  AWS에서 사용 가능한 리전 목록을 조회합니다.
+  
+  ## Query Parameters
+  
+  - `credential_id`: AWS credential ID (필수)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "regions": [
+        "us-east-1",
+        "us-west-2",
+        "ap-northeast-3",
+        "ap-southeast-1"
+      ]
+    },
+    "message": "AWS regions retrieved successfully",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
+  }
+  ```
+}
+

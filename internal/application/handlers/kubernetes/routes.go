@@ -21,6 +21,7 @@ func SetupRoutes(router *gin.RouterGroup, k8sService *kubernetesservice.Service,
 	// Path: /api/v1/{provider}/kubernetes/clusters
 	router.POST("/clusters", handler.CreateCluster)
 	router.GET("/clusters", handler.ListClusters)
+	router.POST("/clusters/batch", handler.BatchListClusters)
 	router.GET("/clusters/:name", handler.GetCluster)
 	router.DELETE("/clusters/:name", handler.DeleteCluster)
 	router.GET("/clusters/:name/kubeconfig", handler.GetKubeconfig)
@@ -59,14 +60,23 @@ func SetupRoutes(router *gin.RouterGroup, k8sService *kubernetesservice.Service,
 	router.GET("/clusters/:name/nodes/:node/ssh", handler.GetNodeSSHConfig)
 	router.POST("/clusters/:name/nodes/:node/ssh/execute", handler.ExecuteNodeCommand)
 
-	// Metadata endpoints (AWS only)
+	// Metadata endpoints
 	// Path: /api/v1/{provider}/kubernetes/metadata
 	if provider == "aws" {
 		router.GET("/metadata/versions", handler.GetEKSVersions)
 		router.GET("/metadata/regions", handler.GetAWSRegions)
 		router.GET("/metadata/availability-zones", handler.GetAvailabilityZones)
 		router.GET("/metadata/instance-types", handler.GetInstanceTypes)
+		router.GET("/metadata/instance-type-offerings", handler.GetInstanceTypeOfferings)
 		router.GET("/metadata/ami-types", handler.GetEKSAmitTypes)
 		router.GET("/metadata/gpu-quota", handler.CheckGPUQuota)
+		router.GET("/metadata/cpu-quota", handler.CheckCPUQuota)
+	} else if provider == "gcp" {
+		router.GET("/metadata/versions", handler.GetGKEVersions)
+		router.GET("/metadata/availability-zones", handler.GetAvailabilityZones)
+	} else if provider == "azure" {
+		router.GET("/metadata/versions", handler.GetAKSVersions)
+		router.GET("/metadata/availability-zones", handler.GetAvailabilityZones)
+		router.GET("/metadata/vm-sizes", handler.GetVMSizes)
 	}
 }

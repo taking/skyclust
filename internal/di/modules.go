@@ -119,6 +119,7 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 	hasher := security.NewBcryptHasher(12) // Use bcrypt with cost 12
 	encryptor := security.NewAESEncryptor([]byte(config.EncryptionKey))
 	blacklist := cache.NewTokenBlacklist(redisClient)
+	refreshTokenStore := cache.NewRefreshTokenStore(redisClient)
 
 	// Create messaging bus (shared across services)
 	// Use provided messaging bus if available, otherwise fallback to LocalBus
@@ -137,6 +138,13 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 	// Create RBACService first (needed by AuthService)
 	rbacService := rbacservice.NewService(repos.RBACRepository)
 
+	// Get refresh token expiry and rotation settings from config
+	refreshTokenExpiry := config.RefreshTokenExpiry
+	if refreshTokenExpiry == 0 {
+		refreshTokenExpiry = 7 * 24 * time.Hour // Default 7 days
+	}
+	enableRotation := config.EnableTokenRotation
+
 	// Create AuthService
 	authService := authservice.NewService(
 		repos.UserRepository,
@@ -144,8 +152,11 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 		rbacService,
 		hasher,
 		blacklist,
+		refreshTokenStore,
 		config.JWTSecret,
 		config.JWTExpiry,
+		refreshTokenExpiry,
+		enableRotation,
 	)
 
 	// Create UserService with domain service
@@ -194,7 +205,7 @@ func NewServiceModule(repos *RepositoryContainer, db *gorm.DB, config ServiceCon
 	// Create WorkspaceService with event publisher and domain service
 	workspaceEventPublisher := messaging.NewPublisher(messagingBus, logger.DefaultLogger.GetLogger())
 	workspaceDomainService := domainModule.GetContainer().WorkspaceDomainService
-	workspaceService := workspaceservice.NewService(repos.WorkspaceRepository, workspaceDomainService, repos.UserRepository, eventService, repos.AuditLogRepository, workspaceEventPublisher)
+	workspaceService := workspaceservice.NewService(repos.WorkspaceRepository, workspaceDomainService, repos.UserRepository, repos.CredentialRepository, eventService, repos.AuditLogRepository, workspaceEventPublisher)
 
 	// Create NotificationService
 	notificationService := notificationservice.NewService(
@@ -300,12 +311,14 @@ func (m *ServiceModule) GetContainer() *ServiceContainer {
 
 // ServiceConfig holds service configuration
 type ServiceConfig struct {
-	JWTSecret     string
-	JWTExpiry     time.Duration
-	EncryptionKey string
-	RedisClient   interface{}   // Redis client for TokenBlacklist
-	Cache         cache.Cache   // Cache for OIDC state storage
-	MessagingBus  messaging.Bus // Optional: messaging bus (NATS or LocalBus)
+	JWTSecret          string
+	JWTExpiry          time.Duration
+	RefreshTokenExpiry time.Duration
+	EnableTokenRotation bool
+	EncryptionKey      string
+	RedisClient        interface{}   // Redis client for TokenBlacklist and RefreshTokenStore
+	Cache              cache.Cache  // Cache for OIDC state storage
+	MessagingBus       messaging.Bus // Optional: messaging bus (NATS or LocalBus)
 }
 
 // DomainModule initializes domain service dependencies

@@ -5,14 +5,14 @@ meta {
 }
 
 put {
-  url: {{baseUrl}}/api/{{apiVersion}}/azure/network/subnets/{{azureSubnetId}}?credential_id={{azure_credentialsId}}&location=eastus
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/network/subnets/{{azureSubnetId}}?credential_id={{azure_credentialsId}}&region=eastus
   body: json
   auth: bearer
 }
 
 params:query {
   credential_id: {{azure_credentialsId}}
-  location: eastus
+  region: eastus
 }
 
 auth:bearer {
@@ -47,7 +47,7 @@ docs {
   ## Query Parameters
   
   - `credential_id`: Azure credential ID (필수)
-  - `location`: Azure 리전 (필수, 예: "eastus")
+  - `region`: Azure 리전 (필수, 예: "eastus")
   
   ## Request Body
   

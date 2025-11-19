@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"github.com/google/uuid"
 )
 
@@ -13,4 +14,5 @@ type CredentialRepository interface {
 	Update(credential *Credential) error
 	Delete(id uuid.UUID) error
 	DeleteByWorkspaceID(workspaceID uuid.UUID) error
+	CountByWorkspaceID(ctx context.Context, workspaceID string) (int64, error)
 }

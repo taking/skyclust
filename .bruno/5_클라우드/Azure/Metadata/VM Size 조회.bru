@@ -1,0 +1,59 @@
+meta {
+  name: VM Size 조회
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/kubernetes/metadata/vm-sizes?credential_id={{azure_credentialsId}}&region=eastus
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{azure_credentialsId}}
+  region: eastus
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # VM Size 조회
+  
+  지정된 Azure 리전에서 사용 가능한 VM Size 목록을 조회합니다. AKS 노드 풀 생성 시 사용할 수 있는 VM Size를 확인할 수 있습니다.
+  
+  ## Query Parameters
+  
+  - `credential_id`: Azure credential ID (필수)
+  - `region`: Azure 리전 (필수, 예: eastus, westus2)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "vm_sizes": [
+        "Standard_A1",
+        "Standard_A2",
+        "Standard_D2s_v3",
+        "Standard_D4s_v3",
+        "Standard_DS1_v2",
+        "Standard_DS2_v2"
+      ]
+    },
+    "message": "Azure VM sizes retrieved successfully",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
+  }
+  ```
+}
+
+

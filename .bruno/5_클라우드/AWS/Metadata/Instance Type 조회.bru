@@ -1,0 +1,67 @@
+meta {
+  name: Instance Type 조회
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/kubernetes/metadata/instance-types?credential_id={{aws_credentialsId}}&region=ap-northeast-3
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{aws_credentialsId}}
+  region: ap-northeast-3
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Instance Type 조회
+  
+  지정된 AWS 리전에서 사용 가능한 EC2 인스턴스 타입 목록을 조회합니다. GPU 지원 여부 정보도 포함됩니다.
+  
+  ## Query Parameters
+  
+  - `credential_id`: AWS credential ID (필수)
+  - `region`: AWS 리전 (필수)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "instance_types": [
+        {
+          "instance_type": "t3.medium",
+          "vcpu": 2,
+          "memory_in_mib": 4096,
+          "architecture": "x86_64",
+          "has_gpu": false,
+          "gpu_count": 0
+        },
+        {
+          "instance_type": "g4dn.xlarge",
+          "vcpu": 4,
+          "memory_in_mib": 16384,
+          "architecture": "x86_64",
+          "has_gpu": true,
+          "gpu_count": 1
+        }
+      ]
+    },
+    "message": "Instance types retrieved successfully",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
+  }
+  ```
+}

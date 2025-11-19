@@ -5,14 +5,14 @@ meta {
 }
 
 delete {
-  url: {{baseUrl}}/api/{{apiVersion}}/azure/kubernetes/clusters/{{aksClusterName}}?credential_id={{azure_credentialsId}}&location={{aksLocation}}
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/kubernetes/clusters/{{aksClusterName}}?credential_id={{azure_credentialsId}}&region=eastus
   body: none
   auth: bearer
 }
 
 params:query {
   credential_id: {{azure_credentialsId}}
-  location: {{aksLocation}}
+  region: eastus
 }
 
 auth:bearer {
@@ -56,4 +56,3 @@ docs {
   3. **복구 불가**: 삭제된 클러스터는 복구할 수 없음
   4. **비용**: 삭제 중에도 노드 VM 비용이 발생할 수 있음
 }
-

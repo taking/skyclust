@@ -80,7 +80,7 @@ type ListVPCsRequest struct {
 	Page  int `json:"page,omitempty" form:"page" validate:"omitempty,min=1"`
 	Limit int `json:"limit,omitempty" form:"limit" validate:"omitempty,min=1,max=100"`
 	// Sorting parameters
-	SortBy    string `json:"sort_by,omitempty" form:"sort_by"`                          // name, state, created_at
+	SortBy    string `json:"sort_by,omitempty" form:"sort_by"` // name, state, created_at
 	SortOrder string `json:"sort_order,omitempty" form:"sort_order" validate:"omitempty,oneof=asc desc"`
 	// Filtering parameters
 	Search string `json:"search,omitempty" form:"search"` // Search in name, description
@@ -88,8 +88,8 @@ type ListVPCsRequest struct {
 
 // ListVPCsResponse represents the response after listing VPCs
 type ListVPCsResponse struct {
-	VPCs []VPCInfo `json:"vpcs"`
-	Total int64    `json:"total,omitempty"` // Total count after filtering (before pagination)
+	VPCs  []VPCInfo `json:"vpcs"`
+	Total int64     `json:"total,omitempty"` // Total count after filtering (before pagination)
 }
 
 // ListSubnetsRequest represents a request to list subnets
@@ -103,7 +103,7 @@ type ListSubnetsRequest struct {
 	Page  int `json:"page,omitempty" form:"page" validate:"omitempty,min=1"`
 	Limit int `json:"limit,omitempty" form:"limit" validate:"omitempty,min=1,max=100"`
 	// Sorting parameters
-	SortBy    string `json:"sort_by,omitempty" form:"sort_by"`                          // name, state, cidr_block, created_at
+	SortBy    string `json:"sort_by,omitempty" form:"sort_by"` // name, state, cidr_block, created_at
 	SortOrder string `json:"sort_order,omitempty" form:"sort_order" validate:"omitempty,oneof=asc desc"`
 	// Filtering parameters
 	Search string `json:"search,omitempty" form:"search"` // Search in name, description, cidr_block
@@ -126,7 +126,7 @@ type ListSecurityGroupsRequest struct {
 	Page  int `json:"page,omitempty" form:"page" validate:"omitempty,min=1"`
 	Limit int `json:"limit,omitempty" form:"limit" validate:"omitempty,min=1,max=100"`
 	// Sorting parameters
-	SortBy    string `json:"sort_by,omitempty" form:"sort_by"`                          // name, created_at
+	SortBy    string `json:"sort_by,omitempty" form:"sort_by"` // name, created_at
 	SortOrder string `json:"sort_order,omitempty" form:"sort_order" validate:"omitempty,oneof=asc desc"`
 	// Filtering parameters
 	Search string `json:"search,omitempty" form:"search"` // Search in name, description
@@ -146,7 +146,9 @@ type CreateVPCRequest struct {
 	Name              string            `json:"name" validate:"required,min=1,max=255"`
 	Description       string            `json:"description,omitempty"`
 	CIDRBlock         string            `json:"cidr_block,omitempty"`          // Optional for GCP subnet mode
-	Region            string            `json:"region,omitempty"`              // Optional for GCP (Global resource)
+	AddressSpace      []string          `json:"address_space,omitempty"`       // Azure specific: address space array (e.g., ["10.0.0.0/16"])
+	Region            string            `json:"region,omitempty"`              // Required for AWS/Azure, Optional for GCP (Global resource)
+	ResourceGroup     string            `json:"resource_group,omitempty"`      // Azure specific: Resource Group name
 	ProjectID         string            `json:"project_id,omitempty"`          // GCP specific
 	AutoCreateSubnets *bool             `json:"auto_create_subnets,omitempty"` // GCP specific
 	RoutingMode       string            `json:"routing_mode,omitempty"`        // GCP specific

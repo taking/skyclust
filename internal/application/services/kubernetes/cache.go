@@ -15,6 +15,18 @@ const (
 // Default TTL for Kubernetes cache
 const defaultK8sTTL = 5 * time.Minute
 
+// Cache TTL strategies for different data types
+var (
+	// ClusterListTTL: 클러스터 목록 캐시 TTL (5분)
+	ClusterListTTL = 5 * time.Minute
+	// ClusterDetailTTL: 클러스터 상세 정보 캐시 TTL (3분)
+	ClusterDetailTTL = 3 * time.Minute
+	// MetadataTTL: 메타데이터 캐시 TTL (30분)
+	MetadataTTL = 30 * time.Minute
+	// QuotaTTL: Quota 정보 캐시 TTL (10분)
+	QuotaTTL = 10 * time.Minute
+)
+
 // buildKubernetesClusterListKey builds a cache key for Kubernetes cluster lists
 // Format: list:kubernetes:{provider}:{credential_id}:{region}
 func buildKubernetesClusterListKey(provider, credentialID, region string) string {

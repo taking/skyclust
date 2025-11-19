@@ -157,8 +157,37 @@ func (h *Handler) getWorkspaceHandler() handlers.HandlerFunc {
 			return
 		}
 
+		// Response DTO 생성 (credential_count, member_count 포함)
+		response := gin.H{
+			"id":             workspace.ID,
+			"name":           workspace.Name,
+			"description":   workspace.Description,
+			"owner_id":       workspace.OwnerID,
+			"settings":       workspace.Settings,
+			"created_at":     workspace.CreatedAt,
+			"updated_at":     workspace.UpdatedAt,
+			"is_active":      workspace.Active,
+		}
+		
+		// Settings에서 counts 추출하여 별도 필드로 추가
+		if workspace.Settings != nil {
+			if credentialCount, ok := workspace.Settings["credential_count"].(int64); ok {
+				response["credential_count"] = credentialCount
+			} else {
+				response["credential_count"] = int64(0)
+			}
+			if memberCount, ok := workspace.Settings["member_count"].(int64); ok {
+				response["member_count"] = memberCount
+			} else {
+				response["member_count"] = int64(0)
+			}
+		} else {
+			response["credential_count"] = int64(0)
+			response["member_count"] = int64(0)
+		}
+
 		h.setTelemetryAttributes(span, userID, workspace.ID, workspace.Name, "get_workspace")
-		h.OK(c, workspace, "Workspace retrieved successfully")
+		h.OK(c, response, "Workspace retrieved successfully")
 	}
 }
 

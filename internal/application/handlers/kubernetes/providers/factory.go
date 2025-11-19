@@ -14,6 +14,7 @@ type ProviderHandler interface {
 	// Cluster management
 	CreateCluster(c *gin.Context)
 	ListClusters(c *gin.Context)
+	BatchListClusters(c *gin.Context)
 	GetCluster(c *gin.Context)
 	DeleteCluster(c *gin.Context)
 	GetKubeconfig(c *gin.Context)
@@ -47,13 +48,18 @@ type ProviderHandler interface {
 	GetNodeSSHConfig(c *gin.Context)
 	ExecuteNodeCommand(c *gin.Context)
 
-	// Metadata endpoints (AWS only, other providers return NotImplemented)
-	GetEKSVersions(c *gin.Context)
-	GetAWSRegions(c *gin.Context)
+	// Metadata endpoints
+	GetEKSVersions(c *gin.Context)   // AWS only
+	GetGKEVersions(c *gin.Context)   // GCP only
+	GetAKSVersions(c *gin.Context)   // Azure only
+	GetAWSRegions(c *gin.Context)    // AWS only
 	GetAvailabilityZones(c *gin.Context)
-	GetInstanceTypes(c *gin.Context)
-	GetEKSAmitTypes(c *gin.Context)
-	CheckGPUQuota(c *gin.Context)
+	GetInstanceTypes(c *gin.Context) // AWS only
+	GetInstanceTypeOfferings(c *gin.Context) // AWS only
+	GetEKSAmitTypes(c *gin.Context)  // AWS only
+	CheckGPUQuota(c *gin.Context)    // AWS only
+	CheckCPUQuota(c *gin.Context)    // AWS only
+	GetVMSizes(c *gin.Context)       // Azure only
 }
 
 // Factory creates and manages provider-specific Kubernetes handlers

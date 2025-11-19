@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // Handler handles Kubernetes-related HTTP requests using improved patterns
@@ -120,6 +121,49 @@ func (h *Handler) listClustersHandler() handlers.HandlerFunc {
 		page, limit := h.ParsePageLimitParams(c)
 		total := int64(len(clusters.Clusters))
 		h.BuildPaginatedResponse(c, clusters.Clusters, page, limit, total, "Clusters retrieved successfully")
+	}
+}
+
+// BatchListClusters handles batch listing clusters from multiple credentials and regions
+func (h *Handler) BatchListClusters(c *gin.Context) {
+	handler := h.Compose(
+		h.batchListClustersHandler(),
+		h.StandardCRUDDecorators("batch_list_clusters")...,
+	)
+
+	handler(c)
+}
+
+// batchListClustersHandler is the core business logic for batch listing clusters
+func (h *Handler) batchListClustersHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		var req kubernetesservice.BatchListClustersRequest
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "batch_list_clusters")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "batch_list_clusters")
+			return
+		}
+
+		h.LogInfo(c, "Batch cluster listing requested",
+			zap.String("user_id", userID.String()),
+			zap.Int("query_count", len(req.Queries)))
+
+		result, err := h.k8sService.BatchListClusters(c.Request.Context(), req, h.credentialService)
+		if err != nil {
+			h.HandleError(c, err, "batch_list_clusters")
+			return
+		}
+
+		h.LogInfo(c, "Batch cluster listing completed",
+			zap.String("user_id", userID.String()),
+			zap.Int("total_clusters", result.Total))
+
+		h.Success(c, http.StatusOK, result, "Batch clusters retrieved successfully")
 	}
 }
 

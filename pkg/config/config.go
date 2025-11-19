@@ -66,11 +66,13 @@ type DatabaseConfig struct {
 
 // SecurityConfig holds security configuration
 type SecurityConfig struct {
-	JWTSecret     string        `json:"jwt_secret" yaml:"jwt_secret"`
-	JWTExpiration time.Duration `json:"jwt_expiration" yaml:"jwt_expiration"`
-	JWTIssuer     string        `json:"jwt_issuer" yaml:"jwt_issuer"`
-	BCryptCost    int           `json:"bcrypt_cost" yaml:"bcrypt_cost"`
-	EncryptionKey string        `json:"encryption_key" yaml:"encryption_key"`
+	JWTSecret          string        `json:"jwt_secret" yaml:"jwt_secret"`
+	JWTExpiration      time.Duration `json:"jwt_expiration" yaml:"jwt_expiration"`           // Access Token expiration
+	RefreshTokenExpiry time.Duration `json:"refresh_token_expiry" yaml:"refresh_token_expiry"` // Refresh Token expiration
+	JWTIssuer          string        `json:"jwt_issuer" yaml:"jwt_issuer"`
+	BCryptCost         int           `json:"bcrypt_cost" yaml:"bcrypt_cost"`
+	EncryptionKey      string        `json:"encryption_key" yaml:"encryption_key"`
+	EnableTokenRotation bool         `json:"enable_token_rotation" yaml:"enable_token_rotation"` // Enable refresh token rotation
 }
 
 // EncryptionConfig holds encryption configuration
@@ -485,11 +487,13 @@ func GetDefaultConfig() *Config {
 			MinConns: 5,
 		},
 		Security: SecurityConfig{
-			JWTSecret:     "your-secret-key",
-			JWTExpiration: 24 * time.Hour,
-			JWTIssuer:     "skyclust",
-			BCryptCost:    12,
-			EncryptionKey: "your-32-byte-encryption-key-here",
+			JWTSecret:          "your-secret-key",
+			JWTExpiration:      24 * time.Hour,
+			RefreshTokenExpiry:  7 * 24 * time.Hour, // 7 days
+			JWTIssuer:          "skyclust",
+			BCryptCost:         12,
+			EncryptionKey:      "your-32-byte-encryption-key-here",
+			EnableTokenRotation: true,
 		},
 		Logging: LoggingConfig{
 			Level:      "info",

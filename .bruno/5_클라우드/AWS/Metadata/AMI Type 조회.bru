@@ -1,0 +1,67 @@
+meta {
+  name: AMI Type 조회
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/aws/kubernetes/metadata/ami-types?credential_id={{aws_credentialsId}}
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{aws_credentialsId}}
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # AMI Type 조회
+  
+  EKS에서 지원하는 AMI 타입 목록을 조회합니다.
+  
+  ## Query Parameters
+  
+  - `credential_id`: AWS credential ID (필수)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "ami_types": [
+        "AL2023_x86_64_STANDARD",
+        "AL2023_x86_64_NVIDIA",
+        "AL2_x86_64",
+        "AL2_x86_64_GPU",
+        "BOTTLEROCKET_ARM_64",
+        "BOTTLEROCKET_x86_64",
+        "CUSTOM"
+      ]
+    },
+    "message": "EKS AMI types retrieved successfully",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
+  }
+  ```
+  
+  ## AMI Type 설명
+  
+  - `AL2023_x86_64_STANDARD`: Amazon Linux 2023 Standard (x86_64)
+  - `AL2023_x86_64_NVIDIA`: Amazon Linux 2023 with NVIDIA drivers (GPU 지원)
+  - `AL2_x86_64`: Amazon Linux 2 (x86_64)
+  - `AL2_x86_64_GPU`: Amazon Linux 2 with GPU support
+  - `BOTTLEROCKET_ARM_64`: Bottlerocket OS (ARM64)
+  - `BOTTLEROCKET_x86_64`: Bottlerocket OS (x86_64)
+  - `CUSTOM`: 사용자 정의 AMI
+}
+

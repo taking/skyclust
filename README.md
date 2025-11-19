@@ -7,13 +7,14 @@ SkyClust는 Clean Architecture 기반의 멀티 클라우드 통합 관리 플�
 ### 핵심 기능
 - **멀티 클라우드 지원**: AWS, GCP, Azure, NCP (Naver Cloud Platform)
 - **워크스페이스 기반 멀티 테넌트**: 완전한 워크스페이스 격리 및 자원 관리
-- **Kubernetes 클러스터 관리**: AWS EKS, GCP GKE 통합 관리
+- **Kubernetes 클러스터 관리**: AWS EKS, GCP GKE, Azure AKS 통합 관리
 - **VM 오케스트레이션**: 프로바이더 간 인스턴스 생명주기 관리
-- **네트워크 관리**: VPC, 서브넷, 보안 그룹 자동 생성/관리
+- **네트워크 관리**: VPC/VNet, 서브넷, 보안 그룹/NSG 자동 생성/관리 (AWS, GCP, Azure)
+- **리소스 그룹 관리**: Azure Resource Group 관리
 - **비용 분석**: AWS Cost Explorer, GCP Cloud Billing API 통합, VM 및 Kubernetes 비용 통합 분석
-- **자격증명 관리**: 워크스페이스 기반 자격증명 관리 및 AES 암호화
+- **자격증명 관리**: 워크스페이스 기반 자격증명 관리 및 AES 암호화 (JSON Input 및 File Upload 지원)
 - **OIDC 인증**: 사용자 정의 OIDC 프로바이더 등록 및 SSO 지원
-- **실시간 모니터링**: Server-Sent Events (SSE) 기반 라이브 업데이트
+- **실시간 모니터링**: Server-Sent Events (SSE) 기반 라이브 업데이트 (압축 및 배치 지원)
 - **알림 시스템**: 실시간 알림 및 사용자 설정 관리
 - **감사 로깅**: 포괄적인 활동 추적 및 내보내기
 - **데이터 내보내기**: CSV, JSON 형식 지원

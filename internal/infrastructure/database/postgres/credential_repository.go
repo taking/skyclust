@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"skyclust/internal/domain"
 	"skyclust/pkg/logger"
 
@@ -89,4 +90,23 @@ func (r *credentialRepository) Delete(id uuid.UUID) error {
 		return err
 	}
 	return nil
+}
+
+// CountByWorkspaceID: 워크스페이스의 자격증명 개수를 조회합니다
+func (r *credentialRepository) CountByWorkspaceID(ctx context.Context, workspaceID string) (int64, error) {
+	var count int64
+	workspaceUUID, err := uuid.Parse(workspaceID)
+	if err != nil {
+		return 0, err
+	}
+	
+	if err := r.db.WithContext(ctx).
+		Model(&domain.Credential{}).
+		Where("workspace_id = ?", workspaceUUID).
+		Count(&count).Error; err != nil {
+		logger.Errorf("Failed to count credentials by workspace ID: %v", err)
+		return 0, err
+	}
+	
+	return count, nil
 }

@@ -1,0 +1,77 @@
+meta {
+  name: 토큰 갱신
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/{{apiVersion}}/auth/refresh
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "refresh_token": "{{refresh_token}}"
+  }
+}
+
+docs {
+  # 토큰 갱신 (Refresh Token)
+
+  Refresh Token을 사용하여 새로운 Access Token과 Refresh Token을 발급합니다.
+
+  ## 요청
+
+  - **Method**: `POST`
+  - **URL**: `/api/v1/auth/refresh`
+  - **Body**:
+    ```json
+    {
+      "refresh_token": "your-refresh-token"
+    }
+    ```
+
+  ## 응답
+
+  ### 성공 (200 OK)
+
+  ```json
+  {
+    "success": true,
+    "data": {
+      "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "refresh_token": "new-refresh-token-string",
+      "expires_in": 900,
+      "token_type": "Bearer"
+    },
+    "request_id": "uuid",
+    "timestamp": "2025-01-14T12:00:00Z"
+  }
+  ```
+
+  ### 실패 (401 Unauthorized)
+
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "UNAUTHORIZED",
+      "message": "invalid or expired refresh token"
+    },
+    "request_id": "uuid",
+    "timestamp": "2025-01-14T12:00:00Z"
+  }
+  ```
+
+  ## 참고
+
+  - Refresh Token은 7일 동안 유효합니다.
+  - 토큰 Rotation이 활성화된 경우, 이전 Refresh Token은 자동으로 무효화됩니다.
+  - Access Token은 15분(Production) 또는 24시간(Development) 동안 유효합니다.
+}
+

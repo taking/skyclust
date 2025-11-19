@@ -3,6 +3,7 @@ package providers
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	kubernetesservice "skyclust/internal/application/services/kubernetes"
 	"skyclust/internal/domain"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // AWSHandler handles AWS EKS-related HTTP requests
@@ -111,6 +113,48 @@ func (h *AWSHandler) listClustersHandler() handlers.HandlerFunc {
 		page, limit := h.ParsePageLimitParams(c)
 		total := int64(len(clusters.Clusters))
 		h.BuildPaginatedResponse(c, clusters.Clusters, page, limit, total, "Clusters retrieved successfully")
+	}
+}
+
+// BatchListClusters handles batch listing clusters from multiple credentials and regions
+func (h *AWSHandler) BatchListClusters(c *gin.Context) {
+	handler := h.Compose(
+		h.batchListClustersHandler(),
+		h.StandardCRUDDecorators("batch_list_clusters")...,
+	)
+
+	handler(c)
+}
+
+func (h *AWSHandler) batchListClustersHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		var req kubernetesservice.BatchListClustersRequest
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "batch_list_clusters")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "batch_list_clusters")
+			return
+		}
+
+		h.LogInfo(c, "Batch cluster listing requested",
+			zap.String("user_id", userID.String()),
+			zap.Int("query_count", len(req.Queries)))
+
+		result, err := h.GetK8sService().BatchListClusters(c.Request.Context(), req, h.GetCredentialService())
+		if err != nil {
+			h.HandleError(c, err, "batch_list_clusters")
+			return
+		}
+
+		h.LogInfo(c, "Batch cluster listing completed",
+			zap.String("user_id", userID.String()),
+			zap.Int("total_clusters", result.Total))
+
+		h.Success(c, http.StatusOK, result, "Batch clusters retrieved successfully")
 	}
 }
 
@@ -767,6 +811,16 @@ func (h *AWSHandler) getEKSVersionsHandler() handlers.HandlerFunc {
 	}
 }
 
+// GetGKEVersions handles GKE versions listing (GCP only)
+func (h *AWSHandler) GetGKEVersions(c *gin.Context) {
+	h.NotImplemented(c, "get_gke_versions")
+}
+
+// GetAKSVersions handles AKS versions listing (Azure only)
+func (h *AWSHandler) GetAKSVersions(c *gin.Context) {
+	h.NotImplemented(c, "get_aks_versions")
+}
+
 // GetAWSRegions handles AWS regions listing using decorator pattern
 func (h *AWSHandler) GetAWSRegions(c *gin.Context) {
 	handler := h.Compose(
@@ -1045,6 +1099,95 @@ func (h *AWSHandler) logGPUQuotaCheckAttempt(c *gin.Context, userID uuid.UUID, c
 	})
 }
 
+// GetVMSizes handles VM sizes listing (Azure only)
+func (h *AWSHandler) GetVMSizes(c *gin.Context) {
+	h.NotImplemented(c, "get_vm_sizes")
+}
+
+// CheckCPUQuota handles CPU quota checking using decorator pattern
+func (h *AWSHandler) CheckCPUQuota(c *gin.Context) {
+	handler := h.Compose(
+		h.checkCPUQuotaHandler(),
+		h.StandardCRUDDecorators("check_cpu_quota")...,
+	)
+
+	handler(c)
+}
+
+// checkCPUQuotaHandler: CPU quota 확인 핵심 비즈니스 로직을 처리합니다
+func (h *AWSHandler) checkCPUQuotaHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
+		if err != nil {
+			h.HandleError(c, err, "check_cpu_quota")
+			return
+		}
+
+		region := c.Query("region")
+		if region == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region is required", 400), "check_cpu_quota")
+			return
+		}
+
+		// instance_types는 필수 (쉼표로 구분된 목록)
+		instanceTypesStr := c.Query("instance_types")
+		if instanceTypesStr == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "instance_types is required (comma-separated)", 400), "check_cpu_quota")
+			return
+		}
+
+		instanceTypes := strings.Split(instanceTypesStr, ",")
+		for i := range instanceTypes {
+			instanceTypes[i] = strings.TrimSpace(instanceTypes[i])
+		}
+
+		// required_count는 선택적 (기본값: 1)
+		requiredCount := int32(1)
+		if reqCountStr := c.Query("required_count"); reqCountStr != "" {
+			var reqCount int32
+			if _, err := fmt.Sscanf(reqCountStr, "%d", &reqCount); err == nil && reqCount > 0 {
+				requiredCount = reqCount
+			}
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "check_cpu_quota")
+			return
+		}
+
+		h.logCPUQuotaCheckAttempt(c, userID, credential.ID, region, instanceTypes, requiredCount)
+
+		availability, err := h.GetK8sService().CheckCPUQuotaAvailability(c.Request.Context(), credential, region, instanceTypes, requiredCount)
+		if err != nil {
+			h.HandleError(c, err, "check_cpu_quota")
+			return
+		}
+
+		h.logCPUQuotaCheckSuccess(c, userID, availability.Available)
+		h.OK(c, gin.H{
+			"availability": availability,
+		}, "CPU quota checked successfully")
+	}
+}
+
+func (h *AWSHandler) logCPUQuotaCheckAttempt(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID, region string, instanceTypes []string, requiredCount int32) {
+	h.LogBusinessEvent(c, "cpu_quota_check_attempted", userID.String(), "", map[string]interface{}{
+		"operation":      "check_cpu_quota",
+		"provider":       domain.ProviderAWS,
+		"credential_id":   credentialID.String(),
+		"region":         region,
+		"instance_types": instanceTypes,
+		"required_count": requiredCount,
+	})
+}
+
+func (h *AWSHandler) logCPUQuotaCheckSuccess(c *gin.Context, userID uuid.UUID, available bool) {
+	h.LogBusinessEvent(c, "cpu_quota_checked", userID.String(), "", map[string]interface{}{
+		"available": available,
+	})
+}
+
 func (h *AWSHandler) logGPUQuotaCheckSuccess(c *gin.Context, userID uuid.UUID, available bool) {
 	h.LogBusinessEvent(c, "gpu_quota_checked", userID.String(), "", map[string]interface{}{
 		"operation": "check_gpu_quota",
@@ -1080,6 +1223,74 @@ func (h *AWSHandler) logEKSAmitTypesGetAttempt(c *gin.Context, userID uuid.UUID)
 func (h *AWSHandler) logEKSAmitTypesGetSuccess(c *gin.Context, userID uuid.UUID, count int) {
 	h.LogBusinessEvent(c, "eks_ami_types_retrieved", userID.String(), "", map[string]interface{}{
 		"operation": "get_eks_ami_types",
+		"provider":  domain.ProviderAWS,
+		"count":     count,
+	})
+}
+
+// GetInstanceTypeOfferings handles instance type offerings listing using decorator pattern
+func (h *AWSHandler) GetInstanceTypeOfferings(c *gin.Context) {
+	handler := h.Compose(
+		h.getInstanceTypeOfferingsHandler(),
+		h.StandardCRUDDecorators("get_instance_type_offerings")...,
+	)
+	handler(c)
+}
+
+func (h *AWSHandler) getInstanceTypeOfferingsHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAWS)
+		if err != nil {
+			h.HandleError(c, err, "get_instance_type_offerings")
+			return
+		}
+
+		region := c.Query("region")
+		if region == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region is required", 400), "get_instance_type_offerings")
+			return
+		}
+
+		instanceType := c.Query("instance_type")
+		if instanceType == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "instance_type is required", 400), "get_instance_type_offerings")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_instance_type_offerings")
+			return
+		}
+
+		h.logInstanceTypeOfferingsGetAttempt(c, userID, credential.ID, region, instanceType)
+
+		offerings, err := h.GetK8sService().GetInstanceTypeOfferings(c.Request.Context(), credential, region, instanceType)
+		if err != nil {
+			h.HandleError(c, err, "get_instance_type_offerings")
+			return
+		}
+
+		h.logInstanceTypeOfferingsGetSuccess(c, userID, len(offerings))
+		h.OK(c, gin.H{
+			"offerings": offerings,
+		}, "Instance type offerings retrieved successfully")
+	}
+}
+
+func (h *AWSHandler) logInstanceTypeOfferingsGetAttempt(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID, region, instanceType string) {
+	h.LogBusinessEvent(c, "instance_type_offerings_get_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "get_instance_type_offerings",
+		"provider":      domain.ProviderAWS,
+		"credential_id": credentialID.String(),
+		"region":        region,
+		"instance_type": instanceType,
+	})
+}
+
+func (h *AWSHandler) logInstanceTypeOfferingsGetSuccess(c *gin.Context, userID uuid.UUID, count int) {
+	h.LogBusinessEvent(c, "instance_type_offerings_retrieved", userID.String(), "", map[string]interface{}{
+		"operation": "get_instance_type_offerings",
 		"provider":  domain.ProviderAWS,
 		"count":     count,
 	})

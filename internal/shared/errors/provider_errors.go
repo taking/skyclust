@@ -3,6 +3,7 @@ package errors
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"skyclust/internal/domain"
@@ -42,21 +43,76 @@ func (c *ProviderErrorConverter) ConvertAWSError(err error, operation string) er
 				if strings.Contains(errorMsg, "ec2:DescribeRegions") {
 					return domain.NewDomainError(domain.ErrCodeForbidden, "AWS IAM permission required: The credential does not have permission to list AWS regions. Please add 'ec2:DescribeRegions' permission to the IAM user or role.", 403)
 				}
+				if strings.Contains(errorMsg, "ec2:DescribeInstanceTypeOfferings") {
+					return domain.NewDomainError(domain.ErrCodeForbidden, "AWS IAM permission required: The credential does not have permission to describe instance type offerings. Please add 'ec2:DescribeInstanceTypeOfferings' permission to the IAM user or role.", 403)
+				}
+				if strings.Contains(errorMsg, "ec2:DescribeInstanceTypes") {
+					return domain.NewDomainError(domain.ErrCodeForbidden, "AWS IAM permission required: The credential does not have permission to describe instance types. Please add 'ec2:DescribeInstanceTypes' permission to the IAM user or role.", 403)
+				}
 				if strings.Contains(errorMsg, "eks:") {
 					return domain.NewDomainError(domain.ErrCodeForbidden, "AWS IAM permission required: The credential does not have permission to access EKS. Please add the required EKS permissions to the IAM user or role.", 403)
 				}
 				if strings.Contains(errorMsg, "ec2:DeleteVpc") {
 					return domain.NewDomainError(domain.ErrCodeForbidden, "Permission denied for VPC deletion. Please check the 'ec2:DeleteVpc' permission in your IAM policy.", 403)
 				}
-				return domain.NewDomainError(domain.ErrCodeForbidden, "AWS IAM permission required: The credential does not have the required permissions. Please check your IAM policy.", 403)
+				// More specific error message with the actual error details
+				return domain.NewDomainError(domain.ErrCodeForbidden, fmt.Sprintf("AWS IAM permission required: The credential does not have the required permissions. Error: %s. Please check your IAM policy.", errorMsg), 403)
 			}
-			return domain.NewDomainError(domain.ErrCodeForbidden, "Access denied to AWS resources", 403)
+			return domain.NewDomainError(domain.ErrCodeForbidden, fmt.Sprintf("Access denied to AWS resources: %s", errorMsg), 403)
 		case strings.Contains(errorMsg, "NoSuchEntity") || strings.Contains(errorMsg, "InvalidVpcID.NotFound"):
 			return domain.NewDomainError(domain.ErrCodeNotFound, "AWS resource not found", 404)
+		case strings.Contains(errorMsg, "InvalidSubnetID.NotFound"):
+			// Extract subnet ID from error message using regex to handle quotes
+			subnetID := ""
+			// Use regex to extract subnet ID (handles both quoted and unquoted formats)
+			// Matches: subnet-xxxxx (alphanumeric and hyphens)
+			subnetRegex := regexp.MustCompile(`subnet-[a-z0-9]+`)
+			matches := subnetRegex.FindString(errorMsg)
+			if matches != "" {
+				subnetID = matches
+			}
+			errorDetails := map[string]interface{}{
+				"error_type": "InvalidSubnetID.NotFound",
+				"message":     "The specified subnet does not exist in the specified region. Please verify the subnet ID and region.",
+			}
+			if subnetID != "" {
+				errorDetails["subnet_id"] = subnetID
+			}
+			err := domain.NewDomainError(
+				domain.ErrCodeValidationFailed,
+				fmt.Sprintf("Subnet not found: %s. Please verify that the subnet ID exists in the specified region (%s) and that you have the correct permissions.", subnetID, operation),
+				400,
+			)
+			for key, value := range errorDetails {
+				err = err.WithDetails(key, value)
+			}
+			return err
 		case strings.Contains(errorMsg, "InvalidParameterValue"):
 			return domain.NewDomainError(domain.ErrCodeBadRequest, "Invalid AWS parameter", 400)
 		case strings.Contains(errorMsg, "ThrottlingException"):
 			return domain.NewDomainError(domain.ErrCodeProviderQuota, "AWS API rate limit exceeded", 429)
+		case strings.Contains(errorMsg, "VcpuLimitExceeded"):
+			// Extract instance type and vCPU limit from error message if available
+			var details map[string]interface{}
+			if strings.Contains(errorMsg, "vCPU limit of") {
+				// Try to extract limit value
+				details = map[string]interface{}{
+					"error_type": "VcpuLimitExceeded",
+					"message":     "You have requested more vCPU capacity than your current vCPU limit allows. Please visit http://aws.amazon.com/contact-us/ec2-request to request an adjustment to this limit.",
+					"help_url":    "http://aws.amazon.com/contact-us/ec2-request",
+				}
+			}
+			err := domain.NewDomainError(
+				domain.ErrCodeProviderQuota,
+				"You have requested more vCPU capacity than your current vCPU limit allows. Please visit http://aws.amazon.com/contact-us/ec2-request to request an adjustment to this limit.",
+				400,
+			)
+			if details != nil {
+				for key, value := range details {
+					err = err.WithDetails(key, value)
+				}
+			}
+			return err
 		case strings.Contains(errorMsg, "DependencyViolation"):
 			// Special handling for VPC deletion errors
 			// Extract VPC ID from operation context if available

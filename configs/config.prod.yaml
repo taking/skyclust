@@ -36,5 +36,7 @@ logging:
 security:
   jwt_secret: "A3/TRVASQZkXqqt27ZnT7m/UboTfizF26/CaUSlZHLOlfQ2h8Gd1xzdIeuQnSeQX" # openssl rand -base64 48
   encryption_key: "99ek1nyT4IJ4W2tUvks9TvHqIdNn7rKZd2kcgQ9gSuf2xoKAaW3BnDl73iMpTwsc" # openssl rand -base64 48
-  jwt_expiration: 15m # 15 minutes for better security
+  jwt_expiration: 15m # Access Token expiration (15 minutes for better security)
+  refresh_token_expiry: 168h # Refresh Token expiration (7 days = 168 hours)
+  enable_token_rotation: true # Enable refresh token rotation
   jwt_issuer: "cmp"

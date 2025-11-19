@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/{{apiVersion}}/azure/network/subnets?credential_id={{azure_credentialsId}}&vpc_id={{azureVpcId}}&location=eastus
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/network/subnets?credential_id={{azure_credentialsId}}&vpc_id={{azureVpcId}}&region=eastus
   body: none
   auth: bearer
 }
@@ -13,7 +13,7 @@ get {
 params:query {
   credential_id: {{azure_credentialsId}}
   vpc_id: {{azureVpcId}}
-  location: eastus
+  region: eastus
 }
 
 auth:bearer {
@@ -53,7 +53,7 @@ docs {
   
   - `credential_id`: Azure credential ID (필수)
   - `vpc_id`: Virtual Network ID (선택, 특정 VNet의 Subnet만 조회)
-  - `location`: Azure 리전 (선택, 예: "eastus")
+  - `region`: Azure 리전 (선택, 예: "eastus")
   
   ## Response
   

@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // AzureHandler handles Azure AKS-related HTTP requests
@@ -122,6 +123,48 @@ func (h *AzureHandler) listClustersHandler() handlers.HandlerFunc {
 		page, limit := h.ParsePageLimitParams(c)
 		total := int64(len(clusters.Clusters))
 		h.BuildPaginatedResponse(c, clusters.Clusters, page, limit, total, "AKS clusters retrieved successfully")
+	}
+}
+
+// BatchListClusters handles batch listing clusters from multiple credentials and regions
+func (h *AzureHandler) BatchListClusters(c *gin.Context) {
+	handler := h.Compose(
+		h.batchListClustersHandler(),
+		h.StandardCRUDDecorators("batch_list_clusters")...,
+	)
+
+	handler(c)
+}
+
+func (h *AzureHandler) batchListClustersHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		var req kubernetesservice.BatchListClustersRequest
+		if err := h.ValidateRequest(c, &req); err != nil {
+			h.HandleError(c, err, "batch_list_clusters")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "batch_list_clusters")
+			return
+		}
+
+		h.LogInfo(c, "Batch cluster listing requested",
+			zap.String("user_id", userID.String()),
+			zap.Int("query_count", len(req.Queries)))
+
+		result, err := h.GetK8sService().BatchListClusters(c.Request.Context(), req, h.GetCredentialService())
+		if err != nil {
+			h.HandleError(c, err, "batch_list_clusters")
+			return
+		}
+
+		h.LogInfo(c, "Batch cluster listing completed",
+			zap.String("user_id", userID.String()),
+			zap.Int("total_clusters", result.Total))
+
+		h.Success(c, http.StatusOK, result, "Batch clusters retrieved successfully")
 	}
 }
 
@@ -461,9 +504,78 @@ func (h *AzureHandler) ExecuteNodeCommand(c *gin.Context) {
 	h.NotImplemented(c, "execute_node_command")
 }
 
+// GetAKSVersions handles AKS versions listing using decorator pattern
+func (h *AzureHandler) GetAKSVersions(c *gin.Context) {
+	handler := h.Compose(
+		h.getAKSVersionsHandler(),
+		h.StandardCRUDDecorators("get_aks_versions")...,
+	)
+	handler(c)
+}
+
+func (h *AzureHandler) getAKSVersionsHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
+		if err != nil {
+			h.HandleError(c, err, "get_aks_versions")
+			return
+		}
+
+		location := c.Query("region")
+		if location == "" {
+			location = c.Query("location") // Azure uses "location" instead of "region"
+		}
+		if location == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region or location is required", 400), "get_aks_versions")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_aks_versions")
+			return
+		}
+
+		h.logAKSVersionsGetAttempt(c, userID, credential.ID, location)
+
+		versions, err := h.GetK8sService().GetAKSVersions(c.Request.Context(), credential, location)
+		if err != nil {
+			h.HandleError(c, err, "get_aks_versions")
+			return
+		}
+
+		h.logAKSVersionsGetSuccess(c, userID, len(versions))
+		h.OK(c, gin.H{
+			"versions": versions,
+		}, "AKS versions retrieved successfully")
+	}
+}
+
+func (h *AzureHandler) logAKSVersionsGetAttempt(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID, location string) {
+	h.LogBusinessEvent(c, "aks_versions_get_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "get_aks_versions",
+		"provider":      domain.ProviderAzure,
+		"credential_id": credentialID.String(),
+		"location":      location,
+	})
+}
+
+func (h *AzureHandler) logAKSVersionsGetSuccess(c *gin.Context, userID uuid.UUID, count int) {
+	h.LogBusinessEvent(c, "aks_versions_retrieved", userID.String(), "", map[string]interface{}{
+		"operation": "get_aks_versions",
+		"provider":  domain.ProviderAzure,
+		"count":     count,
+	})
+}
+
 // GetEKSVersions: EKS 버전 목록 조회를 처리합니다 (AWS 전용)
 func (h *AzureHandler) GetEKSVersions(c *gin.Context) {
 	h.NotImplemented(c, "get_eks_versions")
+}
+
+// GetGKEVersions handles GKE versions listing (GCP only)
+func (h *AzureHandler) GetGKEVersions(c *gin.Context) {
+	h.NotImplemented(c, "get_gke_versions")
 }
 
 // GetAWSRegions: AWS 리전 목록 조회를 처리합니다 (AWS 전용)
@@ -471,14 +583,142 @@ func (h *AzureHandler) GetAWSRegions(c *gin.Context) {
 	h.NotImplemented(c, "get_aws_regions")
 }
 
-// GetAvailabilityZones: 가용 영역 목록 조회를 처리합니다 (AWS 전용)
+// GetAvailabilityZones handles availability zones listing for Azure
 func (h *AzureHandler) GetAvailabilityZones(c *gin.Context) {
-	h.NotImplemented(c, "get_availability_zones")
+	handler := h.Compose(
+		h.getAvailabilityZonesHandler(),
+		h.StandardCRUDDecorators("get_availability_zones")...,
+	)
+	handler(c)
+}
+
+func (h *AzureHandler) getAvailabilityZonesHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
+		if err != nil {
+			h.HandleError(c, err, "get_availability_zones")
+			return
+		}
+
+		location := c.Query("region")
+		if location == "" {
+			location = c.Query("location")
+		}
+		if location == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region or location is required", 400), "get_availability_zones")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_availability_zones")
+			return
+		}
+
+		h.logAvailabilityZonesGetAttempt(c, userID, credential.ID, location)
+
+		zones, err := h.GetK8sService().GetAzureAvailabilityZones(c.Request.Context(), credential, location)
+		if err != nil {
+			h.HandleError(c, err, "get_availability_zones")
+			return
+		}
+
+		h.logAvailabilityZonesGetSuccess(c, userID, len(zones))
+		h.OK(c, gin.H{
+			"zones": zones,
+		}, "Azure availability zones retrieved successfully")
+	}
+}
+
+func (h *AzureHandler) logAvailabilityZonesGetAttempt(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID, location string) {
+	h.LogBusinessEvent(c, "azure_zones_get_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "get_availability_zones",
+		"provider":      domain.ProviderAzure,
+		"credential_id": credentialID.String(),
+		"location":      location,
+	})
+}
+
+func (h *AzureHandler) logAvailabilityZonesGetSuccess(c *gin.Context, userID uuid.UUID, count int) {
+	h.LogBusinessEvent(c, "azure_zones_retrieved", userID.String(), "", map[string]interface{}{
+		"operation": "get_availability_zones",
+		"provider":  domain.ProviderAzure,
+		"count":     count,
+	})
+}
+
+// GetVMSizes handles Azure VM sizes listing using decorator pattern
+func (h *AzureHandler) GetVMSizes(c *gin.Context) {
+	handler := h.Compose(
+		h.getVMSizesHandler(),
+		h.StandardCRUDDecorators("get_vm_sizes")...,
+	)
+	handler(c)
+}
+
+func (h *AzureHandler) getVMSizesHandler() handlers.HandlerFunc {
+	return func(c *gin.Context) {
+		credential, err := h.GetCredentialFromRequest(c, h.GetCredentialService(), domain.ProviderAzure)
+		if err != nil {
+			h.HandleError(c, err, "get_vm_sizes")
+			return
+		}
+
+		location := c.Query("region")
+		if location == "" {
+			location = c.Query("location")
+		}
+		if location == "" {
+			h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region or location is required", 400), "get_vm_sizes")
+			return
+		}
+
+		userID, err := h.ExtractUserIDFromContext(c)
+		if err != nil {
+			h.HandleError(c, err, "get_vm_sizes")
+			return
+		}
+
+		h.logVMSizesGetAttempt(c, userID, credential.ID, location)
+
+		vmSizes, err := h.GetK8sService().GetAzureVMSizes(c.Request.Context(), credential, location)
+		if err != nil {
+			h.HandleError(c, err, "get_vm_sizes")
+			return
+		}
+
+		h.logVMSizesGetSuccess(c, userID, len(vmSizes))
+		h.OK(c, gin.H{
+			"vm_sizes": vmSizes,
+		}, "Azure VM sizes retrieved successfully")
+	}
+}
+
+func (h *AzureHandler) logVMSizesGetAttempt(c *gin.Context, userID uuid.UUID, credentialID uuid.UUID, location string) {
+	h.LogBusinessEvent(c, "azure_vm_sizes_get_attempted", userID.String(), "", map[string]interface{}{
+		"operation":     "get_vm_sizes",
+		"provider":      domain.ProviderAzure,
+		"credential_id": credentialID.String(),
+		"location":      location,
+	})
+}
+
+func (h *AzureHandler) logVMSizesGetSuccess(c *gin.Context, userID uuid.UUID, count int) {
+	h.LogBusinessEvent(c, "azure_vm_sizes_retrieved", userID.String(), "", map[string]interface{}{
+		"operation": "get_vm_sizes",
+		"provider":  domain.ProviderAzure,
+		"count":     count,
+	})
 }
 
 // GetInstanceTypes: 인스턴스 유형 목록 조회를 처리합니다 (AWS 전용)
 func (h *AzureHandler) GetInstanceTypes(c *gin.Context) {
 	h.NotImplemented(c, "get_instance_types")
+}
+
+// GetInstanceTypeOfferings: 인스턴스 타입별 사용 가능한 AZ 조회를 처리합니다 (AWS 전용)
+func (h *AzureHandler) GetInstanceTypeOfferings(c *gin.Context) {
+	h.NotImplemented(c, "get_instance_type_offerings")
 }
 
 // GetEKSAmitTypes: EKS AMI 유형 목록 조회를 처리합니다 (AWS 전용)
@@ -488,7 +728,12 @@ func (h *AzureHandler) GetEKSAmitTypes(c *gin.Context) {
 
 // CheckGPUQuota: GPU 할당량 확인을 처리합니다 (AWS 전용)
 func (h *AzureHandler) CheckGPUQuota(c *gin.Context) {
-	h.NotImplemented(c, "check_gpu_quota")
+	h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotImplemented, "GPU quota check is only available for AWS", 501), "check_gpu_quota")
+}
+
+// CheckCPUQuota: CPU 할당량 확인을 처리합니다 (AWS 전용)
+func (h *AzureHandler) CheckCPUQuota(c *gin.Context) {
+	h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotImplemented, "CPU quota check is only available for AWS", 501), "check_cpu_quota")
 }
 
 // Logging helper methods

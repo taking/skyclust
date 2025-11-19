@@ -28,10 +28,13 @@ type UserService interface {
 
 // AuthService defines the interface for authentication business logic
 type AuthService interface {
-	Register(req CreateUserRequest) (*User, string, error)                               // Returns user and JWT token
-	Login(email, password string) (*User, string, error)                                 // Returns user and JWT token
-	LoginWithContext(email, password, clientIP, userAgent string) (*User, string, error) // Returns user and JWT token with context
+	Register(req CreateUserRequest) (*User, string, string, error)                               // Returns user, access token, and refresh token
+	Login(email, password string) (*User, string, string, error)                                 // Returns user, access token, and refresh token
+	LoginWithContext(email, password, clientIP, userAgent string) (*User, string, string, error) // Returns user, access token, and refresh token with context
 	ValidateToken(token string) (*User, error)
+	RefreshToken(refreshToken string) (string, string, error) // Returns new access token and refresh token
+	RevokeRefreshToken(refreshToken string) error
+	RevokeAllUserTokens(ctx context.Context, userID uuid.UUID) error
 	Logout(userID uuid.UUID, token string) error
 }
 

@@ -32,9 +32,6 @@ func (s *Service) getAWSCostExplorerClient(ctx context.Context, credential *doma
 	}
 
 	region := defaultRegion
-	if r, ok := credData["region"].(string); ok && r != "" {
-		region = r
-	}
 	if region == "" {
 		region = AWSDefaultRegion
 	}

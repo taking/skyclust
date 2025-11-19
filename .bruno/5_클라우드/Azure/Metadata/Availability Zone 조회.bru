@@ -1,0 +1,56 @@
+meta {
+  name: Availability Zone 조회
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/{{apiVersion}}/azure/kubernetes/metadata/availability-zones?credential_id={{azure_credentialsId}}&region=eastus
+  body: none
+  auth: bearer
+}
+
+params:query {
+  credential_id: {{azure_credentialsId}}
+  region: eastus
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Availability Zone 조회
+  
+  지정된 Azure 리전에서 사용 가능한 Availability Zone 목록을 조회합니다.
+  
+  ## Query Parameters
+  
+  - `credential_id`: Azure credential ID (필수)
+  - `region`: Azure 리전 (필수, 예: eastus, westus2)
+  
+  ## Response
+  
+  ```json
+  {
+    "success": true,
+    "data": {
+      "zones": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    "message": "Azure availability zones retrieved successfully",
+    "request_id": "f6b6e4fa-20f6-4075-b762-7a0607683d61",
+    "timestamp": "2025-10-23T10:29:22.606589+09:00"
+  }
+  ```
+}
+
+

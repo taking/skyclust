@@ -235,6 +235,39 @@ type ListClustersResponse struct {
 	Clusters []BaseClusterInfo `json:"clusters"`
 }
 
+// BatchListClustersRequest represents a request to list clusters from multiple credentials and regions
+type BatchListClustersRequest struct {
+	Queries []BatchClusterQuery `json:"queries" validate:"required,min=1,dive"`
+}
+
+// BatchClusterQuery represents a single query in a batch request
+type BatchClusterQuery struct {
+	CredentialID  string `json:"credential_id" validate:"required,uuid"`
+	Region        string `json:"region" validate:"required"`
+	ResourceGroup string `json:"resource_group,omitempty"` // Azure-specific
+}
+
+// BatchListClustersResponse represents the response from a batch cluster listing request
+type BatchListClustersResponse struct {
+	Results []BatchClusterResult `json:"results"`
+	Total   int                  `json:"total"`
+}
+
+// BatchClusterResult represents the result of a single query in a batch request
+type BatchClusterResult struct {
+	CredentialID string            `json:"credential_id"`
+	Region       string            `json:"region"`
+	Provider     string            `json:"provider"`
+	Clusters     []BaseClusterInfo `json:"clusters"`
+	Error        *BatchError       `json:"error,omitempty"`
+}
+
+// BatchError represents an error for a single query in a batch request
+type BatchError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
 // GetClusterRequest represents a request to get cluster details
 type GetClusterRequest struct {
 	CredentialID string `json:"credential_id" validate:"required,uuid"`
@@ -273,19 +306,20 @@ type CreateNodePoolRequest struct {
 
 // CreateNodeGroupRequest represents a request to create an EKS node group
 type CreateNodeGroupRequest struct {
-	CredentialID  string                 `json:"credential_id" validate:"required,uuid"`
-	ClusterName   string                 `json:"cluster_name" validate:"required"`
-	Region        string                 `json:"region" validate:"required"`
-	NodeGroupName string                 `json:"name" validate:"required"` // Changed from node_group_name to name for frontend consistency
-	NodeRoleARN   string                 `json:"node_role_arn,omitempty"`  // Optional: 없으면 자동 생성 (arn:aws:iam::{accountId}:role/EKSNodeRole)
-	SubnetIDs     []string               `json:"subnet_ids" validate:"required,min=1"`
-	InstanceTypes []string               `json:"instance_types" validate:"required,min=1"`
-	ScalingConfig NodeGroupScalingConfig `json:"scaling_config" validate:"required"`
-	DiskSize      int32                  `json:"disk_size,omitempty"`
-	AMIType       string                 `json:"ami_type,omitempty"`      // EKS AMI Type (AL2023_x86_64_STANDARD, AL2023_x86_64_NVIDIA, etc.)
-	AMI           string                 `json:"ami,omitempty"`           // Deprecated: Use ami_type instead
-	CapacityType  string                 `json:"capacity_type,omitempty"` // ON_DEMAND, SPOT
-	Tags          map[string]string      `json:"tags,omitempty"`
+	CredentialID      string                 `json:"credential_id" validate:"required,uuid"`
+	ClusterName       string                 `json:"cluster_name" validate:"required"`
+	Region            string                 `json:"region" validate:"required"`
+	NodeGroupName     string                 `json:"name" validate:"required"`     // Changed from node_group_name to name for frontend consistency
+	NodeRoleARN       string                 `json:"node_role_arn,omitempty"`      // Optional: 없으면 자동 생성 (arn:aws:iam::{accountId}:role/EKSNodeRole)
+	AvailabilityZones []string               `json:"availability_zones,omitempty"` // Optional: 선택한 AZ 목록 (GPU instance type이 사용 가능한 AZ만)
+	SubnetIDs         []string               `json:"subnet_ids" validate:"required,min=1"`
+	InstanceTypes     []string               `json:"instance_types" validate:"required,min=1"`
+	ScalingConfig     NodeGroupScalingConfig `json:"scaling_config" validate:"required"`
+	DiskSize          int32                  `json:"disk_size,omitempty"`
+	AMIType           string                 `json:"ami_type,omitempty"`      // EKS AMI Type (AL2023_x86_64_STANDARD, AL2023_x86_64_NVIDIA, etc.)
+	AMI               string                 `json:"ami,omitempty"`           // Deprecated: Use ami_type instead
+	CapacityType      string                 `json:"capacity_type,omitempty"` // ON_DEMAND, SPOT
+	Tags              map[string]string      `json:"tags,omitempty"`
 }
 
 // NodeGroupScalingConfig represents scaling configuration for node group
@@ -860,12 +894,13 @@ type CreateAKSClusterRequest struct {
 	// 기본 정보 (필수)
 	CredentialID  string `json:"credential_id" validate:"required,uuid"`
 	Name          string `json:"name" validate:"required,min=1,max=63"`
-	Version       string `json:"version" validate:"required"`
+	Version       string `json:"version,omitempty"`            // 선택사항: 지정하지 않으면 지원되는 최신 버전 자동 선택
 	Location      string `json:"location" validate:"required"` // Azure location (e.g., "eastus")
 	ResourceGroup string `json:"resource_group" validate:"required"`
 
-	// 네트워크 설정 (필수)
-	Network *AKSNetworkConfig `json:"network" validate:"required"`
+	// 네트워크 설정 (선택)
+	// nil이면 Kubenet 모드로 자동 생성 (VNet/Subnet 자동 생성)
+	Network *AKSNetworkConfig `json:"network,omitempty"`
 
 	// 노드 풀 설정 (필수)
 	NodePool *AKSNodePoolConfig `json:"node_pool" validate:"required"`
@@ -879,13 +914,21 @@ type CreateAKSClusterRequest struct {
 
 // AKSNetworkConfig represents AKS network configuration
 type AKSNetworkConfig struct {
-	VirtualNetworkID string `json:"virtual_network_id" validate:"required"` // Azure Virtual Network ID
-	SubnetID         string `json:"subnet_id" validate:"required"`          // Azure Subnet ID
-	NetworkPlugin    string `json:"network_plugin,omitempty"`               // "azure" or "kubenet"
-	NetworkPolicy    string `json:"network_policy,omitempty"`               // "azure" or "calico"
-	PodCIDR          string `json:"pod_cidr,omitempty"`
-	ServiceCIDR      string `json:"service_cidr,omitempty"`
-	DNSServiceIP     string `json:"dns_service_ip,omitempty"`
+	// VirtualNetworkID: Azure Virtual Network ID (Azure CNI 모드일 때만 필수)
+	VirtualNetworkID string `json:"virtual_network_id,omitempty"`
+	// SubnetID: Azure Subnet ID (Azure CNI 모드일 때만 필수)
+	SubnetID string `json:"subnet_id,omitempty"`
+	// NetworkPlugin: "azure" (기존 VNet 사용) or "kubenet" (자동 생성, 기본값)
+	NetworkPlugin string `json:"network_plugin,omitempty"`
+	// NetworkPolicy: "azure" or "calico" (선택)
+	NetworkPolicy string `json:"network_policy,omitempty"`
+	// PodCIDR: Pod CIDR 블록 (Kubenet 모드일 때 선택)
+	PodCIDR string `json:"pod_cidr,omitempty"`
+	// ServiceCIDR: Service CIDR 블록 (선택)
+	ServiceCIDR string `json:"service_cidr,omitempty"`
+	// DNSServiceIP: DNS 서비스 IP (선택)
+	DNSServiceIP string `json:"dns_service_ip,omitempty"`
+	// DockerBridgeCIDR: Docker 브리지 CIDR (선택)
 	DockerBridgeCIDR string `json:"docker_bridge_cidr,omitempty"`
 }
 

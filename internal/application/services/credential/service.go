@@ -146,6 +146,18 @@ func (s *Service) GetCredentialByID(ctx context.Context, workspaceID, credential
 		return nil, domain.NewDomainError(domain.ErrCodeForbidden, "access denied", 403)
 	}
 
+	// Decrypt and mask credential data for response
+	decryptedData, err := s.DecryptCredentialData(ctx, credential.EncryptedData)
+	if err != nil {
+		// Log error but don't fail the request, just skip masking
+		logger.DefaultLogger.GetLogger().Warn("Failed to decrypt credential for masking",
+			zap.String("credential_id", credential.ID.String()),
+			zap.Error(err))
+	} else {
+		// Add masked data to credential
+		credential.MaskedData = domain.MaskCredentialData(decryptedData)
+	}
+
 	return credential, nil
 }
 
@@ -311,8 +323,33 @@ func min(a, b int) int {
 
 // validateGCPCredentialAccess: GCP 서비스 계정 접근 및 권한을 검증합니다 (GCP 특화 로직)
 func (s *Service) validateGCPCredentialAccess(ctx context.Context, data map[string]interface{}) error {
-	projectID := data["project_id"].(string)
-	clientEmail := data["client_email"].(string)
+	// project_id 안전하게 추출
+	projectIDValue, ok := data["project_id"]
+	if !ok {
+		return domain.NewDomainError(domain.ErrCodeValidationFailed, "GCP credentials require project_id", 400)
+	}
+	projectID, ok := projectIDValue.(string)
+	if !ok || projectID == "" {
+		return domain.NewDomainError(domain.ErrCodeValidationFailed, "GCP credentials require project_id to be a non-empty string", 400)
+	}
+
+	// client_email 안전하게 추출
+	clientEmailValue, ok := data["client_email"]
+	if !ok {
+		return domain.NewDomainError(domain.ErrCodeValidationFailed, "GCP credentials require client_email", 400)
+	}
+	clientEmail, ok := clientEmailValue.(string)
+	if !ok || clientEmail == "" {
+		return domain.NewDomainError(domain.ErrCodeValidationFailed, "GCP credentials require client_email to be a non-empty string", 400)
+	}
+
+	// GCP service account JSON의 필수 필드 확인
+	requiredFields := []string{"type", "private_key", "private_key_id", "client_id", "auth_uri", "token_uri"}
+	for _, field := range requiredFields {
+		if _, ok := data[field]; !ok {
+			return domain.NewDomainError(domain.ErrCodeValidationFailed, fmt.Sprintf("GCP service account JSON requires field: %s", field), 400)
+		}
+	}
 
 	// JSON을 직접 사용하여 GCP 클라이언트 생성
 	jsonData, err := json.Marshal(data)

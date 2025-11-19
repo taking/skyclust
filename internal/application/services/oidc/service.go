@@ -188,7 +188,9 @@ func (s *Service) ExchangeCode(ctx context.Context, provider, code, state string
 	}
 
 	// Generate JWT token using auth service
-	_, jwtToken, err := s.authService.Login(user.Username, "OIDC_USER") // Use dummy password for OIDC
+	// Note: OIDC login doesn't use password, so we use a dummy password
+	// The actual authentication was done via OIDC provider
+	_, accessToken, _, err := s.authService.Login(user.Username, "OIDC_USER") // Use dummy password for OIDC
 	if err != nil {
 		return nil, "", domain.NewDomainError(domain.ErrCodeInternalError, "failed to generate JWT token", 500)
 	}
@@ -207,7 +209,9 @@ func (s *Service) ExchangeCode(ctx context.Context, provider, code, state string
 	stateKey := fmt.Sprintf("oidc:state:%s", state)
 	_ = s.cacheService.Delete(ctx, stateKey)
 
-	return user, jwtToken, nil
+	// Return access token (refresh token is available but not used in OIDC flow currently)
+	// Frontend can use refresh token if needed
+	return user, accessToken, nil
 }
 
 // validateState: OIDC state 파라미터를 검증합니다

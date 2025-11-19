@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 
 	networkservice "skyclust/internal/application/services/network"
 	"skyclust/internal/domain"
@@ -23,6 +24,7 @@ type SyncWorker struct {
 	credentialRepo    domain.CredentialRepository
 	workspaceRepo     domain.WorkspaceRepository
 	cache             cache.Cache
+	redisClient       *redis.Client
 	eventPublisher    *messaging.Publisher
 	logger            *zap.Logger
 
@@ -58,12 +60,22 @@ func NewSyncWorker(
 		config.MaxConcurrency = 5
 	}
 
+	// Extract Redis client from cache service if available
+	var redisClient *redis.Client
+	if redisService, ok := cacheService.(*cache.RedisService); ok {
+		redisClient = redisService.GetClient()
+		logger.Info("Network sync worker initialized with Redis support for subscription tracking")
+	} else {
+		logger.Warn("Network sync worker initialized without Redis (subscription-based sync will be disabled)")
+	}
+
 	return &SyncWorker{
 		networkService:    networkService,
 		credentialService: credentialService,
 		credentialRepo:    credentialRepo,
 		workspaceRepo:     workspaceRepo,
 		cache:             cacheService,
+		redisClient:       redisClient,
 		eventPublisher:    messaging.NewPublisher(eventBus, logger),
 		logger:            logger,
 		syncInterval:      config.SyncInterval,
@@ -84,7 +96,9 @@ func (w *SyncWorker) Start(ctx context.Context) error {
 
 	w.logger.Info("Starting Network sync worker",
 		zap.Duration("sync_interval", w.syncInterval),
-		zap.Int("max_concurrency", w.maxConcurrency))
+		zap.Int("max_concurrency", w.maxConcurrency),
+		zap.Bool("subscription_based_sync", w.redisClient != nil),
+		zap.String("sync_mode", "priority-based"))
 
 	go w.syncLoop(ctx)
 
@@ -106,25 +120,39 @@ func (w *SyncWorker) Stop() {
 	w.logger.Info("Stopped Network sync worker")
 }
 
-// syncLoop runs the main synchronization loop
+// syncLoop runs the main synchronization loop with subscription-based priority scheduling
 func (w *SyncWorker) syncLoop(ctx context.Context) {
-	ticker := time.NewTicker(w.syncInterval)
-	defer ticker.Stop()
+	// Create separate tickers for different priorities
+	highPriorityTicker := time.NewTicker(1 * time.Minute)
+	mediumPriorityTicker := time.NewTicker(3 * time.Minute)
+	lowPriorityTicker := time.NewTicker(10 * time.Minute)
+	defer highPriorityTicker.Stop()
+	defer mediumPriorityTicker.Stop()
+	defer lowPriorityTicker.Stop()
 
-	// Initial sync
+	// Initial sync (all credentials)
 	w.syncAllCredentials(ctx)
+
+	// Track last sync time for each priority to avoid duplicate syncs
+	lastHighSync := make(map[string]time.Time)   // credential_id:region -> time
+	lastMediumSync := make(map[string]time.Time) // credential_id:region -> time
+	lastLowSync := make(map[string]time.Time)    // credential_id:region -> time
 
 	for {
 		select {
-		case <-ticker.C:
-			w.syncAllCredentials(ctx)
+		case <-highPriorityTicker.C:
+			w.syncWithPriority(ctx, PriorityHigh, lastHighSync)
+		case <-mediumPriorityTicker.C:
+			w.syncWithPriority(ctx, PriorityMedium, lastMediumSync)
+		case <-lowPriorityTicker.C:
+			w.syncWithPriority(ctx, PriorityLow, lastLowSync)
 		case <-w.stopCh:
 			return
 		}
 	}
 }
 
-// syncAllCredentials synchronizes VPCs for all active credentials
+// syncAllCredentials synchronizes VPCs for all active credentials (fallback for initial sync)
 func (w *SyncWorker) syncAllCredentials(ctx context.Context) {
 	w.logger.Debug("Starting sync for all credentials")
 
@@ -186,71 +214,220 @@ func (w *SyncWorker) syncAllCredentials(ctx context.Context) {
 	}
 
 	wg.Wait()
-	w.logger.Debug("Completed sync for all credentials")
+	w.logger.Debug("Completed initial sync for all credentials")
 }
 
-// syncCredential synchronizes VPCs for a specific credential
+// syncWithPriority synchronizes credentials based on subscription priority
+func (w *SyncWorker) syncWithPriority(ctx context.Context, priority SubscriptionPriority, lastSyncMap map[string]time.Time) {
+	startTime := time.Now()
+
+	// Get active subscriptions
+	subscriptions, err := w.getActiveSubscriptions(ctx)
+	if err != nil {
+		w.logger.Warn("Failed to get active subscriptions, falling back to default sync",
+			zap.String("priority", priority.String()),
+			zap.Error(err))
+		// Fallback to default sync if subscription tracking fails
+		if priority == PriorityLow {
+			w.syncAllCredentials(ctx)
+		}
+		return
+	}
+
+	// Log subscription statistics
+	totalSubscriptions := 0
+	for _, regions := range subscriptions {
+		for _, count := range regions {
+			totalSubscriptions += int(count)
+		}
+	}
+	w.logger.Debug("Subscription statistics",
+		zap.String("priority", priority.String()),
+		zap.Int("total_subscribed_credentials", len(subscriptions)),
+		zap.Int("total_active_subscriptions", totalSubscriptions))
+
+	// Get all active credentials
+	workspaces, err := w.workspaceRepo.List(ctx, 1000, 0)
+	if err != nil {
+		w.logger.Error("Failed to get workspaces for priority sync",
+			zap.Error(err))
+		return
+	}
+
+	var credentialsToSync []struct {
+		credential *domain.Credential
+		regions    []string
+	}
+
+	for _, workspace := range workspaces {
+		workspaceID, err := uuid.Parse(workspace.ID)
+		if err != nil {
+			continue
+		}
+
+		credentials, err := w.credentialRepo.GetByWorkspaceID(workspaceID)
+		if err != nil {
+			continue
+		}
+
+		for _, cred := range credentials {
+			if !cred.IsActive || (cred.Provider != "aws" && cred.Provider != "gcp" && cred.Provider != "azure" && cred.Provider != "ncp") {
+				continue
+			}
+
+			credentialID := cred.ID.String()
+			subscribedRegions := subscriptions[credentialID]
+
+			// Determine which regions to sync based on priority
+			var regionsToSync []string
+
+			if priority == PriorityLow {
+				// Low priority: sync all regions (including those without subscriptions)
+				// Use default regions as fallback
+				regionsToSync = w.getRegionsForProvider(cred.Provider)
+			} else {
+				// High/Medium priority: only sync subscribed regions
+				for region, count := range subscribedRegions {
+					subPriority := w.getSubscriptionPriority(count)
+					if subPriority == priority {
+						regionsToSync = append(regionsToSync, region)
+					}
+				}
+			}
+
+			if len(regionsToSync) > 0 {
+				credentialsToSync = append(credentialsToSync, struct {
+					credential *domain.Credential
+					regions    []string
+				}{
+					credential: cred,
+					regions:    regionsToSync,
+				})
+			}
+		}
+	}
+
+	if len(credentialsToSync) == 0 {
+		return
+	}
+
+	// Use semaphore to limit concurrent syncs
+	semaphore := make(chan struct{}, w.maxConcurrency)
+	var wg sync.WaitGroup
+
+	for _, item := range credentialsToSync {
+		wg.Add(1)
+		go func(credential *domain.Credential, regions []string) {
+			defer wg.Done()
+
+			// Acquire semaphore
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
+			credentialID := credential.ID.String()
+			for _, region := range regions {
+				// Check if we should skip this sync (avoid duplicate syncs)
+				syncKey := fmt.Sprintf("%s:%s", credentialID, region)
+				lastSync, exists := lastSyncMap[syncKey]
+				interval := w.getIntervalForPriority(priority)
+				if exists && time.Since(lastSync) < interval {
+					continue
+				}
+
+				w.syncCredentialRegion(ctx, credential, region)
+				lastSyncMap[syncKey] = time.Now()
+			}
+		}(item.credential, item.regions)
+	}
+
+	wg.Wait()
+
+	// Calculate statistics
+	totalRegions := 0
+	for _, item := range credentialsToSync {
+		totalRegions += len(item.regions)
+	}
+
+	duration := time.Since(startTime)
+
+	w.logger.Info("Completed priority sync",
+		zap.String("priority", priority.String()),
+		zap.Int("credentials_synced", len(credentialsToSync)),
+		zap.Int("total_regions_synced", totalRegions),
+		zap.Duration("sync_interval", w.getIntervalForPriority(priority)),
+		zap.Duration("sync_duration", duration),
+		zap.Int("total_active_subscriptions", totalSubscriptions))
+}
+
+// syncCredential synchronizes VPCs for a specific credential (uses default regions)
 func (w *SyncWorker) syncCredential(ctx context.Context, credential *domain.Credential) {
 	credentialID := credential.ID.String()
 	w.logger.Debug("Syncing Network VPCs for credential",
 		zap.String("provider", credential.Provider),
 		zap.String("credential_id", credentialID))
 
-	// Get regions for this credential/provider
+	// Get regions for this credential/provider (default regions)
 	regions := w.getRegionsForProvider(credential.Provider)
 
 	for _, region := range regions {
-		// Get cached VPCs
-		keyBuilder := cache.NewCacheKeyBuilder()
-		cacheKey := keyBuilder.BuildNetworkVPCListKey(credential.Provider, credentialID, region)
+		w.syncCredentialRegion(ctx, credential, region)
+	}
+}
 
-		var cachedVPCs networkservice.ListVPCsResponse
-		hasCache := false
-		if err := w.cache.Get(ctx, cacheKey, &cachedVPCs); err == nil {
-			hasCache = true
-		}
+// syncCredentialRegion synchronizes VPCs for a specific credential and region
+func (w *SyncWorker) syncCredentialRegion(ctx context.Context, credential *domain.Credential, region string) {
+	credentialID := credential.ID.String()
 
-		// Fetch current VPCs from CSP API
-		currentVPCs, err := w.networkService.ListVPCs(ctx, credential, networkservice.ListVPCsRequest{
-			Region: region,
-		})
-		if err != nil {
-			w.logger.Warn("Failed to list VPCs from CSP API",
-				zap.String("provider", credential.Provider),
-				zap.String("credential_id", credentialID),
-				zap.String("region", region),
-				zap.Error(err))
-			continue
-		}
+	// Get cached VPCs
+	keyBuilder := cache.NewCacheKeyBuilder()
+	cacheKey := keyBuilder.BuildNetworkVPCListKey(credential.Provider, credentialID, region)
 
-		// Compare with cached data and detect changes
-		if hasCache {
-			w.detectChanges(ctx, credential, region, &cachedVPCs, currentVPCs)
-		}
+	var cachedVPCs networkservice.ListVPCsResponse
+	hasCache := false
+	if err := w.cache.Get(ctx, cacheKey, &cachedVPCs); err == nil {
+		hasCache = true
+	}
 
-		// Update cache
-		if w.cache != nil {
-			ttl := cache.GetDefaultTTL(cache.ResourceNetwork)
-			if err := w.cache.Set(ctx, cacheKey, currentVPCs, ttl); err != nil {
-				w.logger.Warn("Failed to update cache after sync",
-					zap.String("provider", credential.Provider),
-					zap.String("credential_id", credentialID),
-					zap.String("region", region),
-					zap.Error(err))
-			}
-		}
+	// Fetch current VPCs from CSP API
+	currentVPCs, err := w.networkService.ListVPCs(ctx, credential, networkservice.ListVPCsRequest{
+		Region: region,
+	})
+	if err != nil {
+		w.logger.Warn("Failed to list VPCs from CSP API",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("region", region),
+			zap.Error(err))
+		return
+	}
 
-		// Publish list event for SSE subscribers
-		vpcData := map[string]interface{}{
-			"vpcs": currentVPCs.VPCs,
-		}
-		if err := w.eventPublisher.PublishVPCEvent(ctx, credential.Provider, credentialID, region, "list", vpcData); err != nil {
-			w.logger.Warn("Failed to publish VPC list event",
+	// Compare with cached data and detect changes
+	if hasCache {
+		w.detectChanges(ctx, credential, region, &cachedVPCs, currentVPCs)
+	}
+
+	// Update cache
+	if w.cache != nil {
+		ttl := cache.GetDefaultTTL(cache.ResourceNetwork)
+		if err := w.cache.Set(ctx, cacheKey, currentVPCs, ttl); err != nil {
+			w.logger.Warn("Failed to update cache after sync",
 				zap.String("provider", credential.Provider),
 				zap.String("credential_id", credentialID),
 				zap.String("region", region),
 				zap.Error(err))
 		}
+	}
+
+	// Publish list event for SSE subscribers
+	vpcData := map[string]interface{}{
+		"vpcs": currentVPCs.VPCs,
+	}
+	if err := w.eventPublisher.PublishVPCEvent(ctx, credential.Provider, credentialID, region, "list", vpcData); err != nil {
+		w.logger.Warn("Failed to publish VPC list event",
+			zap.String("provider", credential.Provider),
+			zap.String("credential_id", credentialID),
+			zap.String("region", region),
+			zap.Error(err))
 	}
 }
 

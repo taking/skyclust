@@ -1068,6 +1068,12 @@ func (h *Handler) updateSecurityGroupRulesHandler(req UpdateSecurityGroupRulesRe
 
 func (h *Handler) parseRegion(c *gin.Context) string {
 	region := c.Query("region")
+	
+	// Azure uses "location" instead of "region" - support both for consistency
+	if region == "" {
+		region = c.Query("location")
+	}
+	
 	if region == "" {
 		h.HandleError(c, domain.NewDomainError(domain.ErrCodeBadRequest, "region is required", 400), "parse_region")
 		return ""

@@ -32,6 +32,11 @@ func (h *NCPHandler) ListClusters(c *gin.Context) {
 	h.NotImplemented(c, "list_clusters")
 }
 
+// BatchListClusters handles batch listing clusters from multiple credentials and regions
+func (h *NCPHandler) BatchListClusters(c *gin.Context) {
+	h.NotImplemented(c, "batch_list_clusters")
+}
+
 // GetCluster handles getting NKS cluster details
 func (h *NCPHandler) GetCluster(c *gin.Context) {
 	h.NotImplemented(c, "get_cluster")
@@ -147,6 +152,16 @@ func (h *NCPHandler) GetEKSVersions(c *gin.Context) {
 	h.NotImplemented(c, "get_eks_versions")
 }
 
+// GetGKEVersions handles GKE versions listing (GCP only)
+func (h *NCPHandler) GetGKEVersions(c *gin.Context) {
+	h.NotImplemented(c, "get_gke_versions")
+}
+
+// GetAKSVersions handles AKS versions listing (Azure only)
+func (h *NCPHandler) GetAKSVersions(c *gin.Context) {
+	h.NotImplemented(c, "get_aks_versions")
+}
+
 // GetAWSRegions handles AWS regions listing (AWS only)
 func (h *NCPHandler) GetAWSRegions(c *gin.Context) {
 	h.NotImplemented(c, "get_aws_regions")
@@ -162,6 +177,11 @@ func (h *NCPHandler) GetInstanceTypes(c *gin.Context) {
 	h.NotImplemented(c, "get_instance_types")
 }
 
+// GetInstanceTypeOfferings handles instance type offerings listing (AWS only)
+func (h *NCPHandler) GetInstanceTypeOfferings(c *gin.Context) {
+	h.NotImplemented(c, "get_instance_type_offerings")
+}
+
 // GetEKSAmitTypes handles EKS AMI types listing (AWS only)
 func (h *NCPHandler) GetEKSAmitTypes(c *gin.Context) {
 	h.NotImplemented(c, "get_eks_ami_types")
@@ -169,5 +189,15 @@ func (h *NCPHandler) GetEKSAmitTypes(c *gin.Context) {
 
 // CheckGPUQuota handles GPU quota checking (AWS only)
 func (h *NCPHandler) CheckGPUQuota(c *gin.Context) {
-	h.NotImplemented(c, "check_gpu_quota")
+	h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotImplemented, "GPU quota check is only available for AWS", 501), "check_gpu_quota")
+}
+
+// GetVMSizes handles VM sizes listing (Azure only)
+func (h *NCPHandler) GetVMSizes(c *gin.Context) {
+	h.NotImplemented(c, "get_vm_sizes")
+}
+
+// CheckCPUQuota handles CPU quota checking (AWS only)
+func (h *NCPHandler) CheckCPUQuota(c *gin.Context) {
+	h.HandleError(c, domain.NewDomainError(domain.ErrCodeNotImplemented, "CPU quota check is only available for AWS", 501), "check_cpu_quota")
 }

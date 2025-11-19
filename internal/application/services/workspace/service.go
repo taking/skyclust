@@ -21,6 +21,7 @@ type Service struct {
 	workspaceRepo          domain.WorkspaceRepository     // 워크스페이스 저장소
 	workspaceDomainService *domain.WorkspaceDomainService // 워크스페이스 도메인 서비스
 	userRepo               domain.UserRepository          // 사용자 저장소
+	credentialRepo         domain.CredentialRepository    // 자격증명 저장소
 	eventService           domain.EventService            // 이벤트 서비스
 	auditLogRepo           domain.AuditLogRepository      // 감사 로그 저장소
 	eventPublisher         *messaging.Publisher           // 이벤트 발행자
@@ -28,11 +29,12 @@ type Service struct {
 }
 
 // NewService: 새로운 Workspace 서비스 인스턴스를 생성합니다
-func NewService(workspaceRepo domain.WorkspaceRepository, workspaceDomainService *domain.WorkspaceDomainService, userRepo domain.UserRepository, eventService domain.EventService, auditLogRepo domain.AuditLogRepository, eventPublisher *messaging.Publisher) *Service {
+func NewService(workspaceRepo domain.WorkspaceRepository, workspaceDomainService *domain.WorkspaceDomainService, userRepo domain.UserRepository, credentialRepo domain.CredentialRepository, eventService domain.EventService, auditLogRepo domain.AuditLogRepository, eventPublisher *messaging.Publisher) *Service {
 	return &Service{
 		workspaceRepo:          workspaceRepo,
 		workspaceDomainService: workspaceDomainService,
 		userRepo:               userRepo,
+		credentialRepo:         credentialRepo,
 		eventService:           eventService,
 		auditLogRepo:           auditLogRepo,
 		eventPublisher:         eventPublisher,
@@ -124,7 +126,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, req domain.CreateWorkspac
 	return workspace, nil
 }
 
-// GetWorkspace: ID로 워크스페이스를 조회합니다
+// GetWorkspace: ID로 워크스페이스를 조회합니다 (credential_count, member_count 포함)
 func (s *Service) GetWorkspace(ctx context.Context, id string) (*domain.Workspace, error) {
 	workspace, err := s.workspaceRepo.GetByID(ctx, id)
 	if err != nil {
@@ -133,6 +135,28 @@ func (s *Service) GetWorkspace(ctx context.Context, id string) (*domain.Workspac
 	if workspace == nil {
 		return nil, domain.ErrWorkspaceNotFound
 	}
+
+	// Credential 개수 조회
+	credentialCount, err := s.credentialRepo.CountByWorkspaceID(ctx, id)
+	if err != nil {
+		s.logger.Warn("Failed to count credentials for workspace", zap.String("workspace_id", id), zap.Error(err))
+		credentialCount = 0
+	}
+
+	// Member 개수 조회
+	memberCount, err := s.workspaceRepo.CountMembers(ctx, id)
+	if err != nil {
+		s.logger.Warn("Failed to count members for workspace", zap.String("workspace_id", id), zap.Error(err))
+		memberCount = 0
+	}
+
+	// Workspace에 counts 정보 추가 (Settings 필드를 활용)
+	if workspace.Settings == nil {
+		workspace.Settings = make(map[string]interface{})
+	}
+	workspace.Settings["credential_count"] = credentialCount
+	workspace.Settings["member_count"] = memberCount
+
 	return workspace, nil
 }
 
